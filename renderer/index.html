@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>TesterBrowser</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: #1e1e1e; color: #ddd; }
+    #topbar { height: 88px; display: flex; flex-direction: column; background: #252526; border-bottom: 1px solid #333; }
+    #tabs { display: flex; align-items: center; height: 40px; padding: 0 8px; gap: 4px; }
+    .tab { padding: 6px 12px; background: #333; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; }
+    .tab.active { background: #1e1e1e; border-bottom: 2px solid #4fc3f7; }
+    #newSessionBtn { margin-left: 4px; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 0 8px; }
+    #toolbar { height: 46px; display: flex; align-items: center; padding: 0 8px; gap: 8px; }
+    #urlbar { flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: #ddd; }
+    #timelinePanel { position: fixed; bottom: 0; left: 0; right: 0; height: 220px; background: #181818; border-top: 1px solid #333;
+      font-family: monospace; font-size: 12px; overflow-y: auto; padding: 6px 10px; box-sizing: border-box; }
+    .evt { padding: 2px 0; white-space: pre-wrap; word-break: break-all; }
+    .evt.network-request { color: #7fc8ff; }
+    .evt.network-response { color: #8fdc8f; }
+    .evt.network-failed { color: #ff8080; }
+    .evt.console { color: #e0c060; }
+    .evt.log { color: #b0b0b0; }
+  </style>
+</head>
+<body>
+  <div id="topbar">
+    <div id="tabs"><span id="newSessionBtn" title="New session">+</span></div>
+    <div id="toolbar">
+      <input id="urlbar" placeholder="URL — navigation is handled by the active session's BrowserView" />
+      <button id="exportHarBtn">Export HAR</button>
+    </div>
+  </div>
+  <div id="timelinePanel"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>
