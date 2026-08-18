@@ -73,10 +73,19 @@ npm run dist:mac    # on macOS
 
 `.github/workflows/build.yml` builds the Windows `.exe` (NSIS installer) on
 a `windows-latest` runner and the Linux AppImage on `ubuntu-latest`, on every
-push to `main`, every tag, and via manual dispatch. Built artifacts are
-uploaded as workflow artifacts; to publish them as a GitHub Release
-automatically on tag push, add a `softprops/action-gh-release` step (not
-included yet — ask if you want this wired up).
+push to `main`, every tag, and via manual dispatch.
+
+**Getting the latest build for testing:** every push to `main` also
+republishes a rolling pre-release tagged `latest` with the fresh `.exe` and
+`.AppImage` attached — so there's one stable URL:
+
+```
+https://github.com/<you>/<repo>/releases/tag/latest
+```
+
+Bookmark that. It always has the most recent build, no need to dig through
+the Actions tab or worry about artifact expiry. Tagged releases (`v1.0.0`
+etc.) still work normally alongside it for actual versioned releases.
 
 ## Roadmap (suggested order)
 
