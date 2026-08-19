@@ -135,6 +135,14 @@ ipcMain.handle('recording:timeline', (_e, id: string, opts) =>
 
 ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.exportHAR(id) ?? null);
 
+ipcMain.handle('layout:setConsoleHeight', (_e, height: number) =>
+  sessionManager?.setConsoleHeight(height)
+);
+
+ipcMain.handle('layout:setViewerVisible', (_e, visible: boolean) =>
+  sessionManager?.setViewerVisible(visible)
+);
+
 ipcMain.handle('app:versionInfo', () => ({
   current: app.getVersion(),
   latest: latestVersion,

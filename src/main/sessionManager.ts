@@ -19,6 +19,8 @@ export class SessionManager {
   private sessions = new Map<string, TestSession>();
   private activeId: string | null = null;
   private dbDir: string;
+  private consoleHeight = 220;
+  private isViewVisible = true;
 
   constructor(win: BrowserWindow) {
     this.win = win;
@@ -88,13 +90,15 @@ export class SessionManager {
       const prev = this.sessions.get(this.activeId);
       if (prev) this.win.removeBrowserView(prev.view);
     }
-    this.win.addBrowserView(s.view);
     this.activeId = id;
-    this.layoutActive();
+    if (this.isViewVisible) {
+      this.win.addBrowserView(s.view);
+      this.layoutActive();
+    }
   }
 
   private layoutActive() {
-    if (!this.activeId) return;
+    if (!this.activeId || !this.isViewVisible) return;
     const s = this.sessions.get(this.activeId);
     if (!s) return;
     const bounds = this.win.getContentBounds();
@@ -102,9 +106,27 @@ export class SessionManager {
       x: 0,
       y: TOP_BAR_HEIGHT,
       width: bounds.width,
-      height: bounds.height - TOP_BAR_HEIGHT,
+      height: Math.max(0, bounds.height - TOP_BAR_HEIGHT - this.consoleHeight),
     });
-    s.view.setAutoResize({ width: true, height: true });
+    s.view.setAutoResize({ width: true, height: false });
+  }
+
+  setConsoleHeight(height: number) {
+    this.consoleHeight = Math.max(80, Math.min(height, 600));
+    this.layoutActive();
+  }
+
+  setViewerVisible(visible: boolean) {
+    this.isViewVisible = visible;
+    if (!this.activeId) return;
+    const s = this.sessions.get(this.activeId);
+    if (!s) return;
+    if (visible) {
+      this.win.addBrowserView(s.view);
+      this.layoutActive();
+    } else {
+      this.win.removeBrowserView(s.view);
+    }
   }
 
   /** Clone cookies/storage from one session into a newly created one. */

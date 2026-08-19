@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
       ipcRenderer.invoke('recording:timeline', id, opts),
     exportHAR: (id: string) => ipcRenderer.invoke('recording:exportHAR', id),
   },
+  layout: {
+    setConsoleHeight: (height: number) => ipcRenderer.invoke('layout:setConsoleHeight', height),
+    setViewerVisible: (visible: boolean) => ipcRenderer.invoke('layout:setViewerVisible', visible),
+  },
   app: {
     getVersionInfo: () => ipcRenderer.invoke('app:versionInfo'),
     checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),

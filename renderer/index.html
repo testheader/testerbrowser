@@ -6,14 +6,33 @@
   <style>
     body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: #1e1e1e; color: #ddd; }
     #topbar { height: 88px; display: flex; flex-direction: column; background: #252526; border-bottom: 1px solid #333; }
-    #tabs { display: flex; align-items: center; height: 40px; padding: 0 8px; gap: 4px; }
-    .tab { padding: 6px 12px; background: #333; border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; }
+    #tabs { display: flex; align-items: center; height: 40px; padding: 0 8px; gap: 4px; overflow-x: auto; }
+    #tabs::-webkit-scrollbar { height: 3px; }
+    #tabs::-webkit-scrollbar-thumb { background: #444; }
+    .tab { display: flex; align-items: center; gap: 4px; padding: 5px 10px 5px 12px; background: #333;
+      border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap; min-width: 0; max-width: 160px; }
     .tab.active { background: #1e1e1e; border-bottom: 2px solid #4fc3f7; }
-    #newSessionBtn { margin-left: 4px; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 0 8px; }
+    .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tab-close { flex-shrink: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+      border-radius: 3px; font-size: 12px; line-height: 1; color: #888; }
+    .tab-close:hover { background: #555; color: #fff; }
+    #newSessionBtn { flex-shrink: 0; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 0 8px; }
     #toolbar { height: 46px; display: flex; align-items: center; padding: 0 8px; gap: 8px; }
     #urlbar { flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: #ddd; }
-    #timelinePanel { position: fixed; bottom: 0; left: 0; right: 0; height: 220px; background: #181818; border-top: 1px solid #333;
-      font-family: monospace; font-size: 12px; overflow-y: auto; padding: 6px 10px; box-sizing: border-box; }
+    #urlbar:focus { outline: none; border-color: #4fc3f7; }
+
+    /* Console panel */
+    #consolePanel { position: fixed; bottom: 0; left: 0; right: 0; height: 220px;
+      background: #181818; display: flex; flex-direction: column; z-index: 10; }
+    #consoleDragHandle { height: 28px; min-height: 28px; background: #1e1e1e; border-top: 1px solid #333;
+      border-bottom: 1px solid #2a2a2a; cursor: ns-resize; display: flex; align-items: center;
+      justify-content: space-between; padding: 0 10px; flex-shrink: 0; user-select: none; }
+    #consoleDragHandle:hover, #consoleDragHandle.dragging { border-top-color: #4fc3f7; background: #252526; }
+    .console-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.8px; }
+    .drag-grip { color: #444; font-size: 14px; letter-spacing: 3px; }
+    #consoleDragHandle:hover .drag-grip, #consoleDragHandle.dragging .drag-grip { color: #4fc3f7; }
+    #timelinePanel { flex: 1; font-family: monospace; font-size: 12px; overflow-y: auto;
+      padding: 4px 10px; box-sizing: border-box; }
     .evt { padding: 2px 0; white-space: pre-wrap; word-break: break-all; }
     .evt.network-request { color: #7fc8ff; }
     .evt.network-response { color: #8fdc8f; }
@@ -22,27 +41,32 @@
     .evt.log { color: #b0b0b0; }
 
     /* Settings modal */
-    #settingsOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+    #settingsOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      z-index: 100; align-items: center; justify-content: center; }
     #settingsOverlay.open { display: flex; }
-    #settingsModal { background: #252526; border: 1px solid #444; border-radius: 8px; width: 420px; padding: 28px 32px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+    #settingsModal { background: #252526; border: 1px solid #444; border-radius: 8px;
+      width: 420px; min-width: 300px; min-height: 200px; padding: 28px 32px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto; }
     #settingsModal h2 { margin: 0 0 24px; font-size: 16px; font-weight: 600; color: #fff; }
-    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #333; font-size: 13px; }
+    .setting-row { display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 0; border-bottom: 1px solid #333; font-size: 13px; }
     .setting-row:last-of-type { border-bottom: none; }
     .setting-label { color: #999; }
     .setting-value { color: #ddd; font-family: monospace; }
-    #updateStatusText { font-size: 13px; margin: 16px 0 20px; padding: 10px 12px; border-radius: 4px; background: #1e1e1e; }
-    #updateStatusText.ok  { color: #8fdc8f; }
+    #updateStatusText { font-size: 13px; margin: 16px 0 20px; padding: 10px 12px;
+      border-radius: 4px; background: #1e1e1e; }
+    #updateStatusText.ok   { color: #8fdc8f; }
     #updateStatusText.info { color: #7fc8ff; }
     #updateStatusText.warn { color: #e0c060; }
     #updateStatusText.err  { color: #ff8080; }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
     .btn { padding: 7px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; }
-    .btn-primary { background: #4fc3f7; color: #000; }
-    .btn-primary:hover { background: #81d4fa; }
+    .btn-primary   { background: #4fc3f7; color: #000; }
+    .btn-primary:hover   { background: #81d4fa; }
     .btn-secondary { background: #333; color: #ddd; }
     .btn-secondary:hover { background: #444; }
-    .btn-danger { background: #e57373; color: #000; }
-    .btn-danger:hover { background: #ef9a9a; }
+    .btn-danger    { background: #e57373; color: #000; }
+    .btn-danger:hover    { background: #ef9a9a; }
   </style>
 </head>
 <body>
@@ -53,7 +77,14 @@
       <button class="btn btn-secondary" id="exportHarBtn">Export HAR</button>
     </div>
   </div>
-  <div id="timelinePanel"></div>
+
+  <div id="consolePanel">
+    <div id="consoleDragHandle">
+      <span class="console-label">Console</span>
+      <span class="drag-grip">⋮⋮</span>
+    </div>
+    <div id="timelinePanel"></div>
+  </div>
 
   <div id="settingsOverlay">
     <div id="settingsModal">
@@ -68,9 +99,9 @@
       </div>
       <div id="updateStatusText" class="info">Checking for updates…</div>
       <div class="modal-actions">
-        <button class="btn btn-danger" id="restartBtn" style="display:none">Restart to install</button>
-        <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>
-        <button class="btn btn-primary" id="closeSettingsBtn">Close</button>
+        <button class="btn btn-danger"     id="restartBtn"     style="display:none">Restart to install</button>
+        <button class="btn btn-secondary"  id="checkUpdatesBtn">Check for updates</button>
+        <button class="btn btn-primary"    id="closeSettingsBtn">Close</button>
       </div>
     </div>
   </div>

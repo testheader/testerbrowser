@@ -5,6 +5,37 @@ let lastTs = 0;
 let sessionCounter = 0;
 let mruStack = []; // most-recently-used first
 
+// --- Console resize ---
+
+const CONSOLE_DEFAULT = 220;
+let consoleHeight = CONSOLE_DEFAULT;
+const consolePanel = document.getElementById('consolePanel');
+const consoleDragHandle = document.getElementById('consoleDragHandle');
+
+function setConsoleHeight(h) {
+  consoleHeight = Math.max(80, Math.min(h, window.innerHeight - 120));
+  consolePanel.style.height = consoleHeight + 'px';
+  testerBrowser.layout.setConsoleHeight(consoleHeight);
+}
+
+consoleDragHandle.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  const startY = e.clientY;
+  const startH = consoleHeight;
+  consoleDragHandle.classList.add('dragging');
+
+  const onMove = (ev) => setConsoleHeight(startH + (startY - ev.clientY));
+  const onUp = () => {
+    consoleDragHandle.classList.remove('dragging');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+});
+
+// --- Tab MRU ---
+
 function recordVisit(id) {
   mruStack = [id, ...mruStack.filter((x) => x !== id)];
 }
@@ -24,21 +55,61 @@ function cycleTab(reverse) {
   switchToSession(targetId);
 }
 
+// --- Tabs ---
+
 async function refreshTabs() {
   const sessions = await testerBrowser.sessions.list();
   const tabsEl = document.getElementById('tabs');
   tabsEl.querySelectorAll('.tab').forEach((el) => el.remove());
+
   for (const s of sessions) {
     const tab = document.createElement('span');
     tab.className = 'tab' + (s.id === activeId ? ' active' : '');
-    tab.textContent = s.name;
-    tab.onclick = () => switchToSession(s.id);
+    tab.dataset.id = s.id;
+
+    const name = document.createElement('span');
+    name.className = 'tab-name';
+    name.textContent = s.name;
+    name.onclick = () => switchToSession(s.id);
+
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'tab-close';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Close tab';
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      closeTab(s.id, sessions);
+    };
+
+    tab.appendChild(name);
+    tab.appendChild(closeBtn);
     tabsEl.insertBefore(tab, document.getElementById('newSessionBtn'));
   }
+
+  // Remove from MRU any destroyed session ids
+  const ids = new Set(sessions.map((s) => s.id));
+  mruStack = mruStack.filter((id) => ids.has(id));
+
   if (!activeId && sessions.length) {
     activeId = sessions[0].id;
     recordVisit(activeId);
   }
+}
+
+async function closeTab(id, sessions) {
+  await testerBrowser.sessions.destroy(id);
+  mruStack = mruStack.filter((x) => x !== id);
+
+  if (activeId === id) {
+    // Switch to most-recently-used surviving tab
+    const next = mruStack[0] ?? null;
+    activeId = null;
+    if (next) {
+      await switchToSession(next);
+      return; // switchToSession calls refreshTabs
+    }
+  }
+  refreshTabs();
 }
 
 document.getElementById('newSessionBtn').onclick = async () => {
@@ -46,6 +117,8 @@ document.getElementById('newSessionBtn').onclick = async () => {
   const id = await testerBrowser.sessions.create(`Session ${sessionCounter}`, { persistent: false });
   await switchToSession(id);
 };
+
+// --- URL bar ---
 
 document.getElementById('urlbar').addEventListener('keydown', async (e) => {
   if (e.key === 'Enter' && activeId) {
@@ -66,6 +139,8 @@ testerBrowser.sessions.onNavigated(({ id, url }) => {
 
 testerBrowser.sessions.onTabCycle(({ reverse }) => cycleTab(reverse));
 
+// --- Export HAR ---
+
 document.getElementById('exportHarBtn').onclick = async () => {
   if (!activeId) return;
   const har = await testerBrowser.recording.exportHAR(activeId);
@@ -80,27 +155,26 @@ document.getElementById('exportHarBtn').onclick = async () => {
 // --- Settings modal ---
 
 const STATUS_CONFIG = {
-  checking:      { cls: 'info', text: 'Checking for updates…' },
-  available:     { cls: 'info', text: (v) => `Update ${v} found — downloading…` },
-  downloading:   { cls: 'info', text: 'Downloading update…' },
-  downloaded:    { cls: 'warn', text: (v) => `Update ${v} downloaded — restart to install` },
-  'not-available': { cls: 'ok', text: 'You\'re up to date' },
-  error:         { cls: 'err', text: (msg) => `Update error: ${msg || 'unknown'}` },
+  checking:        { cls: 'info', text: 'Checking for updates…' },
+  available:       { cls: 'info', text: (v) => `Update ${v} found — downloading…` },
+  downloading:     { cls: 'info', text: 'Downloading update…' },
+  downloaded:      { cls: 'warn', text: (v) => `Update ${v} downloaded — restart to install` },
+  'not-available': { cls: 'ok',   text: 'You\'re up to date' },
+  error:           { cls: 'err',  text: (msg) => `Update error: ${msg || 'unknown'}` },
 };
 
 function applyUpdateStatus({ status, current, latest }) {
   document.getElementById('currentVersion').textContent = current || '—';
   document.getElementById('latestVersion').textContent = latest || (status === 'not-available' ? current : '—');
-
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.checking;
   const el = document.getElementById('updateStatusText');
   el.className = cfg.cls;
   el.textContent = typeof cfg.text === 'function' ? cfg.text(latest) : cfg.text;
-
   document.getElementById('restartBtn').style.display = status === 'downloaded' ? '' : 'none';
 }
 
 async function openSettings() {
+  await testerBrowser.layout.setViewerVisible(false); // hide BrowserView so overlay is fully visible
   document.getElementById('settingsOverlay').classList.add('open');
   const info = await testerBrowser.app.getVersionInfo();
   applyUpdateStatus(info);
@@ -108,23 +182,20 @@ async function openSettings() {
 
 function closeSettings() {
   document.getElementById('settingsOverlay').classList.remove('open');
+  testerBrowser.layout.setViewerVisible(true);
 }
 
 document.getElementById('closeSettingsBtn').onclick = closeSettings;
 document.getElementById('settingsOverlay').onclick = (e) => {
   if (e.target === document.getElementById('settingsOverlay')) closeSettings();
 };
-
 document.getElementById('checkUpdatesBtn').onclick = async () => {
   document.getElementById('updateStatusText').className = 'info';
   document.getElementById('updateStatusText').textContent = 'Checking for updates…';
   document.getElementById('latestVersion').textContent = '—';
   await testerBrowser.app.checkForUpdates();
 };
-
-document.getElementById('restartBtn').onclick = () => {
-  testerBrowser.app.restartAndInstall();
-};
+document.getElementById('restartBtn').onclick = () => testerBrowser.app.restartAndInstall();
 
 testerBrowser.app.onShowSettings(() => openSettings());
 testerBrowser.app.onUpdateStatus((data) => applyUpdateStatus(data));
