@@ -53,7 +53,6 @@ document.getElementById('urlbar').addEventListener('keydown', async (e) => {
   }
 });
 
-// Ctrl+Tab when the top bar (renderer) has focus
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 'Tab') {
     e.preventDefault();
@@ -62,12 +61,9 @@ document.addEventListener('keydown', (e) => {
 });
 
 testerBrowser.sessions.onNavigated(({ id, url }) => {
-  if (id === activeId) {
-    document.getElementById('urlbar').value = url;
-  }
+  if (id === activeId) document.getElementById('urlbar').value = url;
 });
 
-// Ctrl+Tab when a BrowserView has focus (intercepted in main via before-input-event)
 testerBrowser.sessions.onTabCycle(({ reverse }) => cycleTab(reverse));
 
 document.getElementById('exportHarBtn').onclick = async () => {
@@ -80,6 +76,60 @@ document.getElementById('exportHarBtn').onclick = async () => {
   a.download = `${activeId}.har.json`;
   a.click();
 };
+
+// --- Settings modal ---
+
+const STATUS_CONFIG = {
+  checking:      { cls: 'info', text: 'Checking for updates…' },
+  available:     { cls: 'info', text: (v) => `Update ${v} found — downloading…` },
+  downloading:   { cls: 'info', text: 'Downloading update…' },
+  downloaded:    { cls: 'warn', text: (v) => `Update ${v} downloaded — restart to install` },
+  'not-available': { cls: 'ok', text: 'You\'re up to date' },
+  error:         { cls: 'err', text: (msg) => `Update error: ${msg || 'unknown'}` },
+};
+
+function applyUpdateStatus({ status, current, latest }) {
+  document.getElementById('currentVersion').textContent = current || '—';
+  document.getElementById('latestVersion').textContent = latest || (status === 'not-available' ? current : '—');
+
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.checking;
+  const el = document.getElementById('updateStatusText');
+  el.className = cfg.cls;
+  el.textContent = typeof cfg.text === 'function' ? cfg.text(latest) : cfg.text;
+
+  document.getElementById('restartBtn').style.display = status === 'downloaded' ? '' : 'none';
+}
+
+async function openSettings() {
+  document.getElementById('settingsOverlay').classList.add('open');
+  const info = await testerBrowser.app.getVersionInfo();
+  applyUpdateStatus(info);
+}
+
+function closeSettings() {
+  document.getElementById('settingsOverlay').classList.remove('open');
+}
+
+document.getElementById('closeSettingsBtn').onclick = closeSettings;
+document.getElementById('settingsOverlay').onclick = (e) => {
+  if (e.target === document.getElementById('settingsOverlay')) closeSettings();
+};
+
+document.getElementById('checkUpdatesBtn').onclick = async () => {
+  document.getElementById('updateStatusText').className = 'info';
+  document.getElementById('updateStatusText').textContent = 'Checking for updates…';
+  document.getElementById('latestVersion').textContent = '—';
+  await testerBrowser.app.checkForUpdates();
+};
+
+document.getElementById('restartBtn').onclick = () => {
+  testerBrowser.app.restartAndInstall();
+};
+
+testerBrowser.app.onShowSettings(() => openSettings());
+testerBrowser.app.onUpdateStatus((data) => applyUpdateStatus(data));
+
+// --- Timeline polling ---
 
 async function pollTimeline() {
   if (activeId) {

@@ -20,17 +20,61 @@
     .evt.network-failed { color: #ff8080; }
     .evt.console { color: #e0c060; }
     .evt.log { color: #b0b0b0; }
+
+    /* Settings modal */
+    #settingsOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+    #settingsOverlay.open { display: flex; }
+    #settingsModal { background: #252526; border: 1px solid #444; border-radius: 8px; width: 420px; padding: 28px 32px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+    #settingsModal h2 { margin: 0 0 24px; font-size: 16px; font-weight: 600; color: #fff; }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #333; font-size: 13px; }
+    .setting-row:last-of-type { border-bottom: none; }
+    .setting-label { color: #999; }
+    .setting-value { color: #ddd; font-family: monospace; }
+    #updateStatusText { font-size: 13px; margin: 16px 0 20px; padding: 10px 12px; border-radius: 4px; background: #1e1e1e; }
+    #updateStatusText.ok  { color: #8fdc8f; }
+    #updateStatusText.info { color: #7fc8ff; }
+    #updateStatusText.warn { color: #e0c060; }
+    #updateStatusText.err  { color: #ff8080; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    .btn { padding: 7px 16px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: #4fc3f7; color: #000; }
+    .btn-primary:hover { background: #81d4fa; }
+    .btn-secondary { background: #333; color: #ddd; }
+    .btn-secondary:hover { background: #444; }
+    .btn-danger { background: #e57373; color: #000; }
+    .btn-danger:hover { background: #ef9a9a; }
   </style>
 </head>
 <body>
   <div id="topbar">
     <div id="tabs"><span id="newSessionBtn" title="New session">+</span></div>
     <div id="toolbar">
-      <input id="urlbar" placeholder="URL — navigation is handled by the active session's BrowserView" />
-      <button id="exportHarBtn">Export HAR</button>
+      <input id="urlbar" placeholder="Enter URL and press Enter" />
+      <button class="btn btn-secondary" id="exportHarBtn">Export HAR</button>
     </div>
   </div>
   <div id="timelinePanel"></div>
+
+  <div id="settingsOverlay">
+    <div id="settingsModal">
+      <h2>About / Settings</h2>
+      <div class="setting-row">
+        <span class="setting-label">Current version</span>
+        <span class="setting-value" id="currentVersion">—</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Latest version</span>
+        <span class="setting-value" id="latestVersion">—</span>
+      </div>
+      <div id="updateStatusText" class="info">Checking for updates…</div>
+      <div class="modal-actions">
+        <button class="btn btn-danger" id="restartBtn" style="display:none">Restart to install</button>
+        <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>
+        <button class="btn btn-primary" id="closeSettingsBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="renderer.js"></script>
 </body>
 </html>

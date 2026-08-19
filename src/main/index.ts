@@ -1,10 +1,22 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu } from 'electron';
 import path from 'path';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager } from './sessionManager';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
+
+type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
+let updateStatus: UpdateStatus = 'checking';
+let latestVersion: string | null = null;
+
+function pushUpdateStatus() {
+  win?.webContents.send('update:status', {
+    status: updateStatus,
+    current: app.getVersion(),
+    latest: latestVersion,
+  });
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -21,16 +33,69 @@ function createWindow() {
 
   sessionManager = new SessionManager(win);
 
-  // Create a default session on launch so recording starts immediately.
   const first = sessionManager.createSession('Default', { persistent: true });
   sessionManager.switchTo(first.id);
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About / Settings',
+          click: () => win?.webContents.send('show:settings'),
+        },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(menu);
 }
 
 app.whenReady().then(() => {
   createWindow();
 
   if (app.isPackaged) {
+    autoUpdater.on('checking-for-update', () => {
+      updateStatus = 'checking';
+      latestVersion = null;
+      pushUpdateStatus();
+    });
+    autoUpdater.on('update-available', (info) => {
+      updateStatus = 'available';
+      latestVersion = info.version;
+      pushUpdateStatus();
+    });
+    autoUpdater.on('download-progress', () => {
+      updateStatus = 'downloading';
+      pushUpdateStatus();
+    });
+    autoUpdater.on('update-downloaded', (info) => {
+      updateStatus = 'downloaded';
+      latestVersion = info.version;
+      pushUpdateStatus();
+    });
+    autoUpdater.on('update-not-available', (info) => {
+      updateStatus = 'not-available';
+      latestVersion = info.version;
+      pushUpdateStatus();
+    });
+    autoUpdater.on('error', (_e, message) => {
+      updateStatus = 'error';
+      latestVersion = message ?? null;
+      pushUpdateStatus();
+    });
+
     autoUpdater.checkForUpdatesAndNotify();
+  } else {
+    updateStatus = 'not-available';
   }
 
   app.on('activate', () => {
@@ -42,7 +107,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// --- IPC surface for the renderer UI ---
+// --- IPC surface ---
 
 ipcMain.handle('sessions:list', () => sessionManager?.listSessions() ?? []);
 
@@ -68,3 +133,22 @@ ipcMain.handle('recording:timeline', (_e, id: string, opts) =>
 );
 
 ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.exportHAR(id) ?? null);
+
+ipcMain.handle('app:versionInfo', () => ({
+  current: app.getVersion(),
+  latest: latestVersion,
+  status: updateStatus,
+  isPackaged: app.isPackaged,
+}));
+
+ipcMain.handle('app:checkForUpdates', () => {
+  if (!app.isPackaged) return;
+  updateStatus = 'checking';
+  latestVersion = null;
+  pushUpdateStatus();
+  autoUpdater.checkForUpdatesAndNotify();
+});
+
+ipcMain.handle('app:restartAndInstall', () => {
+  autoUpdater.quitAndInstall();
+});

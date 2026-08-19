@@ -20,4 +20,13 @@ contextBridge.exposeInMainWorld('testerBrowser', {
       ipcRenderer.invoke('recording:timeline', id, opts),
     exportHAR: (id: string) => ipcRenderer.invoke('recording:exportHAR', id),
   },
+  app: {
+    getVersionInfo: () => ipcRenderer.invoke('app:versionInfo'),
+    checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+    restartAndInstall: () => ipcRenderer.invoke('app:restartAndInstall'),
+    onUpdateStatus: (cb: (data: { status: string; current: string; latest: string | null }) => void) =>
+      ipcRenderer.on('update:status', (_e, data) => cb(data)),
+    onShowSettings: (cb: () => void) =>
+      ipcRenderer.on('show:settings', () => cb()),
+  },
 });
