@@ -2,6 +2,7 @@
 
 let activeId = null;
 let lastTs = 0;
+let sessionCounter = 0;
 
 async function refreshTabs() {
   const sessions = await testerBrowser.sessions.list();
@@ -24,13 +25,26 @@ async function refreshTabs() {
 }
 
 document.getElementById('newSessionBtn').onclick = async () => {
-  const name = prompt('Session name:', `Session ${Date.now() % 1000}`);
-  if (!name) return;
-  const id = await testerBrowser.sessions.create(name, { persistent: false });
+  sessionCounter++;
+  const id = await testerBrowser.sessions.create(`Session ${sessionCounter}`, { persistent: false });
   activeId = id;
+  lastTs = 0;
+  document.getElementById('timelinePanel').innerHTML = '';
   await testerBrowser.sessions.switchTo(id);
   refreshTabs();
 };
+
+document.getElementById('urlbar').addEventListener('keydown', async (e) => {
+  if (e.key === 'Enter' && activeId) {
+    await testerBrowser.sessions.navigate(activeId, e.target.value);
+  }
+});
+
+testerBrowser.sessions.onNavigated(({ id, url }) => {
+  if (id === activeId) {
+    document.getElementById('urlbar').value = url;
+  }
+});
 
 document.getElementById('exportHarBtn').onclick = async () => {
   if (!activeId) return;

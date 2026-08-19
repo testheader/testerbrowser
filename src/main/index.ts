@@ -54,6 +54,10 @@ ipcMain.handle('sessions:clone', async (_e, sourceId: string, newName: string) =
 
 ipcMain.handle('sessions:destroy', (_e, id: string) => sessionManager?.destroySession(id));
 
+ipcMain.handle('sessions:navigate', (_e, id: string, url: string) =>
+  sessionManager?.navigate(id, url)
+);
+
 ipcMain.handle('recording:timeline', (_e, id: string, opts) =>
   sessionManager?.getTimeline(id, opts) ?? []
 );

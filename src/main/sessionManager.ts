@@ -65,6 +65,13 @@ export class SessionManager {
 
     view.webContents.loadURL(opts.startUrl || 'https://example.com');
 
+    view.webContents.on('did-navigate', (_e, url) => {
+      this.win.webContents.send('session:navigated', { id, url });
+    });
+    view.webContents.on('did-navigate-in-page', (_e, url) => {
+      this.win.webContents.send('session:navigated', { id, url });
+    });
+
     return testSession;
   }
 
@@ -118,6 +125,13 @@ export class SessionManager {
       }
     }
     return dest;
+  }
+
+  navigate(id: string, url: string) {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const normalized = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    s.view.webContents.loadURL(normalized);
   }
 
   getTimeline(id: string, opts?: { limit?: number; since?: number }) {
