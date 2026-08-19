@@ -4,63 +4,102 @@
   <meta charset="UTF-8" />
   <title>TesterBrowser</title>
   <style>
+    * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: #1e1e1e; color: #ddd; }
-    #topbar { height: 88px; display: flex; flex-direction: column; background: #252526; border-bottom: 1px solid #333; }
+
+    /* ── Top bar ── */
+    #topbar { display: flex; flex-direction: column; background: #252526; border-bottom: 1px solid #333; }
+
+    /* Tabs */
     #tabs { display: flex; align-items: center; height: 40px; padding: 0 8px; gap: 4px; overflow-x: auto; }
     #tabs::-webkit-scrollbar { height: 3px; }
     #tabs::-webkit-scrollbar-thumb { background: #444; }
-    .tab { display: flex; align-items: center; gap: 4px; padding: 5px 10px 5px 12px; background: #333;
-      border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap; min-width: 0; max-width: 160px;
-      user-select: none; }
+    .tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px 5px 10px; background: #333;
+           border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap;
+           min-width: 0; max-width: 180px; user-select: none; }
     .tab.active { background: #1e1e1e; border-bottom: 2px solid #4fc3f7; }
     .tab.dragging { opacity: 0.35; }
     .tab.drag-left  { box-shadow: -2px 0 0 0 #4fc3f7; }
     .tab.drag-right { box-shadow:  2px 0 0 0 #4fc3f7; }
-    .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; }
-    .tab-close { flex-shrink: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
-      border-radius: 3px; font-size: 12px; line-height: 1; color: #888; }
+    .tab-favicon { width: 14px; height: 14px; flex-shrink: 0; border-radius: 2px; }
+    .tab-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .tab-dot.persistent { background: #4fc3f7; }
+    .tab-dot.ephemeral  { background: #555; }
+    .tab-pin { font-size: 10px; color: #e0c060; flex-shrink: 0; }
+    .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; flex: 1; min-width: 0; }
+    .tab-close { flex-shrink: 0; width: 16px; height: 16px; display: flex; align-items: center;
+                 justify-content: center; border-radius: 3px; font-size: 13px; color: #777; }
     .tab-close:hover { background: #555; color: #fff; }
     .tab-rename-input { background: #111; color: #ddd; border: 1px solid #4fc3f7; border-radius: 2px;
-      font-size: 13px; padding: 1px 4px; width: 100px; outline: none; font-family: inherit; }
-    #newSessionBtn { flex-shrink: 0; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 0 8px; }
-    #toolbar { height: 46px; display: flex; align-items: center; padding: 0 8px; gap: 8px; }
-    #urlbar { flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid #444; background: #1e1e1e; color: #ddd; }
+                        font-size: 13px; padding: 1px 4px; width: 100px; outline: none; font-family: inherit; }
+    #newSessionBtn { flex-shrink: 0; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 0 8px; user-select: none; }
+
+    /* Toolbar */
+    #toolbar { height: 46px; display: flex; align-items: center; padding: 0 8px; gap: 6px; }
+    .nav-btn { background: none; border: none; color: #aaa; font-size: 16px; cursor: pointer;
+               padding: 4px 6px; border-radius: 4px; line-height: 1; flex-shrink: 0; }
+    .nav-btn:hover:not(:disabled) { background: #333; color: #fff; }
+    .nav-btn:disabled { color: #444; cursor: default; }
+    #urlbar { flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid #444;
+              background: #1e1e1e; color: #ddd; font-size: 14px; }
     #urlbar:focus { outline: none; border-color: #4fc3f7; }
 
-    /* Console panel */
-    #consolePanel { position: fixed; bottom: 0; left: 0; right: 0; height: 220px;
-      background: #181818; display: flex; flex-direction: column; z-index: 10; }
-    #consoleDragHandle { height: 28px; min-height: 28px; background: #1e1e1e; border-top: 1px solid #333;
-      border-bottom: 1px solid #2a2a2a; cursor: ns-resize; display: flex; align-items: center;
-      justify-content: space-between; padding: 0 10px; flex-shrink: 0; user-select: none; }
-    #consoleDragHandle:hover, #consoleDragHandle.dragging { border-top-color: #4fc3f7; background: #252526; }
-    .console-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.8px; }
-    .drag-grip { color: #444; font-size: 14px; letter-spacing: 3px; }
-    #consoleDragHandle:hover .drag-grip, #consoleDragHandle.dragging .drag-grip { color: #4fc3f7; }
-    #timelinePanel { flex: 1; font-family: monospace; font-size: 12px; overflow-y: auto;
-      padding: 4px 10px; box-sizing: border-box; }
-    .evt { padding: 2px 0; white-space: pre-wrap; word-break: break-all; }
-    .evt.network-request { color: #7fc8ff; }
-    .evt.network-response { color: #8fdc8f; }
-    .evt.network-failed { color: #ff8080; }
-    .evt.console { color: #e0c060; }
-    .evt.log { color: #b0b0b0; }
+    /* Find bar */
+    #findBar { height: 40px; display: none; align-items: center; padding: 0 10px; gap: 6px;
+               background: #1e1e1e; border-top: 1px solid #333; }
+    #findBar.open { display: flex; }
+    #findInput { padding: 4px 8px; border-radius: 4px; border: 1px solid #444;
+                 background: #252526; color: #ddd; font-size: 13px; width: 220px; }
+    #findInput:focus { outline: none; border-color: #4fc3f7; }
+    #findInput.no-match { border-color: #e57373; background: #2a1a1a; }
+    #findCount { font-size: 12px; color: #888; min-width: 60px; }
+    .find-btn { background: none; border: 1px solid #444; color: #aaa; border-radius: 4px;
+                padding: 3px 8px; cursor: pointer; font-size: 13px; }
+    .find-btn:hover { background: #333; color: #fff; }
 
-    /* Settings modal */
+    /* ── Console panel ── */
+    #consolePanel { position: fixed; bottom: 0; left: 0; right: 0; height: 220px;
+                    background: #181818; display: flex; flex-direction: column; z-index: 10; }
+    #consoleDragHandle { height: 6px; min-height: 6px; background: #222; border-top: 1px solid #333;
+                         cursor: ns-resize; flex-shrink: 0; }
+    #consoleDragHandle:hover, #consoleDragHandle.dragging { background: #4fc3f7; }
+    #consoleHeader { display: flex; align-items: center; gap: 6px; padding: 4px 10px;
+                     background: #1e1e1e; border-bottom: 1px solid #2a2a2a; flex-shrink: 0; }
+    .console-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.8px; flex-shrink: 0; }
+    #filterText { flex: 1; min-width: 0; padding: 2px 6px; border-radius: 3px; border: 1px solid #333;
+                  background: #252526; color: #ddd; font-size: 12px; }
+    #filterText:focus { outline: none; border-color: #4fc3f7; }
+    .filter-checks { display: flex; gap: 6px; flex-shrink: 0; }
+    .filter-checks label { font-size: 11px; color: #777; display: flex; align-items: center; gap: 2px; cursor: pointer; }
+    .filter-checks label:hover { color: #ddd; }
+    #clearConsoleBtn { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 0 4px; }
+    #clearConsoleBtn:hover { color: #fff; }
+    #timelinePanel { flex: 1; font-family: monospace; font-size: 12px; overflow-y: auto; padding: 4px 0; }
+    .evt { padding: 1px 10px; cursor: pointer; white-space: pre-wrap; word-break: break-all; }
+    .evt:hover { background: #222; }
+    .evt-summary { }
+    .evt-detail { background: #111; border-left: 2px solid #444; margin: 4px 10px 4px 0;
+                  padding: 6px 8px; font-size: 11px; overflow-x: auto; white-space: pre; display: none; }
+    .evt-detail.open { display: block; }
+    .evt.network-request .evt-summary { color: #7fc8ff; }
+    .evt.network-response .evt-summary { color: #8fdc8f; }
+    .evt.network-failed .evt-summary { color: #ff8080; }
+    .evt.console .evt-summary { color: #e0c060; }
+    .evt.log .evt-summary { color: #b0b0b0; }
+
+    /* ── Settings modal ── */
     #settingsOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-      z-index: 100; align-items: center; justify-content: center; }
+                       z-index: 100; align-items: center; justify-content: center; }
     #settingsOverlay.open { display: flex; }
     #settingsModal { background: #252526; border: 1px solid #444; border-radius: 8px;
-      width: 420px; min-width: 300px; min-height: 200px; padding: 28px 32px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto; }
+                     width: 420px; min-width: 300px; min-height: 200px; padding: 28px 32px;
+                     box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto; }
     #settingsModal h2 { margin: 0 0 24px; font-size: 16px; font-weight: 600; color: #fff; }
     .setting-row { display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 0; border-bottom: 1px solid #333; font-size: 13px; }
-    .setting-row:last-of-type { border-bottom: none; }
+                   padding: 10px 0; border-bottom: 1px solid #333; font-size: 13px; }
     .setting-label { color: #999; }
     .setting-value { color: #ddd; font-family: monospace; }
-    #updateStatusText { font-size: 13px; margin: 16px 0 20px; padding: 10px 12px;
-      border-radius: 4px; background: #1e1e1e; }
+    #updateStatusText { font-size: 13px; margin: 16px 0 20px; padding: 10px 12px; border-radius: 4px; background: #1e1e1e; }
     #updateStatusText.ok   { color: #8fdc8f; }
     #updateStatusText.info { color: #7fc8ff; }
     #updateStatusText.warn { color: #e0c060; }
@@ -73,25 +112,57 @@
     .btn-secondary:hover { background: #444; }
     .btn-danger    { background: #e57373; color: #000; }
     .btn-danger:hover    { background: #ef9a9a; }
+
+    /* ── Notes modal ── */
+    #notesOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                    z-index: 100; align-items: center; justify-content: center; }
+    #notesOverlay.open { display: flex; }
+    #notesModal { background: #252526; border: 1px solid #444; border-radius: 8px;
+                  width: 500px; min-width: 300px; padding: 24px 28px;
+                  box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto; display: flex; flex-direction: column; }
+    #notesModal h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; color: #fff; }
+    #notesTextarea { flex: 1; min-height: 160px; background: #1e1e1e; color: #ddd; border: 1px solid #444;
+                     border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: none; }
+    #notesTextarea:focus { outline: none; border-color: #4fc3f7; }
   </style>
 </head>
 <body>
   <div id="topbar">
-    <div id="tabs"><span id="newSessionBtn" title="New session">+</span></div>
+    <div id="tabs"><span id="newSessionBtn" title="New tab (Ctrl+T)">+</span></div>
     <div id="toolbar">
-      <input id="urlbar" placeholder="Enter URL and press Enter" />
-      <button class="btn btn-secondary" id="exportHarBtn">Export HAR</button>
+      <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"   disabled>&#8592;</button>
+      <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)" disabled>&#8594;</button>
+      <button class="nav-btn" id="reloadBtn" title="Reload (F5)">&#8635;</button>
+      <input id="urlbar" placeholder="Enter URL and press Enter (Ctrl+L)" />
+      <button class="nav-btn" id="devtoolsBtn" title="DevTools (F12)">&#9881;</button>
+    </div>
+    <div id="findBar">
+      <input id="findInput" placeholder="Find in page…" />
+      <span id="findCount"></span>
+      <button class="find-btn" id="findPrevBtn" title="Previous (Shift+F3)">&#8593;</button>
+      <button class="find-btn" id="findNextBtn" title="Next (F3)">&#8595;</button>
+      <button class="find-btn" id="findCloseBtn">&#10005;</button>
     </div>
   </div>
 
   <div id="consolePanel">
-    <div id="consoleDragHandle">
+    <div id="consoleDragHandle"></div>
+    <div id="consoleHeader">
       <span class="console-label">Console</span>
-      <span class="drag-grip">⋮⋮</span>
+      <input id="filterText" placeholder="Filter…" />
+      <div class="filter-checks">
+        <label><input type="checkbox" class="ftype" value="network-request"  checked> Req</label>
+        <label><input type="checkbox" class="ftype" value="network-response" checked> Res</label>
+        <label><input type="checkbox" class="ftype" value="network-failed"   checked> Err</label>
+        <label><input type="checkbox" class="ftype" value="console"          checked> JS</label>
+        <label><input type="checkbox" class="ftype" value="log"              checked> Log</label>
+      </div>
+      <button id="clearConsoleBtn" title="Clear console">&#10005;</button>
     </div>
     <div id="timelinePanel"></div>
   </div>
 
+  <!-- Settings -->
   <div id="settingsOverlay">
     <div id="settingsModal">
       <h2>About / Settings</h2>
@@ -105,9 +176,21 @@
       </div>
       <div id="updateStatusText" class="info">Checking for updates…</div>
       <div class="modal-actions">
-        <button class="btn btn-danger"     id="restartBtn"     style="display:none">Restart to install</button>
-        <button class="btn btn-secondary"  id="checkUpdatesBtn">Check for updates</button>
-        <button class="btn btn-primary"    id="closeSettingsBtn">Close</button>
+        <button class="btn btn-danger"    id="restartBtn"     style="display:none">Restart to install</button>
+        <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>
+        <button class="btn btn-primary"   id="closeSettingsBtn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div id="notesOverlay">
+    <div id="notesModal">
+      <h2 id="notesTitle">Notes</h2>
+      <textarea id="notesTextarea" placeholder="Session notes…"></textarea>
+      <div class="modal-actions" style="margin-top:12px">
+        <button class="btn btn-secondary" id="closeNotesBtn">Close</button>
+        <button class="btn btn-primary"   id="saveNotesBtn">Save</button>
       </div>
     </div>
   </div>
