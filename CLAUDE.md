@@ -106,7 +106,7 @@ Flow: fetches `latest.yml` from the GitHub release → compares version to runni
 - **electron-builder defaults to draft releases** — `electron-updater` ignores drafts. Set `"releaseType": "prerelease"` in the publish config.
 - **electron-builder needs `GH_TOKEN`** in CI even with `--publish always` — pass it as env on the `npm run dist:*` step. Use `secrets.GITHUB_TOKEN`.
 - **Calling `electron-builder` directly in workflow steps fails** — it's in `node_modules/.bin`, not on PATH. Always invoke via `npm run dist:win` / `npm run dist:linux` (npm adds `.bin` to PATH when running scripts).
-- **`[skip ci]` prevents infinite bump loops** — the version-bump commit has `[skip ci]` in its message; GitHub Actions skips workflow runs for such commits.
+- **Infinite bump loop prevention** — bump-version has `if: github.actor != 'github-actions[bot]'`; the bot's own push triggers a new run but the job is skipped. Don't use `[skip ci]` in commit message bodies — GitHub matches it anywhere in the message, including the body, which silently skips CI on your real commits too.
 - **Build jobs must `ref: main`** after bump-version pushes — without it they'd checkout the pre-bump SHA and publish the old version number.
 
 ---
