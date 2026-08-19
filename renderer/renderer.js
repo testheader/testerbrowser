@@ -4,6 +4,7 @@ let activeId = null;
 let lastTs = 0;
 let sessionCounter = 0;
 let mruStack = []; // most-recently-used first
+let tabClickTimer = null; // delays single-click so dblclick can cancel it
 
 // --- Console resize ---
 
@@ -70,8 +71,15 @@ async function refreshTabs() {
     const name = document.createElement('span');
     name.className = 'tab-name';
     name.textContent = s.name;
-    name.onclick = () => switchToSession(s.id);
-    name.ondblclick = (e) => { e.stopPropagation(); startRename(s.id, name); };
+    name.onclick = () => {
+      clearTimeout(tabClickTimer);
+      tabClickTimer = setTimeout(() => switchToSession(s.id), 250);
+    };
+    name.ondblclick = (e) => {
+      e.stopPropagation();
+      clearTimeout(tabClickTimer); // cancel the pending switchToSession
+      startRename(s.id, name);
+    };
 
     const closeBtn = document.createElement('span');
     closeBtn.className = 'tab-close';
