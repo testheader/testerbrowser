@@ -3,18 +3,50 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ['v*']
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
+  bump-version:
+    if: "!contains(github.event.head_commit.message || '', '[skip ci]')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Bump version
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if echo "$COMMIT_MSG" | grep -qiE "BREAKING CHANGE|^feat(\(.+\))?!:"; then
+            BUMP="major"
+          elif echo "$COMMIT_MSG" | grep -qiE "^feat(\(.+\))?:"; then
+            BUMP="minor"
+          else
+            BUMP="patch"
+          fi
+          npm version $BUMP --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git push
+
   build-windows:
+    needs: [bump-version]
+    if: "always() && needs.bump-version.result != 'failure'"
     runs-on: windows-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -28,11 +60,15 @@ jobs:
           path: release/*.exe
 
   build-linux:
+    needs: [bump-version]
+    if: "always() && needs.bump-version.result != 'failure'"
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 20
