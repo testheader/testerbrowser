@@ -63,6 +63,7 @@ app.whenReady().then(() => {
   createWindow();
 
   if (app.isPackaged) {
+    autoUpdater.allowPrerelease = true;
     autoUpdater.on('checking-for-update', () => {
       updateStatus = 'checking';
       latestVersion = null;
