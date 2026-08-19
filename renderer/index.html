@@ -10,9 +10,13 @@
     #tabs::-webkit-scrollbar { height: 3px; }
     #tabs::-webkit-scrollbar-thumb { background: #444; }
     .tab { display: flex; align-items: center; gap: 4px; padding: 5px 10px 5px 12px; background: #333;
-      border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap; min-width: 0; max-width: 160px; }
+      border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap; min-width: 0; max-width: 160px;
+      user-select: none; }
     .tab.active { background: #1e1e1e; border-bottom: 2px solid #4fc3f7; }
-    .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tab.dragging { opacity: 0.35; }
+    .tab.drag-left  { box-shadow: -2px 0 0 0 #4fc3f7; }
+    .tab.drag-right { box-shadow:  2px 0 0 0 #4fc3f7; }
+    .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; }
     .tab-close { flex-shrink: 0; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
       border-radius: 3px; font-size: 12px; line-height: 1; color: #888; }
     .tab-close:hover { background: #555; color: #fff; }

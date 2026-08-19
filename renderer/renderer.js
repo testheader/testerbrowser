@@ -6,6 +6,7 @@ let sessionCounter = 0;
 let mruStack = []; // most-recently-used first
 let tabClickTimer = null; // delays single-click so dblclick can cancel it
 let tabOrder = []; // explicit display order; new tabs splice in after the active tab
+let dragSourceId = null;
 
 function insertAfterActive(id) {
   const idx = activeId ? tabOrder.indexOf(activeId) : -1;
@@ -105,6 +106,38 @@ async function refreshTabs() {
       e.stopPropagation();
       closeTab(s.id);
     };
+
+    // --- Drag to reorder ---
+    tab.draggable = true;
+    tab.addEventListener('dragstart', (e) => {
+      dragSourceId = s.id;
+      tab.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    tab.addEventListener('dragend', () => {
+      dragSourceId = null;
+      document.querySelectorAll('.tab').forEach((t) => t.classList.remove('dragging', 'drag-left', 'drag-right'));
+    });
+    tab.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!dragSourceId || dragSourceId === s.id) return;
+      const midX = tab.getBoundingClientRect().left + tab.offsetWidth / 2;
+      tab.classList.toggle('drag-left',  e.clientX <= midX);
+      tab.classList.toggle('drag-right', e.clientX >  midX);
+    });
+    tab.addEventListener('dragleave', () => {
+      tab.classList.remove('drag-left', 'drag-right');
+    });
+    tab.addEventListener('drop', (e) => {
+      e.preventDefault();
+      tab.classList.remove('drag-left', 'drag-right');
+      if (!dragSourceId || dragSourceId === s.id) return;
+      const insertBefore = e.clientX <= tab.getBoundingClientRect().left + tab.offsetWidth / 2;
+      tabOrder = tabOrder.filter((x) => x !== dragSourceId);
+      const toIdx = tabOrder.indexOf(s.id);
+      tabOrder.splice(insertBefore ? toIdx : toIdx + 1, 0, dragSourceId);
+      refreshTabs();
+    });
 
     tab.appendChild(name);
     tab.appendChild(closeBtn);
