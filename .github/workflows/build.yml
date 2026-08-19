@@ -11,6 +11,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,24 +20,17 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: TesterBrowser-windows-installer
           path: release/*.exe
-      - name: Stage for release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          mkdir release-out
-          cp release/*.exe release-out/
-        shell: bash
-      - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          name: release-exe
-          path: release-out/*.exe
 
   build-linux:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,39 +38,9 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm run dist:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: TesterBrowser-linux-appimage
           path: release/*.AppImage
-      - name: Stage for release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          mkdir release-out
-          cp release/*.AppImage release-out/
-      - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        with:
-          name: release-appimage
-          path: release-out/*.AppImage
-
-  publish-latest:
-    needs: [build-windows, build-linux]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: release-*
-          path: artifacts
-          merge-multiple: true
-      - name: Publish rolling "latest" release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest build
-          prerelease: true
-          body: "Auto-published from the latest commit on main. Not a stable release — for testing only."
-          files: artifacts/*
-          fail_on_unmatched_files: false

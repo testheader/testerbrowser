@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
+import { autoUpdater } from 'electron-updater';
 import { SessionManager } from './sessionManager';
 
 let win: BrowserWindow | null = null;
@@ -27,6 +28,10 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

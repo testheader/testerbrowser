@@ -10,8 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "npm run build && electron .",
     "start": "electron .",
-    "dist:win": "npm run build && electron-builder --win nsis --publish never",
-    "dist:linux": "npm run build && electron-builder --linux AppImage --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis --publish always",
+    "dist:linux": "npm run build && electron-builder --linux AppImage --publish always",
     "dist:mac": "npm run build && electron-builder --mac dmg"
   },
   "devDependencies": {
@@ -22,7 +22,8 @@
     "@types/better-sqlite3": "^7.6.10"
   },
   "dependencies": {
-    "better-sqlite3": "^11.1.2"
+    "better-sqlite3": "^11.1.2",
+    "electron-updater": "^6.3.0"
   },
   "build": {
     "appId": "com.testerbrowser.app",
@@ -50,6 +51,11 @@
     },
     "mac": {
       "target": ["dmg"]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "testheader",
+      "repo": "testerbrowser"
     }
   }
 }
