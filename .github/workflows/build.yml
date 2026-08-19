@@ -60,8 +60,8 @@ jobs:
           path: release/*.exe
 
   build-linux:
-    needs: [bump-version]
-    if: "always() && needs.bump-version.result != 'failure'"
+    needs: [bump-version, build-windows]
+    if: "always() && needs.bump-version.result != 'failure' && needs.build-windows.result == 'success'"
     runs-on: ubuntu-latest
     permissions:
       contents: write
