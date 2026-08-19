@@ -5,6 +5,13 @@ let lastTs = 0;
 let sessionCounter = 0;
 let mruStack = []; // most-recently-used first
 let tabClickTimer = null; // delays single-click so dblclick can cancel it
+let tabOrder = []; // explicit display order; new tabs splice in after the active tab
+
+function insertAfterActive(id) {
+  const idx = activeId ? tabOrder.indexOf(activeId) : -1;
+  if (idx === -1) tabOrder.push(id);
+  else tabOrder.splice(idx + 1, 0, id);
+}
 
 // --- Console resize ---
 
@@ -60,10 +67,19 @@ function cycleTab(reverse) {
 
 async function refreshTabs() {
   const sessions = await testerBrowser.sessions.list();
+  const sessionMap = new Map(sessions.map((s) => [s.id, s]));
+
+  // Keep tabOrder in sync: remove closed tabs, append any unknown new ones at the end
+  tabOrder = tabOrder.filter((id) => sessionMap.has(id));
+  for (const s of sessions) {
+    if (!tabOrder.includes(s.id)) tabOrder.push(s.id);
+  }
+
   const tabsEl = document.getElementById('tabs');
   tabsEl.querySelectorAll('.tab').forEach((el) => el.remove());
 
-  for (const s of sessions) {
+  for (const id of tabOrder) {
+    const s = sessionMap.get(id);
     const tab = document.createElement('span');
     tab.className = 'tab' + (s.id === activeId ? ' active' : '');
     tab.dataset.id = s.id;
@@ -87,7 +103,7 @@ async function refreshTabs() {
     closeBtn.title = 'Close tab';
     closeBtn.onclick = (e) => {
       e.stopPropagation();
-      closeTab(s.id, sessions);
+      closeTab(s.id);
     };
 
     tab.appendChild(name);
@@ -134,8 +150,9 @@ function startRename(id, nameEl) {
   input.addEventListener('blur', commit);
 }
 
-async function closeTab(id, sessions) {
+async function closeTab(id) {
   await testerBrowser.sessions.destroy(id);
+  tabOrder = tabOrder.filter((x) => x !== id);
   mruStack = mruStack.filter((x) => x !== id);
 
   if (activeId === id) {
@@ -153,6 +170,7 @@ async function closeTab(id, sessions) {
 document.getElementById('newSessionBtn').onclick = async () => {
   sessionCounter++;
   const id = await testerBrowser.sessions.create(`Session ${sessionCounter}`, { persistent: false });
+  insertAfterActive(id);
   await switchToSession(id);
 };
 
@@ -176,7 +194,7 @@ testerBrowser.sessions.onNavigated(({ id, url }) => {
 });
 
 testerBrowser.sessions.onTabCycle(({ reverse }) => cycleTab(reverse));
-testerBrowser.sessions.onNewTab(({ id }) => switchToSession(id));
+testerBrowser.sessions.onNewTab(({ id }) => { insertAfterActive(id); switchToSession(id); });
 
 // --- Export HAR ---
 
