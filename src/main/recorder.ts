@@ -170,7 +170,7 @@ export class SessionRecorder {
     if (opts.since) {
       return this.db
         .prepare(
-          `SELECT * FROM events WHERE session_id = ? AND ts >= ? ORDER BY ts ASC LIMIT ?`
+          `SELECT * FROM events WHERE session_id = ? AND ts > ? ORDER BY ts ASC LIMIT ?`
         )
         .all(this.sessionId, opts.since, limit) as EventRow[];
     }
