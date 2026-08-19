@@ -3,6 +3,26 @@
 let activeId = null;
 let lastTs = 0;
 let sessionCounter = 0;
+let mruStack = []; // most-recently-used first
+
+function recordVisit(id) {
+  mruStack = [id, ...mruStack.filter((x) => x !== id)];
+}
+
+async function switchToSession(id) {
+  activeId = id;
+  lastTs = 0;
+  document.getElementById('timelinePanel').innerHTML = '';
+  recordVisit(id);
+  await testerBrowser.sessions.switchTo(id);
+  refreshTabs();
+}
+
+function cycleTab(reverse) {
+  if (mruStack.length < 2) return;
+  const targetId = reverse ? mruStack[mruStack.length - 1] : mruStack[1];
+  switchToSession(targetId);
+}
 
 async function refreshTabs() {
   const sessions = await testerBrowser.sessions.list();
@@ -12,26 +32,19 @@ async function refreshTabs() {
     const tab = document.createElement('span');
     tab.className = 'tab' + (s.id === activeId ? ' active' : '');
     tab.textContent = s.name;
-    tab.onclick = async () => {
-      activeId = s.id;
-      lastTs = 0;
-      document.getElementById('timelinePanel').innerHTML = '';
-      await testerBrowser.sessions.switchTo(s.id);
-      refreshTabs();
-    };
+    tab.onclick = () => switchToSession(s.id);
     tabsEl.insertBefore(tab, document.getElementById('newSessionBtn'));
   }
-  if (!activeId && sessions.length) activeId = sessions[0].id;
+  if (!activeId && sessions.length) {
+    activeId = sessions[0].id;
+    recordVisit(activeId);
+  }
 }
 
 document.getElementById('newSessionBtn').onclick = async () => {
   sessionCounter++;
   const id = await testerBrowser.sessions.create(`Session ${sessionCounter}`, { persistent: false });
-  activeId = id;
-  lastTs = 0;
-  document.getElementById('timelinePanel').innerHTML = '';
-  await testerBrowser.sessions.switchTo(id);
-  refreshTabs();
+  await switchToSession(id);
 };
 
 document.getElementById('urlbar').addEventListener('keydown', async (e) => {
@@ -40,11 +53,22 @@ document.getElementById('urlbar').addEventListener('keydown', async (e) => {
   }
 });
 
+// Ctrl+Tab when the top bar (renderer) has focus
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'Tab') {
+    e.preventDefault();
+    cycleTab(e.shiftKey);
+  }
+});
+
 testerBrowser.sessions.onNavigated(({ id, url }) => {
   if (id === activeId) {
     document.getElementById('urlbar').value = url;
   }
 });
+
+// Ctrl+Tab when a BrowserView has focus (intercepted in main via before-input-event)
+testerBrowser.sessions.onTabCycle(({ reverse }) => cycleTab(reverse));
 
 document.getElementById('exportHarBtn').onclick = async () => {
   if (!activeId) return;

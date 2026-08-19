@@ -71,6 +71,12 @@ export class SessionManager {
     view.webContents.on('did-navigate-in-page', (_e, url) => {
       this.win.webContents.send('session:navigated', { id, url });
     });
+    view.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.control && input.key === 'Tab') {
+        event.preventDefault();
+        this.win.webContents.send('tabs:cycle', { reverse: input.shift });
+      }
+    });
 
     return testSession;
   }

@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     destroy: (id: string) => ipcRenderer.invoke('sessions:destroy', id),
     onNavigated: (cb: (data: { id: string; url: string }) => void) =>
       ipcRenderer.on('session:navigated', (_e, data) => cb(data)),
+    onTabCycle: (cb: (data: { reverse: boolean }) => void) =>
+      ipcRenderer.on('tabs:cycle', (_e, data) => cb(data)),
   },
   recording: {
     timeline: (id: string, opts?: { limit?: number; since?: number }) =>
