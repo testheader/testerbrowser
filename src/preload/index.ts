@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('testerBrowser', {
       ipcRenderer.on('session:navigated', (_e, data) => cb(data)),
     onTabCycle: (cb: (data: { reverse: boolean }) => void) =>
       ipcRenderer.on('tabs:cycle', (_e, data) => cb(data)),
+    onNewTab: (cb: (data: { id: string }) => void) =>
+      ipcRenderer.on('session:newTab', (_e, data) => cb(data)),
+    rename: (id: string, name: string) => ipcRenderer.invoke('sessions:rename', id, name),
   },
   recording: {
     timeline: (id: string, opts?: { limit?: number; since?: number }) =>

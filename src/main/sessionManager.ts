@@ -7,6 +7,7 @@ export interface TestSession {
   id: string;
   name: string;
   persistent: boolean;
+  partition: string;
   view: BrowserView;
   recorder: SessionRecorder;
   createdAt: number;
@@ -37,9 +38,13 @@ export class SessionManager {
     }));
   }
 
-  createSession(name: string, opts: { persistent?: boolean; startUrl?: string } = {}): TestSession {
+  createSession(
+    name: string,
+    opts: { persistent?: boolean; startUrl?: string; partition?: string } = {}
+  ): TestSession {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const partition = opts.persistent ? `persist:${id}` : id; // no 'persist:' => in-memory, thrown away on destroy
+    // Caller can pass an existing partition to share cookies/storage with another session.
+    const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
     const ses = electronSession.fromPartition(partition);
 
     const view = new BrowserView({
@@ -58,7 +63,8 @@ export class SessionManager {
     const testSession: TestSession = {
       id,
       name,
-      persistent: !!opts.persistent,
+      persistent: !!opts.persistent || partition.startsWith('persist:'),
+      partition,
       view,
       recorder,
       createdAt: Date.now(),
@@ -80,7 +86,23 @@ export class SessionManager {
       }
     });
 
+    // Intercept window.open / target="_blank" — open as a new tab sharing this session's partition.
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      setImmediate(() => {
+        const tabName = (() => { try { return new URL(url).hostname || 'New tab'; } catch { return 'New tab'; } })();
+        const newSession = this.createSession(tabName, { partition, startUrl: url });
+        this.switchTo(newSession.id);
+        this.win.webContents.send('session:newTab', { id: newSession.id });
+      });
+      return { action: 'deny' };
+    });
+
     return testSession;
+  }
+
+  renameSession(id: string, name: string) {
+    const s = this.sessions.get(id);
+    if (s) s.name = name.trim() || s.name;
   }
 
   switchTo(id: string) {

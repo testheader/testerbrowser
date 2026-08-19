@@ -71,6 +71,7 @@ async function refreshTabs() {
     name.className = 'tab-name';
     name.textContent = s.name;
     name.onclick = () => switchToSession(s.id);
+    name.ondblclick = (e) => { e.stopPropagation(); startRename(s.id, name); };
 
     const closeBtn = document.createElement('span');
     closeBtn.className = 'tab-close';
@@ -94,6 +95,35 @@ async function refreshTabs() {
     activeId = sessions[0].id;
     recordVisit(activeId);
   }
+}
+
+function startRename(id, nameEl) {
+  const original = nameEl.textContent;
+  const input = document.createElement('input');
+  input.className = 'tab-rename-input';
+  input.value = original;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const commit = async () => {
+    if (done) return;
+    done = true;
+    const newName = input.value.trim() || original;
+    await testerBrowser.sessions.rename(id, newName);
+    refreshTabs();
+  };
+  const cancel = () => {
+    if (done) return;
+    done = true;
+    input.replaceWith(nameEl);
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { cancel(); }
+  });
+  input.addEventListener('blur', commit);
 }
 
 async function closeTab(id, sessions) {
@@ -138,6 +168,7 @@ testerBrowser.sessions.onNavigated(({ id, url }) => {
 });
 
 testerBrowser.sessions.onTabCycle(({ reverse }) => cycleTab(reverse));
+testerBrowser.sessions.onNewTab(({ id }) => switchToSession(id));
 
 // --- Export HAR ---
 

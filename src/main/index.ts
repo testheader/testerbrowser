@@ -129,6 +129,10 @@ ipcMain.handle('sessions:navigate', (_e, id: string, url: string) =>
   sessionManager?.navigate(id, url)
 );
 
+ipcMain.handle('sessions:rename', (_e, id: string, name: string) =>
+  sessionManager?.renameSession(id, name)
+);
+
 ipcMain.handle('recording:timeline', (_e, id: string, opts) =>
   sessionManager?.getTimeline(id, opts) ?? []
 );
