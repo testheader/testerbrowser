@@ -1,4 +1,4 @@
-import { BrowserWindow, BrowserView, session as electronSession, Menu } from 'electron';
+import { BrowserWindow, BrowserView, session as electronSession, Menu, shell, clipboard } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
@@ -11,9 +11,31 @@ export interface TestSession {
   partition: string;
   currentUrl: string;
   pinned: boolean;
+  color: string;
   view: BrowserView;
   recorder: SessionRecorder;
   createdAt: number;
+}
+
+interface DownloadInfo {
+  id: string;
+  filename: string;
+  url: string;
+  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+  receivedBytes: number;
+  totalBytes: number;
+  savePath: string;
+  item?: Electron.DownloadItem;
+}
+
+const TAB_COLORS = [
+  '#e06c75', '#61afef', '#98c379', '#c678dd',
+  '#e5c07b', '#56b6c2', '#d19a66', '#be5046',
+  '#2bbac5', '#d4896a',
+];
+
+function getHostname(url: string): string {
+  try { return new URL(url).hostname || 'New tab'; } catch { return 'New tab'; }
 }
 
 export class SessionManager {
@@ -25,6 +47,10 @@ export class SessionManager {
   private topBarHeight = 88;
   private isViewVisible = true;
   private sessionNotes = new Map<string, string>();
+  private colorIndex = 0;
+  private downloads = new Map<string, DownloadInfo>();
+  private pendingPermissions = new Map<string, { callback: (granted: boolean) => void; permission: string; partition: string }>();
+  private grantedPermissions = new Map<string, Set<string>>();
 
   constructor(win: BrowserWindow) {
     this.win = win;
@@ -40,17 +66,63 @@ export class SessionManager {
       partition: s.partition,
       url: s.currentUrl,
       pinned: s.pinned,
+      color: s.color,
       createdAt: s.createdAt,
     }));
   }
 
   createSession(
     name: string,
-    opts: { persistent?: boolean; startUrl?: string; partition?: string } = {}
+    opts: { persistent?: boolean; startUrl?: string; partition?: string; color?: string } = {}
   ): TestSession {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
     const ses = electronSession.fromPartition(partition);
+
+    // Download handling — auto-save to system Downloads folder
+    ses.on('will-download', (_event, item) => {
+      const dlId = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const filename = item.getFilename();
+      const savePath = path.join(app.getPath('downloads'), filename);
+      item.setSavePath(savePath);
+
+      const dl: DownloadInfo = {
+        id: dlId, filename, url: item.getURL(),
+        state: 'progressing', receivedBytes: 0,
+        totalBytes: item.getTotalBytes(), savePath, item,
+      };
+      this.downloads.set(dlId, dl);
+      this.pushDownload(dl);
+
+      item.on('updated', (_e, state) => {
+        dl.state = state as 'progressing' | 'interrupted';
+        dl.receivedBytes = item.getReceivedBytes();
+        dl.totalBytes = item.getTotalBytes();
+        this.pushDownload(dl);
+      });
+      item.on('done', (_e, state) => {
+        dl.state = state as 'completed' | 'cancelled' | 'interrupted';
+        dl.receivedBytes = item.getReceivedBytes();
+        dl.savePath = item.getSavePath();
+        dl.item = undefined;
+        this.pushDownload(dl);
+      });
+    });
+
+    // Permission handling — auto-grant fullscreen/pointer lock, prompt for the rest
+    ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+      if (permission === 'fullscreen' || permission === 'pointerLock') {
+        callback(true);
+        return;
+      }
+      const reqId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      this.pendingPermissions.set(reqId, { callback, permission, partition });
+      const origin = details?.requestingUrl ? getHostname(details.requestingUrl) : 'This page';
+      this.win.webContents.send('permission:request', { reqId, permission, origin });
+    });
+    ses.setPermissionCheckHandler((_wc, permission) => {
+      return this.grantedPermissions.get(partition)?.has(permission) ?? false;
+    });
 
     const view = new BrowserView({
       webPreferences: { session: ses, contextIsolation: true, sandbox: true },
@@ -58,12 +130,14 @@ export class SessionManager {
 
     const recorder = new SessionRecorder(view.webContents, { sessionId: id, dbDir: this.dbDir });
 
+    const color = opts.color ?? TAB_COLORS[this.colorIndex++ % TAB_COLORS.length];
     const testSession: TestSession = {
       id, name,
       persistent: !!opts.persistent || partition.startsWith('persist:'),
       partition,
       currentUrl: opts.startUrl || 'https://example.com',
       pinned: false,
+      color,
       view, recorder,
       createdAt: Date.now(),
     };
@@ -93,31 +167,95 @@ export class SessionManager {
       });
     });
 
+    // Loading state
+    view.webContents.on('did-start-loading', () => {
+      this.win.webContents.send('session:loading', { id, loading: true });
+    });
+    view.webContents.on('did-stop-loading', () => {
+      this.win.webContents.send('session:loading', { id, loading: false });
+    });
+
+    // Navigation failure
+    view.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame || errorCode === -3) return; // ignore subframe failures and user-aborted
+      this.win.webContents.send('session:loadFailed', { id, errorCode, errorDescription, url: validatedURL });
+    });
+
+    // Right-click context menu on page
+    view.webContents.on('context-menu', (_e, params) => {
+      const items: Electron.MenuItemConstructorOptions[] = [];
+
+      if (params.linkURL) {
+        items.push({ label: 'Open link in new tab', click: () => {
+          const ns = this.createSession(getHostname(params.linkURL), { partition, startUrl: params.linkURL });
+          this.switchTo(ns.id);
+          this.win.webContents.send('session:newTab', { id: ns.id });
+        }});
+        items.push({ label: 'Copy link address', click: () => clipboard.writeText(params.linkURL) });
+        items.push({ type: 'separator' });
+      }
+
+      if (params.mediaType === 'image' && params.srcURL) {
+        items.push({ label: 'Open image in new tab', click: () => {
+          const ns = this.createSession('Image', { partition, startUrl: params.srcURL });
+          this.switchTo(ns.id);
+          this.win.webContents.send('session:newTab', { id: ns.id });
+        }});
+        items.push({ label: 'Copy image address', click: () => clipboard.writeText(params.srcURL) });
+        items.push({ type: 'separator' });
+      }
+
+      if (params.isEditable) {
+        items.push({ label: 'Cut',        click: () => view.webContents.cut() });
+        items.push({ label: 'Copy',       click: () => view.webContents.copy() });
+        items.push({ label: 'Paste',      click: () => view.webContents.paste() });
+        items.push({ label: 'Select All', click: () => view.webContents.selectAll() });
+        items.push({ type: 'separator' });
+      } else if (params.selectionText) {
+        items.push({ label: 'Copy', click: () => view.webContents.copy() });
+        items.push({ type: 'separator' });
+      }
+
+      items.push({ label: 'Back',    enabled: view.webContents.canGoBack(),    click: () => view.webContents.goBack() });
+      items.push({ label: 'Forward', enabled: view.webContents.canGoForward(), click: () => view.webContents.goForward() });
+      items.push({ label: 'Reload',  click: () => view.webContents.reload() });
+      items.push({ type: 'separator' });
+      items.push({ label: 'Inspect Element', click: () => {
+        if (!view.webContents.isDevToolsOpened()) view.webContents.openDevTools();
+      }});
+
+      Menu.buildFromTemplate(items).popup({ window: this.win });
+    });
+
     view.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') return;
       const { control: ctrl, shift, alt, key } = input;
       const send = (name: string) => { event.preventDefault(); this.win.webContents.send('app:shortcut', name); };
 
-      if (ctrl && key === 'Tab')   { event.preventDefault(); this.win.webContents.send('tabs:cycle', { reverse: shift }); return; }
-      if (ctrl && !shift && key === 't') { send('newTab'); return; }
-      if (ctrl && !shift && key === 'w') { send('closeTab'); return; }
-      if (ctrl && shift && key === 'T')  { send('reopenTab'); return; }
-      if (ctrl && key === 'l')           { send('focusUrl'); return; }
-      if (ctrl && key === 'f')           { send('findToggle'); return; }
-      if (key === 'F3')  { send(shift ? 'findPrev' : 'findNext'); return; }
+      if (ctrl && key === 'Tab')            { event.preventDefault(); this.win.webContents.send('tabs:cycle', { reverse: shift }); return; }
+      if (ctrl && !shift && key === 't')    { send('newTab'); return; }
+      if (ctrl && !shift && key === 'w')    { send('closeTab'); return; }
+      if (ctrl && shift  && key === 'T')    { send('reopenTab'); return; }
+      if (ctrl && key === 'l')              { send('focusUrl'); return; }
+      if (ctrl && key === 'f')              { send('findToggle'); return; }
+      if (ctrl && !shift && key === 'd')    { send('bookmark'); return; }
+      if (ctrl && shift  && key === 'B')    { send('toggleBookmarksBar'); return; }
+      if (key === 'F3')                     { send(shift ? 'findPrev' : 'findNext'); return; }
       if ((ctrl && key === 'r') || key === 'F5') { send('reload'); return; }
-      if (key === 'F12') { event.preventDefault(); this.toggleDevTools(this.activeId ?? ''); return; }
+      if (key === 'Escape')                 { send('stopOrEsc'); return; }
+      if (key === 'F12')                    { event.preventDefault(); this.toggleDevTools(this.activeId ?? ''); return; }
       if (ctrl && (key === '=' || key === '+')) { event.preventDefault(); this.setZoom(this.activeId ?? '', 0.1); return; }
-      if (ctrl && key === '-')  { event.preventDefault(); this.setZoom(this.activeId ?? '', -0.1); return; }
-      if (ctrl && key === '0')  { event.preventDefault(); this.resetZoom(this.activeId ?? ''); return; }
-      if (alt && key === 'ArrowLeft')  { event.preventDefault(); this.back(this.activeId ?? ''); return; }
-      if (alt && key === 'ArrowRight') { event.preventDefault(); this.forward(this.activeId ?? ''); return; }
+      if (ctrl && key === '-')              { event.preventDefault(); this.setZoom(this.activeId ?? '', -0.1); return; }
+      if (ctrl && key === '0')              { event.preventDefault(); this.resetZoom(this.activeId ?? ''); return; }
+      if (alt && key === 'ArrowLeft')       { event.preventDefault(); this.back(this.activeId ?? ''); return; }
+      if (alt && key === 'ArrowRight')      { event.preventDefault(); this.forward(this.activeId ?? ''); return; }
+      // Ctrl+1–9 tab switching
+      if (ctrl && key >= '1' && key <= '9') { send(`switchTab:${key}`); return; }
     });
 
     view.webContents.setWindowOpenHandler(({ url }) => {
       setImmediate(() => {
-        const tabName = (() => { try { return new URL(url).hostname || 'New tab'; } catch { return 'New tab'; } })();
-        const newSession = this.createSession(tabName, { partition, startUrl: url });
+        const newSession = this.createSession(getHostname(url), { partition, startUrl: url });
         this.switchTo(newSession.id);
         this.win.webContents.send('session:newTab', { id: newSession.id });
       });
@@ -137,6 +275,48 @@ export class SessionManager {
     });
   }
 
+  private pushDownload(dl: DownloadInfo) {
+    this.win.webContents.send('download:update', {
+      id: dl.id, filename: dl.filename, url: dl.url,
+      state: dl.state, receivedBytes: dl.receivedBytes,
+      totalBytes: dl.totalBytes, savePath: dl.savePath,
+    });
+  }
+
+  // --- Download actions ---
+
+  openDownload(id: string)   { const dl = this.downloads.get(id); if (dl?.savePath) shell.openPath(dl.savePath); }
+  revealDownload(id: string) { const dl = this.downloads.get(id); if (dl?.savePath) shell.showItemInFolder(dl.savePath); }
+  cancelDownload(id: string) { this.downloads.get(id)?.item?.cancel(); }
+  clearDownloads() {
+    for (const [id, dl] of this.downloads) if (dl.state !== 'progressing') this.downloads.delete(id);
+    this.win.webContents.send('download:cleared');
+  }
+  listDownloads() {
+    return Array.from(this.downloads.values()).map(dl => ({
+      id: dl.id, filename: dl.filename, url: dl.url,
+      state: dl.state, receivedBytes: dl.receivedBytes,
+      totalBytes: dl.totalBytes, savePath: dl.savePath,
+    }));
+  }
+
+  // --- Permission ---
+
+  respondPermission(reqId: string, granted: boolean) {
+    const entry = this.pendingPermissions.get(reqId);
+    if (!entry) return;
+    entry.callback(granted);
+    if (granted) {
+      if (!this.grantedPermissions.has(entry.partition)) {
+        this.grantedPermissions.set(entry.partition, new Set());
+      }
+      this.grantedPermissions.get(entry.partition)!.add(entry.permission);
+    }
+    this.pendingPermissions.delete(reqId);
+  }
+
+  // --- Session management ---
+
   renameSession(id: string, name: string) {
     const s = this.sessions.get(id);
     if (s) s.name = name.trim() || s.name;
@@ -147,17 +327,30 @@ export class SessionManager {
     if (s) s.pinned = pinned;
   }
 
-  back(id: string)   { this.sessions.get(id)?.view.webContents.goBack(); }
-  forward(id: string){ this.sessions.get(id)?.view.webContents.goForward(); }
-  reload(id: string) { this.sessions.get(id)?.view.webContents.reload(); }
+  back(id: string)    { this.sessions.get(id)?.view.webContents.goBack(); }
+  forward(id: string) { this.sessions.get(id)?.view.webContents.goForward(); }
+  reload(id: string)  { this.sessions.get(id)?.view.webContents.reload(); }
+  stop(id: string)    { this.sessions.get(id)?.view.webContents.stop(); }
 
   setZoom(id: string, delta: number) {
     const s = this.sessions.get(id);
     if (!s) return;
     const cur = s.view.webContents.getZoomFactor();
-    s.view.webContents.setZoomFactor(Math.max(0.25, Math.min(5, Math.round((cur + delta) * 10) / 10)));
+    const next = Math.max(0.25, Math.min(5, Math.round((cur + delta) * 10) / 10));
+    s.view.webContents.setZoomFactor(next);
+    this.win.webContents.send('session:zoomChanged', { id, zoom: next });
   }
-  resetZoom(id: string) { this.sessions.get(id)?.view.webContents.setZoomFactor(1); }
+
+  resetZoom(id: string) {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    s.view.webContents.setZoomFactor(1);
+    this.win.webContents.send('session:zoomChanged', { id, zoom: 1 });
+  }
+
+  getZoom(id: string): number {
+    return this.sessions.get(id)?.view.webContents.getZoomFactor() ?? 1;
+  }
 
   toggleDevTools(id: string) {
     const s = this.sessions.get(id);
@@ -246,6 +439,7 @@ export class SessionManager {
       this.layoutActive();
     }
     this.sendNavState(id);
+    this.win.webContents.send('session:zoomChanged', { id, zoom: s.view.webContents.getZoomFactor() });
   }
 
   private layoutActive() {

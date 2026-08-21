@@ -15,8 +15,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     back:        (id: string) => ipcRenderer.invoke('sessions:back', id),
     forward:     (id: string) => ipcRenderer.invoke('sessions:forward', id),
     reload:      (id: string) => ipcRenderer.invoke('sessions:reload', id),
+    stop:        (id: string) => ipcRenderer.invoke('sessions:stop', id),
     setZoom:     (id: string, delta: number) => ipcRenderer.invoke('sessions:setZoom', id, delta),
     resetZoom:   (id: string) => ipcRenderer.invoke('sessions:resetZoom', id),
+    getZoom:     (id: string) => ipcRenderer.invoke('sessions:getZoom', id),
     devtools:    (id: string) => ipcRenderer.invoke('devtools:toggle', id),
     contextMenu: (id: string) => ipcRenderer.invoke('sessions:contextMenu', id),
     findInPage:  (id: string, text: string, forward: boolean, findNext: boolean) =>
@@ -43,16 +45,48 @@ contextBridge.exposeInMainWorld('testerBrowser', {
                        ipcRenderer.on('find:result', (_e, d) => cb(d)),
     onShortcut:      (cb: (key: string) => void) =>
                        ipcRenderer.on('app:shortcut', (_e, key) => cb(key)),
+    onLoading:       (cb: (d: { id: string; loading: boolean }) => void) =>
+                       ipcRenderer.on('session:loading', (_e, d) => cb(d)),
+    onLoadFailed:    (cb: (d: { id: string; errorCode: number; errorDescription: string; url: string }) => void) =>
+                       ipcRenderer.on('session:loadFailed', (_e, d) => cb(d)),
+    onZoomChanged:   (cb: (d: { id: string; zoom: number }) => void) =>
+                       ipcRenderer.on('session:zoomChanged', (_e, d) => cb(d)),
   },
+
   recording: {
     timeline: (id: string, opts?: { limit?: number; since?: number }) =>
                 ipcRenderer.invoke('recording:timeline', id, opts),
   },
+
+  downloads: {
+    list:     () => ipcRenderer.invoke('download:list'),
+    open:     (id: string) => ipcRenderer.invoke('download:open', id),
+    reveal:   (id: string) => ipcRenderer.invoke('download:reveal', id),
+    cancel:   (id: string) => ipcRenderer.invoke('download:cancel', id),
+    clear:    () => ipcRenderer.invoke('download:clear'),
+    onUpdate: (cb: (d: { id: string; filename: string; url: string; state: string; receivedBytes: number; totalBytes: number; savePath: string }) => void) =>
+                ipcRenderer.on('download:update', (_e, d) => cb(d)),
+    onCleared:(cb: () => void) => ipcRenderer.on('download:cleared', () => cb()),
+  },
+
+  permission: {
+    respond:   (reqId: string, granted: boolean) => ipcRenderer.invoke('permission:respond', reqId, granted),
+    onRequest: (cb: (d: { reqId: string; permission: string; origin: string }) => void) =>
+                 ipcRenderer.on('permission:request', (_e, d) => cb(d)),
+  },
+
+  bookmarks: {
+    list:   () => ipcRenderer.invoke('bookmarks:list'),
+    add:    (url: string, title: string) => ipcRenderer.invoke('bookmarks:add', url, title),
+    remove: (url: string) => ipcRenderer.invoke('bookmarks:remove', url),
+  },
+
   layout: {
     setConsoleHeight: (h: number)  => ipcRenderer.invoke('layout:setConsoleHeight', h),
     setTopBarHeight:  (h: number)  => ipcRenderer.invoke('layout:setTopBarHeight', h),
     setViewerVisible: (v: boolean) => ipcRenderer.invoke('layout:setViewerVisible', v),
   },
+
   app: {
     getVersionInfo:     () => ipcRenderer.invoke('app:versionInfo'),
     checkForUpdates:    () => ipcRenderer.invoke('app:checkForUpdates'),
