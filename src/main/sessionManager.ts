@@ -1,4 +1,4 @@
-import { BrowserWindow, BrowserView, session as electronSession, Menu, shell, clipboard } from 'electron';
+import { BrowserWindow, WebContentsView, session as electronSession, Menu, shell, clipboard } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
@@ -12,7 +12,7 @@ export interface TestSession {
   currentUrl: string;
   pinned: boolean;
   color: string;
-  view: BrowserView;
+  view: WebContentsView;
   recorder: SessionRecorder;
   createdAt: number;
 }
@@ -124,7 +124,7 @@ export class SessionManager {
       return this.grantedPermissions.get(partition)?.has(permission) ?? false;
     });
 
-    const view = new BrowserView({
+    const view = new WebContentsView({
       webPreferences: { session: ses, contextIsolation: true, sandbox: true },
     });
 
@@ -431,11 +431,11 @@ export class SessionManager {
     if (!s) return;
     if (this.activeId) {
       const prev = this.sessions.get(this.activeId);
-      if (prev) this.win.removeBrowserView(prev.view);
+      if (prev) this.win.contentView.removeChildView(prev.view);
     }
     this.activeId = id;
     if (this.isViewVisible) {
-      this.win.addBrowserView(s.view);
+      this.win.contentView.addChildView(s.view);
       this.layoutActive();
     }
     this.sendNavState(id);
@@ -453,7 +453,6 @@ export class SessionManager {
       width: bounds.width,
       height: Math.max(0, bounds.height - this.topBarHeight - this.consoleHeight),
     });
-    s.view.setAutoResize({ width: true, height: false });
   }
 
   setConsoleHeight(height: number) {
@@ -471,8 +470,8 @@ export class SessionManager {
     if (!this.activeId) return;
     const s = this.sessions.get(this.activeId);
     if (!s) return;
-    if (visible) { this.win.addBrowserView(s.view); this.layoutActive(); }
-    else { this.win.removeBrowserView(s.view); }
+    if (visible) { this.win.contentView.addChildView(s.view); this.layoutActive(); }
+    else { this.win.contentView.removeChildView(s.view); }
   }
 
   async cloneSession(sourceId: string, newName: string): Promise<TestSession | null> {
@@ -502,10 +501,14 @@ export class SessionManager {
     return this.sessions.get(id)?.recorder.getTimeline(opts) ?? [];
   }
 
+  getHAR(id: string): object | null {
+    return this.sessions.get(id)?.recorder.exportHAR() ?? null;
+  }
+
   destroySession(id: string) {
     const s = this.sessions.get(id);
     if (!s) return;
-    if (this.activeId === id) { this.win.removeBrowserView(s.view); this.activeId = null; }
+    if (this.activeId === id) { this.win.contentView.removeChildView(s.view); this.activeId = null; }
     s.recorder.destroy();
     (s.view.webContents as any).destroy?.();
     this.sessions.delete(id);

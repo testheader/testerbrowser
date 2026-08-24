@@ -24,7 +24,7 @@ type EventRow = {
   id?: number;
   session_id: string;
   ts: number;
-  kind: 'network-request' | 'network-response' | 'network-failed' | 'console' | 'log';
+  kind: 'network-request' | 'network-response' | 'network-failed' | 'network-body' | 'console' | 'log';
   summary: string;
   payload: string; // JSON blob
 };
@@ -112,6 +112,30 @@ export class SessionRecorder {
             summary: `FAILED ${meta?.url ?? params.requestId}: ${params.errorText}`,
             payload: JSON.stringify(params),
           });
+          break;
+        }
+        case 'Network.loadingFinished': {
+          const meta = this.requestMeta.get(params.requestId);
+          if (!meta) break;
+          // Only fetch body for text-like responses (skip images, fonts, etc.)
+          // We check the stored response kind by looking up the request meta
+          this.wc.debugger.sendCommand('Network.getResponseBody', { requestId: params.requestId })
+            .then((body: { body: string; base64Encoded: boolean }) => {
+              if (!body?.body) return;
+              const truncated = body.body.length > 51200; // 50 KB cap
+              const content = truncated ? body.body.slice(0, 51200) + '\n[truncated]' : body.body;
+              this.record({
+                kind: 'network-body',
+                ts: Date.now(),
+                summary: `BODY ${meta.method} ${meta.url}${truncated ? ' [truncated]' : ''}`,
+                payload: JSON.stringify({
+                  requestId: params.requestId,
+                  base64Encoded: body.base64Encoded,
+                  body: content,
+                }),
+              });
+            })
+            .catch(() => {}); // body unavailable (e.g. redirect, image) — silently ignore
           break;
         }
         case 'Log.entryAdded': {

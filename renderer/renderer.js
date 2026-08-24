@@ -17,6 +17,10 @@ const tabLoading  = {};   // id → boolean
 
 const closedTabs  = [];   // [{ name, url, partition, color }] — most recent last
 
+const timelineEvents = []; // ring buffer, max 5000 entries
+const TIMELINE_MAX   = 5000;
+const TIMELINE_DOM_MAX = 500; // max DOM nodes rendered at once
+
 let notesSessionId = null;
 
 // ── Layout constants ───────────────────────────────────────────────────────
@@ -97,18 +101,15 @@ testerBrowser.sessions.onLoading(({ id, loading }) => {
 
 testerBrowser.sessions.onLoadFailed(({ id, errorCode, errorDescription, url }) => {
   if (id !== activeId) return;
-  const panel = document.getElementById('timelinePanel');
-  const line = document.createElement('div');
-  line.className       = 'evt network-failed';
-  line.dataset.kind    = 'network-failed';
-  line.dataset.summary = `Load failed: ${url}`;
-  line.style.display   = document.querySelector('.ftype[value="network-failed"]')?.checked ? '' : 'none';
-  const summary = document.createElement('div');
-  summary.className   = 'evt-summary';
-  summary.textContent = `[${new Date().toLocaleTimeString()}] LOAD FAILED (${errorCode}) ${errorDescription} — ${url}`;
-  line.appendChild(summary);
-  panel.appendChild(line);
-  panel.scrollTop = panel.scrollHeight;
+  timelineEvents.push({
+    kind: 'network-failed',
+    summary: `LOAD FAILED (${errorCode}) ${errorDescription} — ${url}`,
+    ts: Date.now(),
+  });
+  if (timelineEvents.length > TIMELINE_MAX) {
+    timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
+  }
+  renderTimeline();
 });
 
 function updateTabLoadingVisual(tab, id) {
@@ -159,11 +160,27 @@ testerBrowser.sessions.onZoomChanged(({ id, zoom }) => {
 // ── Bookmarks ──────────────────────────────────────────────────────────────
 
 let bookmarks = [];
+let urlHistory = [];
 
 async function loadBookmarks() {
   bookmarks = await testerBrowser.bookmarks.list();
   renderBookmarksBar();
   updateBookmarkStar();
+}
+
+async function loadUrlHistory() {
+  urlHistory = await testerBrowser.urlHistory.get();
+  refreshUrlDatalist();
+}
+
+function refreshUrlDatalist() {
+  const dl = document.getElementById('urlHistoryList');
+  dl.innerHTML = '';
+  for (const url of urlHistory) {
+    const opt = document.createElement('option');
+    opt.value = url;
+    dl.appendChild(opt);
+  }
 }
 
 function renderBookmarksBar() {
@@ -392,6 +409,7 @@ function recordVisit(id) {
 async function switchToSession(id) {
   activeId = id;
   lastTs   = 0;
+  timelineEvents.length = 0;
   document.getElementById('timelinePanel').innerHTML = '';
   recordVisit(id);
   await testerBrowser.sessions.switchTo(id);
@@ -551,6 +569,16 @@ function startRename(id, nameEl) {
 async function closeTab(id) {
   const sessions = await testerBrowser.sessions.list();
   const s = sessions.find((x) => x.id === id);
+
+  // Warn if there are unsaved notes on a non-persistent session
+  if (s && !s.persistent) {
+    const notes = await testerBrowser.sessions.getNotes(id);
+    if (notes && notes.trim()) {
+      const ok = confirm(`"${s.name}" is an in-memory session with notes.\n\nNotes will be lost when the tab is closed. Close anyway?`);
+      if (!ok) return;
+    }
+  }
+
   if (s) closedTabs.push({ name: s.name, url: s.url || 'https://example.com', partition: s.partition, color: s.color });
   if (closedTabs.length > 20) closedTabs.shift();
 
@@ -599,7 +627,12 @@ document.getElementById('devtoolsBtn').onclick = () => activeId && testerBrowser
 
 document.getElementById('urlbar').addEventListener('keydown', async (e) => {
   if (e.key === 'Enter' && activeId) {
-    await testerBrowser.sessions.navigate(activeId, e.target.value);
+    const url = e.target.value;
+    await testerBrowser.sessions.navigate(activeId, url);
+    // Record in history (normalise to https:// if bare)
+    const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    urlHistory = await testerBrowser.urlHistory.add(fullUrl);
+    refreshUrlDatalist();
     e.target.blur();
   }
   if (e.key === 'Escape') e.target.blur();
@@ -746,19 +779,75 @@ testerBrowser.sessions.onTabAction(({ action, id }) => {
 // ── Console filter ─────────────────────────────────────────────────────────
 
 function applyFilter() {
-  const activeTypes = new Set([...document.querySelectorAll('.ftype:checked')].map((el) => el.value));
-  const text = document.getElementById('filterText').value.toLowerCase();
-  document.querySelectorAll('#timelinePanel .evt').forEach((el) => {
-    const matches = activeTypes.has(el.dataset.kind) && (!text || (el.dataset.summary || '').toLowerCase().includes(text));
-    el.style.display = matches ? '' : 'none';
+  renderTimeline();
+}
+
+function renderTimeline() {
+  const panel       = document.getElementById('timelinePanel');
+  const activeTypes = new Set([...document.querySelectorAll('.ftype:checked')].map(el => el.value));
+  const filterText  = document.getElementById('filterText').value.toLowerCase();
+
+  const filtered = timelineEvents.filter(e => {
+    const kindVisible = activeTypes.has(e.kind) ||
+      (e.kind === 'network-body' && activeTypes.has('network-response'));
+    return kindVisible && (!filterText || e.summary.toLowerCase().includes(filterText));
   });
+
+  const visible = filtered.slice(-TIMELINE_DOM_MAX);
+  panel.innerHTML = '';
+
+  if (filtered.length > TIMELINE_DOM_MAX) {
+    const msg = document.createElement('div');
+    msg.className   = 'evt-overflow-msg';
+    msg.textContent = `▲ ${filtered.length - TIMELINE_DOM_MAX} older events not shown — clear filter or console to see them`;
+    panel.appendChild(msg);
+  }
+
+  for (const e of visible) {
+    const line = document.createElement('div');
+    line.className       = `evt ${e.kind}`;
+    line.dataset.kind    = e.kind;
+    line.dataset.summary = e.summary;
+
+    const summary = document.createElement('div');
+    summary.className   = 'evt-summary';
+    summary.textContent = `[${new Date(e.ts).toLocaleTimeString()}] ${e.summary}`;
+    line.appendChild(summary);
+
+    if (e.payload) {
+      const detail = document.createElement('pre');
+      detail.className = 'evt-detail';
+      try { detail.textContent = JSON.stringify(JSON.parse(e.payload), null, 2); }
+      catch { detail.textContent = e.payload; }
+      line.appendChild(detail);
+      summary.style.cursor = 'pointer';
+      summary.onclick = () => detail.classList.toggle('open');
+    }
+
+    panel.appendChild(line);
+  }
+
+  panel.scrollTop = panel.scrollHeight;
 }
 
 document.getElementById('filterText').addEventListener('input', applyFilter);
 document.querySelectorAll('.ftype').forEach((cb) => cb.addEventListener('change', applyFilter));
 document.getElementById('clearConsoleBtn').onclick = () => {
-  document.getElementById('timelinePanel').innerHTML = '';
+  timelineEvents.length = 0;
   lastTs = 0;
+  document.getElementById('timelinePanel').innerHTML = '';
+};
+document.getElementById('exportHarBtn').onclick = async () => {
+  if (!activeId) return;
+  const har = await testerBrowser.recording.exportHAR(activeId);
+  if (!har) return;
+  const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `session-${activeId}.har`;
+  a.click();
+  URL.revokeObjectURL(url);
 };
 
 // ── Notes modal ────────────────────────────────────────────────────────────
@@ -836,37 +925,14 @@ testerBrowser.app.onUpdateStatus((data) => applyUpdateStatus(data));
 async function pollTimeline() {
   if (activeId) {
     const events = await testerBrowser.recording.timeline(activeId, { since: lastTs || undefined, limit: 200 });
-    const panel  = document.getElementById('timelinePanel');
-    const activeTypes = new Set([...document.querySelectorAll('.ftype:checked')].map((el) => el.value));
-    const filterText  = document.getElementById('filterText').value.toLowerCase();
-
-    for (const e of events) {
-      const visible = activeTypes.has(e.kind) && (!filterText || e.summary.toLowerCase().includes(filterText));
-      const line    = document.createElement('div');
-      line.className       = `evt ${e.kind}`;
-      line.dataset.kind    = e.kind;
-      line.dataset.summary = e.summary;
-      line.style.display   = visible ? '' : 'none';
-
-      const summary = document.createElement('div');
-      summary.className   = 'evt-summary';
-      summary.textContent = `[${new Date(e.ts).toLocaleTimeString()}] ${e.summary}`;
-      line.appendChild(summary);
-
-      if (e.payload) {
-        const detail = document.createElement('pre');
-        detail.className = 'evt-detail';
-        try { detail.textContent = JSON.stringify(JSON.parse(e.payload), null, 2); }
-        catch { detail.textContent = e.payload; }
-        line.appendChild(detail);
-        summary.style.cursor = 'pointer';
-        summary.onclick = () => detail.classList.toggle('open');
+    if (events.length > 0) {
+      timelineEvents.push(...events);
+      if (timelineEvents.length > TIMELINE_MAX) {
+        timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
       }
-
-      panel.appendChild(line);
-      lastTs = Math.max(lastTs, e.ts);
+      lastTs = Math.max(lastTs, ...events.map(e => e.ts));
+      renderTimeline();
     }
-    if (events.length) panel.scrollTop = panel.scrollHeight;
   }
   setTimeout(pollTimeline, 1000);
 }
@@ -875,4 +941,5 @@ async function pollTimeline() {
 
 refreshTabs();
 loadBookmarks();
+loadUrlHistory();
 pollTimeline();

@@ -167,6 +167,11 @@
     .filter-checks label:hover { color: #ddd; }
     #clearConsoleBtn { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 0 4px; }
     #clearConsoleBtn:hover { color: #fff; }
+    #exportHarBtn { background: none; border: 1px solid #3a3a3a; color: #666; cursor: pointer;
+                    font-size: 11px; padding: 1px 6px; border-radius: 3px; }
+    #exportHarBtn:hover { border-color: #4fc3f7; color: #4fc3f7; }
+    .evt-overflow-msg { padding: 4px 10px; font-size: 11px; color: #555; font-style: italic;
+                        border-bottom: 1px solid #2a2a2a; margin-bottom: 4px; }
     #timelinePanel { flex: 1; font-family: monospace; font-size: 12px; overflow-y: auto; padding: 4px 0; }
     .evt { padding: 1px 10px; cursor: pointer; white-space: pre-wrap; word-break: break-all; }
     .evt:hover { background: #222; }
@@ -227,7 +232,8 @@
       <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"    disabled>&#8592;</button>
       <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)"  disabled>&#8594;</button>
       <button class="nav-btn" id="reloadBtn" title="Reload (F5)">&#8635;</button>
-      <input id="urlbar" placeholder="Enter URL and press Enter  (Ctrl+L)" />
+      <input id="urlbar" placeholder="Enter URL and press Enter  (Ctrl+L)" list="urlHistoryList" autocomplete="off" />
+      <datalist id="urlHistoryList"></datalist>
       <span id="zoomIndicator" title="Click to reset zoom (Ctrl+0)">100%</span>
       <button id="bookmarkBtn" title="Bookmark this page (Ctrl+D)">&#9734;</button>
       <div id="downloadsWrapper">
@@ -272,6 +278,7 @@
         <label><input type="checkbox" class="ftype" value="console"          checked> JS</label>
         <label><input type="checkbox" class="ftype" value="log"              checked> Log</label>
       </div>
+      <button id="exportHarBtn" title="Export HAR file">HAR</button>
       <button id="clearConsoleBtn" title="Clear console">&#10005;</button>
     </div>
     <div id="timelinePanel"></div>

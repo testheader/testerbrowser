@@ -46,6 +46,33 @@ class BookmarkManager {
 
 const bookmarkManager = new BookmarkManager();
 
+// --- URL history manager ---
+
+class URLHistoryManager {
+  private file: string;
+  private history: string[] = []; // most recent first, max 500
+
+  constructor() {
+    this.file = path.join(app.getPath('userData'), 'url-history.json');
+    try { this.history = JSON.parse(fs.readFileSync(this.file, 'utf-8')); } catch {}
+  }
+
+  get() { return this.history; }
+
+  add(url: string) {
+    if (!url || url === 'https://example.com') return this.history;
+    this.history = [url, ...this.history.filter(u => u !== url)].slice(0, 500);
+    this.save();
+    return this.history;
+  }
+
+  private save() {
+    try { fs.writeFileSync(this.file, JSON.stringify(this.history)); } catch {}
+  }
+}
+
+const urlHistoryManager = new URLHistoryManager();
+
 // ---
 
 function pushUpdateStatus() {
@@ -159,6 +186,7 @@ ipcMain.handle('sessions:notes:set', (_e, id: string, notes: string) => sessionM
 ipcMain.handle('sessions:contextMenu', (_e, id: string) => sessionManager?.showContextMenu(id));
 
 ipcMain.handle('recording:timeline', (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
+ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.getHAR(id) ?? null);
 
 ipcMain.handle('layout:setConsoleHeight',(_e, h: number) => sessionManager?.setConsoleHeight(h));
 ipcMain.handle('layout:setTopBarHeight', (_e, h: number) => sessionManager?.setTopBarHeight(h));
@@ -180,6 +208,10 @@ ipcMain.handle('permission:respond', (_e, reqId: string, granted: boolean) =>
 ipcMain.handle('bookmarks:list',   () => bookmarkManager.list());
 ipcMain.handle('bookmarks:add',    (_e, url: string, title: string) => bookmarkManager.add(url, title));
 ipcMain.handle('bookmarks:remove', (_e, url: string) => bookmarkManager.remove(url));
+
+// URL history IPC
+ipcMain.handle('urlHistory:get', () => urlHistoryManager.get());
+ipcMain.handle('urlHistory:add', (_e, url: string) => urlHistoryManager.add(url));
 
 // App IPC
 ipcMain.handle('app:versionInfo', () => ({
