@@ -130,6 +130,10 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
 
+  // Prevent the privileged renderer from being navigated away from index.html
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   sessionManager = new SessionManager(win);
 
   const restored = sessionManager.loadAndRestoreSessions();
@@ -186,7 +190,9 @@ ipcMain.handle('sessions:navigate',(_e, id: string, url: string) => sessionManag
 ipcMain.handle('sessions:rename',  (_e, id: string, name: string) => sessionManager?.renameSession(id, name));
 ipcMain.handle('sessions:pin',     (_e, id: string, pinned: boolean) => sessionManager?.pinSession(id, pinned));
 ipcMain.handle('sessions:reopen',  (_e, opts: { name: string; url: string; partition: string; color?: string }) => {
-  const s = sessionManager?.createSession(opts.name, { partition: opts.partition, startUrl: opts.url, color: opts.color });
+  // Only restore http/https URLs; empty string falls through to the newtab page
+  const startUrl = /^https?:\/\//i.test(opts.url ?? '') ? opts.url : undefined;
+  const s = sessionManager?.createSession(opts.name, { partition: opts.partition, startUrl, color: opts.color });
   return s?.id ?? null;
 });
 
@@ -245,7 +251,21 @@ ipcMain.handle('urlHistory:add', (_e, url: string) => urlHistoryManager.add(url)
 
 // Speed-dial IPC
 ipcMain.handle('speeddial:get', () => speedDialManager.get());
-ipcMain.handle('speeddial:set', (_e, tiles: SpeedDialTile[]) => speedDialManager.set(tiles));
+ipcMain.handle('speeddial:set', (e, tiles: unknown) => {
+  // Only the newtab page (a file:// URL) may write tiles
+  const senderUrl = e.senderFrame?.url ?? '';
+  if (!senderUrl.startsWith('file://') || !senderUrl.includes('newtab.html')) return;
+  if (!Array.isArray(tiles) || tiles.length > 100) return;
+  const sanitized: SpeedDialTile[] = (tiles as unknown[])
+    .filter((t): t is Record<string, unknown> => t !== null && typeof t === 'object')
+    .map(t => ({
+      id:    String(t.id    ?? '').slice(0, 64),
+      title: String(t.title ?? '').slice(0, 200),
+      // Only allow http/https URLs — drop anything else
+      url:   /^https?:\/\//i.test(String(t.url ?? '')) ? String(t.url).slice(0, 2048) : 'about:blank',
+    }));
+  speedDialManager.set(sanitized);
+});
 
 // App IPC
 ipcMain.handle('app:versionInfo', () => ({

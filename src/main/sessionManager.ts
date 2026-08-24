@@ -46,6 +46,11 @@ function isNewtabUrl(url: string) {
   return url.startsWith('file://') && url.includes('newtab.html');
 }
 
+function isSafeUrl(url: string): boolean {
+  try { const { protocol } = new URL(url); return protocol === 'http:' || protocol === 'https:'; }
+  catch { return false; }
+}
+
 export class SessionManager {
   private win: BrowserWindow;
   private sessions = new Map<string, TestSession>();
@@ -57,7 +62,7 @@ export class SessionManager {
   private sessionNotes = new Map<string, string>();
   private colorIndex = 0;
   private downloads = new Map<string, DownloadInfo>();
-  private pendingPermissions = new Map<string, { callback: (granted: boolean) => void; permission: string; partition: string }>();
+  private pendingPermissions = new Map<string, { callback: (granted: boolean) => void; permission: string; partition: string; origin: string }>();
   private grantedPermissions = new Map<string, Set<string>>();
 
   constructor(win: BrowserWindow) {
@@ -90,9 +95,18 @@ export class SessionManager {
     // Download handling — auto-save to system Downloads folder
     ses.on('will-download', (_event, item) => {
       const dlId = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const filename = item.getFilename();
-      const savePath = path.join(app.getPath('downloads'), filename);
+      // path.basename strips any directory traversal from server-supplied filenames
+      const rawName = path.basename(item.getFilename()) || 'download';
+      const dlDir = app.getPath('downloads');
+      const ext = path.extname(rawName);
+      const base = path.basename(rawName, ext);
+      let savePath = path.join(dlDir, rawName);
+      let counter = 1;
+      while (fs.existsSync(savePath)) {
+        savePath = path.join(dlDir, `${base} (${counter++})${ext}`);
+      }
       item.setSavePath(savePath);
+      const filename = path.basename(savePath);
 
       const dl: DownloadInfo = {
         id: dlId, filename, url: item.getURL(),
@@ -124,12 +138,15 @@ export class SessionManager {
         return;
       }
       const reqId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      this.pendingPermissions.set(reqId, { callback, permission, partition });
-      const origin = details?.requestingUrl ? getHostname(details.requestingUrl) : 'This page';
-      this.win.webContents.send('permission:request', { reqId, permission, origin });
+      const requestingUrl = details?.requestingUrl ?? '';
+      let origin = '';
+      try { origin = new URL(requestingUrl).origin; } catch {}
+      const originLabel = origin || getHostname(requestingUrl) || 'This page';
+      this.pendingPermissions.set(reqId, { callback, permission, partition, origin });
+      this.win.webContents.send('permission:request', { reqId, permission, origin: originLabel });
     });
-    ses.setPermissionCheckHandler((_wc, permission) => {
-      return this.grantedPermissions.get(partition)?.has(permission) ?? false;
+    ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+      return this.grantedPermissions.get(`${partition}|${requestingOrigin}`)?.has(permission) ?? false;
     });
 
     const view = new WebContentsView({
@@ -201,6 +218,7 @@ export class SessionManager {
 
       if (params.linkURL) {
         items.push({ label: 'Open link in new tab', click: () => {
+          if (!isSafeUrl(params.linkURL)) return;
           const ns = this.createSession(getHostname(params.linkURL), { partition, startUrl: params.linkURL, color });
           this.switchTo(ns.id);
           this.win.webContents.send('session:newTab', { id: ns.id });
@@ -211,6 +229,7 @@ export class SessionManager {
 
       if (params.mediaType === 'image' && params.srcURL) {
         items.push({ label: 'Open image in new tab', click: () => {
+          if (!isSafeUrl(params.srcURL)) return;
           const ns = this.createSession('Image', { partition, startUrl: params.srcURL });
           this.switchTo(ns.id);
           this.win.webContents.send('session:newTab', { id: ns.id });
@@ -268,11 +287,13 @@ export class SessionManager {
     });
 
     view.webContents.setWindowOpenHandler(({ url }) => {
-      setImmediate(() => {
-        const newSession = this.createSession(getHostname(url), { partition, startUrl: url, color });
-        this.switchTo(newSession.id);
-        this.win.webContents.send('session:newTab', { id: newSession.id });
-      });
+      if (isSafeUrl(url)) {
+        setImmediate(() => {
+          const newSession = this.createSession(getHostname(url), { partition, startUrl: url, color });
+          this.switchTo(newSession.id);
+          this.win.webContents.send('session:newTab', { id: newSession.id });
+        });
+      }
       return { action: 'deny' };
     });
 
@@ -321,10 +342,9 @@ export class SessionManager {
     if (!entry) return;
     entry.callback(granted);
     if (granted) {
-      if (!this.grantedPermissions.has(entry.partition)) {
-        this.grantedPermissions.set(entry.partition, new Set());
-      }
-      this.grantedPermissions.get(entry.partition)!.add(entry.permission);
+      const key = `${entry.partition}|${entry.origin}`;
+      if (!this.grantedPermissions.has(key)) this.grantedPermissions.set(key, new Set());
+      this.grantedPermissions.get(key)!.add(entry.permission);
     }
     this.pendingPermissions.delete(reqId);
   }

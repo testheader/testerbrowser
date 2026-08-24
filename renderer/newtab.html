@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://www.google.com data:; connect-src 'none'">
   <title>New Tab</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -285,7 +286,7 @@
         removeBtn.onclick = (e) => { e.stopPropagation(); removeTile(tile.id); };
         el.appendChild(removeBtn);
 
-        el.onclick = () => { window.location.href = tile.url; };
+        el.onclick = () => { if (/^https?:\/\//i.test(tile.url)) window.location.href = tile.url; };
         grid.appendChild(el);
       }
 
