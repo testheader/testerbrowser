@@ -38,6 +38,14 @@ function getHostname(url: string): string {
   try { return new URL(url).hostname || 'New tab'; } catch { return 'New tab'; }
 }
 
+// Resolved at runtime — points to renderer/newtab.html whether packaged or in dev
+const NEWTAB_FILE = path.join(__dirname, '..', '..', 'renderer', 'newtab.html');
+const NEWTAB_PRELOAD = path.join(__dirname, '..', 'preload', 'newtab.js');
+
+function isNewtabUrl(url: string) {
+  return url.startsWith('file://') && url.includes('newtab.html');
+}
+
 export class SessionManager {
   private win: BrowserWindow;
   private sessions = new Map<string, TestSession>();
@@ -125,7 +133,7 @@ export class SessionManager {
     });
 
     const view = new WebContentsView({
-      webPreferences: { session: ses, contextIsolation: true, sandbox: true },
+      webPreferences: { session: ses, contextIsolation: true, sandbox: true, preload: NEWTAB_PRELOAD },
     });
 
     const recorder = new SessionRecorder(view.webContents, { sessionId: id, dbDir: this.dbDir });
@@ -135,7 +143,7 @@ export class SessionManager {
       id, name,
       persistent: !!opts.persistent || partition.startsWith('persist:'),
       partition,
-      currentUrl: opts.startUrl || 'https://example.com',
+      currentUrl: opts.startUrl || '',
       pinned: false,
       color,
       view, recorder,
@@ -143,16 +151,22 @@ export class SessionManager {
     };
     this.sessions.set(id, testSession);
 
-    view.webContents.loadURL(opts.startUrl || 'https://example.com');
+    if (opts.startUrl) {
+      view.webContents.loadURL(opts.startUrl);
+    } else {
+      view.webContents.loadFile(NEWTAB_FILE);
+    }
 
     view.webContents.on('did-navigate', (_e, url) => {
-      testSession.currentUrl = url;
-      this.win.webContents.send('session:navigated', { id, url });
+      const displayUrl = isNewtabUrl(url) ? '' : url;
+      testSession.currentUrl = displayUrl;
+      this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
     });
     view.webContents.on('did-navigate-in-page', (_e, url) => {
-      testSession.currentUrl = url;
-      this.win.webContents.send('session:navigated', { id, url });
+      const displayUrl = isNewtabUrl(url) ? '' : url;
+      testSession.currentUrl = displayUrl;
+      this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
     });
     view.webContents.on('page-title-updated', (_e, title) => {

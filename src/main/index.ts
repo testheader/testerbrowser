@@ -73,6 +73,40 @@ class URLHistoryManager {
 
 const urlHistoryManager = new URLHistoryManager();
 
+// --- Speed-dial manager ---
+
+interface SpeedDialTile { id: string; url: string; title: string; }
+
+const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
+  { id: '1', url: 'https://www.google.com',       title: 'Google' },
+  { id: '2', url: 'https://github.com',            title: 'GitHub' },
+  { id: '3', url: 'https://developer.mozilla.org', title: 'MDN' },
+  { id: '4', url: 'https://stackoverflow.com',     title: 'Stack Overflow' },
+  { id: '5', url: 'https://caniuse.com',           title: 'Can I Use' },
+  { id: '6', url: 'https://regex101.com',          title: 'Regex 101' },
+  { id: '7', url: 'https://jsonformatter.org',     title: 'JSON Formatter' },
+  { id: '8', url: 'https://httpstatuses.io',       title: 'HTTP Status' },
+];
+
+class SpeedDialManager {
+  private file: string;
+  private tiles: SpeedDialTile[];
+
+  constructor() {
+    this.file = path.join(app.getPath('userData'), 'speed-dial.json');
+    try { this.tiles = JSON.parse(fs.readFileSync(this.file, 'utf-8')); } catch { this.tiles = DEFAULT_SPEED_DIAL; }
+  }
+
+  get() { return this.tiles; }
+
+  set(tiles: SpeedDialTile[]) {
+    this.tiles = tiles;
+    try { fs.writeFileSync(this.file, JSON.stringify(this.tiles)); } catch {}
+  }
+}
+
+const speedDialManager = new SpeedDialManager();
+
 // ---
 
 function pushUpdateStatus() {
@@ -208,6 +242,10 @@ ipcMain.handle('bookmarks:remove', (_e, url: string) => bookmarkManager.remove(u
 // URL history IPC
 ipcMain.handle('urlHistory:get', () => urlHistoryManager.get());
 ipcMain.handle('urlHistory:add', (_e, url: string) => urlHistoryManager.add(url));
+
+// Speed-dial IPC
+ipcMain.handle('speeddial:get', () => speedDialManager.get());
+ipcMain.handle('speeddial:set', (_e, tiles: SpeedDialTile[]) => speedDialManager.set(tiles));
 
 // App IPC
 ipcMain.handle('app:versionInfo', () => ({
