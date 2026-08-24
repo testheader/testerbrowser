@@ -14,7 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      # Native modules not needed for type-checking — skip postinstall
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
 
   bump-version:
@@ -30,6 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci --ignore-scripts
       - name: Bump version
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
@@ -52,7 +54,8 @@ jobs:
   build-windows:
     needs: [bump-version]
     if: "always() && needs.bump-version.result != 'failure'"
-    runs-on: windows-latest
+    # Pin to windows-2022 — windows-latest uses VS 2025 Preview which node-gyp can't detect
+    runs-on: windows-2022
     permissions:
       contents: write
     steps:
@@ -62,7 +65,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      # Skip postinstall (would compile better-sqlite3 against Node instead of Electron)
+      - run: npm ci --ignore-scripts
+      # Rebuild better-sqlite3 against Electron 43's ABI
+      - run: npx electron-rebuild -f -w better-sqlite3
       - run: npm run dist:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,7 +90,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - run: npx electron-rebuild -f -w better-sqlite3
       - run: npm run dist:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
