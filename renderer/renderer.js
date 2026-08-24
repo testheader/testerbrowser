@@ -411,6 +411,7 @@ async function switchToSession(id) {
   lastTs   = 0;
   timelineEvents.length = 0;
   document.getElementById('timelinePanel').innerHTML = '';
+  if (activeConsoleTab === 'storage') loadStoragePanel();
   recordVisit(id);
   await testerBrowser.sessions.switchTo(id);
   updateNavButtons();
@@ -526,6 +527,10 @@ async function refreshTabs() {
       const to = tabOrder.indexOf(s.id);
       tabOrder.splice(before ? to : to + 1, 0, dragSourceId);
       refreshTabs();
+    });
+
+    tab.addEventListener('auxclick', (e) => {
+      if (e.button === 1 && !s.pinned) { e.preventDefault(); e.stopPropagation(); closeTab(s.id); }
     });
 
     tabsEl.insertBefore(tab, document.getElementById('newSessionBtn'));
@@ -783,10 +788,10 @@ function applyFilter() {
 }
 
 function renderTimeline() {
-  const panel       = document.getElementById('timelinePanel');
-  const activeTypes = new Set([...document.querySelectorAll('.ftype:checked')].map(el => el.value));
-  const filterText  = document.getElementById('filterText').value.toLowerCase();
+  const panel      = document.getElementById('timelinePanel');
+  const filterText = document.getElementById('filterText').value.toLowerCase();
 
+  const activeTypes = new Set([...document.querySelectorAll('.filter-pill.on')].map(el => el.dataset.type));
   const filtered = timelineEvents.filter(e => {
     const kindVisible = activeTypes.has(e.kind) ||
       (e.kind === 'network-body' && activeTypes.has('network-response'));
@@ -831,7 +836,7 @@ function renderTimeline() {
 }
 
 document.getElementById('filterText').addEventListener('input', applyFilter);
-document.querySelectorAll('.ftype').forEach((cb) => cb.addEventListener('change', applyFilter));
+document.querySelectorAll('.filter-pill').forEach((btn) => btn.addEventListener('click', () => { btn.classList.toggle('on'); applyFilter(); }));
 document.getElementById('clearConsoleBtn').onclick = () => {
   timelineEvents.length = 0;
   lastTs = 0;
@@ -936,6 +941,138 @@ async function pollTimeline() {
   }
   setTimeout(pollTimeline, 1000);
 }
+
+// ── Console tabs ───────────────────────────────────────────────────────────
+
+let activeConsoleTab = 'console';
+
+function switchConsoleTab(tab) {
+  activeConsoleTab = tab;
+  document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
+  document.getElementById('consoleTabStorage').classList.toggle('active', tab === 'storage');
+  document.getElementById('consoleControls').style.display = tab === 'console' ? '' : 'none';
+  document.getElementById('storageControls').style.display = tab === 'storage' ? 'flex' : 'none';
+  document.getElementById('timelinePanel').style.display   = tab === 'console' ? '' : 'none';
+  document.getElementById('storagePanel').style.display    = tab === 'storage' ? 'block' : 'none';
+  if (tab === 'storage') loadStoragePanel();
+}
+
+document.getElementById('consoleTabConsole').addEventListener('click', () => switchConsoleTab('console'));
+document.getElementById('consoleTabStorage').addEventListener('click', () => switchConsoleTab('storage'));
+document.getElementById('refreshStorageBtn').addEventListener('click', loadStoragePanel);
+
+// ── Storage panel ──────────────────────────────────────────────────────────
+
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function loadStoragePanel() {
+  if (!activeId) return;
+  const panel = document.getElementById('storagePanel');
+  panel.innerHTML = '<div class="storage-empty">Loading…</div>';
+
+  const [cookies, ls] = await Promise.all([
+    testerBrowser.sessions.getCookies(activeId),
+    testerBrowser.sessions.getLocalStorage(activeId),
+  ]);
+
+  panel.innerHTML = '';
+
+  // Cookies
+  const cookieHdr = document.createElement('div');
+  cookieHdr.className = 'storage-section-header';
+  cookieHdr.textContent = `Cookies (${cookies.length})`;
+  panel.appendChild(cookieHdr);
+
+  if (cookies.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'storage-empty';
+    empty.textContent = 'No cookies for this session';
+    panel.appendChild(empty);
+  } else {
+    const table = document.createElement('table');
+    table.className = 'storage-table';
+    table.innerHTML = '<thead><tr><th>Domain</th><th>Name</th><th>Value</th><th>Path</th><th>Secure</th><th>HttpOnly</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    for (const c of cookies) {
+      const tr = document.createElement('tr');
+      const val = escHtml(c.value);
+      tr.innerHTML = `
+        <td>${escHtml(c.domain || '')}</td>
+        <td>${escHtml(c.name)}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${val}">${val}</td>
+        <td>${escHtml(c.path || '/')}</td>
+        <td><span class="storage-badge ${c.secure ? 'yes' : 'no'}">${c.secure ? '✓' : '—'}</span></td>
+        <td><span class="storage-badge ${c.httpOnly ? 'yes' : 'no'}">${c.httpOnly ? '✓' : '—'}</span></td>`;
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    panel.appendChild(table);
+  }
+
+  // Local Storage
+  const lsEntries = Object.entries(ls);
+  const lsHdr = document.createElement('div');
+  lsHdr.className = 'storage-section-header';
+  lsHdr.textContent = `Local Storage (${lsEntries.length})`;
+  panel.appendChild(lsHdr);
+
+  if (lsEntries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'storage-empty';
+    empty.textContent = 'No local storage entries for this page';
+    panel.appendChild(empty);
+  } else {
+    const table = document.createElement('table');
+    table.className = 'storage-table';
+    table.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    for (const [k, v] of lsEntries) {
+      const tr = document.createElement('tr');
+      const val = escHtml(v);
+      tr.innerHTML = `<td>${escHtml(k)}</td>
+        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${val}">${val}</td>`;
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    panel.appendChild(table);
+  }
+}
+
+// ── View dropdown ──────────────────────────────────────────────────────────
+
+let consoleVisible = true;
+const viewWrapper  = document.getElementById('viewWrapper');
+const viewDropdown = document.getElementById('viewDropdown');
+
+function updateViewDropdown() {
+  document.getElementById('viewConsoleCheck').textContent   = consoleVisible      ? '✓' : '';
+  document.getElementById('viewBookmarksCheck').textContent = bookmarksBarVisible ? '✓' : '';
+}
+
+document.getElementById('viewBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  viewDropdown.classList.toggle('open');
+  updateViewDropdown();
+});
+
+document.addEventListener('click', (e) => {
+  if (!viewWrapper.contains(e.target)) viewDropdown.classList.remove('open');
+});
+
+document.getElementById('viewToggleConsole').addEventListener('click', () => {
+  consoleVisible = !consoleVisible;
+  consolePanel.style.display = consoleVisible ? 'flex' : 'none';
+  testerBrowser.layout.setConsoleHeight(consoleVisible ? consoleHeight : 0);
+  updateViewDropdown();
+});
+
+document.getElementById('viewToggleBookmarks').addEventListener('click', () => {
+  toggleBookmarksBar();
+  updateViewDropdown();
+  viewDropdown.classList.remove('open');
+});
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 

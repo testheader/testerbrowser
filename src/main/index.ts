@@ -106,12 +106,6 @@ function createWindow() {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: 'Edit',
-      submenu: [
-        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
-      ],
-    },
-    {
       label: 'Help',
       submenu: [
         { label: 'About / Settings', click: () => win?.webContents.send('show:settings') },
@@ -185,8 +179,10 @@ ipcMain.handle('sessions:notes:get', (_e, id: string) => sessionManager?.getNote
 ipcMain.handle('sessions:notes:set', (_e, id: string, notes: string) => sessionManager?.setNotes(id, notes));
 ipcMain.handle('sessions:contextMenu', (_e, id: string) => sessionManager?.showContextMenu(id));
 
-ipcMain.handle('recording:timeline', (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
+ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
 ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.getHAR(id) ?? null);
+ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.getCookies(id) ?? []);
+ipcMain.handle('sessions:getLocalStorage', (_e, id: string) => sessionManager?.getLocalStorage(id) ?? {});
 
 ipcMain.handle('layout:setConsoleHeight',(_e, h: number) => sessionManager?.setConsoleHeight(h));
 ipcMain.handle('layout:setTopBarHeight', (_e, h: number) => sessionManager?.setTopBarHeight(h));

@@ -156,23 +156,80 @@
     #consoleDragHandle { height: 6px; min-height: 6px; background: #222; border-top: 1px solid #333;
                          cursor: ns-resize; flex-shrink: 0; }
     #consoleDragHandle:hover, #consoleDragHandle.dragging { background: #4fc3f7; }
-    #consoleHeader { display: flex; align-items: center; gap: 6px; padding: 4px 10px;
-                     background: #1e1e1e; border-bottom: 1px solid #2a2a2a; flex-shrink: 0; }
-    .console-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.8px; flex-shrink: 0; }
-    #filterText { flex: 1; min-width: 0; padding: 2px 6px; border-radius: 3px; border: 1px solid #333;
-                  background: #252526; color: #ddd; font-size: 12px; }
+    #consoleHeader { display: flex; align-items: center; gap: 6px; padding: 0 10px 0 0;
+                     background: #1a1a1a; border-bottom: 1px solid #222; flex-shrink: 0; height: 36px; }
+    .console-tabs { display: flex; height: 100%; flex-shrink: 0; }
+    .console-tab { background: none; border: none; border-bottom: 2px solid transparent; color: #555;
+                   font-size: 12px; cursor: pointer; padding: 0 14px; text-transform: uppercase;
+                   letter-spacing: 0.5px; font-family: inherit; height: 100%; }
+    .console-tab:hover:not(.active) { color: #999; }
+    .console-tab.active { color: #ddd; border-bottom-color: #4fc3f7; }
+    .console-sep { width: 1px; height: 18px; background: #2a2a2a; flex-shrink: 0; }
+    #consoleControls { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+    #storageControls { display: none; align-items: center; gap: 6px; flex: 1; }
+    #filterText { flex: 1; min-width: 60px; padding: 3px 8px; border-radius: 3px;
+                  border: 1px solid #2a2a2a; background: #111; color: #ddd; font-size: 12px; }
     #filterText:focus { outline: none; border-color: #4fc3f7; }
-    .filter-checks { display: flex; gap: 6px; flex-shrink: 0; }
-    .filter-checks label { font-size: 11px; color: #777; display: flex; align-items: center; gap: 2px; cursor: pointer; }
-    .filter-checks label:hover { color: #ddd; }
-    #clearConsoleBtn { background: none; border: none; color: #555; cursor: pointer; font-size: 14px; padding: 0 4px; }
-    #clearConsoleBtn:hover { color: #fff; }
-    #exportHarBtn { background: none; border: 1px solid #3a3a3a; color: #666; cursor: pointer;
-                    font-size: 11px; padding: 1px 6px; border-radius: 3px; }
+    .filter-pills { display: flex; gap: 3px; flex-shrink: 0; }
+    .filter-pill { padding: 2px 7px; border-radius: 10px; border: 1px solid #222; background: none;
+                   color: #444; font-size: 11px; cursor: pointer; user-select: none; font-family: inherit;
+                   transition: color 0.1s, border-color 0.1s, background 0.1s; }
+    .filter-pill:hover:not(.on) { border-color: #444; color: #777; }
+    .filter-pill.on { color: #ddd; border-color: #444; background: #222; }
+    .filter-pill[data-type="network-request"].on  { color: #7fc8ff; border-color: #2a4a6a; background: rgba(127,200,255,0.07); }
+    .filter-pill[data-type="network-response"].on { color: #8fdc8f; border-color: #2a4a2a; background: rgba(143,220,143,0.07); }
+    .filter-pill[data-type="network-failed"].on   { color: #ff8080; border-color: #5a2a2a; background: rgba(255,128,128,0.07); }
+    .filter-pill[data-type="console"].on          { color: #e0c060; border-color: #4a3a10; background: rgba(224,192,96,0.07); }
+    .filter-pill[data-type="log"].on              { color: #b0b0b0; border-color: #3a3a3a; background: rgba(176,176,176,0.07); }
+    #exportHarBtn { background: none; border: 1px solid #2a2a2a; color: #555; cursor: pointer;
+                    font-size: 11px; padding: 2px 7px; border-radius: 3px; font-family: inherit; flex-shrink: 0; }
     #exportHarBtn:hover { border-color: #4fc3f7; color: #4fc3f7; }
+    .console-icon-btn { background: none; border: none; color: #444; cursor: pointer;
+                        font-size: 13px; padding: 3px 6px; border-radius: 3px; line-height: 1; flex-shrink: 0; }
+    .console-icon-btn:hover { color: #ddd; background: #2a2a2a; }
     .evt-overflow-msg { padding: 4px 10px; font-size: 11px; color: #555; font-style: italic;
                         border-bottom: 1px solid #2a2a2a; margin-bottom: 4px; }
     #timelinePanel { flex: 1; font-family: monospace; font-size: 12px; overflow-y: auto; padding: 4px 0; }
+
+    /* ── Storage panel ── */
+    #storagePanel { flex: 1; overflow: auto; display: none; }
+    .storage-section-header { padding: 5px 10px; font-size: 11px; font-weight: 600; color: #666;
+                               text-transform: uppercase; letter-spacing: 0.8px; background: #181818;
+                               border-bottom: 1px solid #222; position: sticky; top: 0; z-index: 1; }
+    .storage-table { width: 100%; border-collapse: collapse; }
+    .storage-table th { padding: 4px 10px; font-size: 11px; color: #555; font-weight: 600; text-align: left;
+                        border-bottom: 1px solid #1e1e1e; background: #141414; white-space: nowrap; }
+    .storage-table td { padding: 3px 10px; border-bottom: 1px solid #1a1a1a; color: #ccc;
+                        word-break: break-all; vertical-align: top; font-family: monospace; font-size: 11px; }
+    .storage-table tr:hover td { background: #1e1e1e; }
+    .storage-empty { padding: 12px 10px; color: #444; font-style: italic; font-size: 12px; }
+    .storage-badge.yes { color: #8fdc8f; }
+    .storage-badge.no  { color: #444; }
+
+    /* ── View dropdown ── */
+    #viewWrapper { position: relative; flex-shrink: 0; }
+    #viewDropdown { position: absolute; top: calc(100% + 6px); right: 0; background: #252526;
+                    border: 1px solid #444; border-radius: 6px; min-width: 200px;
+                    box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 80; display: none; overflow: hidden; }
+    #viewDropdown.open { display: block; }
+    .view-item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer;
+                 font-size: 12px; color: #bbb; border-bottom: 1px solid #2a2a2a; }
+    .view-item:last-child { border-bottom: none; }
+    .view-item:hover { background: #2a2a2a; color: #fff; }
+    .view-check { width: 14px; font-size: 12px; color: #4fc3f7; flex-shrink: 0; }
+    .view-shortcut { margin-left: auto; font-size: 10px; color: #555; font-family: monospace; padding-left: 8px; }
+
+    /* ── Shortcuts in settings ── */
+    #shortcutsSection { margin: 16px 0 0; border: 1px solid #333; border-radius: 4px; overflow: hidden; }
+    #shortcutsSection summary { padding: 9px 12px; cursor: pointer; font-size: 13px; color: #999;
+                                 background: #1e1e1e; user-select: none; list-style: none; }
+    #shortcutsSection summary::-webkit-details-marker { display: none; }
+    #shortcutsSection summary:hover { color: #ddd; }
+    .shortcut-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 12px; font-size: 12px; }
+    .shortcut-row kbd { flex-shrink: 0; font-family: monospace; font-size: 11px; color: #ddd;
+                        background: #2a2a2a; border: 1px solid #444; border-radius: 3px;
+                        padding: 1px 5px; white-space: nowrap; min-width: 130px; display: inline-block; }
+    .shortcut-row > span:last-child { color: #888; }
     .evt { padding: 1px 10px; cursor: pointer; white-space: pre-wrap; word-break: break-all; }
     .evt:hover { background: #222; }
     .evt-summary { }
@@ -241,6 +298,20 @@
         <span id="downloadsBadge"></span>
       </div>
       <button class="nav-btn" id="devtoolsBtn" title="DevTools (F12)">&#9881;</button>
+      <div id="viewWrapper">
+        <button class="nav-btn" id="viewBtn" title="View panels">View &#9662;</button>
+        <div id="viewDropdown">
+          <div class="view-item" id="viewToggleConsole">
+            <span class="view-check" id="viewConsoleCheck">&#10003;</span>
+            <span>Console panel</span>
+          </div>
+          <div class="view-item" id="viewToggleBookmarks">
+            <span class="view-check" id="viewBookmarksCheck"></span>
+            <span>Bookmarks bar</span>
+            <span class="view-shortcut">Ctrl+Shift+B</span>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="bookmarksBar"></div>
     <div id="findBar">
@@ -269,19 +340,29 @@
   <div id="consolePanel">
     <div id="consoleDragHandle"></div>
     <div id="consoleHeader">
-      <span class="console-label">Console</span>
-      <input id="filterText" placeholder="Filter…" />
-      <div class="filter-checks">
-        <label><input type="checkbox" class="ftype" value="network-request"  checked> Req</label>
-        <label><input type="checkbox" class="ftype" value="network-response" checked> Res</label>
-        <label><input type="checkbox" class="ftype" value="network-failed"   checked> Err</label>
-        <label><input type="checkbox" class="ftype" value="console"          checked> JS</label>
-        <label><input type="checkbox" class="ftype" value="log"              checked> Log</label>
+      <div class="console-tabs">
+        <button class="console-tab active" id="consoleTabConsole">Console</button>
+        <button class="console-tab" id="consoleTabStorage">Storage</button>
       </div>
-      <button id="exportHarBtn" title="Export HAR file">HAR</button>
-      <button id="clearConsoleBtn" title="Clear console">&#10005;</button>
+      <div class="console-sep"></div>
+      <div id="consoleControls">
+        <input id="filterText" placeholder="Filter events…" />
+        <div class="filter-pills">
+          <button class="filter-pill on" data-type="network-request"  title="Network requests">Req</button>
+          <button class="filter-pill on" data-type="network-response" title="Network responses">Res</button>
+          <button class="filter-pill on" data-type="network-failed"   title="Failed requests">Err</button>
+          <button class="filter-pill on" data-type="console"          title="Console output">JS</button>
+          <button class="filter-pill on" data-type="log"              title="Log events">Log</button>
+        </div>
+        <button id="exportHarBtn" title="Export HAR">HAR</button>
+        <button class="console-icon-btn" id="clearConsoleBtn" title="Clear events">&#10005;</button>
+      </div>
+      <div id="storageControls">
+        <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage">&#8635;</button>
+      </div>
     </div>
     <div id="timelinePanel"></div>
+    <div id="storagePanel"></div>
   </div>
 
   <!-- Settings -->
@@ -297,6 +378,33 @@
         <span class="setting-value" id="latestVersion">—</span>
       </div>
       <div id="updateStatusText" class="info">Checking for updates…</div>
+
+      <details id="shortcutsSection">
+        <summary>Keyboard shortcuts &amp; features &#9662;</summary>
+        <div style="padding:4px 0 8px; background:#181818;">
+          <div class="shortcut-row"><kbd>Ctrl+T</kbd><span>New tab</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+W</kbd><span>Close tab</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+Shift+T</kbd><span>Reopen closed tab</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+Tab</kbd><span>Cycle to last-used tab</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+1–9</kbd><span>Switch to tab by number</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+L</kbd><span>Focus URL bar</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+F</kbd><span>Find in page</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+D</kbd><span>Bookmark page</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+Shift+B</kbd><span>Toggle bookmarks bar</span></div>
+          <div class="shortcut-row"><kbd>F5 / Ctrl+R</kbd><span>Reload</span></div>
+          <div class="shortcut-row"><kbd>F12</kbd><span>DevTools</span></div>
+          <div class="shortcut-row"><kbd>Alt+← / →</kbd><span>Back / Forward</span></div>
+          <div class="shortcut-row"><kbd>Middle-click tab</kbd><span>Close tab</span></div>
+          <div class="shortcut-row"><kbd>Middle-click link</kbd><span>Open in new tab (same session)</span></div>
+          <div class="shortcut-row"><kbd>Right-click tab</kbd><span>Rename, pin, clone, notes…</span></div>
+          <div style="margin:6px 12px 2px; border-top:1px solid #2a2a2a; padding-top:8px; font-size:11px; font-weight:600; color:#4fc3f7; text-transform:uppercase; letter-spacing:0.6px;">Features</div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Isolated sessions</kbd><span>Each tab has its own cookies &amp; cache</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Always-on recording</kbd><span>Network &amp; console captured from tab open</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Storage tab</kbd><span>Inspect cookies &amp; localStorage per session</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">HAR export</kbd><span>Export network traffic as a HAR file</span></div>
+        </div>
+      </details>
+
       <div class="modal-actions">
         <button class="btn btn-danger"    id="restartBtn"     style="display:none">Restart to install</button>
         <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>

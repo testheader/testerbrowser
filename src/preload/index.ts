@@ -24,8 +24,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     findInPage:  (id: string, text: string, forward: boolean, findNext: boolean) =>
                    ipcRenderer.invoke('find:start', id, text, forward, findNext),
     stopFind:    (id: string) => ipcRenderer.invoke('find:stop', id),
-    getNotes:    (id: string) => ipcRenderer.invoke('sessions:notes:get', id),
-    setNotes:    (id: string, notes: string) => ipcRenderer.invoke('sessions:notes:set', id, notes),
+    getNotes:        (id: string) => ipcRenderer.invoke('sessions:notes:get', id),
+    setNotes:        (id: string, notes: string) => ipcRenderer.invoke('sessions:notes:set', id, notes),
+    getCookies:      (id: string) => ipcRenderer.invoke('sessions:getCookies', id),
+    getLocalStorage: (id: string) => ipcRenderer.invoke('sessions:getLocalStorage', id),
 
     onNavigated: (cb: (d: { id: string; url: string }) => void) => {
       ipcRenderer.removeAllListeners('session:navigated');

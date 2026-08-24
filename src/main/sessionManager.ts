@@ -187,7 +187,7 @@ export class SessionManager {
 
       if (params.linkURL) {
         items.push({ label: 'Open link in new tab', click: () => {
-          const ns = this.createSession(getHostname(params.linkURL), { partition, startUrl: params.linkURL });
+          const ns = this.createSession(getHostname(params.linkURL), { partition, startUrl: params.linkURL, color });
           this.switchTo(ns.id);
           this.win.webContents.send('session:newTab', { id: ns.id });
         }});
@@ -255,7 +255,7 @@ export class SessionManager {
 
     view.webContents.setWindowOpenHandler(({ url }) => {
       setImmediate(() => {
-        const newSession = this.createSession(getHostname(url), { partition, startUrl: url });
+        const newSession = this.createSession(getHostname(url), { partition, startUrl: url, color });
         this.switchTo(newSession.id);
         this.win.webContents.send('session:newTab', { id: newSession.id });
       });
@@ -456,7 +456,7 @@ export class SessionManager {
   }
 
   setConsoleHeight(height: number) {
-    this.consoleHeight = Math.max(80, Math.min(height, 600));
+    this.consoleHeight = height === 0 ? 0 : Math.max(80, Math.min(height, 600));
     this.layoutActive();
   }
 
@@ -503,6 +503,23 @@ export class SessionManager {
 
   getHAR(id: string): object | null {
     return this.sessions.get(id)?.recorder.exportHAR() ?? null;
+  }
+
+  async getCookies(id: string) {
+    const s = this.sessions.get(id);
+    if (!s) return [];
+    return s.view.webContents.session.cookies.get({});
+  }
+
+  async getLocalStorage(id: string): Promise<Record<string, string>> {
+    const s = this.sessions.get(id);
+    if (!s) return {};
+    try {
+      const raw = await s.view.webContents.executeJavaScript(
+        'JSON.stringify(Object.fromEntries(Object.entries(localStorage)))'
+      );
+      return JSON.parse(raw) ?? {};
+    } catch { return {}; }
   }
 
   destroySession(id: string) {
