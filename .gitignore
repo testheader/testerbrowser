@@ -4,3 +4,6 @@ release/
 *.sqlite
 *.sqlite-*
 .DS_Store
+.omc/
+*.png
+*.jpg
