@@ -74,8 +74,8 @@ jobs:
       - run: npm ci --ignore-scripts
       # Rebuild better-sqlite3 against Electron's ABI
       - run: npx electron-rebuild -f -w better-sqlite3
-      - name: Build installer (no publish)
-        run: npm run build && electron-builder --win nsis --publish never
+      - run: npm run build
+      - run: npx electron-builder --win nsis --publish never
       - name: Upload assets to GitHub Release
         shell: bash
         run: |
@@ -107,8 +107,8 @@ jobs:
           node-version: 22
       - run: npm ci --ignore-scripts
       - run: npx electron-rebuild -f -w better-sqlite3
-      - name: Build AppImage (no publish)
-        run: npm run build && electron-builder --linux appimage --publish never
+      - run: npm run build
+      - run: npx electron-builder --linux appimage --publish never
       - name: Upload assets to GitHub Release
         run: |
           VERSION=$(node -p "require('./package.json').version")
