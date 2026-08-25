@@ -32,9 +32,10 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
-      - name: Bump version
+      - name: Bump version and create GitHub release
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if echo "$COMMIT_MSG" | grep -qiE "BREAKING CHANGE|^feat(\(.+\))?!:"; then
             BUMP="major"
@@ -52,6 +53,8 @@ jobs:
           git tag "v$VERSION"
           git push
           git push origin "v$VERSION"
+          # Create the GitHub release now so build jobs can upload assets to it
+          gh release create "v$VERSION" --prerelease --title "v$VERSION" --generate-notes
 
   build-windows:
     needs: [bump-version]
@@ -69,9 +72,19 @@ jobs:
           node-version: 22
       # Skip postinstall (would compile better-sqlite3 against Node instead of Electron)
       - run: npm ci --ignore-scripts
-      # Rebuild better-sqlite3 against Electron 43's ABI
+      # Rebuild better-sqlite3 against Electron's ABI
       - run: npx electron-rebuild -f -w better-sqlite3
-      - run: npm run dist:win
+      - name: Build installer (no publish)
+        run: npm run build && electron-builder --win nsis --publish never
+      - name: Upload assets to GitHub Release
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release upload "v$VERSION" \
+            release/TesterBrowser-Setup-*.exe \
+            release/TesterBrowser-Setup-*.exe.blockmap \
+            release/latest.yml \
+            --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
@@ -94,7 +107,15 @@ jobs:
           node-version: 22
       - run: npm ci --ignore-scripts
       - run: npx electron-rebuild -f -w better-sqlite3
-      - run: npm run dist:linux
+      - name: Build AppImage (no publish)
+        run: npm run build && electron-builder --linux appimage --publish never
+      - name: Upload assets to GitHub Release
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release upload "v$VERSION" \
+            release/TesterBrowser-*.AppImage \
+            release/latest-linux.yml \
+            --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
