@@ -284,6 +284,10 @@
     .kv-add-btn { background: none; border: 1px solid #2a3a4a; color: #7fc8ff; border-radius: 3px;
                   font-size: 11px; padding: 1px 8px; cursor: pointer; font-family: inherit; }
     .kv-add-btn:hover { background: rgba(127,200,255,0.08); }
+    #replayCookieSessionPick { background: #111; border: 1px solid #2a3a4a; color: #7fc8ff;
+                               border-radius: 3px; font-size: 11px; padding: 1px 4px; cursor: pointer;
+                               font-family: inherit; max-width: 150px; outline: none; }
+    #replayCookieSessionPick:focus { border-color: #4fc3f7; }
     #replayBody { background: #111; color: #ddd; border: 1px solid #2a2a2a; border-radius: 4px;
                   padding: 8px; font-family: monospace; font-size: 12px; resize: none;
                   flex: 1; min-height: 80px; width: 100%; box-sizing: border-box; }
@@ -620,7 +624,10 @@
           <div class="replay-section">
             <div class="replay-sec-title">
               <span>Cookies</span>
-              <button class="kv-add-btn" id="replayAddCookie">+ Add</button>
+              <div style="display:flex;gap:5px;align-items:center">
+                <select id="replayCookieSessionPick"><option value="">Load from session…</option></select>
+                <button class="kv-add-btn" id="replayAddCookie">+ Add</button>
+              </div>
             </div>
             <div id="replayCookiesTable" class="kv-table"></div>
           </div>

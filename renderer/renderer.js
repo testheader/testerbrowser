@@ -1202,6 +1202,22 @@ async function openReplay(evt) {
     addKvRow(ckTable, n, v);
   }
 
+  // Populate session cookie picker
+  const sessionPick = document.getElementById('replayCookieSessionPick');
+  sessionPick.innerHTML = '<option value="">Load from session…</option>';
+  try {
+    const sessions = await testerBrowser.sessions.list();
+    for (const s of sessions) {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      sessionPick.appendChild(opt);
+    }
+  } catch {}
+  let reqHost = '';
+  try { reqHost = new URL(url.startsWith('http') ? url : 'https://' + url).hostname; } catch {}
+  sessionPick.dataset.reqHost = reqHost;
+
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('replayOverlay').classList.add('open');
   document.getElementById('replayUrl').focus();
@@ -1216,6 +1232,23 @@ document.getElementById('replayAddHeader').onclick = () =>
   addKvRow(document.getElementById('replayHeadersTable'), '', '');
 document.getElementById('replayAddCookie').onclick = () =>
   addKvRow(document.getElementById('replayCookiesTable'), '', '');
+
+document.getElementById('replayCookieSessionPick').onchange = async (e) => {
+  const id = e.target.value;
+  if (!id) return;
+  const reqHost = e.target.dataset.reqHost || '';
+  try {
+    const cookies = await testerBrowser.sessions.getCookies(id);
+    const ckTable = document.getElementById('replayCookiesTable');
+    ckTable.innerHTML = '';
+    const relevant = cookies.filter(c => {
+      const d = (c.domain || '').replace(/^\./, '');
+      return !reqHost || reqHost === d || reqHost.endsWith('.' + d);
+    });
+    for (const c of relevant) addKvRow(ckTable, c.name, c.value);
+  } catch {}
+  e.target.value = '';
+};
 
 document.getElementById('replayFormatBody').onclick = () => {
   const ta = document.getElementById('replayBody');
