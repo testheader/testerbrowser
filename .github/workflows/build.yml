@@ -82,7 +82,7 @@ jobs:
         run: |
           const crypto = require('crypto');
           const fs = require('fs');
-          const v = require('./package.json').version;
+          const v = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
           const src = `release/TesterBrowser Setup ${v}.exe`;
           const dst = `release/TesterBrowser-Setup-${v}.exe`;
           fs.renameSync(src, dst);
