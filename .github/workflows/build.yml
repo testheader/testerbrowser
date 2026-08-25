@@ -53,7 +53,6 @@ jobs:
           git tag "v$VERSION"
           git push
           git push origin "v$VERSION"
-          # Create the GitHub release now so build jobs can upload assets to it
           gh release create "v$VERSION" --prerelease --title "v$VERSION" --generate-notes
 
   build-windows:
@@ -76,13 +75,42 @@ jobs:
       - run: npx electron-rebuild -f -w better-sqlite3
       - run: npm run build
       - run: npx electron-builder --win nsis --publish never
+      # electron-builder names the file "TesterBrowser Setup X.Y.Z.exe" (spaces).
+      # Rename to hyphenated form and generate latest.yml (not produced by --publish never).
+      - name: Rename artifacts and generate latest.yml
+        shell: node {0}
+        run: |
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const v = require('./package.json').version;
+          const src = `release/TesterBrowser Setup ${v}.exe`;
+          const dst = `release/TesterBrowser-Setup-${v}.exe`;
+          fs.renameSync(src, dst);
+          fs.renameSync(`${src}.blockmap`, `${dst}.blockmap`);
+          const buf = fs.readFileSync(dst);
+          const sha512 = crypto.createHash('sha512').update(buf).digest('base64');
+          const size = buf.length;
+          const date = new Date().toISOString();
+          const yml = [
+            `version: ${v}`,
+            `files:`,
+            `  - url: TesterBrowser-Setup-${v}.exe`,
+            `    sha512: ${sha512}`,
+            `    size: ${size}`,
+            `path: TesterBrowser-Setup-${v}.exe`,
+            `sha512: ${sha512}`,
+            `releaseDate: '${date}'`,
+            ''
+          ].join('\n');
+          fs.writeFileSync('release/latest.yml', yml);
+          console.log(`Generated release/latest.yml for v${v}`);
       - name: Upload assets to GitHub Release
         shell: bash
         run: |
           VERSION=$(node -p "require('./package.json').version")
           gh release upload "v$VERSION" \
-            release/TesterBrowser-Setup-*.exe \
-            release/TesterBrowser-Setup-*.exe.blockmap \
+            "release/TesterBrowser-Setup-${VERSION}.exe" \
+            "release/TesterBrowser-Setup-${VERSION}.exe.blockmap" \
             release/latest.yml \
             --clobber
         env:
@@ -90,7 +118,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: TesterBrowser-windows-installer
-          path: release/*.exe
+          path: release/TesterBrowser-Setup-*.exe
 
   build-linux:
     needs: [bump-version, build-windows]
@@ -109,6 +137,19 @@ jobs:
       - run: npx electron-rebuild -f -w better-sqlite3
       - run: npm run build
       - run: npx electron-builder --linux appimage --publish never
+      # Generate latest-linux.yml (not produced by --publish never)
+      - name: Generate latest-linux.yml
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          APPIMAGE=$(ls release/TesterBrowser-*.AppImage | head -1)
+          FNAME=$(basename "$APPIMAGE")
+          SHA512=$(openssl dgst -sha512 -binary "$APPIMAGE" | base64 -w 0)
+          SIZE=$(wc -c < "$APPIMAGE" | tr -d ' ')
+          DATE=$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')
+          printf "version: %s\nfiles:\n  - url: %s\n    sha512: %s\n    size: %s\npath: %s\nsha512: %s\nreleaseDate: '%s'\n" \
+            "$VERSION" "$FNAME" "$SHA512" "$SIZE" "$FNAME" "$SHA512" "$DATE" \
+            > release/latest-linux.yml
+          echo "Generated release/latest-linux.yml for v$VERSION"
       - name: Upload assets to GitHub Release
         run: |
           VERSION=$(node -p "require('./package.json').version")
