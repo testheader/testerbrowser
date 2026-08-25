@@ -804,6 +804,192 @@ function applyFilter() {
   renderTimeline();
 }
 
+// ── Detail panel (request side panel) ──────────────────────────────────────
+
+let detailTabs = [];
+let activeDetailTabId = null;
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function statusClass(code) {
+  if (!code) return 'detail-status-err';
+  if (code < 300) return 'detail-status-ok';
+  if (code < 400) return 'detail-status-redir';
+  return 'detail-status-err';
+}
+
+function methodClass(method) {
+  const m = String(method || '').toUpperCase();
+  return ['GET','POST','PUT','DELETE','PATCH'].includes(m) ? `detail-method-${m}` : 'detail-method-other';
+}
+
+function getEventTabId(e) {
+  if (e.payload && e.kind.startsWith('network-')) {
+    try {
+      const p = JSON.parse(e.payload);
+      if (p.requestId) return p.requestId;
+    } catch {}
+  }
+  return `${e.ts}-${e.kind}`;
+}
+
+function getEventTabLabel(e) {
+  if (e.kind === 'network-request' || e.kind === 'network-response') {
+    const m = e.summary.match(/^([A-Z]+)\s+(.+)$/);
+    if (m) {
+      let path = m[2];
+      try { path = new URL(m[2]).pathname || '/'; } catch {}
+      return `${m[1]} ${path.length > 18 ? path.slice(0, 18) + '…' : path}`;
+    }
+  }
+  return e.summary.length > 22 ? e.summary.slice(0, 22) + '…' : e.summary;
+}
+
+function openDetailTab(e) {
+  const tabId = getEventTabId(e);
+  const existing = detailTabs.find(t => t.id === tabId);
+  if (existing) {
+    activeDetailTabId = tabId;
+  } else {
+    detailTabs.push({ id: tabId, event: e, label: getEventTabLabel(e) });
+    activeDetailTabId = tabId;
+  }
+  renderDetailPanel();
+}
+
+function closeDetailTab(tabId) {
+  const idx = detailTabs.findIndex(t => t.id === tabId);
+  if (idx === -1) return;
+  detailTabs.splice(idx, 1);
+  if (activeDetailTabId === tabId) {
+    activeDetailTabId = detailTabs.length > 0 ? detailTabs[Math.max(0, idx - 1)].id : null;
+  }
+  renderDetailPanel();
+}
+
+function renderDetailTabs() {
+  const bar = document.getElementById('detailPanelTabBar');
+  bar.innerHTML = '';
+  for (const tab of detailTabs) {
+    const btn = document.createElement('button');
+    btn.className = `detail-tab${tab.id === activeDetailTabId ? ' active' : ''}`;
+    btn.title = tab.event.summary;
+
+    const lbl = document.createElement('span');
+    lbl.className = 'detail-tab-label';
+    lbl.textContent = tab.label;
+
+    const cls = document.createElement('span');
+    cls.className = 'detail-tab-close';
+    cls.textContent = '×';
+    cls.onclick = (ev) => { ev.stopPropagation(); closeDetailTab(tab.id); };
+
+    btn.appendChild(lbl);
+    btn.appendChild(cls);
+    btn.onclick = () => { activeDetailTabId = tab.id; renderDetailPanel(); };
+    bar.appendChild(btn);
+  }
+}
+
+function renderDetailContent() {
+  const content = document.getElementById('detailPanelContent');
+  if (!activeDetailTabId) { content.innerHTML = ''; return; }
+  const tab = detailTabs.find(t => t.id === activeDetailTabId);
+  if (!tab) { content.innerHTML = ''; return; }
+
+  const e = tab.event;
+  let html = '';
+  try {
+    const p = e.payload ? JSON.parse(e.payload) : null;
+
+    if (e.kind === 'network-request' && p) {
+      const req = p.request || {};
+      html += `<div class="detail-section">
+        <span class="detail-method ${methodClass(req.method)}">${escHtml(req.method || '?')}</span>
+        <span class="detail-url">${escHtml(req.url || '')}</span>
+      </div>`;
+      if (req.headers && Object.keys(req.headers).length) {
+        html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
+        for (const [k, v] of Object.entries(req.headers)) {
+          html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
+        }
+        html += `</table></div>`;
+      }
+      if (req.postData) {
+        html += `<div class="detail-section"><h3>Request Body</h3><pre class="detail-body-pre">${escHtml(req.postData)}</pre></div>`;
+      }
+    } else if (e.kind === 'network-response' && p) {
+      const res = p.response || {};
+      html += `<div class="detail-section">
+        <span class="${statusClass(res.status)}">${escHtml(String(res.status || ''))}</span>
+        <span style="color:#666;margin:0 6px">${escHtml(res.statusText || '')}</span>
+        <span class="detail-url">${escHtml(res.url || '')}</span>
+      </div>`;
+      if (res.headers && Object.keys(res.headers).length) {
+        html += `<div class="detail-section"><h3>Response Headers</h3><table class="headers-table">`;
+        for (const [k, v] of Object.entries(res.headers)) {
+          html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
+        }
+        html += `</table></div>`;
+      }
+    } else if (e.kind === 'network-body' && p) {
+      html += `<div class="detail-section"><h3>Response Body</h3>`;
+      if (p.base64Encoded) html += `<div style="color:#555;font-size:11px;margin-bottom:4px">[base64 encoded]</div>`;
+      html += `<pre class="detail-body-pre">${escHtml(String(p.body || ''))}</pre></div>`;
+    } else if (e.kind === 'network-failed' && p) {
+      html += `<div class="detail-section"><h3>Request Failed</h3>
+        <div style="color:#ff8080">${escHtml(p.errorText || 'Unknown error')}</div>`;
+      if (p.canceled) html += `<div style="color:#555;font-size:11px;margin-top:4px">Request was canceled</div>`;
+      html += `</div>`;
+    } else {
+      html += `<div class="detail-section"><h3>${escHtml(e.kind)}</h3>
+        <pre class="detail-body-pre">${escHtml(p ? JSON.stringify(p, null, 2) : e.summary)}</pre></div>`;
+    }
+  } catch {
+    html += `<pre class="detail-body-pre">${escHtml(e.payload || e.summary)}</pre>`;
+  }
+  content.innerHTML = html;
+}
+
+function renderDetailPanel() {
+  const panel = document.getElementById('detailPanel');
+  const resizeHandle = document.getElementById('detailPanelResizeHandle');
+  const isConsoleTab = activeConsoleTab === 'console';
+  const hasOpen = detailTabs.length > 0 && isConsoleTab;
+  panel.classList.toggle('open', hasOpen);
+  resizeHandle.style.display = hasOpen ? '' : 'none';
+  renderDetailTabs();
+  renderDetailContent();
+  renderTimeline();
+}
+
+// Detail panel horizontal resize
+(function () {
+  const handle = document.getElementById('detailPanelResizeHandle');
+  const panel  = document.getElementById('detailPanel');
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panel.offsetWidth;
+    const onMove = (ev) => {
+      const newW = Math.max(200, Math.min(startW + (startX - ev.clientX), window.innerWidth - 300));
+      panel.style.width = newW + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+})();
+
 function renderTimeline() {
   const panel      = timelinePanel;
   const filterText = document.getElementById('filterText').value.toLowerCase();
@@ -841,10 +1027,13 @@ function renderTimeline() {
       const m = e.summary.match(/^\[(\w+)\]/);
       if (m) subtypeClass = ' console-' + m[1].toLowerCase();
     }
+    const tabId = getEventTabId(e);
     const line = document.createElement('div');
     line.className       = `evt ${e.kind}${subtypeClass}`;
     line.dataset.kind    = e.kind;
     line.dataset.summary = e.summary;
+    line.dataset.tabId   = tabId;
+    if (detailTabs.some(t => t.id === tabId)) line.classList.add('detail-row-active');
 
     const summary = document.createElement('div');
     summary.className   = 'evt-summary';
@@ -861,16 +1050,9 @@ function renderTimeline() {
     }
 
     if (e.payload) {
-      const detail = document.createElement('pre');
-      detail.className = 'evt-detail';
-      try { detail.textContent = JSON.stringify(JSON.parse(e.payload), null, 2); }
-      catch { detail.textContent = e.payload; }
-      line.appendChild(detail);
       summary.style.cursor = 'pointer';
-      const toggle = () => detail.classList.toggle('open');
-      // Click on summary text area (not the replay button) toggles detail
       summary.addEventListener('click', (ev) => {
-        if (!ev.target.closest('.evt-replay-btn')) toggle();
+        if (!ev.target.closest('.evt-replay-btn')) openDetailTab(e);
       });
     }
 
@@ -1059,6 +1241,8 @@ async function openSettings() {
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('settingsOverlay').classList.add('open');
   applyUpdateStatus(await testerBrowser.app.getVersionInfo());
+  const settings = await testerBrowser.settings.get();
+  document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
 }
 function closeSettings() {
   document.getElementById('settingsOverlay').classList.remove('open');
@@ -1077,6 +1261,10 @@ document.getElementById('restartBtn').onclick = () => testerBrowser.app.restartA
 
 testerBrowser.app.onShowSettings(() => openSettings());
 testerBrowser.app.onUpdateStatus((data) => applyUpdateStatus(data));
+
+document.getElementById('redactHeadersToggle').addEventListener('change', (e) => {
+  testerBrowser.settings.set({ redactSensitiveHeaders: e.target.checked });
+});
 
 // ── Timeline polling ───────────────────────────────────────────────────────
 
@@ -1107,6 +1295,9 @@ function switchConsoleTab(tab) {
   document.getElementById('storageControls').style.display      = tab === 'storage' ? 'flex' : 'none';
   document.getElementById('timelinePanelWrapper').style.display = tab === 'console' ? 'flex' : 'none';
   document.getElementById('storagePanel').style.display         = tab === 'storage' ? 'block' : 'none';
+  const hasDetailTabs = detailTabs.length > 0;
+  document.getElementById('detailPanel').classList.toggle('open', tab === 'console' && hasDetailTabs);
+  document.getElementById('detailPanelResizeHandle').style.display = tab === 'console' && hasDetailTabs ? '' : 'none';
   if (tab === 'storage') loadStoragePanel();
 }
 

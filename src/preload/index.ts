@@ -140,6 +140,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     write: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   },
 
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),
+  },
+
   app: {
     getVersionInfo:     () => ipcRenderer.invoke('app:versionInfo'),
     checkForUpdates:    () => ipcRenderer.invoke('app:checkForUpdates'),

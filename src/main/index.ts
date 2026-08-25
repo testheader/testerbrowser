@@ -107,6 +107,31 @@ class SpeedDialManager {
 
 const speedDialManager = new SpeedDialManager();
 
+// --- Settings manager ---
+
+interface AppSettings { redactSensitiveHeaders: boolean; }
+const DEFAULT_SETTINGS: AppSettings = { redactSensitiveHeaders: false };
+
+class SettingsManager {
+  private file: string;
+  private data: AppSettings;
+
+  constructor() {
+    this.file = path.join(app.getPath('userData'), 'settings.json');
+    try { this.data = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(this.file, 'utf-8')) }; }
+    catch { this.data = { ...DEFAULT_SETTINGS }; }
+  }
+
+  get(): AppSettings { return this.data; }
+
+  set(patch: Partial<AppSettings>) {
+    this.data = { ...this.data, ...patch };
+    try { fs.writeFileSync(this.file, JSON.stringify(this.data)); } catch {}
+  }
+}
+
+const settingsManager = new SettingsManager();
+
 // ---
 
 function pushUpdateStatus() {
@@ -134,7 +159,7 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  sessionManager = new SessionManager(win);
+  sessionManager = new SessionManager(win, () => settingsManager.get().redactSensitiveHeaders);
 
   const restored = sessionManager.loadAndRestoreSessions();
   if (!restored) {
@@ -306,3 +331,7 @@ ipcMain.handle('app:checkForUpdates', () => {
   autoUpdater.checkForUpdatesAndNotify();
 });
 ipcMain.handle('app:restartAndInstall', () => autoUpdater.quitAndInstall());
+
+// Settings IPC
+ipcMain.handle('settings:get', () => settingsManager.get());
+ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) => settingsManager.set(patch));

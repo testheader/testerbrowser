@@ -18,6 +18,22 @@ export interface RecorderOptions {
   sessionId: string;
   dbDir: string;
   maxEventsPerSession?: number;
+  redactSensitiveHeaders?: boolean;
+}
+
+const SENSITIVE_HEADERS = new Set([
+  'authorization', 'cookie', 'set-cookie', 'x-api-key', 'x-auth-token',
+  'x-csrf-token', 'proxy-authorization', 'x-access-token', 'x-session-token',
+  'www-authenticate', 'x-forwarded-authorization',
+]);
+
+function redactHeaders(headers: Record<string, string>): Record<string, string> {
+  if (!headers || typeof headers !== 'object') return headers;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    out[k] = SENSITIVE_HEADERS.has(k.toLowerCase()) ? '[REDACTED]' : v;
+  }
+  return out;
 }
 
 type EventRow = {
@@ -36,11 +52,13 @@ export class SessionRecorder {
   private wc: WebContents;
   private insertStmt!: Database.Statement;
   private requestMeta = new Map<string, { url: string; method: string; startTs: number }>();
+  private redact: boolean;
 
   constructor(wc: WebContents, opts: RecorderOptions) {
     this.wc = wc;
     this.sessionId = opts.sessionId;
     this.maxEvents = opts.maxEventsPerSession ?? 20000;
+    this.redact = opts.redactSensitiveHeaders ?? false;
 
     if (!fs.existsSync(opts.dbDir)) fs.mkdirSync(opts.dbDir, { recursive: true });
     const dbPath = path.join(opts.dbDir, `${this.sessionId}.sqlite`);
@@ -86,21 +104,27 @@ export class SessionRecorder {
             method: params.request.method,
             startTs: ts,
           });
+          const reqPayload = this.redact
+            ? { ...params, request: { ...params.request, headers: redactHeaders(params.request.headers) } }
+            : params;
           this.record({
             kind: 'network-request',
             ts,
             summary: `${params.request.method} ${params.request.url}`,
-            payload: JSON.stringify(params),
+            payload: JSON.stringify(reqPayload),
           });
           break;
         }
         case 'Network.responseReceived': {
           const meta = this.requestMeta.get(params.requestId);
+          const resPayload = this.redact
+            ? { ...params, response: { ...params.response, headers: redactHeaders(params.response.headers) } }
+            : params;
           this.record({
             kind: 'network-response',
             ts,
             summary: `${params.response.status} ${meta?.url ?? params.response.url}`,
-            payload: JSON.stringify(params),
+            payload: JSON.stringify(resPayload),
           });
           break;
         }

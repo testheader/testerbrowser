@@ -64,10 +64,12 @@ export class SessionManager {
   private downloads = new Map<string, DownloadInfo>();
   private pendingPermissions = new Map<string, { callback: (granted: boolean) => void; permission: string; partition: string; origin: string }>();
   private grantedPermissions = new Map<string, Set<string>>();
+  private getRedactHeaders: () => boolean;
 
-  constructor(win: BrowserWindow) {
+  constructor(win: BrowserWindow, getRedactHeaders: () => boolean) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
+    this.getRedactHeaders = getRedactHeaders;
     this.win.on('resize', () => this.layoutActive());
   }
 
@@ -153,7 +155,11 @@ export class SessionManager {
       webPreferences: { session: ses, contextIsolation: true, sandbox: true, preload: NEWTAB_PRELOAD },
     });
 
-    const recorder = new SessionRecorder(view.webContents, { sessionId: id, dbDir: this.dbDir });
+    const recorder = new SessionRecorder(view.webContents, {
+      sessionId: id,
+      dbDir: this.dbDir,
+      redactSensitiveHeaders: this.getRedactHeaders(),
+    });
 
     const color = opts.color ?? TAB_COLORS[this.colorIndex++ % TAB_COLORS.length];
     const testSession: TestSession = {
@@ -454,8 +460,27 @@ export class SessionManager {
       }
       const first = this.sessions.values().next().value as TestSession | undefined;
       if (first) this.switchTo(first.id);
+      this.cleanupOldRecordings().catch(() => {});
       return true;
     } catch { return false; }
+  }
+
+  private async cleanupOldRecordings(maxAgeDays = 30) {
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    const openIds = new Set(Array.from(this.sessions.keys()));
+    try {
+      const files = await fs.promises.readdir(this.dbDir);
+      for (const f of files) {
+        if (!f.endsWith('.sqlite')) continue;
+        const sessionId = f.replace('.sqlite', '');
+        if (openIds.has(sessionId)) continue;
+        const fp = path.join(this.dbDir, f);
+        try {
+          const stat = await fs.promises.stat(fp);
+          if (stat.mtimeMs < cutoff) await fs.promises.unlink(fp);
+        } catch {}
+      }
+    } catch {}
   }
 
   // --- Layout ---
