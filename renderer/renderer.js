@@ -905,49 +905,75 @@ function renderDetailContent() {
 
   const e = tab.event;
   let html = '';
-  try {
-    const p = e.payload ? JSON.parse(e.payload) : null;
 
-    if (e.kind === 'network-request' && p) {
-      const req = p.request || {};
-      html += `<div class="detail-section">
-        <span class="detail-method ${methodClass(req.method)}">${escHtml(req.method || '?')}</span>
-        <span class="detail-url">${escHtml(req.url || '')}</span>
-      </div>`;
-      if (req.headers && Object.keys(req.headers).length) {
-        html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
-        for (const [k, v] of Object.entries(req.headers)) {
-          html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
+  try {
+    if (e.kind.startsWith('network-')) {
+      // Aggregate all events for this requestId from the timeline
+      const rid = activeDetailTabId;
+      const reqEvt  = timelineEvents.find(ev => ev.kind === 'network-request'  && getEventTabId(ev) === rid);
+      const resEvt  = timelineEvents.find(ev => ev.kind === 'network-response' && getEventTabId(ev) === rid);
+      const bodyEvt = timelineEvents.find(ev => ev.kind === 'network-body'     && getEventTabId(ev) === rid);
+      const failEvt = timelineEvents.find(ev => ev.kind === 'network-failed'   && getEventTabId(ev) === rid);
+
+      // ── Request section ──
+      if (reqEvt && reqEvt.payload) {
+        const req = (JSON.parse(reqEvt.payload).request) || {};
+        html += `<div class="detail-section">
+          <span class="detail-method ${methodClass(req.method)}">${escHtml(req.method || '?')}</span>
+          <span class="detail-url">${escHtml(req.url || '')}</span>
+        </div>`;
+        if (req.headers && Object.keys(req.headers).length) {
+          html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
+          for (const [k, v] of Object.entries(req.headers)) {
+            html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
+          }
+          html += `</table></div>`;
         }
-        html += `</table></div>`;
-      }
-      if (req.postData) {
-        html += `<div class="detail-section"><h3>Request Body</h3><pre class="detail-body-pre">${escHtml(req.postData)}</pre></div>`;
-      }
-    } else if (e.kind === 'network-response' && p) {
-      const res = p.response || {};
-      html += `<div class="detail-section">
-        <span class="${statusClass(res.status)}">${escHtml(String(res.status || ''))}</span>
-        <span style="color:#666;margin:0 6px">${escHtml(res.statusText || '')}</span>
-        <span class="detail-url">${escHtml(res.url || '')}</span>
-      </div>`;
-      if (res.headers && Object.keys(res.headers).length) {
-        html += `<div class="detail-section"><h3>Response Headers</h3><table class="headers-table">`;
-        for (const [k, v] of Object.entries(res.headers)) {
-          html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
+        if (req.postData) {
+          html += `<div class="detail-section"><h3>Request Body</h3><pre class="detail-body-pre">${escHtml(req.postData)}</pre></div>`;
         }
-        html += `</table></div>`;
       }
-    } else if (e.kind === 'network-body' && p) {
-      html += `<div class="detail-section"><h3>Response Body</h3>`;
-      if (p.base64Encoded) html += `<div style="color:#555;font-size:11px;margin-bottom:4px">[base64 encoded]</div>`;
-      html += `<pre class="detail-body-pre">${escHtml(String(p.body || ''))}</pre></div>`;
-    } else if (e.kind === 'network-failed' && p) {
-      html += `<div class="detail-section"><h3>Request Failed</h3>
-        <div style="color:#ff8080">${escHtml(p.errorText || 'Unknown error')}</div>`;
-      if (p.canceled) html += `<div style="color:#555;font-size:11px;margin-top:4px">Request was canceled</div>`;
-      html += `</div>`;
+
+      // ── Response section ──
+      if (resEvt && resEvt.payload) {
+        const res = (JSON.parse(resEvt.payload).response) || {};
+        html += `<div class="detail-section">
+          <h3>Response</h3>
+          <span class="${statusClass(res.status)}">${escHtml(String(res.status || ''))}</span>
+          <span style="color:#666;margin:0 6px">${escHtml(res.statusText || '')}</span>
+        </div>`;
+        if (res.headers && Object.keys(res.headers).length) {
+          html += `<div class="detail-section"><h3>Response Headers</h3><table class="headers-table">`;
+          for (const [k, v] of Object.entries(res.headers)) {
+            html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
+          }
+          html += `</table></div>`;
+        }
+      } else if (!resEvt && !failEvt) {
+        html += `<div class="detail-section"><span style="color:#555;font-size:11px">Waiting for response…</span></div>`;
+      }
+
+      // ── Body section ──
+      if (bodyEvt && bodyEvt.payload) {
+        const bp = JSON.parse(bodyEvt.payload);
+        html += `<div class="detail-section"><h3>Response Body</h3>`;
+        if (bp.base64Encoded) html += `<div style="color:#555;font-size:11px;margin-bottom:4px">[base64 encoded]</div>`;
+        html += `<pre class="detail-body-pre">${escHtml(String(bp.body || ''))}</pre></div>`;
+      }
+
+      // ── Failure section ──
+      if (failEvt && failEvt.payload) {
+        const fp = JSON.parse(failEvt.payload);
+        html += `<div class="detail-section"><h3 style="color:#ff8080">Request Failed</h3>
+          <div style="color:#ff8080">${escHtml(fp.errorText || 'Unknown error')}</div>`;
+        if (fp.canceled) html += `<div style="color:#555;font-size:11px;margin-top:4px">Request was canceled</div>`;
+        html += `</div>`;
+      }
+
+      if (!html) html = `<pre class="detail-body-pre">${escHtml(e.payload || e.summary)}</pre>`;
     } else {
+      // Console / log events
+      const p = e.payload ? JSON.parse(e.payload) : null;
       html += `<div class="detail-section"><h3>${escHtml(e.kind)}</h3>
         <pre class="detail-body-pre">${escHtml(p ? JSON.stringify(p, null, 2) : e.summary)}</pre></div>`;
     }
@@ -1092,7 +1118,7 @@ function headersTextToObj(text) {
   return obj;
 }
 
-function openReplay(evt) {
+async function openReplay(evt) {
   let reqData = {};
   try { reqData = JSON.parse(evt.payload ?? '{}'); } catch {}
   const req = reqData.request ?? {};
@@ -1113,12 +1139,14 @@ function openReplay(evt) {
   document.getElementById('replayResponse').innerHTML = '';
   document.getElementById('replaySpinner').classList.remove('visible');
 
+  await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('replayOverlay').classList.add('open');
   document.getElementById('replayUrl').focus();
 }
 
 function closeReplay() {
   document.getElementById('replayOverlay').classList.remove('open');
+  testerBrowser.layout.setViewerVisible(true);
 }
 
 document.getElementById('closeReplayBtn').onclick = closeReplay;
@@ -1545,14 +1573,26 @@ function updateViewDropdown() {
   document.getElementById('viewBookmarksCheck').textContent = bookmarksBarVisible ? '✓' : '';
 }
 
+function openViewDropdown() {
+  if (viewDropdown.classList.contains('open')) return;
+  viewDropdown.classList.add('open');
+  updateViewDropdown();
+  testerBrowser.layout.setViewerVisible(false);
+}
+
+function closeViewDropdown() {
+  if (!viewDropdown.classList.contains('open')) return;
+  viewDropdown.classList.remove('open');
+  testerBrowser.layout.setViewerVisible(true);
+}
+
 document.getElementById('viewBtn').addEventListener('click', (e) => {
   e.stopPropagation();
-  viewDropdown.classList.toggle('open');
-  updateViewDropdown();
+  viewDropdown.classList.contains('open') ? closeViewDropdown() : openViewDropdown();
 });
 
 document.addEventListener('click', (e) => {
-  if (!viewWrapper.contains(e.target)) viewDropdown.classList.remove('open');
+  if (!viewWrapper.contains(e.target)) closeViewDropdown();
 });
 
 document.getElementById('viewToggleConsole').addEventListener('click', () => {
@@ -1560,16 +1600,19 @@ document.getElementById('viewToggleConsole').addEventListener('click', () => {
   consolePanel.style.display = consoleVisible ? 'flex' : 'none';
   testerBrowser.layout.setConsoleHeight(consoleVisible ? consoleHeight : 0);
   updateViewDropdown();
+  closeViewDropdown();
 });
 
 document.getElementById('viewToggleBookmarks').addEventListener('click', () => {
   toggleBookmarksBar();
   updateViewDropdown();
-  viewDropdown.classList.remove('open');
+  closeViewDropdown();
 });
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 
+updateTopBarHeight();
+testerBrowser.layout.setConsoleHeight(consoleHeight);
 refreshTabs();
 loadBookmarks();
 loadUrlHistory();
