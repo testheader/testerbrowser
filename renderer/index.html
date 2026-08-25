@@ -246,40 +246,67 @@
                       margin-left: 6px; line-height: 1.5; vertical-align: middle; flex-shrink: 0; }
     .evt-replay-btn:hover { background: rgba(127,200,255,0.12); }
     /* Replay modal */
-    #replayOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
-                     z-index: 100; align-items: flex-start; justify-content: center; padding-top: 40px; overflow-y: auto; }
+    #replayOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+                     z-index: 100; align-items: center; justify-content: center; }
     #replayOverlay.open { display: flex; }
-    #replayModal { background: #252526; border: 1px solid #444; border-radius: 8px;
-                   width: 640px; min-width: 340px; padding: 24px 28px;
-                   box-shadow: 0 8px 32px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 10px;
-                   margin-bottom: 40px; }
-    #replayModal h2 { margin: 0; font-size: 15px; font-weight: 600; color: #fff; }
-    .replay-url-row { display: flex; gap: 6px; }
-    #replayMethod { background: #1e1e1e; color: #ddd; border: 1px solid #444; border-radius: 4px;
+    #replayModal { background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 8px;
+                   width: min(94vw, 1020px); height: min(88vh, 760px);
+                   box-shadow: 0 16px 56px rgba(0,0,0,0.75);
+                   display: flex; flex-direction: column; overflow: hidden; }
+    .replay-head { padding: 14px 18px 12px; border-bottom: 1px solid #2a2a2a; flex-shrink: 0; }
+    .replay-head h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #fff; }
+    .replay-url-row { display: flex; gap: 6px; align-items: center; }
+    #replayMethod { background: #111; color: #ddd; border: 1px solid #333; border-radius: 4px;
                     padding: 5px 8px; font-size: 13px; font-family: monospace; cursor: pointer; flex-shrink: 0; }
-    #replayUrl { flex: 1; background: #1e1e1e; color: #ddd; border: 1px solid #444; border-radius: 4px;
-                 padding: 5px 10px; font-size: 13px; font-family: monospace; }
+    #replayUrl { flex: 1; background: #111; color: #ddd; border: 1px solid #333; border-radius: 4px;
+                 padding: 5px 10px; font-size: 13px; font-family: monospace; min-width: 0; }
     #replayUrl:focus, #replayMethod:focus { outline: none; border-color: #4fc3f7; }
-    .replay-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: -4px; }
-    #replayHeaders, #replayBody { background: #1e1e1e; color: #ddd; border: 1px solid #333;
-                                   border-radius: 4px; padding: 8px 10px; font-family: monospace;
-                                   font-size: 12px; resize: vertical; min-height: 70px; width: 100%; box-sizing: border-box; }
-    #replayHeaders:focus, #replayBody:focus { outline: none; border-color: #4fc3f7; }
-    #replayBody { min-height: 90px; }
-    #replayResponse { margin-top: 4px; }
-    .replay-res-status { font-size: 13px; font-family: monospace; margin-bottom: 6px; }
+    .replay-cols { display: flex; flex: 1; min-height: 0; }
+    .replay-left { display: flex; flex-direction: column; gap: 12px; flex: 1; min-width: 0;
+                   padding: 12px 16px; overflow-y: auto; border-right: 1px solid #2a2a2a; }
+    .replay-right { display: flex; flex-direction: column; flex: 1; min-width: 0;
+                    padding: 12px 16px; overflow-y: auto; background: #141414; }
+    .replay-section { display: flex; flex-direction: column; }
+    .replay-section.grow { flex: 1; min-height: 80px; }
+    .replay-sec-title { font-size: 10px; color: #4fc3f7; text-transform: uppercase;
+                        letter-spacing: 0.6px; font-weight: 600; margin-bottom: 6px;
+                        display: flex; align-items: center; justify-content: space-between; }
+    .kv-table { display: flex; flex-direction: column; gap: 3px; }
+    .kv-row { display: flex; gap: 4px; align-items: center; }
+    .kv-key { flex: 0 0 36%; min-width: 0; background: #111; color: #7fc8ff; border: 1px solid #2a2a2a;
+              border-radius: 3px; padding: 3px 7px; font-family: monospace; font-size: 12px; }
+    .kv-val { flex: 1; min-width: 0; background: #111; color: #ddd; border: 1px solid #2a2a2a;
+              border-radius: 3px; padding: 3px 7px; font-family: monospace; font-size: 12px; }
+    .kv-key:focus, .kv-val:focus { outline: none; border-color: #4fc3f7; }
+    .kv-del { flex-shrink: 0; background: none; border: none; color: #444; cursor: pointer;
+              font-size: 16px; padding: 0 3px; line-height: 1; border-radius: 2px; font-family: inherit; }
+    .kv-del:hover { color: #e57373; }
+    .kv-add-btn { background: none; border: 1px solid #2a3a4a; color: #7fc8ff; border-radius: 3px;
+                  font-size: 11px; padding: 1px 8px; cursor: pointer; font-family: inherit; }
+    .kv-add-btn:hover { background: rgba(127,200,255,0.08); }
+    #replayBody { background: #111; color: #ddd; border: 1px solid #2a2a2a; border-radius: 4px;
+                  padding: 8px; font-family: monospace; font-size: 12px; resize: none;
+                  flex: 1; min-height: 80px; width: 100%; box-sizing: border-box; }
+    #replayBody:focus { outline: none; border-color: #4fc3f7; }
+    .replay-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+                      padding: 10px 18px; border-top: 1px solid #2a2a2a; flex-shrink: 0; }
+    .replay-res-title { font-size: 10px; color: #4fc3f7; text-transform: uppercase;
+                        letter-spacing: 0.6px; font-weight: 600; margin-bottom: 10px; }
+    .replay-res-status { font-size: 14px; font-family: monospace; margin-bottom: 10px; font-weight: 700; }
     .replay-res-status.ok  { color: #8fdc8f; }
     .replay-res-status.err { color: #ff8080; }
-    .replay-res-headers { font-size: 11px; color: #777; font-family: monospace; white-space: pre-wrap;
-                          border-left: 2px solid #333; padding: 4px 8px; margin-bottom: 6px;
-                          display: none; max-height: 120px; overflow-y: auto; }
-    .replay-res-headers.open { display: block; }
-    .replay-res-headers-toggle { font-size: 11px; color: #555; cursor: pointer; margin-bottom: 4px; user-select: none; }
-    .replay-res-headers-toggle:hover { color: #999; }
-    #replayBodyOut { background: #111; border: 1px solid #222; border-radius: 4px; padding: 8px 10px;
-                     font-family: monospace; font-size: 12px; color: #ccc; white-space: pre-wrap;
-                     max-height: 260px; overflow-y: auto; word-break: break-all; }
-    #replaySpinner { display: none; color: #4fc3f7; font-size: 12px; }
+    .replay-res-hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 11px; }
+    .replay-res-hdr-table td { padding: 2px 0; vertical-align: top; }
+    .replay-res-hdr-table td:first-child { color: #7fc8ff; white-space: nowrap; padding-right: 10px; min-width: 100px; }
+    .replay-res-hdr-table td:last-child { color: #bbb; word-break: break-all; font-family: monospace; }
+    .replay-res-hdr-toggle { font-size: 11px; color: #555; cursor: pointer; margin-bottom: 6px; user-select: none; }
+    .replay-res-hdr-toggle:hover { color: #999; }
+    .replay-res-hdr-rows { display: none; }
+    .replay-res-hdr-rows.open { display: block; }
+    #replayBodyOut { background: #111; border: 1px solid #222; border-radius: 4px; padding: 8px;
+                     font-family: monospace; font-size: 11px; color: #ccc; white-space: pre;
+                     overflow-x: auto; max-height: 380px; overflow-y: auto; }
+    #replaySpinner { display: none; color: #4fc3f7; font-size: 12px; margin-right: auto; }
     #replaySpinner.visible { display: block; }
 
     /* ── View dropdown ── */
@@ -571,24 +598,50 @@
   <!-- Request Replay -->
   <div id="replayOverlay">
     <div id="replayModal">
-      <h2>Replay Request</h2>
-      <div class="replay-url-row">
-        <select id="replayMethod">
-          <option>GET</option><option>POST</option><option>PUT</option>
-          <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
-        </select>
-        <input id="replayUrl" placeholder="https://…" />
+      <div class="replay-head">
+        <h2>Replay Request</h2>
+        <div class="replay-url-row">
+          <select id="replayMethod">
+            <option>GET</option><option>POST</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+          </select>
+          <input id="replayUrl" placeholder="https://…" />
+        </div>
       </div>
-      <div class="replay-label">Headers (one per line, Key: Value)</div>
-      <textarea id="replayHeaders" placeholder="Content-Type: application/json&#10;Authorization: Bearer …"></textarea>
-      <div class="replay-label">Body</div>
-      <textarea id="replayBody" placeholder="Request body (leave empty for GET/HEAD)"></textarea>
-      <div class="modal-actions">
+      <div class="replay-cols">
+        <div class="replay-left">
+          <div class="replay-section">
+            <div class="replay-sec-title">
+              <span>Headers</span>
+              <button class="kv-add-btn" id="replayAddHeader">+ Add</button>
+            </div>
+            <div id="replayHeadersTable" class="kv-table"></div>
+          </div>
+          <div class="replay-section">
+            <div class="replay-sec-title">
+              <span>Cookies</span>
+              <button class="kv-add-btn" id="replayAddCookie">+ Add</button>
+            </div>
+            <div id="replayCookiesTable" class="kv-table"></div>
+          </div>
+          <div class="replay-section grow">
+            <div class="replay-sec-title">
+              <span>Body</span>
+              <button class="kv-add-btn" id="replayFormatBody">Format JSON/XML</button>
+            </div>
+            <textarea id="replayBody" placeholder="Request body (leave empty for GET/HEAD)"></textarea>
+          </div>
+        </div>
+        <div class="replay-right">
+          <div class="replay-res-title">Response</div>
+          <div id="replayResponse"></div>
+        </div>
+      </div>
+      <div class="replay-actions">
         <span id="replaySpinner">Sending…</span>
         <button class="btn btn-secondary" id="closeReplayBtn">Close</button>
         <button class="btn btn-primary"   id="sendReplayBtn">Send ↵</button>
       </div>
-      <div id="replayResponse"></div>
     </div>
   </div>
 
