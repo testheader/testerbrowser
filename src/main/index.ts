@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, clipboard, net } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
@@ -223,6 +223,34 @@ ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.
 ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.getHAR(id) ?? null);
 ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.getCookies(id) ?? []);
 ipcMain.handle('sessions:getLocalStorage', (_e, id: string) => sessionManager?.getLocalStorage(id) ?? {});
+ipcMain.handle('sessions:deleteCookie', (_e, id: string, name: string, domain: string, cookiePath: string, secure: boolean) =>
+  sessionManager?.deleteCookie(id, name, domain, cookiePath, secure)
+);
+ipcMain.handle('sessions:clearCookies', (_e, id: string) => sessionManager?.clearCookies(id));
+ipcMain.handle('sessions:deleteLocalStorageKey', (_e, id: string, key: string) =>
+  sessionManager?.deleteLocalStorageKey(id, key)
+);
+ipcMain.handle('sessions:setLocalStorageKey', (_e, id: string, key: string, value: string) =>
+  sessionManager?.setLocalStorageKey(id, key, value)
+);
+ipcMain.handle('sessions:clearLocalStorage', (_e, id: string) => sessionManager?.clearLocalStorage(id));
+ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(String(text)));
+
+ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string; headers: Record<string, string>; body?: string }) => {
+  try {
+    const opts: RequestInit = { method: req.method, headers: req.headers };
+    if (req.body && !['GET', 'HEAD'].includes(req.method.toUpperCase())) {
+      opts.body = req.body;
+    }
+    const res = await net.fetch(req.url, opts);
+    const body = await res.text();
+    const headers: Record<string, string> = {};
+    res.headers.forEach((value: string, key: string) => { headers[key] = value; });
+    return { ok: true, status: res.status, statusText: res.statusText, headers, body };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
 
 ipcMain.handle('layout:setConsoleHeight',(_e, h: number) => sessionManager?.setConsoleHeight(h));
 ipcMain.handle('layout:setTopBarHeight', (_e, h: number) => sessionManager?.setTopBarHeight(h));

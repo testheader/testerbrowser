@@ -783,12 +783,29 @@ testerBrowser.sessions.onTabAction(({ action, id }) => {
 
 // ── Console filter ─────────────────────────────────────────────────────────
 
+// ── Auto-scroll tracking ───────────────────────────────────────────────────
+
+let autoScroll = true;
+const timelinePanel    = document.getElementById('timelinePanel');
+const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
+
+timelinePanel.addEventListener('scroll', () => {
+  autoScroll = timelinePanel.scrollTop + timelinePanel.clientHeight >= timelinePanel.scrollHeight - 30;
+  scrollToBottomBtn.classList.toggle('visible', !autoScroll);
+});
+
+scrollToBottomBtn.onclick = () => {
+  timelinePanel.scrollTop = timelinePanel.scrollHeight;
+  autoScroll = true;
+  scrollToBottomBtn.classList.remove('visible');
+};
+
 function applyFilter() {
   renderTimeline();
 }
 
 function renderTimeline() {
-  const panel      = document.getElementById('timelinePanel');
+  const panel      = timelinePanel;
   const filterText = document.getElementById('filterText').value.toLowerCase();
 
   const activeTypes = new Set([...document.querySelectorAll('.filter-pill.on')].map(el => el.dataset.type));
@@ -796,6 +813,15 @@ function renderTimeline() {
     const kindVisible = activeTypes.has(e.kind) ||
       (e.kind === 'network-body' && activeTypes.has('network-response'));
     return kindVisible && (!filterText || e.summary.toLowerCase().includes(filterText));
+  });
+
+  // Update pill count badges from raw (unfiltered) totals
+  const kindCounts = {};
+  for (const e of timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    const n = kindCounts[btn.dataset.type] || 0;
+    const span = btn.querySelector('.pill-count');
+    if (span) span.textContent = n > 0 ? n : '';
   });
 
   const visible = filtered.slice(-TIMELINE_DOM_MAX);
@@ -809,8 +835,14 @@ function renderTimeline() {
   }
 
   for (const e of visible) {
+    // Determine console subtype class
+    let subtypeClass = '';
+    if (e.kind === 'console') {
+      const m = e.summary.match(/^\[(\w+)\]/);
+      if (m) subtypeClass = ' console-' + m[1].toLowerCase();
+    }
     const line = document.createElement('div');
-    line.className       = `evt ${e.kind}`;
+    line.className       = `evt ${e.kind}${subtypeClass}`;
     line.dataset.kind    = e.kind;
     line.dataset.summary = e.summary;
 
@@ -819,6 +851,15 @@ function renderTimeline() {
     summary.textContent = `[${new Date(e.ts).toLocaleTimeString()}] ${e.summary}`;
     line.appendChild(summary);
 
+    if (e.kind === 'network-request' && e.payload) {
+      const replayBtn = document.createElement('button');
+      replayBtn.className = 'evt-replay-btn';
+      replayBtn.textContent = '↺ Replay';
+      replayBtn.title = 'Edit and replay this request';
+      replayBtn.onclick = (ev) => { ev.stopPropagation(); openReplay(e); };
+      summary.appendChild(replayBtn);
+    }
+
     if (e.payload) {
       const detail = document.createElement('pre');
       detail.className = 'evt-detail';
@@ -826,13 +867,17 @@ function renderTimeline() {
       catch { detail.textContent = e.payload; }
       line.appendChild(detail);
       summary.style.cursor = 'pointer';
-      summary.onclick = () => detail.classList.toggle('open');
+      const toggle = () => detail.classList.toggle('open');
+      // Click on summary text area (not the replay button) toggles detail
+      summary.addEventListener('click', (ev) => {
+        if (!ev.target.closest('.evt-replay-btn')) toggle();
+      });
     }
 
     panel.appendChild(line);
   }
 
-  panel.scrollTop = panel.scrollHeight;
+  if (autoScroll) panel.scrollTop = panel.scrollHeight;
 }
 
 document.getElementById('filterText').addEventListener('input', applyFilter);
@@ -840,7 +885,115 @@ document.querySelectorAll('.filter-pill').forEach((btn) => btn.addEventListener(
 document.getElementById('clearConsoleBtn').onclick = () => {
   timelineEvents.length = 0;
   lastTs = 0;
-  document.getElementById('timelinePanel').innerHTML = '';
+  timelinePanel.innerHTML = '';
+  document.querySelectorAll('.filter-pill .pill-count').forEach(s => { s.textContent = ''; });
+  autoScroll = true;
+  scrollToBottomBtn.classList.remove('visible');
+};
+
+// ── Request replay modal ───────────────────────────────────────────────────
+
+function headersObjToText(headers) {
+  if (!headers || typeof headers !== 'object') return '';
+  return Object.entries(headers).map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+
+function headersTextToObj(text) {
+  const obj = {};
+  for (const line of text.split('\n')) {
+    const idx = line.indexOf(':');
+    if (idx < 1) continue;
+    const key = line.slice(0, idx).trim();
+    const val = line.slice(idx + 1).trim();
+    if (key) obj[key] = val;
+  }
+  return obj;
+}
+
+function openReplay(evt) {
+  let reqData = {};
+  try { reqData = JSON.parse(evt.payload ?? '{}'); } catch {}
+  const req = reqData.request ?? {};
+
+  const method = req.method || 'GET';
+  const url    = req.url    || '';
+  const hdrs   = headersObjToText(req.headers || {});
+  const body   = req.postData || '';
+
+  const methodSel = document.getElementById('replayMethod');
+  methodSel.value = method;
+  if (!['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].includes(method)) {
+    methodSel.value = 'GET';
+  }
+  document.getElementById('replayUrl').value     = url;
+  document.getElementById('replayHeaders').value = hdrs;
+  document.getElementById('replayBody').value    = body;
+  document.getElementById('replayResponse').innerHTML = '';
+  document.getElementById('replaySpinner').classList.remove('visible');
+
+  document.getElementById('replayOverlay').classList.add('open');
+  document.getElementById('replayUrl').focus();
+}
+
+function closeReplay() {
+  document.getElementById('replayOverlay').classList.remove('open');
+}
+
+document.getElementById('closeReplayBtn').onclick = closeReplay;
+document.getElementById('replayOverlay').onclick  = (e) => {
+  if (e.target === document.getElementById('replayOverlay')) closeReplay();
+};
+
+document.getElementById('sendReplayBtn').onclick = async () => {
+  const method  = document.getElementById('replayMethod').value;
+  const url     = document.getElementById('replayUrl').value.trim();
+  const headers = headersTextToObj(document.getElementById('replayHeaders').value);
+  const body    = document.getElementById('replayBody').value;
+
+  if (!url) return;
+
+  const spinner = document.getElementById('replaySpinner');
+  const resArea = document.getElementById('replayResponse');
+  spinner.classList.add('visible');
+  resArea.innerHTML = '';
+
+  const result = await testerBrowser.recording.replay({ method, url, headers, body: body || undefined });
+  spinner.classList.remove('visible');
+
+  if (!result.ok) {
+    resArea.innerHTML = `<div class="replay-res-status err">Error: ${escHtml(result.error || 'Unknown error')}</div>`;
+    return;
+  }
+
+  const statusClass = result.status >= 200 && result.status < 300 ? 'ok' : 'err';
+  const statusLine  = document.createElement('div');
+  statusLine.className   = `replay-res-status ${statusClass}`;
+  statusLine.textContent = `${result.status} ${result.statusText}`;
+  resArea.appendChild(statusLine);
+
+  const hdrToggle = document.createElement('div');
+  hdrToggle.className   = 'replay-res-headers-toggle';
+  hdrToggle.textContent = '▸ Response headers';
+  const hdrPre = document.createElement('pre');
+  hdrPre.className   = 'replay-res-headers';
+  hdrPre.textContent = headersObjToText(result.headers);
+  hdrToggle.onclick  = () => {
+    const open = hdrPre.classList.toggle('open');
+    hdrToggle.textContent = (open ? '▾' : '▸') + ' Response headers';
+  };
+  resArea.appendChild(hdrToggle);
+  resArea.appendChild(hdrPre);
+
+  const bodyOut = document.createElement('pre');
+  bodyOut.id = 'replayBodyOut';
+  const ct = (result.headers['content-type'] || '').toLowerCase();
+  if (ct.includes('json')) {
+    try { bodyOut.textContent = JSON.stringify(JSON.parse(result.body), null, 2); }
+    catch { bodyOut.textContent = result.body; }
+  } else {
+    bodyOut.textContent = result.body;
+  }
+  resArea.appendChild(bodyOut);
 };
 document.getElementById('exportHarBtn').onclick = async () => {
   if (!activeId) return;
@@ -950,16 +1103,17 @@ function switchConsoleTab(tab) {
   activeConsoleTab = tab;
   document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
   document.getElementById('consoleTabStorage').classList.toggle('active', tab === 'storage');
-  document.getElementById('consoleControls').style.display = tab === 'console' ? '' : 'none';
-  document.getElementById('storageControls').style.display = tab === 'storage' ? 'flex' : 'none';
-  document.getElementById('timelinePanel').style.display   = tab === 'console' ? '' : 'none';
-  document.getElementById('storagePanel').style.display    = tab === 'storage' ? 'block' : 'none';
+  document.getElementById('consoleControls').style.display      = tab === 'console' ? '' : 'none';
+  document.getElementById('storageControls').style.display      = tab === 'storage' ? 'flex' : 'none';
+  document.getElementById('timelinePanelWrapper').style.display = tab === 'console' ? 'flex' : 'none';
+  document.getElementById('storagePanel').style.display         = tab === 'storage' ? 'block' : 'none';
   if (tab === 'storage') loadStoragePanel();
 }
 
 document.getElementById('consoleTabConsole').addEventListener('click', () => switchConsoleTab('console'));
 document.getElementById('consoleTabStorage').addEventListener('click', () => switchConsoleTab('storage'));
 document.getElementById('refreshStorageBtn').addEventListener('click', loadStoragePanel);
+document.getElementById('storageFilter').addEventListener('input', loadStoragePanel);
 
 // ── Storage panel ──────────────────────────────────────────────────────────
 
@@ -967,72 +1121,221 @@ function escHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function formatCookieExpiry(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts * 1000);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatSameSite(ss) {
+  if (ss === 'no_restriction') return 'None';
+  if (!ss || ss === 'unspecified') return '—';
+  return ss.charAt(0).toUpperCase() + ss.slice(1);
+}
+
+function flashCopied(td) {
+  td.classList.add('flash-copied');
+  setTimeout(() => td.classList.remove('flash-copied'), 500);
+}
+
+async function copyToClipboard(text) {
+  await testerBrowser.clipboard.write(text);
+}
+
 async function loadStoragePanel() {
   if (!activeId) return;
   const panel = document.getElementById('storagePanel');
   panel.innerHTML = '<div class="storage-empty">Loading…</div>';
 
+  const filterText = document.getElementById('storageFilter').value.toLowerCase();
+  const sessionId = activeId; // capture for async callbacks
+
   const [cookies, ls] = await Promise.all([
-    testerBrowser.sessions.getCookies(activeId),
-    testerBrowser.sessions.getLocalStorage(activeId),
+    testerBrowser.sessions.getCookies(sessionId),
+    testerBrowser.sessions.getLocalStorage(sessionId),
   ]);
 
   panel.innerHTML = '';
 
-  // Cookies
+  // ── Cookies ──
+  const filteredCookies = filterText
+    ? cookies.filter(c =>
+        (c.domain || '').toLowerCase().includes(filterText) ||
+        c.name.toLowerCase().includes(filterText) ||
+        c.value.toLowerCase().includes(filterText))
+    : cookies;
+
   const cookieHdr = document.createElement('div');
   cookieHdr.className = 'storage-section-header';
-  cookieHdr.textContent = `Cookies (${cookies.length})`;
+  const cookieTitle = document.createElement('span');
+  cookieTitle.className = 'storage-section-title';
+  cookieTitle.textContent = `Cookies (${filteredCookies.length}${filterText && filteredCookies.length !== cookies.length ? '/' + cookies.length : ''})`;
+  cookieHdr.appendChild(cookieTitle);
+  if (cookies.length > 0) {
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'storage-clear-btn';
+    clearBtn.textContent = 'Clear All';
+    clearBtn.title = 'Delete all cookies for this session';
+    clearBtn.onclick = async () => {
+      await testerBrowser.sessions.clearCookies(sessionId);
+      loadStoragePanel();
+    };
+    cookieHdr.appendChild(clearBtn);
+  }
   panel.appendChild(cookieHdr);
 
-  if (cookies.length === 0) {
+  if (filteredCookies.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'storage-empty';
-    empty.textContent = 'No cookies for this session';
+    empty.textContent = filterText ? 'No cookies match the filter' : 'No cookies for this session';
     panel.appendChild(empty);
   } else {
     const table = document.createElement('table');
     table.className = 'storage-table';
-    table.innerHTML = '<thead><tr><th>Domain</th><th>Name</th><th>Value</th><th>Path</th><th>Secure</th><th>HttpOnly</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Domain</th><th>Name</th><th>Value</th><th>Path</th><th>SameSite</th><th>Expires</th><th>Secure</th><th>HttpOnly</th><th></th></tr></thead>';
     const tbody = document.createElement('tbody');
-    for (const c of cookies) {
+    for (const c of filteredCookies) {
       const tr = document.createElement('tr');
-      const val = escHtml(c.value);
-      tr.innerHTML = `
-        <td>${escHtml(c.domain || '')}</td>
-        <td>${escHtml(c.name)}</td>
-        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${val}">${val}</td>
-        <td>${escHtml(c.path || '/')}</td>
-        <td><span class="storage-badge ${c.secure ? 'yes' : 'no'}">${c.secure ? '✓' : '—'}</span></td>
-        <td><span class="storage-badge ${c.httpOnly ? 'yes' : 'no'}">${c.httpOnly ? '✓' : '—'}</span></td>`;
+
+      const domainTd = document.createElement('td');
+      domainTd.textContent = c.domain || '';
+      tr.appendChild(domainTd);
+
+      const nameTd = document.createElement('td');
+      nameTd.textContent = c.name;
+      tr.appendChild(nameTd);
+
+      const valTd = document.createElement('td');
+      valTd.className = 'copyable';
+      valTd.style.cssText = 'max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      valTd.textContent = c.value;
+      valTd.title = 'Click to copy value';
+      valTd.onclick = () => { copyToClipboard(c.value); flashCopied(valTd); };
+      tr.appendChild(valTd);
+
+      const pathTd = document.createElement('td');
+      pathTd.textContent = c.path || '/';
+      tr.appendChild(pathTd);
+
+      const ssTd = document.createElement('td');
+      ssTd.textContent = formatSameSite(c.sameSite);
+      tr.appendChild(ssTd);
+
+      const expTd = document.createElement('td');
+      expTd.style.whiteSpace = 'nowrap';
+      expTd.textContent = formatCookieExpiry(c.expirationDate);
+      tr.appendChild(expTd);
+
+      const secureTd = document.createElement('td');
+      secureTd.innerHTML = `<span class="storage-badge ${c.secure ? 'yes' : 'no'}">${c.secure ? '✓' : '—'}</span>`;
+      tr.appendChild(secureTd);
+
+      const httpOnlyTd = document.createElement('td');
+      httpOnlyTd.innerHTML = `<span class="storage-badge ${c.httpOnly ? 'yes' : 'no'}">${c.httpOnly ? '✓' : '—'}</span>`;
+      tr.appendChild(httpOnlyTd);
+
+      const delTd = document.createElement('td');
+      const delBtn = document.createElement('button');
+      delBtn.className = 'storage-delete-btn';
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete this cookie';
+      delBtn.onclick = async () => {
+        await testerBrowser.sessions.deleteCookie(sessionId, c.name, c.domain || '', c.path || '/', !!c.secure);
+        loadStoragePanel();
+      };
+      delTd.appendChild(delBtn);
+      tr.appendChild(delTd);
+
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
     panel.appendChild(table);
   }
 
-  // Local Storage
+  // ── Local Storage ──
   const lsEntries = Object.entries(ls);
+  const filteredLs = filterText
+    ? lsEntries.filter(([k, v]) =>
+        k.toLowerCase().includes(filterText) || v.toLowerCase().includes(filterText))
+    : lsEntries;
+
   const lsHdr = document.createElement('div');
   lsHdr.className = 'storage-section-header';
-  lsHdr.textContent = `Local Storage (${lsEntries.length})`;
+  const lsTitle = document.createElement('span');
+  lsTitle.className = 'storage-section-title';
+  lsTitle.textContent = `Local Storage (${filteredLs.length}${filterText && filteredLs.length !== lsEntries.length ? '/' + lsEntries.length : ''})`;
+  lsHdr.appendChild(lsTitle);
+  if (lsEntries.length > 0) {
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'storage-clear-btn';
+    clearBtn.textContent = 'Clear All';
+    clearBtn.title = 'Clear all localStorage for this page';
+    clearBtn.onclick = async () => {
+      await testerBrowser.sessions.clearLocalStorage(sessionId);
+      loadStoragePanel();
+    };
+    lsHdr.appendChild(clearBtn);
+  }
   panel.appendChild(lsHdr);
 
-  if (lsEntries.length === 0) {
+  if (filteredLs.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'storage-empty';
-    empty.textContent = 'No local storage entries for this page';
+    empty.textContent = filterText ? 'No entries match the filter' : 'No local storage entries for this page';
     panel.appendChild(empty);
   } else {
     const table = document.createElement('table');
     table.className = 'storage-table';
-    table.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th><th></th></tr></thead>';
     const tbody = document.createElement('tbody');
-    for (const [k, v] of lsEntries) {
+    for (const [k, v] of filteredLs) {
       const tr = document.createElement('tr');
-      const val = escHtml(v);
-      tr.innerHTML = `<td>${escHtml(k)}</td>
-        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${val}">${val}</td>`;
+
+      const keyTd = document.createElement('td');
+      keyTd.textContent = k;
+      tr.appendChild(keyTd);
+
+      const valTd = document.createElement('td');
+      valTd.className = 'copyable';
+      valTd.style.cssText = 'max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      valTd.textContent = v;
+      valTd.title = 'Click to copy · Double-click to edit';
+      valTd.onclick = () => { copyToClipboard(v); flashCopied(valTd); };
+      valTd.ondblclick = (e) => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.className = 'ls-edit-input';
+        input.value = v;
+        valTd.innerHTML = '';
+        valTd.appendChild(input);
+        input.focus(); input.select();
+        let done = false;
+        const commit = async () => {
+          if (done) return; done = true;
+          await testerBrowser.sessions.setLocalStorageKey(sessionId, k, input.value);
+          loadStoragePanel();
+        };
+        const cancel = () => { if (done) return; done = true; loadStoragePanel(); };
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+          if (ev.key === 'Escape') cancel();
+        });
+        input.addEventListener('blur', commit);
+      };
+      tr.appendChild(valTd);
+
+      const delTd = document.createElement('td');
+      const delBtn = document.createElement('button');
+      delBtn.className = 'storage-delete-btn';
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete this entry';
+      delBtn.onclick = async () => {
+        await testerBrowser.sessions.deleteLocalStorageKey(sessionId, k);
+        loadStoragePanel();
+      };
+      delTd.appendChild(delBtn);
+      tr.appendChild(delTd);
+
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);

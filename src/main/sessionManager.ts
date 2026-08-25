@@ -556,6 +556,47 @@ export class SessionManager {
     } catch { return {}; }
   }
 
+  async deleteCookie(id: string, name: string, domain: string, cookiePath: string, secure: boolean): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const host = domain.replace(/^\./, '');
+    const url = `${secure ? 'https' : 'http'}://${host}${cookiePath || '/'}`;
+    await s.view.webContents.session.cookies.remove(url, name).catch(() => {});
+  }
+
+  async clearCookies(id: string): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const cookies = await s.view.webContents.session.cookies.get({});
+    await Promise.all(cookies.map(c => {
+      const host = (c.domain ?? '').replace(/^\./, '');
+      const url = `${c.secure ? 'https' : 'http'}://${host}${c.path ?? '/'}`;
+      return s.view.webContents.session.cookies.remove(url, c.name).catch(() => {});
+    }));
+  }
+
+  async deleteLocalStorageKey(id: string, key: string): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    await s.view.webContents.executeJavaScript(
+      `void localStorage.removeItem(${JSON.stringify(key)})`
+    ).catch(() => {});
+  }
+
+  async setLocalStorageKey(id: string, key: string, value: string): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    await s.view.webContents.executeJavaScript(
+      `void localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(value)})`
+    ).catch(() => {});
+  }
+
+  async clearLocalStorage(id: string): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    await s.view.webContents.executeJavaScript('void localStorage.clear()').catch(() => {});
+  }
+
   destroySession(id: string) {
     const s = this.sessions.get(id);
     if (!s) return;

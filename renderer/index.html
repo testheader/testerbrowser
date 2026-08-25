@@ -206,6 +206,81 @@
     .storage-empty { padding: 12px 10px; color: #444; font-style: italic; font-size: 12px; }
     .storage-badge.yes { color: #8fdc8f; }
     .storage-badge.no  { color: #444; }
+    /* Console subtype overrides */
+    .evt.console-error .evt-summary { color: #ff8080; }
+    .evt.console-warn  .evt-summary { color: #e0c060; }
+    .evt.console-info  .evt-summary { color: #7fc8ff; }
+    .evt.console-log   .evt-summary { color: #999; }
+    .evt.console-debug .evt-summary { color: #666; }
+    .evt.network-body  .evt-summary { color: #666; font-style: italic; }
+    /* Pill count badges */
+    .pill-count { font-size: 10px; color: inherit; opacity: 0.7; margin-left: 2px; }
+    /* Auto-scroll button */
+    #scrollToBottomBtn { display: none; position: absolute; bottom: 8px; right: 12px;
+                         background: #252526; border: 1px solid #444; color: #4fc3f7;
+                         border-radius: 12px; padding: 3px 10px; font-size: 11px;
+                         cursor: pointer; z-index: 5; }
+    #scrollToBottomBtn.visible { display: block; }
+    /* Storage filter + action elements */
+    #storageFilter { flex: 1; min-width: 60px; padding: 3px 8px; border-radius: 3px;
+                     border: 1px solid #2a2a2a; background: #111; color: #ddd; font-size: 12px; }
+    #storageFilter:focus { outline: none; border-color: #4fc3f7; }
+    .storage-section-header { display: flex; align-items: center; }
+    .storage-section-title { flex: 1; }
+    .storage-clear-btn { background: none; border: 1px solid #333; color: #666;
+                         font-size: 10px; padding: 1px 6px; border-radius: 3px;
+                         cursor: pointer; margin-right: 6px; }
+    .storage-clear-btn:hover { border-color: #e57373; color: #e57373; }
+    .storage-delete-btn { background: none; border: none; color: #444; cursor: pointer;
+                          font-size: 13px; padding: 0 4px; line-height: 1; border-radius: 2px; }
+    .storage-delete-btn:hover { color: #e57373; background: rgba(229,115,115,0.08); }
+    .storage-table td.copyable { cursor: pointer; }
+    .storage-table td.copyable:hover { background: rgba(79,195,247,0.06); }
+    .storage-table td.flash-copied { background: rgba(79,195,247,0.18) !important; }
+    .ls-edit-input { width: 100%; background: #111; color: #ddd; border: 1px solid #4fc3f7;
+                     border-radius: 2px; font-family: monospace; font-size: 11px;
+                     padding: 1px 4px; outline: none; box-sizing: border-box; }
+    /* Replay button on request events */
+    .evt-replay-btn { background: none; border: 1px solid #2a4a6a; color: #7fc8ff;
+                      border-radius: 3px; font-size: 11px; padding: 0 6px; cursor: pointer;
+                      margin-left: 6px; line-height: 1.5; vertical-align: middle; flex-shrink: 0; }
+    .evt-replay-btn:hover { background: rgba(127,200,255,0.12); }
+    /* Replay modal */
+    #replayOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+                     z-index: 100; align-items: flex-start; justify-content: center; padding-top: 40px; overflow-y: auto; }
+    #replayOverlay.open { display: flex; }
+    #replayModal { background: #252526; border: 1px solid #444; border-radius: 8px;
+                   width: 640px; min-width: 340px; padding: 24px 28px;
+                   box-shadow: 0 8px 32px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 10px;
+                   margin-bottom: 40px; }
+    #replayModal h2 { margin: 0; font-size: 15px; font-weight: 600; color: #fff; }
+    .replay-url-row { display: flex; gap: 6px; }
+    #replayMethod { background: #1e1e1e; color: #ddd; border: 1px solid #444; border-radius: 4px;
+                    padding: 5px 8px; font-size: 13px; font-family: monospace; cursor: pointer; flex-shrink: 0; }
+    #replayUrl { flex: 1; background: #1e1e1e; color: #ddd; border: 1px solid #444; border-radius: 4px;
+                 padding: 5px 10px; font-size: 13px; font-family: monospace; }
+    #replayUrl:focus, #replayMethod:focus { outline: none; border-color: #4fc3f7; }
+    .replay-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: -4px; }
+    #replayHeaders, #replayBody { background: #1e1e1e; color: #ddd; border: 1px solid #333;
+                                   border-radius: 4px; padding: 8px 10px; font-family: monospace;
+                                   font-size: 12px; resize: vertical; min-height: 70px; width: 100%; box-sizing: border-box; }
+    #replayHeaders:focus, #replayBody:focus { outline: none; border-color: #4fc3f7; }
+    #replayBody { min-height: 90px; }
+    #replayResponse { margin-top: 4px; }
+    .replay-res-status { font-size: 13px; font-family: monospace; margin-bottom: 6px; }
+    .replay-res-status.ok  { color: #8fdc8f; }
+    .replay-res-status.err { color: #ff8080; }
+    .replay-res-headers { font-size: 11px; color: #777; font-family: monospace; white-space: pre-wrap;
+                          border-left: 2px solid #333; padding: 4px 8px; margin-bottom: 6px;
+                          display: none; max-height: 120px; overflow-y: auto; }
+    .replay-res-headers.open { display: block; }
+    .replay-res-headers-toggle { font-size: 11px; color: #555; cursor: pointer; margin-bottom: 4px; user-select: none; }
+    .replay-res-headers-toggle:hover { color: #999; }
+    #replayBodyOut { background: #111; border: 1px solid #222; border-radius: 4px; padding: 8px 10px;
+                     font-family: monospace; font-size: 12px; color: #ccc; white-space: pre-wrap;
+                     max-height: 260px; overflow-y: auto; word-break: break-all; }
+    #replaySpinner { display: none; color: #4fc3f7; font-size: 12px; }
+    #replaySpinner.visible { display: block; }
 
     /* ── View dropdown ── */
     #viewWrapper { position: relative; flex-shrink: 0; }
@@ -349,20 +424,24 @@
       <div id="consoleControls">
         <input id="filterText" placeholder="Filter events…" />
         <div class="filter-pills">
-          <button class="filter-pill on" data-type="network-request"  title="Network requests">Req</button>
-          <button class="filter-pill on" data-type="network-response" title="Network responses">Res</button>
-          <button class="filter-pill on" data-type="network-failed"   title="Failed requests">Err</button>
-          <button class="filter-pill on" data-type="console"          title="Console output">JS</button>
-          <button class="filter-pill on" data-type="log"              title="Log events">Log</button>
+          <button class="filter-pill on" data-type="network-request"  title="Network requests">Req<span class="pill-count"></span></button>
+          <button class="filter-pill on" data-type="network-response" title="Network responses">Res<span class="pill-count"></span></button>
+          <button class="filter-pill on" data-type="network-failed"   title="Failed requests">Err<span class="pill-count"></span></button>
+          <button class="filter-pill on" data-type="console"          title="Console output">JS<span class="pill-count"></span></button>
+          <button class="filter-pill on" data-type="log"              title="Log events">Log<span class="pill-count"></span></button>
         </div>
         <button id="exportHarBtn" title="Export HAR">HAR</button>
         <button class="console-icon-btn" id="clearConsoleBtn" title="Clear events">&#10005;</button>
       </div>
       <div id="storageControls">
+        <input id="storageFilter" placeholder="Filter…" />
         <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage">&#8635;</button>
       </div>
     </div>
-    <div id="timelinePanel"></div>
+    <div id="timelinePanelWrapper" style="position:relative;flex:1;display:flex;flex-direction:column;min-height:0">
+      <div id="timelinePanel"></div>
+      <button id="scrollToBottomBtn" title="Scroll to bottom">&#8595; Latest</button>
+    </div>
     <div id="storagePanel"></div>
   </div>
 
@@ -411,6 +490,30 @@
         <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>
         <button class="btn btn-primary"   id="closeSettingsBtn">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Request Replay -->
+  <div id="replayOverlay">
+    <div id="replayModal">
+      <h2>Replay Request</h2>
+      <div class="replay-url-row">
+        <select id="replayMethod">
+          <option>GET</option><option>POST</option><option>PUT</option>
+          <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+        </select>
+        <input id="replayUrl" placeholder="https://…" />
+      </div>
+      <div class="replay-label">Headers (one per line, Key: Value)</div>
+      <textarea id="replayHeaders" placeholder="Content-Type: application/json&#10;Authorization: Bearer …"></textarea>
+      <div class="replay-label">Body</div>
+      <textarea id="replayBody" placeholder="Request body (leave empty for GET/HEAD)"></textarea>
+      <div class="modal-actions">
+        <span id="replaySpinner">Sending…</span>
+        <button class="btn btn-secondary" id="closeReplayBtn">Close</button>
+        <button class="btn btn-primary"   id="sendReplayBtn">Send ↵</button>
+      </div>
+      <div id="replayResponse"></div>
     </div>
   </div>
 

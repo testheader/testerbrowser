@@ -28,6 +28,14 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     setNotes:        (id: string, notes: string) => ipcRenderer.invoke('sessions:notes:set', id, notes),
     getCookies:      (id: string) => ipcRenderer.invoke('sessions:getCookies', id),
     getLocalStorage: (id: string) => ipcRenderer.invoke('sessions:getLocalStorage', id),
+    deleteCookie:          (id: string, name: string, domain: string, cookiePath: string, secure: boolean) =>
+                             ipcRenderer.invoke('sessions:deleteCookie', id, name, domain, cookiePath, secure),
+    clearCookies:          (id: string) => ipcRenderer.invoke('sessions:clearCookies', id),
+    deleteLocalStorageKey: (id: string, key: string) =>
+                             ipcRenderer.invoke('sessions:deleteLocalStorageKey', id, key),
+    setLocalStorageKey:    (id: string, key: string, value: string) =>
+                             ipcRenderer.invoke('sessions:setLocalStorageKey', id, key, value),
+    clearLocalStorage:     (id: string) => ipcRenderer.invoke('sessions:clearLocalStorage', id),
 
     onNavigated: (cb: (d: { id: string; url: string }) => void) => {
       ipcRenderer.removeAllListeners('session:navigated');
@@ -83,6 +91,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     timeline:  (id: string, opts?: { limit?: number; since?: number }) =>
                  ipcRenderer.invoke('recording:timeline', id, opts),
     exportHAR: (id: string) => ipcRenderer.invoke('recording:exportHAR', id),
+    replay: (req: { method: string; url: string; headers: Record<string, string>; body?: string }) =>
+              ipcRenderer.invoke('recording:replay', req),
   },
 
   downloads: {
@@ -124,6 +134,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     setConsoleHeight: (h: number)  => ipcRenderer.invoke('layout:setConsoleHeight', h),
     setTopBarHeight:  (h: number)  => ipcRenderer.invoke('layout:setTopBarHeight', h),
     setViewerVisible: (v: boolean) => ipcRenderer.invoke('layout:setViewerVisible', v),
+  },
+
+  clipboard: {
+    write: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   },
 
   app: {
