@@ -1238,16 +1238,11 @@ document.getElementById('replayAddCookie').onclick = () =>
 document.getElementById('replayCookieSessionPick').onchange = async (e) => {
   const id = e.target.value;
   if (!id) return;
-  const reqHost = e.target.dataset.reqHost || '';
   try {
     const cookies = await testerBrowser.sessions.getCookies(id);
     const ckTable = document.getElementById('replayCookiesTable');
     ckTable.innerHTML = '';
-    const relevant = cookies.filter(c => {
-      const d = (c.domain || '').replace(/^\./, '');
-      return !reqHost || reqHost === d || reqHost.endsWith('.' + d);
-    });
-    for (const c of relevant) addKvRow(ckTable, c.name, c.value);
+    for (const c of cookies) addKvRow(ckTable, c.name, c.value);
   } catch {}
   e.target.value = '';
 };
