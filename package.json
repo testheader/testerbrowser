@@ -9,6 +9,8 @@
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:e2e": "npm run build && playwright test",
     "build": "tsc -p tsconfig.json",
     "dev": "npm run build && electron .",
     "start": "electron .",
@@ -17,12 +19,16 @@
     "dist:mac": "npm run build && electron-builder --mac dmg"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.0",
+    "@playwright/test": "^1.62.1",
+    "@types/better-sqlite3": "^7.6.10",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.0.0",
     "electron": "^43.0.0",
     "electron-builder": "^26.0.0",
-    "@electron/rebuild": "^4.0.0",
-    "typescript": "^5.8.0",
-    "@types/node": "^22.0.0",
-    "@types/better-sqlite3": "^7.6.10"
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.8.0"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.0",

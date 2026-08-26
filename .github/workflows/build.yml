@@ -14,9 +14,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # Native modules not needed for type-checking — skip postinstall
+      # Native modules not needed for type-checking or unit tests — skip postinstall.
+      # better-sqlite3 is mocked in Jest, so no native compilation is required.
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+      - run: npm run test
 
   bump-version:
     needs: [typecheck]
@@ -120,9 +122,25 @@ jobs:
           name: TesterBrowser-windows-installer
           path: release/TesterBrowser-Setup-*.exe
 
+  e2e:
+    needs: [bump-version]
+    if: "always() && needs.bump-version.result != 'failure'"
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - run: npx electron-rebuild -f -w better-sqlite3
+      - run: npm run build
+      - run: npx playwright test
+
   build-linux:
-    needs: [bump-version, build-windows]
-    if: "always() && needs.bump-version.result != 'failure' && needs.build-windows.result == 'success'"
+    needs: [bump-version, build-windows, e2e]
+    if: "always() && needs.bump-version.result != 'failure' && needs.build-windows.result == 'success' && needs.e2e.result == 'success'"
     runs-on: ubuntu-latest
     permissions:
       contents: write

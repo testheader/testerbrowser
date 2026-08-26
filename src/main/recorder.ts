@@ -171,7 +171,7 @@ export class SessionRecorder {
           });
           break;
         }
-        case 'Runtime.consoleAPICalls': {
+        case 'Runtime.consoleAPICalled': {
           const args = (params.args || [])
             .map((a: any) => a.value ?? a.description ?? '')
             .join(' ');

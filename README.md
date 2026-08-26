@@ -1,102 +1,114 @@
 # TesterBrowser
 
-A desktop browser purpose-built for software testers: isolated, side-by-side
-sessions with **always-on** network + console recording, built on real
-Chromium via Electron (not a Chromium fork — see "Why Electron, not a fork"
-below).
+A desktop browser built for manual testers — isolated sessions, always-on network recording, and a built-in console panel, without ever opening DevTools.
 
-## Status: MVP scaffold
+## Features
 
-This is a working starting point, not a finished product. It currently
-implements the two top-priority features:
+### Isolated sessions
+Each tab is its own browser session with separate cookies, localStorage, and cache. Test multiple accounts or environments side by side without interference. Sessions can be:
+- **Persistent** — survive across restarts
+- **In-memory** — clean slate every time
+- **Cloned** — copy cookies from one session into a new one to duplicate a login state
 
-1. **Isolated multi-session browsing** — each session is its own Electron
-   `session` partition (own cookies/localStorage/cache), shown as a tab, with
-   a "clone session" API to copy cookies from one session into a new one.
-2. **Always-on recording** — as soon as a session is created, its CDP
-   `Network`, `Log`, and `Runtime.consoleAPICalls` events are captured to a
-   local SQLite DB, independent of whether any UI panel is open. The bottom
-   panel is a live, merged, timestamp-correlated view of network + console
-   for the active session. HAR export is included (minimal format — extend
-   as needed).
+Tabs opened via middle-click or `window.open` automatically inherit the parent session's colour, so related tabs stay visually grouped.
 
-Not yet implemented (see original feature list): visual regression diffing,
-accessibility tree panel, request/response mocking UI, test-data generators,
-environment diffing. The recording/session core was built first deliberately,
-since it's the part that's expensive to retrofit later.
+### Always-on recording
+Network requests, console output, and JS errors are captured the moment a session is created — no need to open DevTools first and miss the early requests.
 
-## Architecture
+The **Console panel** at the bottom of the window shows a live, merged timeline for the active session. Filter by event type with one click:
 
+| Pill | What it shows |
+|------|---------------|
+| Req  | Outgoing requests |
+| Res  | Responses (status, timing) |
+| Err  | Network errors |
+| JS   | `console.*` calls from the page |
+| Log  | Browser log messages |
+
+Export any session's traffic as a **HAR file** with the export button.
+
+### Storage inspector
+The **Storage tab** (next to Console) shows the active session's cookies and localStorage in a table — no DevTools, no extensions needed. Refresh on demand or on every session switch.
+
+### Tab management
+- Create, close, pin, rename, clone, and drag-reorder tabs
+- Reopen recently closed tabs (`Ctrl+Shift+T`)
+- Cycle by most-recently-used order (`Ctrl+Tab`)
+- Right-click a tab for the full context menu
+- Per-session scratch notes
+
+### Bookmarks
+Bookmark the current page with `Ctrl+D`. Toggle the bookmarks bar with `Ctrl+Shift+B` or from the **View** menu.
+
+### Keyboard shortcuts
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+T` | New tab |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Shift+T` | Reopen last closed tab |
+| `Ctrl+Tab / Ctrl+Shift+Tab` | Cycle tabs (MRU) |
+| `Ctrl+1–9` | Switch to tab by position |
+| `Ctrl+L` | Focus URL bar |
+| `Ctrl+F` | Find in page |
+| `Ctrl+D` | Bookmark / unbookmark |
+| `Ctrl+Shift+B` | Toggle bookmarks bar |
+| `F5` | Reload |
+| `F12` | Toggle DevTools |
+| `Alt+← / Alt+→` | Back / Forward |
+
+### Auto-updates
+TesterBrowser checks for updates on launch and installs them in the background. You'll be prompted to restart when a new version is ready.
+
+---
+
+## Installation
+
+Download the latest build from the [releases page](https://github.com/testheader/testerbrowser/releases/tag/latest). Every push to `main` publishes a fresh build there — bookmark it for the latest version.
+
+| Platform | File |
+|----------|------|
+| Windows  | `.exe` (NSIS installer) |
+| Linux    | `.AppImage` |
+
+> **Windows note:** the installer is currently unsigned, so Windows SmartScreen will show a warning on first run. Click "More info → Run anyway" to proceed.
+
+**Linux:** make the AppImage executable before running:
+```bash
+chmod +x TesterBrowser-*.AppImage
+./TesterBrowser-*.AppImage
 ```
-src/main/index.ts          Electron main process entry, IPC handlers
-src/main/sessionManager.ts Creates/switches/clones isolated BrowserViews
-src/main/recorder.ts       Attaches CDP debugger, logs to SQLite ring buffer
-src/preload/index.ts       contextBridge API exposed to renderer
-renderer/                  Session tabs + live timeline panel (plain HTML/JS)
-```
 
-Each session = one `BrowserView` + one `session` partition + one
-`SessionRecorder` (its own SQLite file under Electron's userData directory).
-Persistent sessions use a `persist:` partition prefix; throwaway sessions use
-an in-memory partition.
-
-## Why Electron, not a Chromium fork
-
-A real Chromium fork means tracking upstream security patches indefinitely,
-your own build farm, and 6–12 months to a usable v1 — a cost that mainly
-comparable projects (Brave, Arc) pay through multi-year funded teams.
-Electron embeds real Chromium (so pages render identically) while giving
-full control of the surrounding UI and full access to the Chrome DevTools
-Protocol (Network, DOM, Accessibility, Performance, Console, Emulation) —
-which covers essentially everything on the feature list without owning
-Chromium's maintenance burden.
+---
 
 ## Development
 
 ```bash
 npm install
-npm run dev        # builds + launches Electron
+npm run typecheck   # fast type-check, no output files
+npm run dev         # build + launch Electron
 ```
 
-## Building the installer
-
-Windows builds require a Windows toolchain (or Wine); the reliable path is
-CI, not this sandbox/dev machine:
+Building installers locally requires the matching platform toolchain. The reliable path for Windows builds is CI:
 
 ```bash
-npm run dist:win    # on a Windows machine
-npm run dist:linux  # AppImage, any platform
-npm run dist:mac    # on macOS
+npm run dist:win    # Windows (on a Windows machine)
+npm run dist:linux  # Linux AppImage (any platform)
+npm run dist:mac    # macOS (on macOS)
 ```
 
-### CI (GitHub Actions)
+---
 
-`.github/workflows/build.yml` builds the Windows `.exe` (NSIS installer) on
-a `windows-latest` runner and the Linux AppImage on `ubuntu-latest`, on every
-push to `main`, every tag, and via manual dispatch.
+## Roadmap
 
-**Getting the latest build for testing:** every push to `main` also
-republishes a rolling pre-release tagged `latest` with the fresh `.exe` and
-`.AppImage` attached — so there's one stable URL:
-
-```
-https://github.com/<you>/<repo>/releases/tag/latest
-```
-
-Bookmark that. It always has the most recent build, no need to dig through
-the Actions tab or worry about artifact expiry. Tagged releases (`v1.0.0`
-etc.) still work normally alongside it for actual versioned releases.
-
-## Roadmap (suggested order)
-
-1. Visual regression panel (`Page.captureScreenshot` + `pixelmatch` diffing
-   against stored baselines)
-2. Accessibility tree panel (`Accessibility.getFullAXTree`)
-3. Network request/response mocking UI (`Fetch.enable` + `Fetch.fulfillRequest`)
-4. Environment diffing (compare recorded timelines across two sessions)
+1. Visual regression panel (screenshot diffing against stored baselines)
+2. Accessibility tree panel
+3. Network request/response mocking UI
+4. Environment diffing (compare timelines across two sessions)
 5. Test data generators injectable into forms
-6. Code signing for the Windows installer (currently unsigned — Windows
-   SmartScreen will warn on install until this is added)
+6. Code signing for the Windows installer
+
+---
 
 ## License
 
