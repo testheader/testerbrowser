@@ -47,7 +47,9 @@ test.afterAll(async () => {
 // ── Window ───────────────────────────────────────────────────────────────────
 
 test('window opens with TesterBrowser title', async () => {
-  expect(await window.title()).toBe('TesterBrowser');
+  // toHaveTitle polls until the title matches (up to the configured timeout),
+  // so it handles Electron startup timing without needing test-level retries.
+  await expect(window).toHaveTitle('TesterBrowser');
 });
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
