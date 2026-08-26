@@ -22,7 +22,7 @@ const TIMELINE_MAX   = 5000;
 const TIMELINE_DOM_MAX = 500; // max DOM nodes rendered at once
 
 let notesSessionId = null;
-let domainFilterActive = false;
+let domainFilterActive = true;
 
 // ── Layout constants ───────────────────────────────────────────────────────
 
@@ -752,6 +752,7 @@ testerBrowser.sessions.onNavigated(({ id, url }) => {
   if (id === activeId) {
     document.getElementById('urlbar').value = url;
     updateBookmarkStar();
+    if (activeConsoleTab === 'storage') loadStoragePanel();
   }
 });
 
@@ -1462,9 +1463,11 @@ document.getElementById('consoleTabConsole').addEventListener('click', () => swi
 document.getElementById('consoleTabStorage').addEventListener('click', () => switchConsoleTab('storage'));
 document.getElementById('refreshStorageBtn').addEventListener('click', loadStoragePanel);
 document.getElementById('storageFilter').addEventListener('input', loadStoragePanel);
-document.getElementById('domainFilterBtn').addEventListener('click', () => {
+const domainFilterBtn = document.getElementById('domainFilterBtn');
+domainFilterBtn.classList.add('active'); // matches domainFilterActive = true default
+domainFilterBtn.addEventListener('click', () => {
   domainFilterActive = !domainFilterActive;
-  document.getElementById('domainFilterBtn').classList.toggle('active', domainFilterActive);
+  domainFilterBtn.classList.toggle('active', domainFilterActive);
   loadStoragePanel();
 });
 
