@@ -26,7 +26,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     stopFind:    (id: string) => ipcRenderer.invoke('find:stop', id),
     getNotes:        (id: string) => ipcRenderer.invoke('sessions:notes:get', id),
     setNotes:        (id: string, notes: string) => ipcRenderer.invoke('sessions:notes:set', id, notes),
-    getCookies:      (id: string) => ipcRenderer.invoke('sessions:getCookies', id),
+    getCookies:          (id: string) => ipcRenderer.invoke('sessions:getCookies', id),
+    getLoadedDomains:    (id: string) => ipcRenderer.invoke('sessions:getLoadedDomains', id),
     getLocalStorage: (id: string) => ipcRenderer.invoke('sessions:getLocalStorage', id),
     deleteCookie:          (id: string, name: string, domain: string, cookiePath: string, secure: boolean) =>
                              ipcRenderer.invoke('sessions:deleteCookie', id, name, domain, cookiePath, secure),

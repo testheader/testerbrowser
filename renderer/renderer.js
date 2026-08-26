@@ -22,6 +22,7 @@ const TIMELINE_MAX   = 5000;
 const TIMELINE_DOM_MAX = 500; // max DOM nodes rendered at once
 
 let notesSessionId = null;
+let domainFilterActive = false;
 
 // ── Layout constants ───────────────────────────────────────────────────────
 
@@ -1461,6 +1462,11 @@ document.getElementById('consoleTabConsole').addEventListener('click', () => swi
 document.getElementById('consoleTabStorage').addEventListener('click', () => switchConsoleTab('storage'));
 document.getElementById('refreshStorageBtn').addEventListener('click', loadStoragePanel);
 document.getElementById('storageFilter').addEventListener('input', loadStoragePanel);
+document.getElementById('domainFilterBtn').addEventListener('click', () => {
+  domainFilterActive = !domainFilterActive;
+  document.getElementById('domainFilterBtn').classList.toggle('active', domainFilterActive);
+  loadStoragePanel();
+});
 
 // ── Storage panel ──────────────────────────────────────────────────────────
 
@@ -1485,6 +1491,12 @@ function flashCopied(td) {
   setTimeout(() => td.classList.remove('flash-copied'), 500);
 }
 
+function cookieMatchesDomain(cookie, hostname) {
+  if (!hostname) return true;
+  const d = (cookie.domain || '').replace(/^\./, '');
+  return hostname === d || hostname.endsWith('.' + d);
+}
+
 async function copyToClipboard(text) {
   await testerBrowser.clipboard.write(text);
 }
@@ -1497,20 +1509,33 @@ async function loadStoragePanel() {
   const filterText = document.getElementById('storageFilter').value.toLowerCase();
   const sessionId = activeId; // capture for async callbacks
 
-  const [cookies, ls] = await Promise.all([
+  const urlbarVal = document.getElementById('urlbar').value;
+  let currentHostname = '';
+  try {
+    if (urlbarVal && urlbarVal.startsWith('http')) currentHostname = new URL(urlbarVal).hostname;
+  } catch {}
+
+  const [cookies, ls, loadedDomains] = await Promise.all([
     testerBrowser.sessions.getCookies(sessionId),
     testerBrowser.sessions.getLocalStorage(sessionId),
+    testerBrowser.sessions.getLoadedDomains(sessionId),
   ]);
 
   panel.innerHTML = '';
 
   // ── Cookies ──
-  const filteredCookies = filterText
+  const textFiltered = filterText
     ? cookies.filter(c =>
         (c.domain || '').toLowerCase().includes(filterText) ||
         c.name.toLowerCase().includes(filterText) ||
         c.value.toLowerCase().includes(filterText))
     : cookies;
+
+  const filteredCookies = domainFilterActive
+    ? textFiltered.filter(c =>
+        cookieMatchesDomain(c, currentHostname) ||
+        loadedDomains.some(d => cookieMatchesDomain(c, d)))
+    : textFiltered;
 
   const cookieHdr = document.createElement('div');
   cookieHdr.className = 'storage-section-header';
@@ -1542,10 +1567,28 @@ async function loadStoragePanel() {
     table.innerHTML = '<thead><tr><th>Domain</th><th>Name</th><th>Value</th><th>Path</th><th>SameSite</th><th>Expires</th><th>Secure</th><th>HttpOnly</th><th></th></tr></thead>';
     const tbody = document.createElement('tbody');
     for (const c of filteredCookies) {
+      const isFirstParty = cookieMatchesDomain(c, currentHostname);
+      const isRelevant3P = !isFirstParty && loadedDomains.some(d => cookieMatchesDomain(c, d));
+      const isUnrelated3P = !isFirstParty && !isRelevant3P;
+
       const tr = document.createElement('tr');
+      if (isUnrelated3P && currentHostname) tr.classList.add('cookie-row-irrelevant');
 
       const domainTd = document.createElement('td');
       domainTd.textContent = c.domain || '';
+      if (isRelevant3P && currentHostname) {
+        const badge = document.createElement('span');
+        badge.className = 'cookie-3p relevant';
+        badge.textContent = '3P';
+        badge.title = 'Set by a resource loaded on this page';
+        domainTd.appendChild(badge);
+      } else if (isUnrelated3P && currentHostname) {
+        const badge = document.createElement('span');
+        badge.className = 'cookie-3p other';
+        badge.textContent = '3P';
+        badge.title = 'Set during a different navigation';
+        domainTd.appendChild(badge);
+      }
       tr.appendChild(domainTd);
 
       const nameTd = document.createElement('td');

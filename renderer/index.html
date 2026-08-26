@@ -225,6 +225,17 @@
     #storageFilter { flex: 1; min-width: 60px; padding: 3px 8px; border-radius: 3px;
                      border: 1px solid #2a2a2a; background: #111; color: #ddd; font-size: 12px; }
     #storageFilter:focus { outline: none; border-color: #4fc3f7; }
+    .storage-domain-btn { background: none; border: 1px solid #333; color: #666;
+                          font-size: 11px; padding: 2px 8px; border-radius: 3px;
+                          cursor: pointer; white-space: nowrap; }
+    .storage-domain-btn:hover { border-color: #4fc3f7; color: #4fc3f7; }
+    .storage-domain-btn.active { border-color: #4fc3f7; color: #4fc3f7; background: rgba(79,195,247,0.08); }
+    .cookie-3p { display: inline-block; font-size: 9px; font-weight: 700; padding: 0 3px;
+                 border-radius: 2px; vertical-align: middle; margin-left: 4px;
+                 line-height: 14px; letter-spacing: 0.3px; }
+    .cookie-3p.relevant { background: rgba(79,195,247,0.15); color: #4fc3f7; border: 1px solid rgba(79,195,247,0.3); }
+    .cookie-3p.other    { background: rgba(255,255,255,0.04); color: #555; border: 1px solid #333; }
+    .cookie-row-irrelevant td { opacity: 0.45; }
     .storage-section-header { display: flex; align-items: center; }
     .storage-section-title { flex: 1; }
     .storage-clear-btn { background: none; border: 1px solid #333; color: #666;
@@ -523,6 +534,7 @@
       </div>
       <div id="storageControls">
         <input id="storageFilter" placeholder="Filter…" />
+        <button class="storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
         <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage">&#8635;</button>
       </div>
     </div>

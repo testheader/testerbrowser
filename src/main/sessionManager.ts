@@ -15,6 +15,7 @@ export interface TestSession {
   view: WebContentsView;
   recorder: SessionRecorder;
   createdAt: number;
+  loadedDomains: Set<string>;
 }
 
 interface DownloadInfo {
@@ -171,8 +172,16 @@ export class SessionManager {
       color,
       view, recorder,
       createdAt: Date.now(),
+      loadedDomains: new Set<string>(),
     };
     this.sessions.set(id, testSession);
+
+    ses.webRequest.onCompleted((details) => {
+      try {
+        const host = new URL(details.url).hostname;
+        if (host) testSession.loadedDomains.add(host);
+      } catch {}
+    });
 
     if (opts.startUrl) {
       view.webContents.loadURL(opts.startUrl);
@@ -183,6 +192,8 @@ export class SessionManager {
     view.webContents.on('did-navigate', (_e, url) => {
       const displayUrl = isNewtabUrl(url) ? '' : url;
       testSession.currentUrl = displayUrl;
+      testSession.loadedDomains = new Set<string>();
+      try { if (displayUrl) testSession.loadedDomains.add(new URL(displayUrl).hostname); } catch {}
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
     });
@@ -562,6 +573,10 @@ export class SessionManager {
 
   getHAR(id: string): object | null {
     return this.sessions.get(id)?.recorder.exportHAR() ?? null;
+  }
+
+  getLoadedDomains(id: string): string[] {
+    return Array.from(this.sessions.get(id)?.loadedDomains ?? []);
   }
 
   async getCookies(id: string) {
