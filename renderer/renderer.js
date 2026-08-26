@@ -1239,10 +1239,12 @@ document.getElementById('replayCookieSessionPick').onchange = async (e) => {
   const id = e.target.value;
   if (!id) return;
   try {
+    const reqHost = e.target.dataset.reqHost || '';
     const cookies = await testerBrowser.sessions.getCookies(id);
+    const relevant = reqHost ? cookies.filter(c => cookieMatchesDomain(c, reqHost)) : cookies;
     const ckTable = document.getElementById('replayCookiesTable');
     ckTable.innerHTML = '';
-    for (const c of cookies) addKvRow(ckTable, c.name, c.value);
+    for (const c of relevant) addKvRow(ckTable, c.name, c.value);
   } catch {}
   e.target.value = '';
 };
