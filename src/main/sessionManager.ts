@@ -1,8 +1,10 @@
-import { BrowserWindow, WebContentsView, session as electronSession, Menu, shell, clipboard } from 'electron';
+import { BrowserWindow, WebContentsView, session as electronSession, Menu, clipboard } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import { SessionRecorder } from './recorder';
+import { DownloadManager } from './downloadManager';
+import { PermissionManager } from './permissionManager';
 
 export interface TestSession {
   id: string;
@@ -16,17 +18,6 @@ export interface TestSession {
   recorder: SessionRecorder;
   createdAt: number;
   loadedDomains: Set<string>;
-}
-
-interface DownloadInfo {
-  id: string;
-  filename: string;
-  url: string;
-  state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
-  receivedBytes: number;
-  totalBytes: number;
-  savePath: string;
-  item?: Electron.DownloadItem;
 }
 
 const TAB_COLORS = [
@@ -62,15 +53,16 @@ export class SessionManager {
   private isViewVisible = true;
   private sessionNotes = new Map<string, string>();
   private colorIndex = 0;
-  private downloads = new Map<string, DownloadInfo>();
-  private pendingPermissions = new Map<string, { callback: (granted: boolean) => void; permission: string; partition: string; origin: string }>();
-  private grantedPermissions = new Map<string, Set<string>>();
+  private downloadManager: DownloadManager;
+  private permissionManager: PermissionManager;
   private getRedactHeaders: () => boolean;
 
   constructor(win: BrowserWindow, getRedactHeaders: () => boolean) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
     this.getRedactHeaders = getRedactHeaders;
+    this.downloadManager = new DownloadManager(win);
+    this.permissionManager = new PermissionManager(win);
     this.win.on('resize', () => this.layoutActive());
   }
 
@@ -95,62 +87,8 @@ export class SessionManager {
     const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
     const ses = electronSession.fromPartition(partition);
 
-    // Download handling — auto-save to system Downloads folder
-    ses.on('will-download', (_event, item) => {
-      const dlId = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      // path.basename strips any directory traversal from server-supplied filenames
-      const rawName = path.basename(item.getFilename()) || 'download';
-      const dlDir = app.getPath('downloads');
-      const ext = path.extname(rawName);
-      const base = path.basename(rawName, ext);
-      let savePath = path.join(dlDir, rawName);
-      let counter = 1;
-      while (fs.existsSync(savePath)) {
-        savePath = path.join(dlDir, `${base} (${counter++})${ext}`);
-      }
-      item.setSavePath(savePath);
-      const filename = path.basename(savePath);
-
-      const dl: DownloadInfo = {
-        id: dlId, filename, url: item.getURL(),
-        state: 'progressing', receivedBytes: 0,
-        totalBytes: item.getTotalBytes(), savePath, item,
-      };
-      this.downloads.set(dlId, dl);
-      this.pushDownload(dl);
-
-      item.on('updated', (_e, state) => {
-        dl.state = state as 'progressing' | 'interrupted';
-        dl.receivedBytes = item.getReceivedBytes();
-        dl.totalBytes = item.getTotalBytes();
-        this.pushDownload(dl);
-      });
-      item.on('done', (_e, state) => {
-        dl.state = state as 'completed' | 'cancelled' | 'interrupted';
-        dl.receivedBytes = item.getReceivedBytes();
-        dl.savePath = item.getSavePath();
-        dl.item = undefined;
-        this.pushDownload(dl);
-      });
-    });
-
-    // Permission handling — auto-grant fullscreen/pointer lock, prompt for the rest
-    ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
-      if (permission === 'fullscreen' || permission === 'pointerLock') {
-        callback(true);
-        return;
-      }
-      const reqId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const requestingUrl = details?.requestingUrl ?? '';
-      let origin = '';
-      try { origin = new URL(requestingUrl).origin; } catch {}
-      const originLabel = origin || getHostname(requestingUrl) || 'This page';
-      this.pendingPermissions.set(reqId, { callback, permission, partition, origin });
-      this.win.webContents.send('permission:request', { reqId, permission, origin: originLabel });
-    });
-    ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
-      return this.grantedPermissions.get(`${partition}|${requestingOrigin}`)?.has(permission) ?? false;
-    });
+    this.downloadManager.attach(ses);
+    this.permissionManager.attach(ses, partition);
 
     const view = new WebContentsView({
       webPreferences: { session: ses, contextIsolation: true, sandbox: true, preload: NEWTAB_PRELOAD },
@@ -303,6 +241,10 @@ export class SessionManager {
       if (ctrl && key >= '1' && key <= '9') { send(`switchTab:${key}`); return; }
     });
 
+    view.webContents.on('zoom-changed', (_event, zoomDirection) => {
+      this.setZoom(id, zoomDirection === 'in' ? 0.1 : -0.1);
+    });
+
     view.webContents.setWindowOpenHandler(({ url }) => {
       if (isSafeUrl(url)) {
         setImmediate(() => {
@@ -327,44 +269,17 @@ export class SessionManager {
     });
   }
 
-  private pushDownload(dl: DownloadInfo) {
-    this.win.webContents.send('download:update', {
-      id: dl.id, filename: dl.filename, url: dl.url,
-      state: dl.state, receivedBytes: dl.receivedBytes,
-      totalBytes: dl.totalBytes, savePath: dl.savePath,
-    });
-  }
+  // --- Download actions (delegated) ---
 
-  // --- Download actions ---
+  listDownloads()       { return this.downloadManager.list(); }
+  openDownload(id: string)   { this.downloadManager.open(id); }
+  revealDownload(id: string) { this.downloadManager.reveal(id); }
+  cancelDownload(id: string) { this.downloadManager.cancel(id); }
+  clearDownloads()      { this.downloadManager.clear(); }
 
-  openDownload(id: string)   { const dl = this.downloads.get(id); if (dl?.savePath) shell.openPath(dl.savePath); }
-  revealDownload(id: string) { const dl = this.downloads.get(id); if (dl?.savePath) shell.showItemInFolder(dl.savePath); }
-  cancelDownload(id: string) { this.downloads.get(id)?.item?.cancel(); }
-  clearDownloads() {
-    for (const [id, dl] of this.downloads) if (dl.state !== 'progressing') this.downloads.delete(id);
-    this.win.webContents.send('download:cleared');
-  }
-  listDownloads() {
-    return Array.from(this.downloads.values()).map(dl => ({
-      id: dl.id, filename: dl.filename, url: dl.url,
-      state: dl.state, receivedBytes: dl.receivedBytes,
-      totalBytes: dl.totalBytes, savePath: dl.savePath,
-    }));
-  }
+  // --- Permission (delegated) ---
 
-  // --- Permission ---
-
-  respondPermission(reqId: string, granted: boolean) {
-    const entry = this.pendingPermissions.get(reqId);
-    if (!entry) return;
-    entry.callback(granted);
-    if (granted) {
-      const key = `${entry.partition}|${entry.origin}`;
-      if (!this.grantedPermissions.has(key)) this.grantedPermissions.set(key, new Set());
-      this.grantedPermissions.get(key)!.add(entry.permission);
-    }
-    this.pendingPermissions.delete(reqId);
-  }
+  respondPermission(reqId: string, granted: boolean) { this.permissionManager.respond(reqId, granted); }
 
   // --- Session management ---
 
