@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
@@ -53,6 +54,7 @@ jobs:
           git add package.json package-lock.json
           git commit -m "chore: bump version to $VERSION"
           git tag "v$VERSION"
+          git pull --rebase origin main
           git push
           git push origin "v$VERSION"
           gh release create "v$VERSION" --prerelease --title "v$VERSION" --generate-notes
