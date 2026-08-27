@@ -1,0 +1,45 @@
+/* global testerBrowser */
+import { state } from './state.js';
+import { initLayout, updateTopBarHeight } from './layout.js';
+import { initToolbar, loadUrlHistory } from './toolbar.js';
+import { initBookmarks, loadBookmarks } from './bookmarks.js';
+import { initFind } from './find.js';
+import { initTabs, refreshTabs } from './tabs.js';
+import { initDownloads } from './downloads.js';
+import { initPermissions } from './permissions.js';
+import { initStorage } from './storage.js';
+import { initDetailPanel } from './detail-panel.js';
+import { initTimeline, pollTimeline } from './timeline.js';
+import { initReplay } from './replay.js';
+import { initNotes } from './notes.js';
+import { initSettings } from './settings.js';
+import { initConsoleTabs } from './console-tabs.js';
+import { initViewDropdown } from './view-dropdown.js';
+import { initShortcuts } from './shortcuts.js';
+import { initIpcEvents } from './ipc-events.js';
+
+initLayout();
+initToolbar();
+initBookmarks();
+initFind();
+initTabs();
+initDownloads();
+initPermissions();
+initStorage();
+initDetailPanel();
+initTimeline();
+initReplay();
+initNotes();
+initSettings();
+initConsoleTabs();
+initViewDropdown();
+initShortcuts();
+initIpcEvents();
+
+// Boot
+updateTopBarHeight();
+testerBrowser.layout.setConsoleHeight(state.consoleHeight);
+refreshTabs();
+loadBookmarks();
+loadUrlHistory();
+pollTimeline();

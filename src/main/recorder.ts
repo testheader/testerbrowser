@@ -51,6 +51,8 @@ export class SessionRecorder {
   private maxEvents: number;
   private wc: WebContents;
   private insertStmt!: Database.Statement;
+  private countStmt!: Database.Statement;
+  private trimStmt!: Database.Statement;
   private requestMeta = new Map<string, { url: string; method: string; startTs: number }>();
   private redact: boolean;
 
@@ -78,6 +80,12 @@ export class SessionRecorder {
     `);
     this.insertStmt = this.db.prepare(
       `INSERT INTO events (session_id, ts, kind, summary, payload) VALUES (?, ?, ?, ?, ?)`
+    );
+    this.countStmt = this.db.prepare(
+      `SELECT COUNT(*) as c FROM events WHERE session_id = ?`
+    );
+    this.trimStmt = this.db.prepare(
+      `DELETE FROM events WHERE id IN (SELECT id FROM events WHERE session_id = ? ORDER BY id ASC LIMIT ?)`
     );
 
     this.attach();
@@ -197,18 +205,9 @@ export class SessionRecorder {
     // Only check every 100 inserts to avoid a COUNT(*) on every event.
     this.trimCounter++;
     if (this.trimCounter % 100 !== 0) return;
-    const countRow = this.db
-      .prepare(`SELECT COUNT(*) as c FROM events WHERE session_id = ?`)
-      .get(this.sessionId) as { c: number };
+    const countRow = this.countStmt.get(this.sessionId) as { c: number };
     if (countRow.c > this.maxEvents) {
-      const excess = countRow.c - this.maxEvents;
-      this.db
-        .prepare(
-          `DELETE FROM events WHERE id IN (
-             SELECT id FROM events WHERE session_id = ? ORDER BY id ASC LIMIT ?
-           )`
-        )
-        .run(this.sessionId, excess);
+      this.trimStmt.run(this.sessionId, countRow.c - this.maxEvents);
     }
   }
 

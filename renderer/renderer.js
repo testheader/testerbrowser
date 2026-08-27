@@ -1,4 +1,6 @@
-/* global testerBrowser */
+/* DEPRECATED — renderer logic has been split into ES modules under renderer/*.js
+ * The entry point is now main.js (loaded as <script type="module" src="main.js">).
+ * This file is kept for reference only and is not loaded by index.html. */
 
 // ── State ──────────────────────────────────────────────────────────────────
 

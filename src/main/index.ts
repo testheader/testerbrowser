@@ -11,72 +11,40 @@ type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'n
 let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
 
-// --- Bookmark manager ---
+// --- Generic JSON file store ---
+
+class JsonStore<T> {
+  private file: string;
+  private data: T;
+
+  constructor(filename: string, defaultValue: T, init?: (raw: unknown) => T) {
+    this.file = path.join(app.getPath('userData'), filename);
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.file, 'utf-8'));
+      this.data = init ? init(raw) : (raw as T);
+    } catch { this.data = defaultValue; }
+  }
+
+  get(): T { return this.data; }
+
+  set(value: T): void { this.data = value; this.save(); }
+
+  update(fn: (current: T) => T): T {
+    this.data = fn(this.data);
+    this.save();
+    return this.data;
+  }
+
+  private save() { try { fs.writeFileSync(this.file, JSON.stringify(this.data)); } catch {} }
+}
+
+// --- Typed stores ---
 
 interface Bookmark { url: string; title: string; addedAt: number; }
-
-class BookmarkManager {
-  private file: string;
-  private bookmarks: Bookmark[] = [];
-
-  constructor() {
-    this.file = path.join(app.getPath('userData'), 'bookmarks.json');
-    try { this.bookmarks = JSON.parse(fs.readFileSync(this.file, 'utf-8')); } catch {}
-  }
-
-  list() { return this.bookmarks; }
-
-  add(url: string, title: string) {
-    this.bookmarks = this.bookmarks.filter(b => b.url !== url);
-    this.bookmarks.unshift({ url, title, addedAt: Date.now() });
-    this.save();
-    return this.bookmarks;
-  }
-
-  remove(url: string) {
-    this.bookmarks = this.bookmarks.filter(b => b.url !== url);
-    this.save();
-    return this.bookmarks;
-  }
-
-  private save() {
-    try { fs.writeFileSync(this.file, JSON.stringify(this.bookmarks)); } catch {}
-  }
-}
-
-const bookmarkManager = new BookmarkManager();
-
-// --- URL history manager ---
-
-class URLHistoryManager {
-  private file: string;
-  private history: string[] = []; // most recent first, max 500
-
-  constructor() {
-    this.file = path.join(app.getPath('userData'), 'url-history.json');
-    try { this.history = JSON.parse(fs.readFileSync(this.file, 'utf-8')); } catch {}
-  }
-
-  get() { return this.history; }
-
-  add(url: string) {
-    if (!url || url === 'https://example.com') return this.history;
-    this.history = [url, ...this.history.filter(u => u !== url)].slice(0, 500);
-    this.save();
-    return this.history;
-  }
-
-  private save() {
-    try { fs.writeFileSync(this.file, JSON.stringify(this.history)); } catch {}
-  }
-}
-
-const urlHistoryManager = new URLHistoryManager();
-
-// --- Speed-dial manager ---
-
 interface SpeedDialTile { id: string; url: string; title: string; }
+interface AppSettings { redactSensitiveHeaders: boolean; }
 
+const DEFAULT_SETTINGS: AppSettings = { redactSensitiveHeaders: false };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
   { id: '2', url: 'https://github.com',            title: 'GitHub' },
@@ -88,49 +56,11 @@ const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '8', url: 'https://httpstatuses.io',       title: 'HTTP Status' },
 ];
 
-class SpeedDialManager {
-  private file: string;
-  private tiles: SpeedDialTile[];
-
-  constructor() {
-    this.file = path.join(app.getPath('userData'), 'speed-dial.json');
-    try { this.tiles = JSON.parse(fs.readFileSync(this.file, 'utf-8')); } catch { this.tiles = DEFAULT_SPEED_DIAL; }
-  }
-
-  get() { return this.tiles; }
-
-  set(tiles: SpeedDialTile[]) {
-    this.tiles = tiles;
-    try { fs.writeFileSync(this.file, JSON.stringify(this.tiles)); } catch {}
-  }
-}
-
-const speedDialManager = new SpeedDialManager();
-
-// --- Settings manager ---
-
-interface AppSettings { redactSensitiveHeaders: boolean; }
-const DEFAULT_SETTINGS: AppSettings = { redactSensitiveHeaders: false };
-
-class SettingsManager {
-  private file: string;
-  private data: AppSettings;
-
-  constructor() {
-    this.file = path.join(app.getPath('userData'), 'settings.json');
-    try { this.data = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(this.file, 'utf-8')) }; }
-    catch { this.data = { ...DEFAULT_SETTINGS }; }
-  }
-
-  get(): AppSettings { return this.data; }
-
-  set(patch: Partial<AppSettings>) {
-    this.data = { ...this.data, ...patch };
-    try { fs.writeFileSync(this.file, JSON.stringify(this.data)); } catch {}
-  }
-}
-
-const settingsManager = new SettingsManager();
+const bookmarkStore   = new JsonStore<Bookmark[]>('bookmarks.json', []);
+const urlHistoryStore = new JsonStore<string[]>('url-history.json', []);
+const speedDialStore  = new JsonStore<SpeedDialTile[]>('speed-dial.json', DEFAULT_SPEED_DIAL);
+const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETTINGS,
+  (raw) => ({ ...DEFAULT_SETTINGS, ...(raw as Partial<AppSettings>) }));
 
 // ---
 
@@ -159,7 +89,7 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  sessionManager = new SessionManager(win, () => settingsManager.get().redactSensitiveHeaders);
+  sessionManager = new SessionManager(win, () => settingsStore.get().redactSensitiveHeaders);
 
   const restored = sessionManager.loadAndRestoreSessions();
   if (!restored) {
@@ -298,16 +228,23 @@ ipcMain.handle('permission:respond', (_e, reqId: string, granted: boolean) =>
 );
 
 // Bookmark IPC
-ipcMain.handle('bookmarks:list',   () => bookmarkManager.list());
-ipcMain.handle('bookmarks:add',    (_e, url: string, title: string) => bookmarkManager.add(url, title));
-ipcMain.handle('bookmarks:remove', (_e, url: string) => bookmarkManager.remove(url));
+ipcMain.handle('bookmarks:list',   () => bookmarkStore.get());
+ipcMain.handle('bookmarks:add',    (_e, url: string, title: string) =>
+  bookmarkStore.update(bs => [{ url, title, addedAt: Date.now() }, ...bs.filter(b => b.url !== url)])
+);
+ipcMain.handle('bookmarks:remove', (_e, url: string) =>
+  bookmarkStore.update(bs => bs.filter(b => b.url !== url))
+);
 
 // URL history IPC
-ipcMain.handle('urlHistory:get', () => urlHistoryManager.get());
-ipcMain.handle('urlHistory:add', (_e, url: string) => urlHistoryManager.add(url));
+ipcMain.handle('urlHistory:get', () => urlHistoryStore.get());
+ipcMain.handle('urlHistory:add', (_e, url: string) => {
+  if (!url || url === 'https://example.com') return urlHistoryStore.get();
+  return urlHistoryStore.update(h => [url, ...h.filter(u => u !== url)].slice(0, 500));
+});
 
 // Speed-dial IPC
-ipcMain.handle('speeddial:get', () => speedDialManager.get());
+ipcMain.handle('speeddial:get', () => speedDialStore.get());
 ipcMain.handle('speeddial:set', (e, tiles: unknown) => {
   // Only the newtab page (a file:// URL) may write tiles
   const senderUrl = e.senderFrame?.url ?? '';
@@ -321,7 +258,7 @@ ipcMain.handle('speeddial:set', (e, tiles: unknown) => {
       // Only allow http/https URLs — drop anything else
       url:   /^https?:\/\//i.test(String(t.url ?? '')) ? String(t.url).slice(0, 2048) : 'about:blank',
     }));
-  speedDialManager.set(sanitized);
+  speedDialStore.set(sanitized);
 });
 
 // App IPC
@@ -337,5 +274,7 @@ ipcMain.handle('app:checkForUpdates', () => {
 ipcMain.handle('app:restartAndInstall', () => autoUpdater.quitAndInstall());
 
 // Settings IPC
-ipcMain.handle('settings:get', () => settingsManager.get());
-ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) => settingsManager.set(patch));
+ipcMain.handle('settings:get', () => settingsStore.get());
+ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) =>
+  settingsStore.update(s => ({ ...s, ...patch }))
+);
