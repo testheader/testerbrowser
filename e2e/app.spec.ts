@@ -22,8 +22,12 @@ test.beforeAll(async () => {
   // Spin up a local HTTP server so navigation tests don't need internet access.
   // Port 0 lets the OS pick a free port.
   await new Promise<void>(resolve => {
-    testServer = createServer((_req, res) => {
-      res.writeHead(200, { 'content-type': 'text/html' });
+    testServer = createServer((req, res) => {
+      const u = new URL(req.url ?? '/', 'http://localhost');
+      const setCookie = u.searchParams.get('setCookie');
+      const headers: Record<string, string> = { 'content-type': 'text/html' };
+      if (setCookie) headers['set-cookie'] = `${setCookie}=1; Path=/`;
+      res.writeHead(200, headers);
       res.end('<html><body><h1>TesterBrowser test page</h1></body></html>');
     });
     testServer.listen(0, '127.0.0.1', () => {
@@ -108,7 +112,7 @@ async function openReplayOverlay(win: Page, port: number) {
   await win.fill('#urlbar', `http://127.0.0.1:${port}`);
   await win.press('#urlbar', 'Enter');
   await win.waitForTimeout(2_500);
-  await win.locator('.evt-replay-btn').first().click();
+  await win.locator('.evt-replay-btn').last().click();
   await expect(win.locator('#replayOverlay')).toHaveClass(/open/);
 }
 
@@ -166,6 +170,62 @@ test('replay cookie session picker filters out cookies from unrelated domains', 
   // Foreign-domain cookies must not appear when replaying a 127.0.0.1 request.
   expect(cookieNames).not.toContain('example_cookie');
   expect(cookieNames).not.toContain('fb_cookie');
+
+  await window.click('#closeReplayBtn');
+});
+
+test('replay cookie session picker shows each session\'s own cookies independently', async () => {
+  // Ensure two sessions exist (test 3 usually creates the second, but a worker
+  // restart after a flaky earlier test may leave only one).
+  let allSessions: Array<{ id: string; partition: string }> =
+    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  if (allSessions.length < 2) {
+    await window.click('#newSessionBtn');
+    allSessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  }
+  const { id: session1Id, partition: partition1 } = allSessions[0];
+  const { id: session2Id, partition: partition2 } = allSessions[1];
+
+  // Inject unique cookies directly via Electron's session API so we don't
+  // depend on server-set cookies (Chromium rejects explicit domain for IPs).
+  // Setting without a domain stores them as host-only (domain: ''), which
+  // cookieMatchesDomain passes through for 127.0.0.1 replay requests.
+  await app.evaluate(async ({ session: electronSession }, [part1, part2]) => {
+    const ses1 = electronSession.fromPartition(part1);
+    const ses2 = electronSession.fromPartition(part2);
+    await ses1.clearStorageData({ storages: ['cookies'] });
+    await ses2.clearStorageData({ storages: ['cookies'] });
+    await ses1.cookies.set({ url: 'http://127.0.0.1', name: 's1_unique_tok', value: '1' });
+    await ses2.cookies.set({ url: 'http://127.0.0.1', name: 's2_unique_tok', value: '1' });
+  }, [partition1, partition2]);
+
+  // Switch to session 1 and navigate to produce a 127.0.0.1 replay event.
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), session1Id);
+  await window.fill('#urlbar', `http://127.0.0.1:${testPort}`);
+  await window.press('#urlbar', 'Enter');
+  await window.waitForTimeout(2_500);
+
+  await openReplayOverlay(window, testPort);
+
+  // ── Session 1 ──
+  await window.selectOption('#replayCookieSessionPick', { value: session1Id });
+  await window.waitForTimeout(500);
+  const s1Names: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
+    els => (els as HTMLInputElement[]).map(el => el.value)
+  );
+
+  // ── Session 2 — the picker handler clears and refills the table ──
+  await window.selectOption('#replayCookieSessionPick', { value: session2Id });
+  await window.waitForTimeout(500);
+  const s2Names: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
+    els => (els as HTMLInputElement[]).map(el => el.value)
+  );
+
+  // Each session's cookie appears only when that session is selected.
+  expect(s1Names).toContain('s1_unique_tok');
+  expect(s1Names).not.toContain('s2_unique_tok');
+  expect(s2Names).toContain('s2_unique_tok');
+  expect(s2Names).not.toContain('s1_unique_tok');
 
   await window.click('#closeReplayBtn');
 });

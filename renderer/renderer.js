@@ -1494,6 +1494,9 @@ function flashCopied(td) {
 function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');
+  // Empty domain means a host-only cookie (common for IP addresses) — include it
+  // since we cannot determine which host set it from the cookie data alone.
+  if (!d) return true;
   return hostname === d || hostname.endsWith('.' + d);
 }
 
