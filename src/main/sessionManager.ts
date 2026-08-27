@@ -585,6 +585,12 @@ export class SessionManager {
     return s.view.webContents.session.cookies.get({});
   }
 
+  async setCookie(id: string, details: Electron.CookiesSetDetails): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    await s.view.webContents.session.cookies.set(details);
+  }
+
   async getLocalStorage(id: string): Promise<Record<string, string>> {
     const s = this.sessions.get(id);
     if (!s) return {};

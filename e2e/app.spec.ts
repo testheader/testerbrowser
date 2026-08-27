@@ -229,3 +229,127 @@ test('replay cookie session picker shows each session\'s own cookies independent
 
   await window.click('#closeReplayBtn');
 });
+
+// ── Storage panel ─────────────────────────────────────────────────────────────
+
+// Navigate to the test URL, switch to the Storage tab, and wait for it to load.
+async function openStorageTab(win: Page, port: number) {
+  await win.fill('#urlbar', `http://127.0.0.1:${port}`);
+  await win.press('#urlbar', 'Enter');
+  await win.waitForTimeout(1_500);
+  await win.click('#consoleTabStorage');
+  await win.waitForTimeout(500);
+}
+
+test('storage tab: add cookie via "+ Add" button', async () => {
+  const sessions: Array<{ id: string; partition: string }> =
+    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const { id: sessionId, partition } = sessions[0];
+
+  // Start clean.
+  await app.evaluate(async ({ session: electronSession }, part) => {
+    await electronSession.fromPartition(part).clearStorageData({ storages: ['cookies'] });
+  }, partition);
+
+  await openStorageTab(window, testPort);
+
+  // Click "+ Add" in the cookie section header.
+  await window.locator('.storage-add-btn').first().click();
+
+  // Fill in the add-row inputs: domain(0), name(1), value(2), path(3).
+  const addRow = window.locator('.storage-add-row').first();
+  await addRow.locator('input').nth(1).fill('e2e_added_cookie');
+  await addRow.locator('input').nth(2).fill('e2e_value');
+  await addRow.locator('input').nth(1).press('Enter');
+
+  await window.waitForTimeout(500);
+
+  const cookies: Array<{ name: string; value: string }> =
+    await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
+  const added = cookies.find(c => c.name === 'e2e_added_cookie');
+  expect(added).toBeDefined();
+  expect(added?.value).toBe('e2e_value');
+});
+
+test('storage tab: edit cookie value by double-clicking', async () => {
+  const sessions: Array<{ id: string; partition: string }> =
+    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const { id: sessionId, partition } = sessions[0];
+
+  // Inject a known cookie.
+  await app.evaluate(async ({ session: electronSession }, part) => {
+    const ses = electronSession.fromPartition(part);
+    await ses.clearStorageData({ storages: ['cookies'] });
+    await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_edit_cookie', value: 'original' });
+  }, partition);
+
+  await openStorageTab(window, testPort);
+
+  // Find the value cell for our cookie (3rd td, index 2) and double-click it.
+  const cookieRow = window.locator('#storagePanel .storage-table tbody tr')
+    .filter({ hasText: 'e2e_edit_cookie' });
+  await cookieRow.locator('td').nth(2).dblclick();
+
+  const editInput = cookieRow.locator('input.ls-edit-input');
+  await editInput.fill('updated');
+  await editInput.press('Enter');
+
+  await window.waitForTimeout(500);
+
+  const cookies: Array<{ name: string; value: string }> =
+    await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
+  const edited = cookies.find(c => c.name === 'e2e_edit_cookie');
+  expect(edited?.value).toBe('updated');
+});
+
+test('storage tab: add localStorage entry via "+ Add" button', async () => {
+  const sessions: Array<{ id: string; partition: string }> =
+    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const { id: sessionId } = sessions[0];
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.clearLocalStorage(id), sessionId);
+
+  await openStorageTab(window, testPort);
+
+  // Click "+ Add" in the localStorage section (second .storage-add-btn).
+  await window.locator('.storage-add-btn').nth(1).click();
+
+  const addRow = window.locator('#storagePanel .storage-add-row');
+  await addRow.locator('input').nth(0).fill('e2e_ls_key');
+  await addRow.locator('input').nth(1).fill('e2e_ls_val');
+  await addRow.locator('input').nth(0).press('Enter');
+
+  await window.waitForTimeout(500);
+
+  const ls: Record<string, string> =
+    await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getLocalStorage(id), sessionId);
+  expect(ls['e2e_ls_key']).toBe('e2e_ls_val');
+});
+
+test('storage tab: rename localStorage key by double-clicking', async () => {
+  const sessions: Array<{ id: string; partition: string }> =
+    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const { id: sessionId } = sessions[0];
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.clearLocalStorage(id), sessionId);
+  await window.evaluate(([id, k, v]: string[]) =>
+    (window as any).testerBrowser.sessions.setLocalStorageKey(id, k, v),
+  [sessionId, 'old_key', 'kept_value']);
+
+  await openStorageTab(window, testPort);
+
+  const lsRow = window.locator('#storagePanel .storage-table tbody tr')
+    .filter({ hasText: 'old_key' });
+  await lsRow.locator('td').nth(0).dblclick();
+
+  const editInput = lsRow.locator('input.ls-edit-input');
+  await editInput.fill('new_key');
+  await editInput.press('Enter');
+
+  await window.waitForTimeout(500);
+
+  const ls: Record<string, string> =
+    await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getLocalStorage(id), sessionId);
+  expect(ls['new_key']).toBe('kept_value');
+  expect(ls['old_key']).toBeUndefined();
+});

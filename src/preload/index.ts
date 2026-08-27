@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     deleteCookie:          (id: string, name: string, domain: string, cookiePath: string, secure: boolean) =>
                              ipcRenderer.invoke('sessions:deleteCookie', id, name, domain, cookiePath, secure),
     clearCookies:          (id: string) => ipcRenderer.invoke('sessions:clearCookies', id),
+    setCookie:             (id: string, details: object) => ipcRenderer.invoke('sessions:setCookie', id, details),
     deleteLocalStorageKey: (id: string, key: string) =>
                              ipcRenderer.invoke('sessions:deleteLocalStorageKey', id, key),
     setLocalStorageKey:    (id: string, key: string, value: string) =>

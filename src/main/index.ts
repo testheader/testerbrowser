@@ -253,6 +253,9 @@ ipcMain.handle('sessions:deleteCookie', (_e, id: string, name: string, domain: s
   sessionManager?.deleteCookie(id, name, domain, cookiePath, secure)
 );
 ipcMain.handle('sessions:clearCookies', (_e, id: string) => sessionManager?.clearCookies(id));
+ipcMain.handle('sessions:setCookie', (_e, id: string, details: Electron.CookiesSetDetails) =>
+  sessionManager?.setCookie(id, details)
+);
 ipcMain.handle('sessions:deleteLocalStorageKey', (_e, id: string, key: string) =>
   sessionManager?.deleteLocalStorageKey(id, key)
 );
