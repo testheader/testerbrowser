@@ -24,6 +24,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('vrPanel').style.display              = tab === 'vr'       ? 'flex'  : 'none';
   document.getElementById('spoofPanel').style.display           = tab === 'spoof'    ? 'flex'  : 'none';
   document.getElementById('securityPanel').style.display        = tab === 'security' ? 'flex'  : 'none';
+  document.getElementById('mockPanel').style.display            = tab === 'mock'     ? 'flex'  : 'none';
   const hasDetailTabs = state.detailTabs.length > 0;
   document.getElementById('detailPanel').classList.toggle('open', tab === 'console' && hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = tab === 'console' && hasDetailTabs ? '' : 'none';
@@ -31,6 +32,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'a11y') loadA11yPanel();
   if (tab === 'spoof') initSpoof();
   if (tab === 'security') initSecurity();
+  if (tab === 'mock') initMock();
 }
 
 export function initConsoleTabs() {
@@ -41,4 +43,5 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabVR').addEventListener('click', () => { switchConsoleTab('vr'); initVR(); });
   document.getElementById('consoleTabSpoof').addEventListener('click', () => switchConsoleTab('spoof'));
   document.getElementById('consoleTabSecurity').addEventListener('click', () => switchConsoleTab('security'));
+  document.getElementById('consoleTabMock').addEventListener('click', () => switchConsoleTab('mock'));
 }
