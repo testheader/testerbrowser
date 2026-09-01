@@ -82,10 +82,19 @@ jobs:
       # Rebuild better-sqlite3 against Electron's ABI
       - run: npx electron-rebuild -f -w better-sqlite3
       - run: npm run build
-      - run: npx electron-builder --win nsis --publish never
+      - name: Build Windows installer
+        shell: bash
+        run: |
+          # Only export signing env vars when the secret is present — an empty
+          # WIN_CSC_LINK causes electron-builder to fail attempting to sign.
+          if [ -n "$WIN_CSC_LINK_VAL" ]; then
+            export WIN_CSC_LINK="$WIN_CSC_LINK_VAL"
+            export WIN_CSC_KEY_PASSWORD="$WIN_CSC_KEY_PASSWORD_VAL"
+          fi
+          npx electron-builder --win nsis --publish never
         env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WIN_CSC_LINK_VAL: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD_VAL: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
       # electron-builder names the file "TesterBrowser Setup X.Y.Z.exe" (spaces).
       # Rename to hyphenated form and generate latest.yml (not produced by --publish never).
       - name: Rename artifacts and generate latest.yml
