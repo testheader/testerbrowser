@@ -218,6 +218,19 @@
     </div>
   </div>
 
+  <!-- Test data template prompt -->
+  <div id="testdataOverlay">
+    <div id="testdataModal">
+      <h2>Custom template</h2>
+      <p id="testdataHint">Use tokens: {firstName} {lastName} {email} {uuid} {date} {phone} {address}</p>
+      <input id="testdataInput" placeholder="{firstName} {lastName}" autocomplete="off" />
+      <div class="modal-actions" style="margin-top:10px">
+        <button class="btn btn-secondary" id="testdataCancelBtn">Cancel</button>
+        <button class="btn btn-primary"   id="testdataFillBtn">Fill</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Notes -->
   <div id="notesOverlay">
     <div id="notesModal">

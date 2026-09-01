@@ -142,6 +142,14 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     getTree: (id: string) => ipcRenderer.invoke('a11y:getTree', id),
   },
 
+  testdata: {
+    apply: (id: string, template: string) => ipcRenderer.invoke('testdata:apply', id, template),
+    onPromptTemplate: (cb: (d: { sessionId: string }) => void) => {
+      ipcRenderer.removeAllListeners('testdata:promptTemplate');
+      ipcRenderer.on('testdata:promptTemplate', (_e, d) => cb(d));
+    },
+  },
+
   clipboard: {
     write: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   },
