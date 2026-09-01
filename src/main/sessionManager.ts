@@ -6,37 +6,25 @@ import { SessionRecorder } from './recorder';
 import { DownloadManager } from './downloadManager';
 import { PermissionManager } from './permissionManager';
 
-// ── Test data generators ──────────────────────────────────────────────────────
-
-function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
-
-const FIRST_NAMES = ['Alice','Bob','Carol','Dave','Eve','Frank','Grace','Henry','Iris','Jack','Karen','Liam','Mia','Noah','Olivia','Paul','Quinn','Rose','Sam','Tina'];
-const LAST_NAMES  = ['Smith','Jones','Williams','Brown','Taylor','Davis','Miller','Wilson','Moore','Anderson','Thomas','Jackson','White','Harris','Martin','Thompson','Garcia','Martinez','Robinson','Clark'];
-const DOMAINS     = ['example.com','test.org','demo.net','sample.io','mock.dev'];
-const STREETS     = ['Main St','Oak Ave','Maple Dr','Cedar Blvd','Elm Way','Park Lane','Lake Rd','Hill Ct'];
-const CITIES      = ['Springfield','Riverside','Greenville','Madison','Franklin','Clinton'];
-
-function genFirstName() { return pick(FIRST_NAMES); }
-function genLastName()  { return pick(LAST_NAMES); }
-function genFullName()  { return `${genFirstName()} ${genLastName()}`; }
-function genEmail()     { return `${genFirstName().toLowerCase()}.${genLastName().toLowerCase()}@${pick(DOMAINS)}`; }
-function genUUID()      { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); }); }
-function genDate()      { return new Date().toISOString().split('T')[0]; }
-function genPhone()     { return `(${200 + (Math.random() * 800 | 0)}) ${100 + (Math.random() * 900 | 0)}-${1000 + (Math.random() * 9000 | 0)}`; }
-function genAddress()   { return `${100 + (Math.random() * 9900 | 0)} ${pick(STREETS)}, ${pick(CITIES)}`; }
-
-function resolveTemplate(tpl: string): string {
-  return tpl
-    .replace(/\{firstName\}/gi, genFirstName())
-    .replace(/\{lastName\}/gi, genLastName())
-    .replace(/\{email\}/gi, genEmail())
-    .replace(/\{uuid\}/gi, genUUID())
-    .replace(/\{date\}/gi, genDate())
-    .replace(/\{phone\}/gi, genPhone())
-    .replace(/\{address\}/gi, genAddress());
-}
+import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+export interface MockRule {
+  id: string;
+  urlPattern: string;
+  method: string;
+  statusCode: number;
+  body: string;
+  enabled: boolean;
+}
+
+function matchesGlob(pattern: string, url: string): boolean {
+  try {
+    const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+    return re.test(url);
+  } catch { return false; }
+}
 
 export interface TestSession {
   id: string;
@@ -50,6 +38,7 @@ export interface TestSession {
   recorder: SessionRecorder;
   createdAt: number;
   loadedDomains: Set<string>;
+  mockRules: MockRule[];
 }
 
 const TAB_COLORS = [
@@ -143,7 +132,27 @@ export class SessionManager {
       view, recorder,
       createdAt: Date.now(),
       loadedDomains: new Set<string>(),
+      mockRules: [],
     };
+
+    // Handle Fetch.requestPaused for mock rules
+    view.webContents.debugger.on('message', (_e: unknown, method: string, params: Record<string, unknown>) => {
+      if (method !== 'Fetch.requestPaused') return;
+      const { requestId, request } = params as { requestId: string; request: { url: string; method: string } };
+      const dbg = view.webContents.debugger;
+      const rule = testSession.mockRules.find(r =>
+        r.enabled && (r.method === '*' || r.method === request.method) && matchesGlob(r.urlPattern, request.url)
+      );
+      if (rule) {
+        dbg.sendCommand('Fetch.fulfillRequest', {
+          requestId,
+          responseCode: rule.statusCode,
+          body: Buffer.from(rule.body).toString('base64'),
+        }).catch(() => {});
+      } else {
+        dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+      }
+    });
     this.sessions.set(id, testSession);
 
     ses.webRequest.onCompleted((details) => {
@@ -751,6 +760,46 @@ export class SessionManager {
     const s = this.sessions.get(id);
     if (!s) return;
     await s.view.webContents.executeJavaScript('void localStorage.clear()').catch(() => {});
+  }
+
+  getMockRules(id: string): MockRule[] {
+    return this.sessions.get(id)?.mockRules ?? [];
+  }
+
+  addMockRule(id: string, rule: MockRule): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    s.mockRules.push(rule);
+    this._applyMocks(id);
+  }
+
+  removeMockRule(id: string, ruleId: string): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    s.mockRules = s.mockRules.filter(r => r.id !== ruleId);
+    this._applyMocks(id);
+  }
+
+  toggleMockRule(id: string, ruleId: string, enabled: boolean): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const rule = s.mockRules.find(r => r.id === ruleId);
+    if (rule) rule.enabled = enabled;
+    this._applyMocks(id);
+  }
+
+  private _applyMocks(id: string): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const dbg = s.view.webContents.debugger;
+    const active = s.mockRules.filter(r => r.enabled);
+    if (active.length === 0) {
+      dbg.sendCommand('Fetch.disable').catch(() => {});
+    } else {
+      dbg.sendCommand('Fetch.enable', {
+        patterns: active.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' })),
+      }).catch(() => {});
+    }
   }
 
   destroySession(id: string) {
