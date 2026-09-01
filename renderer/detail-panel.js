@@ -69,6 +69,7 @@ function renderDetailTabs() {
     btn.appendChild(lbl);
     btn.appendChild(cls);
     btn.onclick = () => { state.activeDetailTabId = tab.id; renderDetailPanel(); };
+    btn.addEventListener('auxclick', (ev) => { if (ev.button === 1) { ev.preventDefault(); closeDetailTab(tab.id); } });
     bar.appendChild(btn);
   }
 }
