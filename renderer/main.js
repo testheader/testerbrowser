@@ -16,6 +16,7 @@ import { initSettings } from './settings.js';
 import { initConsoleTabs } from './console-tabs.js';
 import { initA11y } from './a11y.js';
 import './diff.js';
+import './visual-regression.js';
 import { initTestdata } from './testdata.js';
 import { initViewDropdown } from './view-dropdown.js';
 import { initShortcuts } from './shortcuts.js';

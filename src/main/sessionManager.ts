@@ -567,6 +567,15 @@ export class SessionManager {
     this.injectTestData(s.view, resolveTemplate(template));
   }
 
+  async captureScreenshot(id: string): Promise<string | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    try {
+      const result = await s.view.webContents.debugger.sendCommand('Page.captureScreenshot', { format: 'png' }) as { data: string };
+      return result.data ?? null;
+    } catch { return null; }
+  }
+
   async getA11yTree(id: string): Promise<object[] | null> {
     const s = this.sessions.get(id);
     if (!s) return null;

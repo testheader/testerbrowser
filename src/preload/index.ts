@@ -142,6 +142,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     getTree: (id: string) => ipcRenderer.invoke('a11y:getTree', id),
   },
 
+  visualRegression: {
+    captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
+  },
+
   testdata: {
     apply: (id: string, template: string) => ipcRenderer.invoke('testdata:apply', id, template),
     onPromptTemplate: (cb: (d: { sessionId: string }) => void) => {
