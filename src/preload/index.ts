@@ -146,6 +146,13 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
   },
 
+  mock: {
+    getRules:   (id: string) => ipcRenderer.invoke('mock:getRules', id),
+    addRule:    (id: string, rule: object) => ipcRenderer.invoke('mock:addRule', id, rule),
+    removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('mock:removeRule', id, ruleId),
+    toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('mock:toggleRule', id, ruleId, enabled),
+  },
+
   emulation: {
     set:   (id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; clear?: boolean }) =>
              ipcRenderer.invoke('session:setEmulation', id, opts),

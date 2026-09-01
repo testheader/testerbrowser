@@ -5,6 +5,7 @@ import { initDiff } from './diff.js';
 import { initVR } from './visual-regression.js';
 import { initSpoof } from './emulation.js';
 import { initSecurity } from './security.js';
+import { initMock } from './mock.js';
 
 export function switchConsoleTab(tab) {
   state.activeConsoleTab = tab;
