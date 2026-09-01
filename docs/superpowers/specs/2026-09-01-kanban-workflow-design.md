@@ -98,12 +98,12 @@ CI monitor agent (/watch-ci, looping)
 Project number:    3
 Project ID:        PVT_kwHOA2Pe484BiHJY
 Status field ID:   PVTSSF_lAHOA2Pe484BiHJYzhhAV-0
-Backlog option:    f75ad846
-Ready option:      61e4505c
-In progress option: 47fc9ee4
-CI running option: df73e18b
-Done option:       98236657
-Needs Fix option:  (query after adding — see Task 1 of setup plan)
+Backlog option:    adf7ac3d
+Ready option:      70a64391
+In progress option: 978f4b40
+CI running option: 78882a20
+Needs Fix option:  211b4ce4
+Done option:       07528d57
 Repo:              testheader/testerbrowser
 ```
 
