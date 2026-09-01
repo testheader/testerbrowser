@@ -241,14 +241,20 @@ async function openStorageTab(win: Page, port: number) {
   await win.waitForTimeout(500);
 }
 
-test('storage tab: add cookie via "+ Add" button', async () => {
-  // Navigate first so we know which session is active, then query by URL.
-  await openStorageTab(window, testPort);
+// Returns the session whose URL is on 127.0.0.1 — i.e. the one the storage
+// panel is bound to via state.activeId. Throws if openStorageTab was not called
+// first, since no session would have a loopback URL yet.
+async function activeSession(win: Page): Promise<{ id: string; partition: string; url: string }> {
+  const sessions: Array<{ id: string; partition: string; url: string }> =
+    await win.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const s = sessions.find(s => s.url?.includes('127.0.0.1'));
+  if (!s) throw new Error('No session navigated to 127.0.0.1 — call openStorageTab first');
+  return s;
+}
 
-  const allSessions: Array<{ id: string; partition: string; url: string }> =
-    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const active = allSessions.find(s => s.url && s.url.includes('127.0.0.1')) ?? allSessions[0];
-  const { id: sessionId, partition } = active;
+test('storage tab: add cookie via "+ Add" button', async () => {
+  await openStorageTab(window, testPort);
+  const { id: sessionId, partition } = await activeSession(window);
 
   // Start clean.
   await app.evaluate(async ({ session: electronSession }, part) => {
@@ -278,13 +284,8 @@ test('storage tab: add cookie via "+ Add" button', async () => {
 });
 
 test('storage tab: edit cookie value by double-clicking', async () => {
-  // Navigate first so we know which session is active, then query by URL.
   await openStorageTab(window, testPort);
-
-  const allSessions: Array<{ id: string; partition: string; url: string }> =
-    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const active = allSessions.find(s => s.url && s.url.includes('127.0.0.1')) ?? allSessions[0];
-  const { id: sessionId, partition } = active;
+  const { id: sessionId, partition } = await activeSession(window);
 
   // Inject a known cookie into the active session's partition.
   await app.evaluate(async ({ session: electronSession }, part) => {
@@ -293,13 +294,11 @@ test('storage tab: edit cookie value by double-clicking', async () => {
     await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_edit_cookie', value: 'original' });
   }, partition);
 
-  // Reload storage panel after injecting.
   await window.click('#refreshStorageBtn');
   await window.waitForTimeout(500);
 
-  // Find the value cell for our cookie (3rd td, index 2) and double-click it.
-  // The name column (td[1]) retains 'e2e_edit_cookie' after dblclick on the value cell,
-  // so the row filter stays valid for the input locator.
+  // dblclick on the value cell (td[2]); the name cell (td[1]) keeps its text so
+  // the row filter stays valid for the chained input locator.
   const cookieRow = window.locator('#storagePanel .storage-table tbody tr')
     .filter({ hasText: 'e2e_edit_cookie' });
   await cookieRow.locator('td').nth(2).dblclick();
@@ -317,17 +316,11 @@ test('storage tab: edit cookie value by double-clicking', async () => {
 });
 
 test('storage tab: add localStorage entry via "+ Add" button', async () => {
-  // Navigate first so we know which session is active, then query by URL.
   await openStorageTab(window, testPort);
-
-  const allSessions: Array<{ id: string; url: string }> =
-    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const active = allSessions.find(s => s.url && s.url.includes('127.0.0.1')) ?? allSessions[0];
-  const { id: sessionId } = active;
+  const { id: sessionId } = await activeSession(window);
 
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.clearLocalStorage(id), sessionId);
 
-  // Reload storage panel after clearing.
   await window.click('#refreshStorageBtn');
   await window.waitForTimeout(500);
 
@@ -347,20 +340,14 @@ test('storage tab: add localStorage entry via "+ Add" button', async () => {
 });
 
 test('storage tab: rename localStorage key by double-clicking', async () => {
-  // Navigate to testPort first so localStorage operations happen in the right page context.
   await openStorageTab(window, testPort);
-
-  const allSessions: Array<{ id: string; url: string }> =
-    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const active = allSessions.find(s => s.url && s.url.includes('127.0.0.1')) ?? allSessions[0];
-  const { id: sessionId } = active;
+  const { id: sessionId } = await activeSession(window);
 
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.clearLocalStorage(id), sessionId);
   await window.evaluate(([id, k, v]: string[]) =>
     (window as any).testerBrowser.sessions.setLocalStorageKey(id, k, v),
   [sessionId, 'old_key', 'kept_value']);
 
-  // Refresh the storage panel so the new key is visible.
   await window.click('#refreshStorageBtn');
   await window.waitForTimeout(500);
 
@@ -368,9 +355,8 @@ test('storage tab: rename localStorage key by double-clicking', async () => {
     .filter({ hasText: 'old_key' });
   await lsRow.locator('td').nth(0).dblclick();
 
-  // After dblclick the key cell's text is replaced with an <input>, so the row
-  // no longer has 'old_key' as visible text and lsRow no longer matches.
-  // Use a panel-scoped locator instead.
+  // dblclick replaces the key cell's text with an <input>, so the row filter no
+  // longer matches; scope the input locator to the panel instead of the row.
   const editInput = window.locator('#storagePanel input.ls-edit-input');
   await editInput.fill('new_key');
   await editInput.press('Enter');
