@@ -123,16 +123,21 @@ app.whenReady().then(() => {
     autoUpdater.on('update-not-available', (info) => { updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus(); });
     autoUpdater.on('error', (_e, message) => {
       updateStatus = 'error';
-      latestVersion = message ?? null;
+      const fullMsg = String(message ?? 'unknown');
       try {
         writeUpdateLog(updateLogFile, {
           timestamp: new Date().toISOString(),
           status: 'error',
-          message: String(message ?? 'unknown'),
+          message: fullMsg,
           currentVersion: app.getVersion(),
-          latestVersion,
+          latestVersion: null,
         });
       } catch {}
+      // Strip verbose prefix and show only the first line, capped at 120 chars
+      latestVersion = fullMsg
+        .replace(/^Cannot check for updates:\s*(Error:\s*)?/, '')
+        .split('\n')[0]
+        .slice(0, 120);
       pushUpdateStatus();
     });
     autoUpdater.checkForUpdatesAndNotify();

@@ -436,7 +436,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                padding: 10px 0; border-bottom: 1px solid #333; font-size: 13px; }
 .setting-label { color: #999; }
 .setting-value { color: #ddd; font-family: monospace; }
-#updateStatusText { font-size: 13px; margin: 16px 0 20px; padding: 10px 12px; border-radius: 4px; background: #1e1e1e; }
+#updateStatusText { font-size: 13px; margin: 16px 0 20px; padding: 10px 12px; border-radius: 4px; background: #1e1e1e; overflow-wrap: break-word; max-height: 6em; overflow: hidden; }
 #updateStatusText.ok   { color: #8fdc8f; }
 #updateStatusText.info { color: #7fc8ff; }
 #updateStatusText.warn { color: #e0c060; }
