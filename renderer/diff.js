@@ -1,5 +1,4 @@
 /* global testerBrowser */
-import { state } from './state.js';
 
 let lastDiffRows = [];
 
