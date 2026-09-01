@@ -1,7 +1,7 @@
 {
   "name": "testerbrowser",
   "productName": "TesterBrowser",
-  "version": "0.20.5",
+  "version": "0.20.6",
   "description": "A Chromium-based desktop browser purpose-built for software testers: isolated multi-sessions with always-on network/console recording.",
   "main": "dist/main/index.js",
   "author": "Your Org",
@@ -54,7 +54,9 @@
           ]
         }
       ],
-      "signingHashAlgorithms": ["sha256"]
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
     },
     "nsis": {
       "oneClick": false,
