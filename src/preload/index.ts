@@ -138,6 +138,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     setViewerVisible: (v: boolean) => ipcRenderer.invoke('layout:setViewerVisible', v),
   },
 
+  a11y: {
+    getTree: (id: string) => ipcRenderer.invoke('a11y:getTree', id),
+  },
+
   clipboard: {
     write: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   },

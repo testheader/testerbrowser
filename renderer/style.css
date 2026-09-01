@@ -462,3 +462,20 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #notesTextarea { flex: 1; min-height: 160px; background: #1e1e1e; color: #ddd; border: 1px solid #444;
                  border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: none; }
 #notesTextarea:focus { outline: none; border-color: #4fc3f7; }
+
+/* ── A11y panel ── */
+#a11yPanel { flex: 1; overflow: auto; display: none; padding: 6px 8px; }
+.a11y-empty, .a11y-loading { color: #888; font-size: 12px; padding: 12px; }
+.a11y-tree, .a11y-children { list-style: none; margin: 0; padding: 0 0 0 14px; }
+.a11y-tree { padding-left: 0; }
+.a11y-node { margin: 0; }
+.a11y-row { display: flex; align-items: baseline; gap: 5px; padding: 1px 2px; font-size: 12px;
+             font-family: monospace; white-space: nowrap; cursor: default; border-radius: 3px; }
+.a11y-row:hover { background: #2a2a2a; }
+.a11y-toggle { width: 14px; flex-shrink: 0; color: #888; cursor: pointer; user-select: none; text-align: center; }
+.a11y-toggle-leaf { cursor: default; }
+.a11y-role { color: #61afef; font-weight: 600; }
+.a11y-name { color: #98c379; }
+.a11y-desc { color: #888; font-style: italic; }
+.a11y-state { background: #2d3a4a; color: #56b6c2; border-radius: 3px;
+              padding: 0 4px; font-size: 10px; margin-left: 2px; }

@@ -499,6 +499,19 @@ export class SessionManager {
     return Array.from(this.sessions.get(id)?.loadedDomains ?? []);
   }
 
+  async getA11yTree(id: string): Promise<object[] | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    const dbg = s.view.webContents.debugger;
+    try {
+      await dbg.sendCommand('Accessibility.enable');
+      const result = await dbg.sendCommand('Accessibility.getFullAXTree') as { nodes?: object[] };
+      return result.nodes ?? [];
+    } catch {
+      return null;
+    }
+  }
+
   async getCookies(id: string) {
     const s = this.sessions.get(id);
     if (!s) return [];
