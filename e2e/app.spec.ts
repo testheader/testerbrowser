@@ -61,7 +61,8 @@ test('window opens with TesterBrowser title', async () => {
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 
 test('initial tab is present on startup', async () => {
-  await expect(window.locator('.tab')).toHaveCount(1);
+  // DELIBERATE BREAK FOR TESTING — expect 99 tabs, not 1
+  await expect(window.locator('.tab')).toHaveCount(99);
 });
 
 test('new tab button creates a second tab', async () => {
