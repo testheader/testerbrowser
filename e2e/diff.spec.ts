@@ -30,8 +30,8 @@ test('diffPanel contains session pickers A and B', async () => {
   await window.locator('#consoleTabDiff').click();
   // initDiff populates pickers on first click; wait briefly
   await window.waitForTimeout(200);
-  await expect(window.locator('#diffSessionA')).toBeAttached();
-  await expect(window.locator('#diffSessionB')).toBeAttached();
+  await expect(window.locator('#diffPickA')).toBeAttached();
+  await expect(window.locator('#diffPickB')).toBeAttached();
 });
 
 test('diffPanel contains a Run diff button', async () => {
@@ -43,5 +43,5 @@ test('diffPanel contains a Run diff button', async () => {
 test('diffPanel contains a HAR export button', async () => {
   await window.locator('#consoleTabDiff').click();
   await window.waitForTimeout(200);
-  await expect(window.locator('#diffExportBtn')).toBeAttached();
+  await expect(window.locator('#diffHarBtn')).toBeAttached();
 });
