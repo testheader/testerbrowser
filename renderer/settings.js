@@ -16,7 +16,8 @@ function applyUpdateStatus({ status, current, latest }) {
   const el  = document.getElementById('updateStatusText');
   el.className   = cfg.cls;
   el.textContent = typeof cfg.text === 'function' ? cfg.text(latest) : cfg.text;
-  document.getElementById('restartBtn').style.display = status === 'downloaded' ? '' : 'none';
+  document.getElementById('restartBtn').style.display      = status === 'downloaded' ? '' : 'none';
+  document.getElementById('copyUpdateLogBtn').style.display = status === 'error'     ? '' : 'none';
 }
 
 async function openSettings() {
@@ -44,6 +45,18 @@ export function initSettings() {
     await testerBrowser.app.checkForUpdates();
   };
   document.getElementById('restartBtn').onclick = () => testerBrowser.app.restartAndInstall();
+
+  document.getElementById('copyUpdateLogBtn').onclick = async () => {
+    const entries = await testerBrowser.app.getUpdateLog();
+    const text = entries.length
+      ? entries.map(e => `[${e.timestamp}] ${e.status}: ${e.message} (current=${e.currentVersion}, latest=${e.latestVersion ?? 'unknown'})`).join('\n')
+      : 'No update error log entries found.';
+    await testerBrowser.clipboard.write(text);
+    const btn = document.getElementById('copyUpdateLogBtn');
+    const prev = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = prev; }, 1500);
+  };
 
   document.getElementById('redactHeadersToggle').addEventListener('change', (e) => {
     testerBrowser.settings.set({ redactSensitiveHeaders: e.target.checked });

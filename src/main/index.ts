@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager } from './sessionManager';
+import { writeUpdateLog, readUpdateLog } from './updateLogger';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -10,6 +11,7 @@ let sessionManager: SessionManager | null = null;
 type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
+let updateLogFile: string;
 
 // --- Generic JSON file store ---
 
@@ -109,6 +111,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  updateLogFile = path.join(app.getPath('userData'), 'update-errors.jsonl');
   createWindow();
 
   if (app.isPackaged) {
@@ -118,7 +121,20 @@ app.whenReady().then(() => {
     autoUpdater.on('download-progress', () => { updateStatus = 'downloading'; pushUpdateStatus(); });
     autoUpdater.on('update-downloaded', (info) => { updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus(); });
     autoUpdater.on('update-not-available', (info) => { updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus(); });
-    autoUpdater.on('error', (_e, message) => { updateStatus = 'error'; latestVersion = message ?? null; pushUpdateStatus(); });
+    autoUpdater.on('error', (_e, message) => {
+      updateStatus = 'error';
+      latestVersion = message ?? null;
+      try {
+        writeUpdateLog(updateLogFile, {
+          timestamp: new Date().toISOString(),
+          status: 'error',
+          message: String(message ?? 'unknown'),
+          currentVersion: app.getVersion(),
+          latestVersion,
+        });
+      } catch {}
+      pushUpdateStatus();
+    });
     autoUpdater.checkForUpdatesAndNotify();
   } else {
     updateStatus = 'not-available';
@@ -278,3 +294,6 @@ ipcMain.handle('settings:get', () => settingsStore.get());
 ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) =>
   settingsStore.update(s => ({ ...s, ...patch }))
 );
+
+// Update log IPC
+ipcMain.handle('app:getUpdateLog', () => updateLogFile ? readUpdateLog(updateLogFile) : []);

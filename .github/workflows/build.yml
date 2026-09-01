@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,7 +36,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --ignore-scripts
-      - name: Bump version and create GitHub release
+      - name: Bump version and create draft GitHub release
+        id: bump
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,7 +59,8 @@ jobs:
           git pull --rebase origin main
           git push
           git push origin "v$VERSION"
-          gh release create "v$VERSION" --prerelease --title "v$VERSION" --generate-notes
+          gh release create "v$VERSION" --draft --title "v$VERSION" --generate-notes
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build-windows:
     needs: [bump-version]
@@ -182,3 +186,16 @@ jobs:
         with:
           name: TesterBrowser-linux-appimage
           path: release/*.AppImage
+
+  publish-release:
+    needs: [bump-version, build-linux]
+    if: "needs.bump-version.result == 'success' && needs.build-linux.result == 'success'"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Promote draft release to prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
+        run: gh release edit "v$VERSION" --prerelease --draft=false --repo testheader/testerbrowser
