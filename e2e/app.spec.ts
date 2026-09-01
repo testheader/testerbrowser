@@ -40,7 +40,9 @@ test.beforeAll(async () => {
     args: [path.join(__dirname, '..', 'dist', 'main', 'index.js')],
   });
   window = await app.firstWindow();
-  await window.waitForLoadState('domcontentloaded');
+  // 'load' waits until all scripts have run, ensuring the renderer has set its
+  // title before any test assertion reads it.
+  await window.waitForLoadState('load');
 });
 
 test.afterAll(async () => {

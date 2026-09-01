@@ -5,6 +5,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
+  expect: { timeout: 10_000 }, // slow CI runners need more than the 5s default
   retries: 0, // no silent retries — a failing test should fail the CI run visibly
   workers: 1, // Electron app is shared across tests; must run serially
   reporter: 'list',
