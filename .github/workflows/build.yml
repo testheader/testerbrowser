@@ -156,53 +156,9 @@ jobs:
       - run: npm run build
       - run: npx playwright test
 
-  build-linux:
-    needs: [bump-version, build-windows, e2e]
-    if: "always() && needs.bump-version.result != 'failure' && needs.build-windows.result == 'success' && needs.e2e.result == 'success'"
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: main
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - run: npm ci --ignore-scripts
-      - run: npx electron-rebuild -f -w better-sqlite3
-      - run: npm run build
-      - run: npx electron-builder --linux appimage --publish never
-      # Generate latest-linux.yml (not produced by --publish never)
-      - name: Generate latest-linux.yml
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          APPIMAGE=$(ls release/TesterBrowser-*.AppImage | head -1)
-          FNAME=$(basename "$APPIMAGE")
-          SHA512=$(openssl dgst -sha512 -binary "$APPIMAGE" | base64 -w 0)
-          SIZE=$(wc -c < "$APPIMAGE" | tr -d ' ')
-          DATE=$(date -u '+%Y-%m-%dT%H:%M:%S.000Z')
-          printf "version: %s\nfiles:\n  - url: %s\n    sha512: %s\n    size: %s\npath: %s\nsha512: %s\nreleaseDate: '%s'\n" \
-            "$VERSION" "$FNAME" "$SHA512" "$SIZE" "$FNAME" "$SHA512" "$DATE" \
-            > release/latest-linux.yml
-          echo "Generated release/latest-linux.yml for v$VERSION"
-      - name: Upload assets to GitHub Release
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          gh release upload "v$VERSION" \
-            release/TesterBrowser-*.AppImage \
-            release/latest-linux.yml \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v7
-        with:
-          name: TesterBrowser-linux-appimage
-          path: release/*.AppImage
-
   publish-release:
-    needs: [bump-version, build-linux]
-    if: "needs.bump-version.result == 'success' && needs.build-linux.result == 'success'"
+    needs: [bump-version, build-windows, e2e]
+    if: "needs.bump-version.result == 'success' && needs.build-windows.result == 'success' && needs.e2e.result == 'success'"
     runs-on: ubuntu-latest
     permissions:
       contents: write
