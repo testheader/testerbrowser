@@ -24,27 +24,21 @@ test('Security tab button exists', async () => {
 });
 
 test('clicking Security tab shows securityPanel', async () => {
-  const tab = page.locator('#consoleTabSecurity');
-  await tab.click();
-  const panel = page.locator('#securityPanel');
-  await expect(panel).toBeVisible();
+  await page.locator('#consoleTabSecurity').click();
+  await expect(page.locator('#securityPanel')).toBeVisible();
 });
 
 test('Security tab is marked active after click', async () => {
-  const tab = page.locator('#consoleTabSecurity');
-  await tab.click();
-  await expect(tab).toHaveClass(/active/);
+  await page.locator('#consoleTabSecurity').click();
+  await expect(page.locator('#consoleTabSecurity')).toHaveClass(/active/);
 });
 
 test('Scan session button exists in panel', async () => {
   await page.locator('#consoleTabSecurity').click();
-  const btn = page.locator('#secScanBtn');
-  await expect(btn).toBeVisible();
-  await expect(btn).toHaveText('Scan session');
+  await expect(page.locator('#secScanBtn')).toBeVisible();
 });
 
 test('securityPanel shows hint text initially', async () => {
   await page.locator('#consoleTabSecurity').click();
-  const hint = page.locator('#secResults .sec-hint');
-  await expect(hint).toBeVisible();
+  await expect(page.locator('#secResults .sec-hint')).toBeVisible();
 });

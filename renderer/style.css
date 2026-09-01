@@ -602,3 +602,34 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .sec-issue { font-weight: 600; color: #ddd; }
 .sec-url   { color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sec-detail{ color: #666; }
+
+/* ── Mock (network request/response mocking) panel ── */
+#mockPanel { flex: 1; overflow: auto; display: none; flex-direction: column; }
+.mock-wrap { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.mock-form { display: flex; flex-direction: column; gap: 6px; }
+.mock-form-row { display: flex; gap: 6px; align-items: flex-start; }
+.mock-input { background: #1e1e1e; color: #ddd; border: 1px solid #3a3a3a;
+              border-radius: 3px; padding: 4px 8px; font-size: 12px; box-sizing: border-box; }
+.mock-input:focus { outline: none; border-color: #4fc3f7; }
+.mock-url { flex: 1; }
+.mock-status { width: 72px; }
+.mock-select { background: #1e1e1e; color: #ddd; border: 1px solid #3a3a3a;
+               border-radius: 3px; padding: 4px 6px; font-size: 12px; }
+.mock-body { flex: 1; resize: vertical; min-height: 40px; font-family: monospace; }
+.mock-btn { background: #333; color: #ddd; border: 1px solid #444; border-radius: 3px;
+            padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.mock-btn:hover { background: #444; }
+.mock-add-btn { background: #1a3a5c; border-color: #2a6aac; align-self: flex-end; }
+.mock-add-btn:hover { background: #1e4a7a; }
+.mock-rules { display: flex; flex-direction: column; gap: 4px; }
+.mock-empty { color: #666; font-size: 12px; padding: 4px 0; }
+.mock-rule-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+                 background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 3px; }
+.mock-badge { font-size: 10px; padding: 1px 5px; border-radius: 2px;
+              background: #2a4060; color: #7ab; font-family: monospace; white-space: nowrap; }
+.mock-status-badge { background: #2a3020; color: #8b8; }
+.mock-rule-url { flex: 1; font-size: 11px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mock-rule-body { font-size: 11px; color: #888; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mock-toggle { display: flex; align-items: center; cursor: pointer; }
+.mock-del-btn { background: transparent; border: none; color: #888; cursor: pointer; padding: 0 2px; font-size: 13px; }
+.mock-del-btn:hover { color: #e05; }
