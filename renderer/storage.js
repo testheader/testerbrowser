@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { state } from './state.js';
-import { escHtml, cookieMatchesDomain } from './utils.js';
+import { cookieMatchesDomain } from './utils.js';
 
 function formatCookieExpiry(ts) {
   if (!ts) return '—';

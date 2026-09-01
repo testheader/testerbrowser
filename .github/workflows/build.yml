@@ -17,6 +17,7 @@ jobs:
       # better-sqlite3 is mocked in Jest, so no native compilation is required.
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm run test
 
   bump-version:
