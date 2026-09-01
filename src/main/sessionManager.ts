@@ -650,6 +650,23 @@ export class SessionManager {
     this.injectTestData(s.view, resolveTemplate(template));
   }
 
+  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; clear?: boolean }): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const dbg = s.view.webContents.debugger;
+    if (opts.clear) {
+      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
+      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: '' }).catch(() => {});
+      await dbg.sendCommand('Emulation.clearGeolocationOverride').catch(() => {});
+      return;
+    }
+    if (opts.timezone !== undefined) await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone }).catch(() => {});
+    if (opts.locale !== undefined)   await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale }).catch(() => {});
+    if (opts.latitude !== undefined && opts.longitude !== undefined) {
+      await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude: opts.latitude, longitude: opts.longitude, accuracy: opts.accuracy ?? 10 }).catch(() => {});
+    }
+  }
+
   async captureScreenshot(id: string): Promise<string | null> {
     const s = this.sessions.get(id);
     if (!s) return null;

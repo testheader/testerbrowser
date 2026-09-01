@@ -146,6 +146,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
   },
 
+  emulation: {
+    set:   (id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; clear?: boolean }) =>
+             ipcRenderer.invoke('session:setEmulation', id, opts),
+  },
+
   testdata: {
     apply: (id: string, template: string) => ipcRenderer.invoke('testdata:apply', id, template),
     onPromptTemplate: (cb: (d: { sessionId: string }) => void) => {
