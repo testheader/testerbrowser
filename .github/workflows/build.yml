@@ -2,7 +2,6 @@ name: Build
 
 on:
   push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -22,7 +21,7 @@ jobs:
 
   bump-version:
     needs: [typecheck]
-    if: "github.actor != 'github-actions[bot]'"
+    if: "github.actor != 'github-actions[bot]' && github.ref == 'refs/heads/main'"
     runs-on: ubuntu-latest
     permissions:
       contents: write

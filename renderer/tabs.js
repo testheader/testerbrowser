@@ -42,9 +42,19 @@ export async function refreshTabs() {
   for (const s of sessions) if (!state.tabOrder.includes(s.id)) state.tabOrder.push(s.id);
 
   const tabsEl = document.getElementById('tabs');
-  tabsEl.querySelectorAll('.tab').forEach((el) => el.remove());
+  tabsEl.querySelectorAll('.tab, .tab-group-add').forEach((el) => el.remove());
 
+  // Group consecutive same-partition tabs into runs
+  const runs = [];
   for (const id of state.tabOrder) {
+    const s = sessionMap.get(id);
+    const last = runs[runs.length - 1];
+    if (last && last.partition === s.partition) last.ids.push(id);
+    else runs.push({ partition: s.partition, color: s.color, name: s.name, ids: [id] });
+  }
+
+  for (const run of runs) {
+  for (const id of run.ids) {
     const s = sessionMap.get(id);
 
     const tab = document.createElement('span');
@@ -136,7 +146,22 @@ export async function refreshTabs() {
     });
 
     tabsEl.insertBefore(tab, document.getElementById('newSessionBtn'));
-  }
+  } // end for id of run.ids
+
+  const addBtn = document.createElement('span');
+  addBtn.className = 'tab-group-add';
+  addBtn.title = 'New tab in this session';
+  addBtn.textContent = '+';
+  addBtn.onclick = async () => {
+    const lastId = run.ids[run.ids.length - 1];
+    const id = await testerBrowser.sessions.create(run.name, { partition: run.partition, color: run.color });
+    const idx = state.tabOrder.indexOf(lastId);
+    if (idx === -1) state.tabOrder.push(id);
+    else state.tabOrder.splice(idx + 1, 0, id);
+    await switchToSession(id);
+  };
+  tabsEl.insertBefore(addBtn, document.getElementById('newSessionBtn'));
+  } // end for run of runs
 
   state.mruStack = state.mruStack.filter((id) => sessionMap.has(id));
   if (!state.activeId && sessions.length) { state.activeId = sessions[0].id; recordVisit(state.activeId); }

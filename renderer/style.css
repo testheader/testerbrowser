@@ -28,6 +28,9 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .tab-rename-input { background: #111; color: #ddd; border: 1px solid #4fc3f7; border-radius: 2px;
                     font-size: 13px; padding: 1px 4px; width: 100px; outline: none; font-family: inherit; }
 #newSessionBtn { flex-shrink: 0; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 0 8px; user-select: none; }
+.tab-group-add { flex-shrink: 0; cursor: pointer; color: #666; font-size: 13px; padding: 0 3px; user-select: none;
+                 border-radius: 3px; line-height: 1; margin-right: 4px; }
+.tab-group-add:hover { color: #4fc3f7; background: #2a2a2a; }
 
 /* Loading spinner in tab (replaces favicon/dot while loading) */
 .tab-spinner { width: 12px; height: 12px; border: 2px solid #444;

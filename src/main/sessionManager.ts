@@ -345,6 +345,11 @@ export class SessionManager {
         this.win.webContents.send('tab:action', { action: 'refresh' });
       }},
       { type: 'separator' },
+      { label: 'New tab in this session', click: () => {
+        const ns = this.createSession(s.name, { partition: s.partition, color: s.color });
+        this.switchTo(ns.id);
+        this.win.webContents.send('session:newTab', { id: ns.id });
+      }},
       { label: 'Clone', click: async () => {
         const c = await this.cloneSession(id, s.name + ' (clone)');
         if (c) this.win.webContents.send('session:newTab', { id: c.id });

@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('testerBrowser', {
   sessions: {
     list:        () => ipcRenderer.invoke('sessions:list'),
-    create:      (name: string, opts?: { persistent?: boolean; startUrl?: string }) =>
+    create:      (name: string, opts?: { persistent?: boolean; startUrl?: string; partition?: string; color?: string }) =>
                    ipcRenderer.invoke('sessions:create', name, opts),
     switchTo:    (id: string) => ipcRenderer.invoke('sessions:switch', id),
     navigate:    (id: string, url: string) => ipcRenderer.invoke('sessions:navigate', id, url),
