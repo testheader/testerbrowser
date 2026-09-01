@@ -1,4 +1,4 @@
-import { BrowserWindow, WebContentsView, session as electronSession, Menu, clipboard } from 'electron';
+import { BrowserWindow, WebContentsView, session as electronSession, Menu, clipboard, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
@@ -405,6 +405,9 @@ export class SessionManager {
       }},
       { label: 'Notes…', click: () => send('notes') },
       { type: 'separator' },
+      { label: 'Export snapshot…', click: () => this.exportSnapshotDialog(id) },
+      { label: 'Import snapshot…', click: () => this.importSnapshotDialog(id) },
+      { type: 'separator' },
       { label: 'Close', enabled: !s.pinned, click: () => send('close') },
     ]).popup({ window: this.win });
   }
@@ -547,6 +550,86 @@ export class SessionManager {
   getLoadedDomains(id: string): string[] {
     return Array.from(this.sessions.get(id)?.loadedDomains ?? []);
   }
+
+  // ── Session snapshots ─────────────────────────────────────────────────────
+
+  private async collectSnapshot(id: string): Promise<object | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    const cookies = await s.view.webContents.session.cookies.get({});
+    let localStorageData: Record<string, string> = {};
+    let sessionStorageData: Record<string, string> = {};
+    try {
+      const r = await s.view.webContents.executeJavaScript(
+        'JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k=>[k,localStorage.getItem(k)])))'
+      );
+      localStorageData = JSON.parse(r);
+    } catch {}
+    try {
+      const r = await s.view.webContents.executeJavaScript(
+        'JSON.stringify(Object.fromEntries(Object.keys(sessionStorage).map(k=>[k,sessionStorage.getItem(k)])))'
+      );
+      sessionStorageData = JSON.parse(r);
+    } catch {}
+    return { version: 1, ts: Date.now(), sessionName: s.name, url: s.currentUrl, cookies, localStorage: localStorageData, sessionStorage: sessionStorageData };
+  }
+
+  private async restoreSnapshot(id: string, snap: Record<string, unknown>): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    if (Array.isArray(snap.cookies)) {
+      await s.view.webContents.session.clearStorageData({ storages: ['cookies'] });
+      for (const c of snap.cookies as Electron.Cookie[]) {
+        const url = `${c.secure ? 'https' : 'http'}://${(c.domain ?? '').replace(/^\./, '')}${c.path ?? '/'}`;
+        try { await s.view.webContents.session.cookies.set({ url, name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate }); } catch {}
+      }
+    }
+    if (snap.url && typeof snap.url === 'string') {
+      await s.view.webContents.loadURL(snap.url);
+      await new Promise<void>(r => setTimeout(r, 600));
+    }
+    const ls = snap.localStorage as Record<string, string> | undefined;
+    if (ls && typeof ls === 'object') {
+      const sets = Object.entries(ls).map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)},${JSON.stringify(v)});`).join('');
+      try { await s.view.webContents.executeJavaScript(`(function(){localStorage.clear();${sets}})();`); } catch {}
+    }
+    const ss = snap.sessionStorage as Record<string, string> | undefined;
+    if (ss && typeof ss === 'object') {
+      const sets = Object.entries(ss).map(([k, v]) => `sessionStorage.setItem(${JSON.stringify(k)},${JSON.stringify(v)});`).join('');
+      try { await s.view.webContents.executeJavaScript(`(function(){sessionStorage.clear();${sets}})();`); } catch {}
+    }
+  }
+
+  async exportSnapshotDialog(id: string): Promise<void> {
+    const snap = await this.collectSnapshot(id);
+    if (!snap) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const result = await dialog.showSaveDialog(this.win, {
+      title: 'Export session snapshot',
+      defaultPath: `snapshot-${ts}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (!result.canceled && result.filePath) {
+      fs.writeFileSync(result.filePath, JSON.stringify(snap, null, 2));
+    }
+  }
+
+  async importSnapshotDialog(id: string): Promise<void> {
+    const result = await dialog.showOpenDialog(this.win, {
+      title: 'Import session snapshot',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (!result.canceled && result.filePaths[0]) {
+      try {
+        const snap = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf-8')) as Record<string, unknown>;
+        await this.restoreSnapshot(id, snap);
+        this.win.webContents.send('tab:action', { action: 'refresh' });
+      } catch {}
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   private injectTestData(view: WebContentsView, value: string) {
     const escaped = JSON.stringify(value);
