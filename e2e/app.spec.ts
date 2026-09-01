@@ -317,13 +317,19 @@ test('storage tab: edit cookie value by double-clicking', async () => {
 });
 
 test('storage tab: add localStorage entry via "+ Add" button', async () => {
-  const sessions: Array<{ id: string; partition: string }> =
+  // Navigate first so we know which session is active, then query by URL.
+  await openStorageTab(window, testPort);
+
+  const allSessions: Array<{ id: string; url: string }> =
     await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const { id: sessionId } = sessions[0];
+  const active = allSessions.find(s => s.url && s.url.includes('127.0.0.1')) ?? allSessions[0];
+  const { id: sessionId } = active;
 
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.clearLocalStorage(id), sessionId);
 
-  await openStorageTab(window, testPort);
+  // Reload storage panel after clearing.
+  await window.click('#refreshStorageBtn');
+  await window.waitForTimeout(500);
 
   // Click "+ Add" in the localStorage section (second .storage-add-btn).
   await window.locator('.storage-add-btn').nth(1).click();
