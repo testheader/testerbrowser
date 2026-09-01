@@ -82,6 +82,9 @@ jobs:
       - run: npx electron-rebuild -f -w better-sqlite3
       - run: npm run build
       - run: npx electron-builder --win nsis --publish never
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
       # electron-builder names the file "TesterBrowser Setup X.Y.Z.exe" (spaces).
       # Rename to hyphenated form and generate latest.yml (not produced by --publish never).
       - name: Rename artifacts and generate latest.yml

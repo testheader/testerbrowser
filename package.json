@@ -53,7 +53,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "signingHashAlgorithms": ["sha256"]
     },
     "nsis": {
       "oneClick": false,
