@@ -1,6 +1,37 @@
 /* global testerBrowser */
 import { state, TOPBAR_BASE, FIND_BAR_H, BOOKMARKS_BAR_H } from './state.js';
 
+const CONSOLE_HEADER_H = 42; // drag handle (6px) + header (36px)
+const LS_MIN_KEY = 'consoleMinimized';
+
+function applyMinimized(minimized) {
+  state.consolePanelMinimized = minimized;
+  const body = document.getElementById('consolePanelBody');
+  const btn  = document.getElementById('consolePanelMinBtn');
+  const panel = document.getElementById('consolePanel');
+  body.style.display = minimized ? 'none' : '';
+  btn.innerHTML = minimized ? '&#8963;' : '&#8964;';
+  btn.title = minimized ? 'Restore panel' : 'Minimize panel';
+  if (minimized) {
+    panel.style.height = CONSOLE_HEADER_H + 'px';
+    testerBrowser.layout.setConsoleHeight(0);
+  } else {
+    panel.style.height = state.consoleHeight + 'px';
+    testerBrowser.layout.setConsoleHeight(state.consoleHeight);
+  }
+  try { localStorage.setItem(LS_MIN_KEY, minimized ? '1' : '0'); } catch {}
+}
+
+export function initMinimize() {
+  try {
+    const saved = localStorage.getItem(LS_MIN_KEY);
+    if (saved === '1') applyMinimized(true);
+  } catch {}
+  document.getElementById('consolePanelMinBtn').addEventListener('click', () => {
+    applyMinimized(!state.consolePanelMinimized);
+  });
+}
+
 export function updateTopBarHeight() {
   let h = TOPBAR_BASE;
   if (state.bookmarksBarVisible) h += BOOKMARKS_BAR_H;
@@ -12,8 +43,10 @@ export function updateTopBarHeight() {
 
 export function setConsoleHeight(h) {
   state.consoleHeight = Math.max(80, Math.min(h, window.innerHeight - 120));
-  document.getElementById('consolePanel').style.height = state.consoleHeight + 'px';
-  testerBrowser.layout.setConsoleHeight(state.consoleHeight);
+  if (!state.consolePanelMinimized) {
+    document.getElementById('consolePanel').style.height = state.consoleHeight + 'px';
+    testerBrowser.layout.setConsoleHeight(state.consoleHeight);
+  }
 }
 
 export function initLayout() {

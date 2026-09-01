@@ -22,6 +22,7 @@ export const state = {
   autoScroll:         true,
   activeConsoleTab:   'console',
   consoleVisible:     true,
+  consolePanelMinimized: false,
   bookmarks:          [],
   urlHistory:         [],
   detailTabs:         [],

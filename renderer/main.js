@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { state } from './state.js';
-import { initLayout, updateTopBarHeight } from './layout.js';
+import { initLayout, updateTopBarHeight, initMinimize } from './layout.js';
 import { initToolbar, loadUrlHistory } from './toolbar.js';
 import { initBookmarks, loadBookmarks } from './bookmarks.js';
 import { initFind } from './find.js';
@@ -22,6 +22,7 @@ import { initShortcuts } from './shortcuts.js';
 import { initIpcEvents } from './ipc-events.js';
 
 initLayout();
+initMinimize();
 initToolbar();
 initBookmarks();
 initFind();
