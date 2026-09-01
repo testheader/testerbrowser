@@ -278,20 +278,28 @@ test('storage tab: add cookie via "+ Add" button', async () => {
 });
 
 test('storage tab: edit cookie value by double-clicking', async () => {
-  const sessions: Array<{ id: string; partition: string }> =
-    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const { id: sessionId, partition } = sessions[0];
+  // Navigate first so we know which session is active, then query by URL.
+  await openStorageTab(window, testPort);
 
-  // Inject a known cookie.
+  const allSessions: Array<{ id: string; partition: string; url: string }> =
+    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const active = allSessions.find(s => s.url && s.url.includes('127.0.0.1')) ?? allSessions[0];
+  const { id: sessionId, partition } = active;
+
+  // Inject a known cookie into the active session's partition.
   await app.evaluate(async ({ session: electronSession }, part) => {
     const ses = electronSession.fromPartition(part);
     await ses.clearStorageData({ storages: ['cookies'] });
     await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_edit_cookie', value: 'original' });
   }, partition);
 
-  await openStorageTab(window, testPort);
+  // Reload storage panel after injecting.
+  await window.click('#refreshStorageBtn');
+  await window.waitForTimeout(500);
 
   // Find the value cell for our cookie (3rd td, index 2) and double-click it.
+  // The name column (td[1]) retains 'e2e_edit_cookie' after dblclick on the value cell,
+  // so the row filter stays valid for the input locator.
   const cookieRow = window.locator('#storagePanel .storage-table tbody tr')
     .filter({ hasText: 'e2e_edit_cookie' });
   await cookieRow.locator('td').nth(2).dblclick();
@@ -354,7 +362,10 @@ test('storage tab: rename localStorage key by double-clicking', async () => {
     .filter({ hasText: 'old_key' });
   await lsRow.locator('td').nth(0).dblclick();
 
-  const editInput = lsRow.locator('input.ls-edit-input');
+  // After dblclick the key cell's text is replaced with an <input>, so the row
+  // no longer has 'old_key' as visible text and lsRow no longer matches.
+  // Use a panel-scoped locator instead.
+  const editInput = window.locator('#storagePanel input.ls-edit-input');
   await editInput.fill('new_key');
   await editInput.press('Enter');
 
