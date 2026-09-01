@@ -15,6 +15,7 @@ import { initNotes } from './notes.js';
 import { initSettings } from './settings.js';
 import { initConsoleTabs } from './console-tabs.js';
 import { initA11y } from './a11y.js';
+import './diff.js';
 import { initViewDropdown } from './view-dropdown.js';
 import { initShortcuts } from './shortcuts.js';
 import { initIpcEvents } from './ipc-events.js';
