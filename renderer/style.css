@@ -512,6 +512,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .a11y-row { display: flex; align-items: baseline; gap: 5px; padding: 1px 2px; font-size: 12px;
              font-family: monospace; white-space: nowrap; cursor: default; border-radius: 3px; }
 .a11y-row:hover { background: #2a2a2a; }
+.a11y-row.a11y-hovered { background: #1e3a5f; outline: 1px solid #61afef; }
 .a11y-toggle { width: 14px; flex-shrink: 0; color: #888; cursor: pointer; user-select: none; text-align: center; }
 .a11y-toggle-leaf { cursor: default; }
 .a11y-role { color: #61afef; font-weight: 600; }

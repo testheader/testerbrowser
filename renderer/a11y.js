@@ -2,9 +2,32 @@
 import { state } from './state.js';
 
 const expandedIds = new Set();
+const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
+let hoveredRow = null;
 
 export function initA11y() {
   // Tree is loaded on demand when the tab is activated
+}
+
+export function enableA11yHover() {
+  if (!state.activeId) return;
+  testerBrowser.a11y.setInspect(state.activeId, true).catch(() => {});
+  testerBrowser.a11y.onNodeHovered((node) => {
+    if (!node || !node.nodeId) return;
+    if (hoveredRow) hoveredRow.classList.remove('a11y-hovered');
+    const row = nodeRowMap.get(node.nodeId);
+    if (!row) return;
+    hoveredRow = row;
+    row.classList.add('a11y-hovered');
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+}
+
+export function disableA11yHover() {
+  if (!state.activeId) return;
+  testerBrowser.a11y.setInspect(state.activeId, false).catch(() => {});
+  testerBrowser.a11y.offNodeHovered();
+  if (hoveredRow) { hoveredRow.classList.remove('a11y-hovered'); hoveredRow = null; }
 }
 
 export async function loadA11yPanel() {
@@ -28,6 +51,8 @@ export async function loadA11yPanel() {
 }
 
 function renderA11yTree(panel, nodes) {
+  nodeRowMap.clear();
+  hoveredRow = null;
   const nodeMap = new Map();
   for (const n of nodes) nodeMap.set(n.nodeId, n);
   const root = nodes.find(n => !n.parentId) ?? nodes[0];
@@ -94,6 +119,7 @@ function buildNode(node, nodeMap) {
     }
   }
 
+  nodeRowMap.set(node.nodeId, row);
   li.appendChild(row);
 
   if (hasChildren) {

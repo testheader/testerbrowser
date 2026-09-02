@@ -51,6 +51,7 @@ export interface TestSession {
   loadedDomains: Set<string>;
   mockRules: MockRule[];
   resilienceRules: ResilienceRule[];
+  a11yInspecting: boolean;
 }
 
 const TAB_COLORS = [
@@ -223,10 +224,27 @@ export class SessionManager {
       loadedDomains: new Set<string>(),
       mockRules: [],
       resilienceRules: [],
+      a11yInspecting: false,
     };
 
-    // Handle Fetch.requestPaused for mock rules
+    // Handle CDP events: Fetch.requestPaused for mock/resilience rules, Runtime.bindingCalled for a11y hover
     view.webContents.debugger.on('message', (_e: unknown, method: string, params: Record<string, unknown>) => {
+      if (method === 'Runtime.bindingCalled' && (params as { name?: string }).name === '__a11yHover' && testSession.a11yInspecting) {
+        try {
+          const { x, y } = JSON.parse((params as { payload?: string }).payload ?? '{}') as { x?: number; y?: number };
+          if (typeof x === 'number' && typeof y === 'number') {
+            (async () => {
+              const dbg = view.webContents.debugger;
+              const loc = await dbg.sendCommand('DOM.getNodeForLocation', { x, y, includeUserAgentShadowDOM: false }) as { backendNodeId?: number };
+              if (!loc.backendNodeId) return;
+              const ax = await dbg.sendCommand('Accessibility.queryAXTree', { backendNodeId: loc.backendNodeId }) as { nodes?: unknown[] };
+              const node = ax.nodes?.[0];
+              if (node) view.webContents.send('a11y:nodeHovered', node);
+            })().catch(() => {});
+          }
+        } catch {}
+        return;
+      }
       if (method !== 'Fetch.requestPaused') return;
       const { requestId, request } = params as { requestId: string; request: { url: string; method: string } };
       const dbg = view.webContents.debugger;
@@ -822,6 +840,31 @@ export class SessionManager {
       return result.nodes ?? [];
     } catch {
       return null;
+    }
+  }
+
+  async setA11yInspect(id: string, enabled: boolean): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    s.a11yInspecting = enabled;
+    const dbg = s.view.webContents.debugger;
+    if (enabled) {
+      try {
+        await dbg.sendCommand('Accessibility.enable');
+        await dbg.sendCommand('Runtime.addBinding', { name: '__a11yHover' });
+        await dbg.sendCommand('Runtime.evaluate', {
+          expression: `(function(){if(window.__a11yHoverSetup)return;window.__a11yHoverSetup=true;let t=0;document.addEventListener('mousemove',function(e){const n=Date.now();if(n-t<150)return;t=n;window.__a11yHover(JSON.stringify({x:Math.round(e.clientX),y:Math.round(e.clientY)}));},{passive:true});})();`,
+          includeCommandLineAPI: false,
+        });
+      } catch {}
+    } else {
+      try {
+        await dbg.sendCommand('Runtime.evaluate', {
+          expression: `window.__a11yHoverSetup=false;`,
+          includeCommandLineAPI: false,
+        });
+        await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yHover' });
+      } catch {}
     }
   }
 

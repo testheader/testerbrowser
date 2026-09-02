@@ -140,6 +140,12 @@ contextBridge.exposeInMainWorld('testerBrowser', {
 
   a11y: {
     getTree: (id: string) => ipcRenderer.invoke('a11y:getTree', id),
+    setInspect: (id: string, enabled: boolean) => ipcRenderer.invoke('a11y:setInspect', id, enabled),
+    onNodeHovered: (cb: (node: unknown) => void) => {
+      ipcRenderer.removeAllListeners('a11y:nodeHovered');
+      ipcRenderer.on('a11y:nodeHovered', (_e, node) => cb(node));
+    },
+    offNodeHovered: () => ipcRenderer.removeAllListeners('a11y:nodeHovered'),
   },
 
   visualRegression: {

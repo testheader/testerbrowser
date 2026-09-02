@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { loadStoragePanel } from './storage.js';
-import { loadA11yPanel } from './a11y.js';
+import { loadA11yPanel, enableA11yHover, disableA11yHover } from './a11y.js';
 import { initDiff } from './diff.js';
 import { initVR } from './visual-regression.js';
 import { initSpoof } from './emulation.js';
@@ -12,7 +12,9 @@ import { initRecordPlayback } from './record-playback.js';
 import { renderTimeline } from './timeline.js';
 
 export function switchConsoleTab(tab) {
+  const prevTab = state.activeConsoleTab;
   state.activeConsoleTab = tab;
+  if (prevTab === 'a11y' && tab !== 'a11y') disableA11yHover();
   document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
   document.getElementById('consoleTabNetwork').classList.toggle('active', tab === 'network');
   document.getElementById('consoleTabStorage').classList.toggle('active', tab === 'storage');
@@ -45,7 +47,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('detailPanelResizeHandle').style.display = tab === 'console' && hasDetailTabs ? '' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') loadStoragePanel();
-  if (tab === 'a11y') loadA11yPanel();
+  if (tab === 'a11y') { loadA11yPanel(); enableA11yHover(); }
   if (tab === 'spoof') initSpoof();
   if (tab === 'security') initSecurity();
   if (tab === 'mock') initMock();
