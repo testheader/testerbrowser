@@ -76,6 +76,82 @@ function isSafeUrl(url: string): boolean {
   catch { return false; }
 }
 
+// ─── Recording/Playback ───────────────────────────────────────────────────────
+
+const RECORDING_SCRIPT = `(function(){
+  if(window.__tbRecording)return;
+  window.__tbRecording=true;
+  window.__tbTestSteps=window.__tbTestSteps||[];
+  function esc(s){return(s||'').replace(/\\\\/g,'\\\\').replace(/"/g,'\\"');}
+  function genSel(el){
+    if(!el)return'';
+    var td=el.getAttribute('data-testid')||el.getAttribute('data-test')||el.getAttribute('data-cy')||el.getAttribute('data-qa');
+    if(td)return'[data-testid="'+esc(td)+'"]';
+    if(el.id&&/^[a-zA-Z_-]/.test(el.id)&&el.id.length<80)return'#'+CSS.escape(el.id);
+    var nm=el.getAttribute('name');
+    if(nm)return el.tagName.toLowerCase()+'[name="'+esc(nm)+'"]';
+    var al=el.getAttribute('aria-label');
+    if(al)return'[aria-label="'+esc(al)+'"]';
+    var parts=[],cur=el;
+    while(cur&&cur!==document.body&&parts.length<6){
+      if(cur.id&&/^[a-zA-Z_-]/.test(cur.id)){parts.unshift('#'+CSS.escape(cur.id));break;}
+      var s=cur.tagName.toLowerCase();
+      var sibs=cur.parentElement?[].slice.call(cur.parentElement.children).filter(function(x){return x.tagName===cur.tagName;}):[];
+      if(sibs.length>1)s+=':nth-of-type('+(sibs.indexOf(cur)+1)+')';
+      parts.unshift(s);cur=cur.parentElement;
+    }
+    return parts.join(' > ');
+  }
+  function addStep(step){window.__tbTestSteps.push(Object.assign({id:Date.now()+'_'+Math.random().toString(36).slice(2),timestamp:Date.now(),url:location.href},step));}
+  document.addEventListener('click',function(e){
+    var el=e.target;if(!el||el===document.documentElement||el===document.body)return;
+    addStep({type:'click',selector:genSel(el),description:((el.textContent||el.value||el.getAttribute('aria-label')||'').trim()).slice(0,60),tagName:el.tagName.toLowerCase()});
+  },true);
+  document.addEventListener('change',function(e){
+    var el=e.target;if(!el||!('value' in el))return;
+    var pw=el.type==='password';
+    addStep({type:'fill',selector:genSel(el),value:pw?'[hidden]':el.value,sensitive:pw,tagName:el.tagName.toLowerCase()});
+  },true);
+  window.addEventListener('popstate',function(){addStep({type:'navigate',url:location.href});});
+  var op=history.pushState.bind(history);history.pushState=function(){op.apply(history,arguments);addStep({type:'navigate',url:location.href});};
+  var or=history.replaceState.bind(history);history.replaceState=function(){or.apply(history,arguments);addStep({type:'navigate',url:location.href});};
+})();`;
+
+export interface TestStep {
+  id: string;
+  type: 'navigate' | 'click' | 'fill' | 'assert-visible' | 'assert-not-visible' | 'assert-text' | 'assert-value' | 'assert-url' | 'assert-attr' | 'assert-enabled' | 'wait-visible' | 'wait-navigation';
+  selector?: string;
+  value?: string;
+  url?: string;
+  attr?: string;
+  attrValue?: string;
+  timestamp?: number;
+  description?: string;
+  tagName?: string;
+  sensitive?: boolean;
+}
+
+function buildPlaybackScript(step: TestStep): string {
+  const sel = JSON.stringify(step.selector ?? '');
+  const val = JSON.stringify(step.value ?? '');
+  const helpers = `var __wait=function(fn,ms){return new Promise(function(res,rej){var s=Date.now();(function poll(){try{var r=fn();if(r!==null&&r!==false&&r!==undefined){res(r);return;}catch(ex){}if(Date.now()-s>(ms||10000)){rej(new Error('Timeout'));return;}setTimeout(poll,120);})();});};var __find=function(sel){var el=document.querySelector(sel);if(!el)throw new Error('Element not found: '+sel);return el;};var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};`;
+  switch (step.type) {
+    case 'navigate': return `(function(){try{location.href=${JSON.stringify(step.url??'')};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'click': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});__find(${sel}).click();return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'fill': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});el.focus();el.value=${val};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'assert-visible': return `(function(){var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};try{var el=document.querySelector(${sel});if(!el||!__vis(el))return {success:false,error:'Not visible: '+${sel}};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'assert-not-visible': return `(function(){var el=document.querySelector(${sel});function v(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0;}if(el&&v(el))return {success:false,error:'Element visible: '+${sel}};return {success:true};})()`;
+    case 'assert-text': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};var t=(el.textContent||'').trim();if(!t.includes(${val}))return {success:false,error:'Text "'+t+'" does not contain "'+${val}+'"'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'assert-value': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};var v=String(el.value||'');if(v!==${val})return {success:false,error:'Value "'+v+'" !== "'+${val}+'"'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'assert-url': return `(function(){var u=location.href;if(!u.includes(${val})&&u!==${val})return {success:false,error:'URL "'+u+'" does not match "'+${val}+'"'};return {success:true};})()`;
+    case 'assert-enabled': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};if(el.disabled)return {success:false,error:'Element is disabled'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'assert-attr': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};var v=el.getAttribute(${JSON.stringify(step.attr??'')});if(v!==${JSON.stringify(step.attrValue??'')})return {success:false,error:'Attr mismatch: "'+v+'"'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'wait-visible': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;},15000);return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'wait-navigation': return `(async function(){${helpers}try{await __wait(function(){return document.readyState==='complete'?true:null;},15000);return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    default: return `(function(){return {success:false,error:'Unknown step type'};})()`;
+  }
+}
+
 export class SessionManager {
   private win: BrowserWindow;
   private sessions = new Map<string, TestSession>();
@@ -892,5 +968,57 @@ export class SessionManager {
     (s.view.webContents as any).destroy?.();
     this.sessions.delete(id);
     this.sessionNotes.delete(id);
+    this.recordingHandlers.delete(id);
+  }
+
+  private recordingHandlers = new Map<string, () => void>();
+
+  async startRecording(id: string): Promise<boolean> {
+    const s = this.sessions.get(id);
+    if (!s) return false;
+    await s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch(() => {});
+    const handler = () => { s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch(() => {}); };
+    s.view.webContents.on('did-navigate', handler);
+    s.view.webContents.on('did-navigate-in-page', handler);
+    this.recordingHandlers.set(id, handler);
+    return true;
+  }
+
+  async pollRecordingSteps(id: string): Promise<TestStep[]> {
+    const s = this.sessions.get(id);
+    if (!s) return [];
+    try {
+      const steps = await s.view.webContents.executeJavaScript(`(window.__tbTestSteps||[]).map(function(x){return x;})`);
+      return Array.isArray(steps) ? steps as TestStep[] : [];
+    } catch { return []; }
+  }
+
+  async stopRecording(id: string): Promise<TestStep[]> {
+    const s = this.sessions.get(id);
+    if (!s) return [];
+    const handler = this.recordingHandlers.get(id);
+    if (handler) {
+      s.view.webContents.off('did-navigate', handler);
+      s.view.webContents.off('did-navigate-in-page', handler);
+      this.recordingHandlers.delete(id);
+    }
+    try {
+      const steps = await s.view.webContents.executeJavaScript(
+        `(function(){var r=(window.__tbTestSteps||[]).slice();window.__tbTestSteps=[];window.__tbRecording=false;return r;})()`
+      );
+      return Array.isArray(steps) ? steps as TestStep[] : [];
+    } catch { return []; }
+  }
+
+  async playbackStep(id: string, step: TestStep): Promise<{ success: boolean; error?: string }> {
+    const s = this.sessions.get(id);
+    if (!s) return { success: false, error: 'Session not found' };
+    try {
+      const result = await s.view.webContents.executeJavaScript(buildPlaybackScript(step));
+      if (result && typeof result === 'object') return result as { success: boolean; error?: string };
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
   }
 }

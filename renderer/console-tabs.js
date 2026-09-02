@@ -8,6 +8,7 @@ import { initSecurity } from './security.js';
 import { initMock } from './mock.js';
 import { initResilience } from './resilience.js';
 import { initJira } from './jira.js';
+import { initRecordPlayback } from './record-playback.js';
 
 export function switchConsoleTab(tab) {
   state.activeConsoleTab = tab;
@@ -21,6 +22,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('consoleTabMock').classList.toggle('active', tab === 'mock');
   document.getElementById('consoleTabResilience').classList.toggle('active', tab === 'resilience');
   document.getElementById('consoleTabJira').classList.toggle('active', tab === 'jira');
+  document.getElementById('consoleTabTests').classList.toggle('active', tab === 'tests');
   document.getElementById('consoleControls').style.display      = tab === 'console'  ? ''      : 'none';
   document.getElementById('storageControls').style.display      = tab === 'storage'  ? 'flex'  : 'none';
   document.getElementById('timelinePanelWrapper').style.display = tab === 'console'  ? 'flex'  : 'none';
@@ -33,6 +35,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('mockPanel').style.display            = tab === 'mock'       ? 'flex'  : 'none';
   document.getElementById('resiliencePanel').style.display      = tab === 'resilience' ? 'flex'  : 'none';
   document.getElementById('jiraPanel').style.display            = tab === 'jira'       ? 'flex'  : 'none';
+  document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
   const hasDetailTabs = state.detailTabs.length > 0;
   document.getElementById('detailPanel').classList.toggle('open', tab === 'console' && hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = tab === 'console' && hasDetailTabs ? '' : 'none';
@@ -43,6 +46,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'mock') initMock();
   if (tab === 'resilience') initResilience();
   if (tab === 'jira') initJira();
+  if (tab === 'tests') initRecordPlayback();
 }
 
 export function initConsoleTabs() {
@@ -56,4 +60,5 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabMock').addEventListener('click', () => switchConsoleTab('mock'));
   document.getElementById('consoleTabResilience').addEventListener('click', () => switchConsoleTab('resilience'));
   document.getElementById('consoleTabJira').addEventListener('click', () => { switchConsoleTab('jira'); initJira(); });
+  document.getElementById('consoleTabTests').addEventListener('click', () => switchConsoleTab('tests'));
 }
