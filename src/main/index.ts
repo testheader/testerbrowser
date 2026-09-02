@@ -146,8 +146,9 @@ app.whenReady().then(() => {
             for (const rel of releases) {
               if (rel.draft) continue;
               if (rel.assets.some(a => a.name === 'latest.yml')) {
-                updateStatus = 'available';
-                latestVersion = rel.tag_name.replace(/^v/, '');
+                const foundVersion = rel.tag_name.replace(/^v/, '');
+                latestVersion = foundVersion;
+                updateStatus = foundVersion === app.getVersion() ? 'not-available' : 'available';
                 pushUpdateStatus();
                 return;
               }
