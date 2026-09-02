@@ -77,6 +77,7 @@
     <div id="consoleHeader">
       <div class="console-tabs">
         <button class="console-tab active" id="consoleTabConsole">Console</button>
+        <button class="console-tab" id="consoleTabNetwork">Network</button>
         <button class="console-tab" id="consoleTabStorage">Storage</button>
         <button class="console-tab" id="consoleTabA11y">A11y</button>
         <button class="console-tab" id="consoleTabDiff">Diff</button>
@@ -90,16 +91,18 @@
       </div>
       <div class="console-sep"></div>
       <div id="consoleControls">
-        <input id="filterText" placeholder="Filter events…" />
-        <div class="filter-pills">
+        <input id="filterText" placeholder="Filter console…" />
+        <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console">&#10005;</button>
+      </div>
+      <div id="networkControls" style="display:none">
+        <input id="networkFilterText" placeholder="Filter requests…" />
+        <div class="filter-pills" id="networkPills">
           <button class="filter-pill on" data-type="network-request"  title="Network requests">Req<span class="pill-count"></span></button>
-          <button class="filter-pill" data-type="network-response" title="Network responses">Res<span class="pill-count"></span></button>
+          <button class="filter-pill on" data-type="network-response" title="Network responses">Res<span class="pill-count"></span></button>
           <button class="filter-pill on" data-type="network-failed"   title="Failed requests">Err<span class="pill-count"></span></button>
-          <button class="filter-pill on" data-type="console"          title="Console output">JS<span class="pill-count"></span></button>
-          <button class="filter-pill on" data-type="log"              title="Log events">Log<span class="pill-count"></span></button>
         </div>
         <button id="exportHarBtn" title="Export HAR">HAR</button>
-        <button class="console-icon-btn" id="clearConsoleBtn" title="Clear events">&#10005;</button>
+        <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log">&#10005;</button>
       </div>
       <div id="storageControls">
         <input id="storageFilter" placeholder="Filter…" />
@@ -147,6 +150,18 @@
 
       <div class="setting-row" style="align-items:flex-start;padding:12px 0">
         <div>
+          <div class="setting-label">Theme</div>
+          <div style="font-size:11px;color:#555;margin-top:3px">Appearance of the browser chrome.</div>
+        </div>
+        <select id="themeSelect" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
+          <option value="system">System default</option>
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
+
+      <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+        <div>
           <div class="setting-label">Redact sensitive headers</div>
           <div style="font-size:11px;color:#555;margin-top:3px">Replaces Authorization, Cookie, Set-Cookie, and similar values with [REDACTED] in the timeline. Applies to new sessions only.</div>
         </div>
@@ -168,6 +183,8 @@
           <div class="shortcut-row"><kbd>Ctrl+F</kbd><span>Find in page</span></div>
           <div class="shortcut-row"><kbd>Ctrl+D</kbd><span>Bookmark page</span></div>
           <div class="shortcut-row"><kbd>Ctrl+Shift+B</kbd><span>Toggle bookmarks bar</span></div>
+          <div class="shortcut-row"><kbd>Ctrl++ / Ctrl+-</kbd><span>Zoom in / out</span></div>
+          <div class="shortcut-row"><kbd>Ctrl+0</kbd><span>Reset zoom</span></div>
           <div class="shortcut-row"><kbd>F5 / Ctrl+R</kbd><span>Reload</span></div>
           <div class="shortcut-row"><kbd>F12</kbd><span>DevTools</span></div>
           <div class="shortcut-row"><kbd>Alt+← / →</kbd><span>Back / Forward</span></div>
@@ -175,10 +192,23 @@
           <div class="shortcut-row"><kbd>Middle-click link</kbd><span>Open in new tab (same session)</span></div>
           <div class="shortcut-row"><kbd>Right-click tab</kbd><span>Rename, pin, clone, notes…</span></div>
           <div style="margin:6px 12px 2px; border-top:1px solid #2a2a2a; padding-top:8px; font-size:11px; font-weight:600; color:#4fc3f7; text-transform:uppercase; letter-spacing:0.6px;">Features</div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Isolated sessions</kbd><span>Each tab has its own cookies &amp; cache</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Always-on recording</kbd><span>Network &amp; console captured from tab open</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Storage tab</kbd><span>Inspect cookies &amp; localStorage per session</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">HAR export</kbd><span>Export network traffic as a HAR file</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Console tab</kbd><span>Live network &amp; console timeline — filter by Req/Res/Err/JS/Log</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Storage tab</kbd><span>Cookies &amp; localStorage per session, 1st vs 3rd party</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Security tab</kbd><span>Auto-flags missing headers, insecure cookies, CORS, mixed content</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Mock tab</kbd><span>Intercept &amp; rewrite network requests with URL glob rules</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Resilience tab</kbd><span>Inject failures: 500s, timeouts, offline mode, latency, corrupted responses</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">A11y tab</kbd><span>Full accessibility tree (role, name, description, states)</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">VR tab</kbd><span>Visual regression — screenshot diff with pixel-level overlay</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Diff tab</kbd><span>Compare network timelines across two sessions side by side</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Spoof tab</kbd><span>Override time, date, geolocation, timezone and language per session</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Jira tab</kbd><span>Keep the ticket under test in view; quick-add bugs with session state</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Tests tab</kbd><span>Record, replay, repeat and flaky-detect browser interactions — no AI</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Isolated sessions</kbd><span>Each tab has its own cookies, cache and localStorage</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Session snapshot</kbd><span>Save &amp; restore full session state (cookies, storage, open tabs)</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Test data</kbd><span>Right-click any form field → Fill with test data (name/email/UUID/date…)</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">HAR export</kbd><span>Export network traffic as a HAR file from the Console tab</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Speed Dial</kbd><span>Editable quick-access tiles on the new-tab page</span></div>
+          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Request replay</kbd><span>Right-click any request in the timeline to resend it with edited headers/body</span></div>
         </div>
       </details>
 

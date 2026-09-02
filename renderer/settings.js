@@ -20,12 +20,36 @@ function applyUpdateStatus({ status, current, latest }) {
   document.getElementById('copyUpdateLogBtn').style.display = status === 'error'     ? '' : 'none';
 }
 
+const THEME_LS_KEY = 'colorScheme';
+
+function applyThemeFromSelect(scheme) {
+  if (scheme === 'light') {
+    document.body.classList.add('light-mode');
+  } else if (scheme === 'dark') {
+    document.body.classList.remove('light-mode');
+  } else {
+    // system
+    const preferLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    document.body.classList.toggle('light-mode', preferLight);
+  }
+  const toggleBtn = document.getElementById('themeToggleBtn');
+  if (toggleBtn) {
+    toggleBtn.title = document.body.classList.contains('light-mode')
+      ? 'Switch to dark mode'
+      : 'Switch to light mode';
+  }
+}
+
 async function openSettings() {
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('settingsOverlay').classList.add('open');
   applyUpdateStatus(await testerBrowser.app.getVersionInfo());
   const settings = await testerBrowser.settings.get();
   document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
+
+  let stored;
+  try { stored = localStorage.getItem(THEME_LS_KEY); } catch {}
+  document.getElementById('themeSelect').value = stored || 'system';
 }
 
 function closeSettings() {
@@ -60,6 +84,12 @@ export function initSettings() {
 
   document.getElementById('redactHeadersToggle').addEventListener('change', (e) => {
     testerBrowser.settings.set({ redactSensitiveHeaders: e.target.checked });
+  });
+
+  document.getElementById('themeSelect').addEventListener('change', (e) => {
+    const scheme = e.target.value;
+    try { localStorage.setItem(THEME_LS_KEY, scheme); } catch {}
+    applyThemeFromSelect(scheme);
   });
 
   testerBrowser.app.onShowSettings(() => openSettings());
