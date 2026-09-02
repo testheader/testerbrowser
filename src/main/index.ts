@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, clipboard, net } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
-import { SessionManager, TestStep } from './sessionManager';
+import { SessionManager } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
 
 let win: BrowserWindow | null = null;
@@ -68,9 +68,6 @@ interface JiraSettings { baseUrl: string; email: string; apiToken: string; proje
 const DEFAULT_JIRA: JiraSettings = { baseUrl: '', email: '', apiToken: '', projectKey: '' };
 const jiraStore = new JsonStore<JiraSettings>('jira-settings.json', DEFAULT_JIRA,
   (raw) => ({ ...DEFAULT_JIRA, ...(raw as Partial<JiraSettings>) }));
-
-interface SavedTest { id: string; name: string; steps: TestStep[]; createdAt: number; updatedAt: number; }
-const testsStore = new JsonStore<SavedTest[]>('saved-tests.json', []);
 
 // ---
 
@@ -316,25 +313,6 @@ ipcMain.handle('jira:createIssue', async (_e, summary: string, description: stri
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 });
-
-// Tests / Record-Playback IPC
-ipcMain.handle('tests:list',   () => testsStore.get());
-ipcMain.handle('tests:save',   (_e, test: SavedTest) => {
-  const id = test.id || (Date.now().toString(36) + Math.random().toString(36).slice(2));
-  const now = Date.now();
-  return testsStore.update(ts => {
-    const idx = ts.findIndex(t => t.id === id);
-    const saved: SavedTest = { ...test, id, createdAt: test.createdAt || now, updatedAt: now };
-    if (idx >= 0) { const next = [...ts]; next[idx] = saved; return next; }
-    return [...ts, saved];
-  });
-});
-ipcMain.handle('tests:load',   (_e, id: string) => testsStore.get().find(t => t.id === id) ?? null);
-ipcMain.handle('tests:delete', (_e, id: string) => testsStore.update(ts => ts.filter(t => t.id !== id)));
-ipcMain.handle('session:startRecording',    (_e, id: string) => sessionManager?.startRecording(id) ?? false);
-ipcMain.handle('session:stopRecording',     (_e, id: string) => sessionManager?.stopRecording(id) ?? []);
-ipcMain.handle('session:pollRecordingSteps',(_e, id: string) => sessionManager?.pollRecordingSteps(id) ?? []);
-ipcMain.handle('session:playbackStep',      (_e, id: string, step: TestStep) => sessionManager?.playbackStep(id, step) ?? { success: false, error: 'No session manager' });
 
 ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string; headers: Record<string, string>; body?: string }) => {
   try {
