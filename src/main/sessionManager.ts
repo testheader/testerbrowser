@@ -627,7 +627,13 @@ export class SessionManager {
   }
 
   setConsoleHeight(height: number) {
-    this.consoleHeight = height === 0 ? 0 : Math.max(80, Math.min(height, 600));
+    if (height === 0) {
+      this.consoleHeight = 0;
+    } else {
+      const bounds = this.win.getContentBounds();
+      const maxH = Math.max(80, bounds.height - this.topBarHeight - 80);
+      this.consoleHeight = Math.max(80, Math.min(height, maxH));
+    }
     this.layoutActive();
   }
 

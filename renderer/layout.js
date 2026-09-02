@@ -41,8 +41,16 @@ export function updateTopBarHeight() {
   document.getElementById('permissionNotifications').style.top = h + 'px';
 }
 
+function currentTopBarHeight() {
+  let h = TOPBAR_BASE;
+  if (state.bookmarksBarVisible) h += BOOKMARKS_BAR_H;
+  if (state.findOpen) h += FIND_BAR_H;
+  return h;
+}
+
 export function setConsoleHeight(h) {
-  state.consoleHeight = Math.max(80, Math.min(h, window.innerHeight - 120));
+  const maxH = window.innerHeight - currentTopBarHeight() - 80;
+  state.consoleHeight = Math.max(80, Math.min(h, maxH));
   if (!state.consolePanelMinimized) {
     document.getElementById('consolePanel').style.height = state.consoleHeight + 'px';
     testerBrowser.layout.setConsoleHeight(state.consoleHeight);
