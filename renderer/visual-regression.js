@@ -55,28 +55,32 @@ async function runCompare() {
   compareBtn.textContent = 'Comparing…';
   stats.textContent = '';
 
-  const currentB64 = await testerBrowser.visualRegression.captureScreenshot(state.activeId);
-  compareBtn.disabled = false;
-  compareBtn.textContent = 'Compare';
+  try {
+    const currentB64 = await testerBrowser.visualRegression.captureScreenshot(state.activeId);
+    if (!currentB64) { stats.textContent = 'Screenshot failed.'; return; }
 
-  if (!currentB64) { stats.textContent = 'Screenshot failed.'; return; }
+    const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(currentB64)]);
 
-  const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(currentB64)]);
+    const w = Math.max(baseImg.width,  curImg.width);
+    const h = Math.max(baseImg.height, curImg.height);
 
-  const w = Math.max(baseImg.width,  curImg.width);
-  const h = Math.max(baseImg.height, curImg.height);
+    const { diffCanvas, diffCount, total } = computeDiff(baseImg, curImg, w, h);
+    const pct = total > 0 ? ((diffCount / total) * 100).toFixed(2) : '0.00';
 
-  const { diffCanvas, diffCount, total } = computeDiff(baseImg, curImg, w, h);
-  const pct = total > 0 ? ((diffCount / total) * 100).toFixed(2) : '0.00';
+    const diffDataUrl = diffCanvas.toDataURL('image/png');
 
-  const diffDataUrl = diffCanvas.toDataURL('image/png');
+    imagesDiv.innerHTML = `
+      <div class="vr-col"><div class="vr-col-label">Baseline</div><img class="vr-img" src="data:image/png;base64,${baselineB64}" /></div>
+      <div class="vr-col"><div class="vr-col-label">Current</div><img class="vr-img" src="data:image/png;base64,${currentB64}" /></div>
+      <div class="vr-col"><div class="vr-col-label">Diff</div><img class="vr-img" src="${diffDataUrl}" /></div>`;
 
-  imagesDiv.innerHTML = `
-    <div class="vr-col"><div class="vr-col-label">Baseline</div><img class="vr-img" src="data:image/png;base64,${baselineB64}" /></div>
-    <div class="vr-col"><div class="vr-col-label">Current</div><img class="vr-img" src="data:image/png;base64,${currentB64}" /></div>
-    <div class="vr-col"><div class="vr-col-label">Diff</div><img class="vr-img" src="${diffDataUrl}" /></div>`;
-
-  stats.textContent = `${diffCount.toLocaleString()} pixels differ (${pct}% of ${total.toLocaleString()})`;
+    stats.textContent = `${diffCount.toLocaleString()} pixels differ (${pct}% of ${total.toLocaleString()})`;
+  } catch (err) {
+    stats.textContent = `Compare failed: ${err.message}`;
+  } finally {
+    compareBtn.disabled = false;
+    compareBtn.textContent = 'Compare';
+  }
 }
 
 function loadImage(b64) {
@@ -90,7 +94,9 @@ function loadImage(b64) {
 function computeDiff(img1, img2, w, h) {
   const c1 = new OffscreenCanvas(w, h);
   const c2 = new OffscreenCanvas(w, h);
-  const cd = new OffscreenCanvas(w, h);
+  const cd = document.createElement('canvas');
+  cd.width = w;
+  cd.height = h;
   const x1 = c1.getContext('2d'), x2 = c2.getContext('2d'), xd = cd.getContext('2d');
 
   x1.drawImage(img1, 0, 0);
