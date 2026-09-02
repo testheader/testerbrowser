@@ -412,7 +412,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #consolePanelBody { display: flex; flex: 1; flex-direction: row; min-height: 0; overflow: hidden; }
 #detailPanelResizeHandle { width: 4px; background: #2a2a2a; cursor: ew-resize; flex-shrink: 0; display: none; }
 #detailPanelResizeHandle:hover { background: #4fc3f7; }
-#detailPanel { width: 420px; min-width: 200px; display: none; flex-direction: column;
+#detailPanel { width: 420px; min-width: 120px; display: none; flex-direction: column;
                border-left: 1px solid #2a2a2a; background: #141414; flex-shrink: 0; }
 #detailPanel.open { display: flex; }
 #detailPanelTabBar { display: flex; background: #1a1a1a; border-bottom: 1px solid #2a2a2a;

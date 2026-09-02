@@ -172,16 +172,27 @@ export function renderDetailPanel() {
 export function initDetailPanel() {
   const handle = document.getElementById('detailPanelResizeHandle');
   const panel  = document.getElementById('detailPanel');
+  const body   = document.getElementById('consolePanelBody');
+  const MIN_W  = 120;
+
+  try {
+    const saved = localStorage.getItem('consoleDetailSplitRatio');
+    if (saved) panel.style.width = saved;
+  } catch {}
+
   handle.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const startX = e.clientX;
     const startW = panel.offsetWidth;
     const onMove = (ev) => {
-      panel.style.width = Math.max(200, Math.min(startW + (startX - ev.clientX), window.innerWidth - 300)) + 'px';
+      const maxW = (body.offsetWidth || window.innerWidth) - MIN_W;
+      const newW = Math.max(MIN_W, Math.min(startW + (startX - ev.clientX), maxW));
+      panel.style.width = newW + 'px';
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
+      try { localStorage.setItem('consoleDetailSplitRatio', panel.style.width); } catch {}
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup',   onUp);
