@@ -9,6 +9,7 @@ import { initMock } from './mock.js';
 import { initResilience } from './resilience.js';
 import { initJira } from './jira.js';
 import { initRecordPlayback } from './record-playback.js';
+import { renderTimeline } from './timeline.js';
 
 export function switchConsoleTab(tab) {
   state.activeConsoleTab = tab;
@@ -42,6 +43,7 @@ export function switchConsoleTab(tab) {
   const hasDetailTabs = state.detailTabs.length > 0;
   document.getElementById('detailPanel').classList.toggle('open', tab === 'console' && hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = tab === 'console' && hasDetailTabs ? '' : 'none';
+  if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') loadStoragePanel();
   if (tab === 'a11y') loadA11yPanel();
   if (tab === 'spoof') initSpoof();

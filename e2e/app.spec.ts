@@ -114,6 +114,8 @@ async function openReplayOverlay(win: Page, port: number) {
   await win.fill('#urlbar', `http://127.0.0.1:${port}`);
   await win.press('#urlbar', 'Enter');
   await win.waitForTimeout(2_500);
+  // Network tab shows network-request events; replay buttons only appear there.
+  await win.click('#consoleTabNetwork');
   await win.locator('.evt-replay-btn').last().click();
   await expect(win.locator('#replayOverlay')).toHaveClass(/open/);
 }
