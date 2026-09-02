@@ -184,6 +184,18 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     write: (text: string) => ipcRenderer.invoke('clipboard:write', text),
   },
 
+  tests: {
+    list:   () => ipcRenderer.invoke('tests:list'),
+    save:   (test: object) => ipcRenderer.invoke('tests:save', test),
+    load:   (id: string) => ipcRenderer.invoke('tests:load', id),
+    delete: (id: string) => ipcRenderer.invoke('tests:delete', id),
+    startRecording:    (id: string) => ipcRenderer.invoke('session:startRecording', id),
+    stopRecording:     (id: string) => ipcRenderer.invoke('session:stopRecording', id),
+    pollRecordingSteps:(id: string) => ipcRenderer.invoke('session:pollRecordingSteps', id),
+    playbackStep:      (id: string, step: object) => ipcRenderer.invoke('session:playbackStep', id, step),
+    captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
+  },
+
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),
@@ -202,5 +214,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
       ipcRenderer.removeAllListeners('show:settings');
       ipcRenderer.on('show:settings', () => cb());
     },
+  },
+
+  windowControls: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    maximize: () => ipcRenderer.invoke('window:maximize'),
+    close:    () => ipcRenderer.invoke('window:close'),
   },
 });

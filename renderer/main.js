@@ -26,7 +26,9 @@ import './jira.js';
 import { initViewDropdown } from './view-dropdown.js';
 import { initShortcuts } from './shortcuts.js';
 import { initIpcEvents } from './ipc-events.js';
+import { initTheme } from './theme.js';
 
+initTheme();
 initLayout();
 initMinimize();
 initToolbar();

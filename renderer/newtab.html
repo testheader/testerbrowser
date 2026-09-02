@@ -145,6 +145,57 @@
     .tile-add .tile-title { color: #3a3a3a; }
     .tile-add:hover .tile-title { color: #4fc3f7; }
 
+    /* ── Background settings button ── */
+    #bgSettingsBtn {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid #3a3a3a;
+      background: #252526;
+      color: #777;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s, color 0.12s;
+      z-index: 40;
+    }
+    #bgSettingsBtn:hover { background: #2e2e2e; color: #ddd; }
+
+    /* ── Background settings panel ── */
+    #bgPanel {
+      position: fixed;
+      bottom: 64px;
+      right: 18px;
+      background: #252526;
+      border: 1px solid #3a3a3a;
+      border-radius: 10px;
+      padding: 16px;
+      width: 220px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+      display: none;
+      z-index: 40;
+    }
+    #bgPanel h3 { font-size: 12px; font-weight: 600; color: #aaa; text-transform: uppercase;
+                  letter-spacing: 0.6px; margin: 0 0 12px; }
+    .bg-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .bg-preset { width: 36px; height: 36px; border-radius: 6px; border: 2px solid transparent;
+                 cursor: pointer; transition: border-color 0.1s; }
+    .bg-preset:hover, .bg-preset.active { border-color: #4fc3f7; }
+    .bg-custom-row { display: flex; align-items: center; gap: 8px; }
+    .bg-custom-row label { font-size: 11px; color: #777; flex-shrink: 0; }
+    #bgColorInput { flex: 1; background: #1e1e1e; border: 1px solid #3a3a3a; border-radius: 4px;
+                    color: #ddd; font-size: 12px; padding: 4px 6px; font-family: inherit; }
+    #bgColorInput:focus { outline: none; border-color: #4fc3f7; }
+    #bgApplyBtn { padding: 5px 12px; background: #4fc3f7; color: #000; border: none;
+                  border-radius: 5px; cursor: pointer; font-size: 12px; font-family: inherit;
+                  font-weight: 500; margin-top: 10px; width: 100%; }
+    #bgApplyBtn:hover { background: #81d4fa; }
+
     /* ── Add modal ── */
     .modal-backdrop {
       position: fixed;
@@ -209,6 +260,18 @@
 <body>
   <div class="wordmark">TesterBrowser</div>
   <div class="grid" id="grid"></div>
+
+  <!-- Background settings -->
+  <button id="bgSettingsBtn" title="Customize background">&#9881;</button>
+  <div id="bgPanel">
+    <h3>Background</h3>
+    <div class="bg-presets" id="bgPresets"></div>
+    <div class="bg-custom-row">
+      <label>Custom</label>
+      <input type="text" id="bgColorInput" placeholder="#1a1a1a or CSS" maxlength="80">
+    </div>
+    <button id="bgApplyBtn">Apply</button>
+  </div>
 
   <!-- Add site modal (hidden by default) -->
   <div class="modal-backdrop" id="modal" style="display:none">
@@ -384,6 +447,71 @@
     });
 
     init();
+
+    // ── Background customization ──
+    const BG_KEY = 'newtabBg';
+    const BG_PRESETS = [
+      { bg: '#1a1a1a', label: 'Dark' },
+      { bg: '#0d1117', label: 'GitHub dark' },
+      { bg: '#1e2a3a', label: 'Navy' },
+      { bg: '#1a1a2e', label: 'Midnight' },
+      { bg: '#f5f5f5', label: 'Light' },
+      { bg: 'linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)', label: 'Deep blue' },
+      { bg: 'linear-gradient(135deg,#0d0d0d,#1a1a1a,#2d2d2d)', label: 'Charcoal' },
+      { bg: 'linear-gradient(135deg,#1a2a1a,#0d1a0d)', label: 'Forest' },
+    ];
+
+    function applyBg(bg) {
+      if (bg.startsWith('#') || bg.startsWith('rgb')) {
+        document.body.style.background = bg;
+      } else {
+        document.body.style.background = bg;
+      }
+    }
+
+    function renderPresets() {
+      const savedBg = (() => { try { return localStorage.getItem(BG_KEY) || '#1a1a1a'; } catch { return '#1a1a1a'; } })();
+      const container = document.getElementById('bgPresets');
+      container.innerHTML = '';
+      for (const p of BG_PRESETS) {
+        const el = document.createElement('div');
+        el.className = 'bg-preset' + (p.bg === savedBg ? ' active' : '');
+        el.style.background = p.bg;
+        el.title = p.label;
+        el.addEventListener('click', () => {
+          try { localStorage.setItem(BG_KEY, p.bg); } catch {}
+          applyBg(p.bg);
+          renderPresets();
+          document.getElementById('bgColorInput').value = '';
+        });
+        container.appendChild(el);
+      }
+    }
+
+    (() => {
+      let savedBg;
+      try { savedBg = localStorage.getItem(BG_KEY); } catch {}
+      if (savedBg) applyBg(savedBg);
+
+      renderPresets();
+
+      const btn = document.getElementById('bgSettingsBtn');
+      const panel = document.getElementById('bgPanel');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+      });
+      document.addEventListener('click', () => { panel.style.display = 'none'; });
+      panel.addEventListener('click', (e) => e.stopPropagation());
+
+      document.getElementById('bgApplyBtn').addEventListener('click', () => {
+        const val = document.getElementById('bgColorInput').value.trim();
+        if (!val) return;
+        try { localStorage.setItem(BG_KEY, val); } catch {}
+        applyBg(val);
+        renderPresets();
+      });
+    })();
   </script>
 </body>
 </html>

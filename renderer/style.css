@@ -1,8 +1,47 @@
 * { box-sizing: border-box; }
-body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: #1e1e1e; color: #ddd; }
+
+/* ── CSS Variables (dark default) ── */
+:root {
+  --bg-primary:    #1e1e1e;
+  --bg-secondary:  #252526;
+  --bg-tertiary:   #333333;
+  --text-primary:  #dddddd;
+  --text-muted:    #888888;
+  --border-color:  #333333;
+  --accent:        #4fc3f7;
+  --titlebar-h:    36px;
+}
+
+body.light-mode {
+  --bg-primary:    #f0f0f0;
+  --bg-secondary:  #e0e0e0;
+  --bg-tertiary:   #c8c8c8;
+  --text-primary:  #1a1a1a;
+  --text-muted:    #555555;
+  --border-color:  #bbbbbb;
+}
+
+body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: var(--bg-primary); color: var(--text-primary); }
+
+/* ── Custom Titlebar ── */
+#titlebar { display: flex; align-items: center; height: var(--titlebar-h); flex-shrink: 0;
+            background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+            -webkit-app-region: drag; user-select: none; }
+#titlebarDrag { flex: 1; display: flex; align-items: center; padding: 0 12px; -webkit-app-region: drag; }
+#appName { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+           color: var(--text-muted); }
+#titlebarControls { display: flex; align-items: stretch; -webkit-app-region: no-drag; }
+#themeToggleBtn, #winMinBtn, #winMaxBtn, #winCloseBtn {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  width: 46px; height: 36px; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; transition: background 0.1s, color 0.1s; -webkit-app-region: no-drag;
+  padding: 0;
+}
+#themeToggleBtn:hover, #winMinBtn:hover, #winMaxBtn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+#winCloseBtn:hover { background: #c42b1c; color: #fff; }
 
 /* ── Top bar ── */
-#topbar { display: flex; flex-direction: column; background: #252526; border-bottom: 1px solid #333; }
+#topbar { display: flex; flex-direction: column; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
 
 /* Tabs */
 #tabs { display: flex; align-items: center; height: 40px; padding: 0 8px; gap: 4px; overflow-x: auto; }
@@ -45,8 +84,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .nav-btn:hover:not(:disabled) { background: #333; color: #fff; }
 .nav-btn:disabled { color: #444; cursor: default; }
 #urlbar { flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid #444;
-          background: #1e1e1e; color: #ddd; font-size: 14px; }
-#urlbar:focus { outline: none; border-color: #4fc3f7; }
+          background: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
+#urlbar:focus { outline: none; border-color: var(--accent); }
 #zoomIndicator { font-size: 11px; color: #888; min-width: 36px; text-align: center;
                  display: none; cursor: pointer; padding: 2px 4px; border-radius: 3px;
                  flex-shrink: 0; }
