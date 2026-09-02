@@ -18,7 +18,7 @@ test.afterAll(async () => {
 });
 
 test('tab bar is present for session context menu access', async () => {
-  const tabBar = window.locator('#tabBar');
+  const tabBar = window.locator('#tabs');
   await expect(tabBar).toBeVisible();
 });
 
