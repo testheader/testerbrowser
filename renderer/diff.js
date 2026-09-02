@@ -1,6 +1,7 @@
 /* global testerBrowser */
 
 let lastDiffRows = [];
+let cachedSessions = [];
 
 export function initDiff() {
   const panel = document.getElementById('diffPanel');
@@ -28,18 +29,56 @@ export function initDiff() {
   document.getElementById('diffHarBtn').addEventListener('click', exportDiffHar);
 }
 
+export async function refreshDiffPickers() {
+  const pickA = document.getElementById('diffPickA');
+  if (!pickA) return; // diff panel not yet initialised
+  await populatePickers();
+}
+
 async function populatePickers() {
-  const sessions = await testerBrowser.sessions.list();
+  cachedSessions = await testerBrowser.sessions.list();
   const pickA = document.getElementById('diffPickA');
   const pickB = document.getElementById('diffPickB');
   if (!pickA || !pickB) return;
 
-  const opts = sessions.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-  pickA.innerHTML = '<option value="">— pick session —</option>' + opts;
-  pickB.innerHTML = '<option value="">— pick session —</option>' + opts;
+  const prevA = pickA.value;
+  const prevB = pickB.value;
 
-  if (sessions.length >= 1) pickA.value = sessions[0].id;
-  if (sessions.length >= 2) pickB.value = sessions[1].id;
+  buildPickerOptions(pickA, cachedSessions, prevB);
+  buildPickerOptions(pickB, cachedSessions, prevA);
+
+  // Restore previous selections if still valid; otherwise default to first two
+  const validIds = new Set(cachedSessions.map(s => s.id));
+  if (prevA && validIds.has(prevA) && prevA !== pickB.value) {
+    pickA.value = prevA;
+  } else if (!pickA.value && cachedSessions.length >= 1) {
+    pickA.value = cachedSessions[0].id;
+  }
+  if (prevB && validIds.has(prevB) && prevB !== pickA.value) {
+    pickB.value = prevB;
+  } else if (!pickB.value && cachedSessions.length >= 2) {
+    pickB.value = cachedSessions[1].id;
+  }
+
+  pickA.onchange = () => {
+    buildPickerOptions(pickB, cachedSessions, pickA.value);
+    if (pickB.value === pickA.value) pickB.value = '';
+  };
+  pickB.onchange = () => {
+    buildPickerOptions(pickA, cachedSessions, pickB.value);
+    if (pickA.value === pickB.value) pickA.value = '';
+  };
+}
+
+function buildPickerOptions(select, sessions, excludeId) {
+  const current = select.value;
+  const opts = sessions
+    .filter(s => s.id !== excludeId)
+    .map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`)
+    .join('');
+  select.innerHTML = '<option value="">— pick session —</option>' + opts;
+  // Restore selection if still present after filter
+  if (current && current !== excludeId) select.value = current;
 }
 
 async function runDiff() {

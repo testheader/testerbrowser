@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { setLoadingBar, updateReloadBtn, updateNavButtons, updateZoomDisplay } from './toolbar.js';
 import { updateBookmarkStar } from './bookmarks.js';
 import { loadStoragePanel } from './storage.js';
+import { refreshDiffPickers } from './diff.js';
 
 export function insertAfterActive(id) {
   const idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
@@ -37,6 +38,7 @@ export function cycleTab(reverse) {
 export async function refreshTabs() {
   const sessions   = await testerBrowser.sessions.list();
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
+  refreshDiffPickers();
 
   state.tabOrder = state.tabOrder.filter((id) => sessionMap.has(id));
   for (const s of sessions) if (!state.tabOrder.includes(s.id)) state.tabOrder.push(s.id);
