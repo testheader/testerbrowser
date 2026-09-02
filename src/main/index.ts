@@ -64,6 +64,11 @@ const speedDialStore  = new JsonStore<SpeedDialTile[]>('speed-dial.json', DEFAUL
 const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETTINGS,
   (raw) => ({ ...DEFAULT_SETTINGS, ...(raw as Partial<AppSettings>) }));
 
+interface JiraSettings { baseUrl: string; email: string; apiToken: string; projectKey: string; }
+const DEFAULT_JIRA: JiraSettings = { baseUrl: '', email: '', apiToken: '', projectKey: '' };
+const jiraStore = new JsonStore<JiraSettings>('jira-settings.json', DEFAULT_JIRA,
+  (raw) => ({ ...DEFAULT_JIRA, ...(raw as Partial<JiraSettings>) }));
+
 // ---
 
 function pushUpdateStatus() {
@@ -121,9 +126,33 @@ app.whenReady().then(() => {
     autoUpdater.on('download-progress', () => { updateStatus = 'downloading'; pushUpdateStatus(); });
     autoUpdater.on('update-downloaded', (info) => { updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus(); });
     autoUpdater.on('update-not-available', (info) => { updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus(); });
-    autoUpdater.on('error', (_e, message) => {
-      updateStatus = 'error';
+    autoUpdater.on('error', async (_e, message) => {
       const fullMsg = String(message ?? 'unknown');
+      // When latest.yml is missing from the newest release, try up to 3 previous
+      // published releases before surfacing an error to the user.
+      if (fullMsg.includes('Cannot find latest.yml')) {
+        try {
+          const resp = await net.fetch(
+            'https://api.github.com/repos/testheader/testerbrowser/releases?per_page=10',
+            { headers: { 'User-Agent': 'TesterBrowser-Updater' } }
+          );
+          if (resp.ok) {
+            const releases = await resp.json() as { tag_name: string; draft: boolean; assets: { name: string }[] }[];
+            let checked = 0;
+            for (const rel of releases) {
+              if (rel.draft) continue;
+              if (rel.assets.some(a => a.name === 'latest.yml')) {
+                updateStatus = 'available';
+                latestVersion = rel.tag_name.replace(/^v/, '');
+                pushUpdateStatus();
+                return;
+              }
+              if (++checked >= 3) break;
+            }
+          }
+        } catch {}
+      }
+      updateStatus = 'error';
       try {
         writeUpdateLog(updateLogFile, {
           timestamp: new Date().toISOString(),
@@ -223,6 +252,61 @@ ipcMain.handle('sessions:setLocalStorageKey', (_e, id: string, key: string, valu
 );
 ipcMain.handle('sessions:clearLocalStorage', (_e, id: string) => sessionManager?.clearLocalStorage(id));
 ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(String(text)));
+
+ipcMain.handle('jira:getSettings', () => jiraStore.get());
+ipcMain.handle('jira:saveSettings', (_e, s: JiraSettings) => { jiraStore.set({ ...DEFAULT_JIRA, ...s }); });
+
+function jiraAuthHeader(s: JiraSettings): string {
+  return 'Basic ' + Buffer.from(`${s.email}:${s.apiToken}`).toString('base64');
+}
+
+ipcMain.handle('jira:fetchTicket', async (_e, key: string) => {
+  const s = jiraStore.get();
+  if (!s.baseUrl || !s.email || !s.apiToken) return { ok: false, error: 'Jira not configured' };
+  try {
+    const res = await net.fetch(
+      `${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(key)}`,
+      { headers: { 'Authorization': jiraAuthHeader(s), 'Accept': 'application/json' } }
+    );
+    const data = await res.json() as Record<string, unknown>;
+    if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
+    return { ok: true, data };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+ipcMain.handle('jira:createIssue', async (_e, summary: string, description: string) => {
+  const s = jiraStore.get();
+  if (!s.baseUrl || !s.email || !s.apiToken || !s.projectKey) return { ok: false, error: 'Jira not configured' };
+  try {
+    const body = {
+      fields: {
+        project: { key: s.projectKey },
+        summary,
+        description: {
+          version: 1, type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
+        },
+        issuetype: { name: 'Bug' },
+      },
+    };
+    const res = await net.fetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue`, {
+      method: 'POST',
+      headers: {
+        'Authorization': jiraAuthHeader(s),
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json() as Record<string, unknown>;
+    if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
+    return { ok: true, key: data.key };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
 
 ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string; headers: Record<string, string>; body?: string }) => {
   try {
