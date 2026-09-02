@@ -5,19 +5,29 @@ import { openDetailTab } from './detail-panel.js';
 import { openReplay } from './replay.js';
 
 export function renderTimeline() {
-  const panel      = document.getElementById('timelinePanel');
-  const filterText = document.getElementById('filterText').value.toLowerCase();
+  const panel = document.getElementById('timelinePanel');
+  const tab   = state.activeConsoleTab;
 
-  const activeTypes = new Set([...document.querySelectorAll('.filter-pill.on')].map(el => el.dataset.type));
-  const filtered = state.timelineEvents.filter(e => {
-    const kindVisible = activeTypes.has(e.kind) ||
-      (e.kind === 'network-body' && activeTypes.has('network-response'));
-    return kindVisible && (!filterText || e.summary.toLowerCase().includes(filterText));
-  });
+  let filtered;
+  if (tab === 'network') {
+    const netFilter  = document.getElementById('networkFilterText').value.toLowerCase();
+    const activeTypes = new Set([...document.querySelectorAll('#networkPills .filter-pill.on')].map(el => el.dataset.type));
+    filtered = state.timelineEvents.filter(e => {
+      const kindVisible = activeTypes.has(e.kind) ||
+        (e.kind === 'network-body' && activeTypes.has('network-response'));
+      return kindVisible && (!netFilter || e.summary.toLowerCase().includes(netFilter));
+    });
+  } else {
+    const filterText = document.getElementById('filterText').value.toLowerCase();
+    const CONSOLE_KINDS = new Set(['console', 'log']);
+    filtered = state.timelineEvents.filter(e =>
+      CONSOLE_KINDS.has(e.kind) && (!filterText || e.summary.toLowerCase().includes(filterText))
+    );
+  }
 
   const kindCounts = {};
   for (const e of state.timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
-  document.querySelectorAll('.filter-pill').forEach(btn => {
+  document.querySelectorAll('#networkPills .filter-pill').forEach(btn => {
     const n    = kindCounts[btn.dataset.type] || 0;
     const span = btn.querySelector('.pill-count');
     if (span) span.textContent = n > 0 ? n : '';
@@ -105,19 +115,23 @@ export function initTimeline() {
   };
 
   document.getElementById('filterText').addEventListener('input', renderTimeline);
+  document.getElementById('networkFilterText').addEventListener('input', renderTimeline);
 
-  document.querySelectorAll('.filter-pill').forEach((btn) =>
+  document.querySelectorAll('#networkPills .filter-pill').forEach((btn) =>
     btn.addEventListener('click', () => { btn.classList.toggle('on'); renderTimeline(); })
   );
 
-  document.getElementById('clearConsoleBtn').onclick = () => {
+  function clearTimeline() {
     state.timelineEvents.length = 0;
     state.lastTs  = 0;
     timelinePanel.innerHTML = '';
-    document.querySelectorAll('.filter-pill .pill-count').forEach(s => { s.textContent = ''; });
+    document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     state.autoScroll = true;
     scrollToBottomBtn.classList.remove('visible');
-  };
+  }
+
+  document.getElementById('clearConsoleBtn').onclick  = clearTimeline;
+  document.getElementById('clearNetworkBtn').onclick  = clearTimeline;
 
   testerBrowser.sessions.onLoadFailed(({ id, errorCode, errorDescription, url }) => {
     if (id !== state.activeId) return;

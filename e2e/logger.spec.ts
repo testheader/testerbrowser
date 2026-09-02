@@ -15,18 +15,16 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { await app.close(); });
 
-test('Res pill is off by default', async () => {
-  const resPill = window.locator('.filter-pill[data-type="network-response"]');
+test('Network tab pills are visible and on by default', async () => {
+  await window.locator('#consoleTabNetwork').click();
+  const resPill = window.locator('#networkPills .filter-pill[data-type="network-response"]');
   await expect(resPill).toBeVisible();
-  const classes = await resPill.getAttribute('class');
-  expect(classes).not.toContain('on');
-});
-
-test('Req pill is on by default', async () => {
-  const reqPill = window.locator('.filter-pill[data-type="network-request"]');
+  const resClasses = await resPill.getAttribute('class');
+  expect(resClasses).toContain('on');
+  const reqPill = window.locator('#networkPills .filter-pill[data-type="network-request"]');
   await expect(reqPill).toBeVisible();
-  const classes = await reqPill.getAttribute('class');
-  expect(classes).toContain('on');
+  const reqClasses = await reqPill.getAttribute('class');
+  expect(reqClasses).toContain('on');
 });
 
 test('detail panel tab bar exists', async () => {
