@@ -42,6 +42,7 @@ initStorage();
 initDetailPanel();
 initTimeline();
 initReplay();
+initRecordPlayback();
 initNotes();
 initSettings();
 initConsoleTabs();
