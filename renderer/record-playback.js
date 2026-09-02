@@ -126,16 +126,125 @@ function renderLiveSteps() {
     return;
   }
   el.innerHTML = currentSteps.map((s, i) => `
-    <div class="rp-live-step">
+    <div class="rp-live-step" data-idx="${i}" title="Right-click to add assertion after this step">
       <span class="rp-step-num">${i + 1}</span>
-      <span class="rp-step-type">${s.type}</span>
+      <span class="rp-step-type ${s.type.startsWith('assert') ? 'rp-type-assert' : ''}">${s.type}</span>
       <span class="rp-step-desc">${escHtml(s.selector || s.url || s.description || '')}</span>
       ${s.value && !s.sensitive ? `<span class="rp-step-val">${escHtml(String(s.value).slice(0, 40))}</span>` : ''}
       ${s.sensitive ? '<span class="rp-step-val">[hidden]</span>' : ''}
+      <button class="rp-del-step" data-idx="${i}" title="Remove step">×</button>
     </div>
   `).join('');
+
+  el.querySelectorAll('.rp-live-step').forEach(row => {
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showAssertionMenu(parseInt(row.dataset.idx, 10), e.clientX, e.clientY);
+    });
+  });
+  el.querySelectorAll('.rp-del-step').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.idx, 10);
+      currentSteps.splice(idx, 1);
+      renderLiveSteps();
+    });
+  });
+
   document.getElementById('rpSaveBtn').disabled = isRecording || currentSteps.length === 0;
   document.getElementById('rpDiscardBtn').disabled = isRecording || currentSteps.length === 0;
+}
+
+// ─── Assertion insertion ─────────────────────────────────────────────────────
+
+const ASSERT_TYPES = [
+  { type: 'assert-visible',     label: 'Assert: element visible',      needsSelector: true,  needsValue: false },
+  { type: 'assert-not-visible', label: 'Assert: element not visible',  needsSelector: true,  needsValue: false },
+  { type: 'assert-text',        label: 'Assert: element contains text', needsSelector: true,  needsValue: true,  valuePlaceholder: 'Expected text' },
+  { type: 'assert-value',       label: 'Assert: input has value',      needsSelector: true,  needsValue: true,  valuePlaceholder: 'Expected value' },
+  { type: 'assert-url',         label: 'Assert: URL contains',         needsSelector: false, needsValue: true,  valuePlaceholder: 'URL substring' },
+  { type: 'assert-enabled',     label: 'Assert: element enabled',      needsSelector: true,  needsValue: false },
+  { type: 'assert-attr',        label: 'Assert: attribute equals',     needsSelector: true,  needsValue: true,  needsAttr: true, valuePlaceholder: 'Expected value' },
+  { type: 'wait-visible',       label: 'Wait: element visible',        needsSelector: true,  needsValue: false },
+];
+
+let assertMenuInsertIdx = -1;
+
+function showAssertionMenu(afterIdx, x, y) {
+  removeAssertionMenu();
+  assertMenuInsertIdx = afterIdx;
+
+  const menu = document.createElement('div');
+  menu.id = 'rpAssertMenu';
+  menu.className = 'rp-assert-menu';
+  menu.style.cssText = `position:fixed;left:${x}px;top:${y}px;z-index:9999`;
+  menu.innerHTML = `
+    <div class="rp-assert-menu-title">Add assertion after step ${afterIdx + 1}</div>
+    ${ASSERT_TYPES.map((a, i) => `<div class="rp-assert-menu-item" data-i="${i}">${a.label}</div>`).join('')}
+  `;
+  document.body.appendChild(menu);
+
+  menu.querySelectorAll('.rp-assert-menu-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const def = ASSERT_TYPES[parseInt(item.dataset.i, 10)];
+      removeAssertionMenu();
+      showAssertionDialog(assertMenuInsertIdx, def);
+    });
+  });
+
+  setTimeout(() => document.addEventListener('click', removeAssertionMenu, { once: true }), 0);
+}
+
+function removeAssertionMenu() {
+  document.getElementById('rpAssertMenu')?.remove();
+}
+
+function showAssertionDialog(afterIdx, def) {
+  removeAssertionDialog();
+  const dlg = document.createElement('div');
+  dlg.id = 'rpAssertDlg';
+  dlg.className = 'rp-assert-dlg';
+  dlg.innerHTML = `
+    <div class="rp-assert-dlg-inner">
+      <div class="rp-assert-dlg-title">${def.label}</div>
+      ${def.needsSelector ? `<input class="rp-input" id="rpAssertSel" placeholder="CSS selector" />` : ''}
+      ${def.needsAttr     ? `<input class="rp-input" id="rpAssertAttr" placeholder="Attribute name" />` : ''}
+      ${def.needsValue    ? `<input class="rp-input" id="rpAssertVal" placeholder="${def.valuePlaceholder || 'Value'}" />` : ''}
+      <div class="rp-assert-dlg-btns">
+        <button class="rp-btn" id="rpAssertOk">Add</button>
+        <button class="rp-btn" id="rpAssertCancel">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  document.getElementById('rpAssertOk').addEventListener('click', () => {
+    const selector  = def.needsSelector ? (document.getElementById('rpAssertSel')?.value.trim() || '') : undefined;
+    const attr      = def.needsAttr     ? (document.getElementById('rpAssertAttr')?.value.trim() || '') : undefined;
+    const value     = def.needsValue    ? (document.getElementById('rpAssertVal')?.value.trim() || '') : undefined;
+    if (def.needsSelector && !selector) { alert('Selector required'); return; }
+    if (def.needsValue    && !value)    { alert('Value required'); return; }
+
+    const step = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      type: def.type,
+      selector,
+      value,
+      attr,
+      timestamp: Date.now(),
+      description: def.label,
+    };
+    currentSteps.splice(afterIdx + 1, 0, step);
+    removeAssertionDialog();
+    renderLiveSteps();
+  });
+
+  document.getElementById('rpAssertCancel').addEventListener('click', removeAssertionDialog);
+  document.getElementById('rpAssertSel')?.focus();
+}
+
+function removeAssertionDialog() {
+  document.getElementById('rpAssertDlg')?.remove();
 }
 
 // ─── Test list ──────────────────────────────────────────────────────────────
