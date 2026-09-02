@@ -165,6 +165,7 @@ export class SessionManager {
   private downloadManager: DownloadManager;
   private permissionManager: PermissionManager;
   private getRedactHeaders: () => boolean;
+  private recordingHandlers = new Map<string, () => void>();
 
   constructor(win: BrowserWindow, getRedactHeaders: () => boolean) {
     this.win = win;
@@ -976,8 +977,6 @@ export class SessionManager {
     this.sessionNotes.delete(id);
     this.recordingHandlers.delete(id);
   }
-
-  private recordingHandlers = new Map<string, () => void>();
 
   async startRecording(id: string): Promise<boolean> {
     const s = this.sessions.get(id);
