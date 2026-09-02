@@ -141,7 +141,7 @@ function renderLiveSteps() {
 // ─── Test list ──────────────────────────────────────────────────────────────
 
 async function refreshTestList() {
-  savedTests = (await testerBrowser.tests.list()) || [];
+  try { savedTests = (await testerBrowser.tests.list()) || []; } catch { savedTests = []; }
   const el = document.getElementById('rpTestList');
   if (!el) return;
   if (savedTests.length === 0) {

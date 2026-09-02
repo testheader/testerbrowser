@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, clipboard, net } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
-import { SessionManager } from './sessionManager';
+import { SessionManager, TestStep } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
 
 let win: BrowserWindow | null = null;
@@ -68,6 +68,9 @@ interface JiraSettings { baseUrl: string; email: string; apiToken: string; proje
 const DEFAULT_JIRA: JiraSettings = { baseUrl: '', email: '', apiToken: '', projectKey: '' };
 const jiraStore = new JsonStore<JiraSettings>('jira-settings.json', DEFAULT_JIRA,
   (raw) => ({ ...DEFAULT_JIRA, ...(raw as Partial<JiraSettings>) }));
+
+interface SavedTest { id: string; name: string; steps: object[]; createdAt: number; updatedAt: number; }
+const testsStore = new JsonStore<SavedTest[]>('tests.json', []);
 
 // ---
 
@@ -396,6 +399,23 @@ ipcMain.handle('app:checkForUpdates', () => {
   autoUpdater.checkForUpdatesAndNotify();
 });
 ipcMain.handle('app:restartAndInstall', () => autoUpdater.quitAndInstall());
+
+// Tests (record-playback) IPC
+ipcMain.handle('tests:list', () => testsStore.get());
+ipcMain.handle('tests:save', (_e, test: SavedTest) => {
+  testsStore.update(all => {
+    const idx = all.findIndex(t => t.id === test.id);
+    if (idx >= 0) { all[idx] = test; return all; }
+    return [...all, test];
+  });
+});
+ipcMain.handle('tests:load', (_e, id: string) => testsStore.get().find(t => t.id === id) ?? null);
+ipcMain.handle('tests:delete', (_e, id: string) => testsStore.update(all => all.filter(t => t.id !== id)));
+ipcMain.handle('session:startRecording',     (_e, id: string) => sessionManager?.startRecording(id) ?? null);
+ipcMain.handle('session:stopRecording',      (_e, id: string) => sessionManager?.stopRecording(id) ?? []);
+ipcMain.handle('session:pollRecordingSteps', (_e, id: string) => sessionManager?.pollRecordingSteps(id) ?? []);
+ipcMain.handle('session:playbackStep',       (_e, id: string, step: TestStep) => sessionManager?.playbackStep(id, step) ?? null);
+ipcMain.handle('session:captureScreenshot',  (_e, id: string) => sessionManager?.captureScreenshot(id) ?? null);
 
 // Settings IPC
 ipcMain.handle('settings:get', () => settingsStore.get());

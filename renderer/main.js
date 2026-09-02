@@ -47,7 +47,6 @@ initSettings();
 initConsoleTabs();
 initA11y();
 initTestdata();
-initRecordPlayback();
 initViewDropdown();
 initShortcuts();
 initIpcEvents();

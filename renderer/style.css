@@ -194,7 +194,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #consoleDragHandle:hover, #consoleDragHandle.dragging { background: #4fc3f7; }
 #consoleHeader { display: flex; align-items: center; gap: 6px; padding: 0 10px 0 0;
                  background: #1a1a1a; border-bottom: 1px solid #222; flex-shrink: 0; height: 36px; }
-.console-tabs { display: flex; height: 100%; flex-shrink: 0; }
+.console-tabs { display: flex; height: 100%; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+.console-tabs::-webkit-scrollbar { display: none; }
 .console-tab { background: none; border: none; border-bottom: 2px solid transparent; color: #555;
                font-size: 12px; cursor: pointer; padding: 0 14px; text-transform: uppercase;
                letter-spacing: 0.5px; font-family: inherit; height: 100%; }
