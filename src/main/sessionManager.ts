@@ -19,6 +19,17 @@ export interface MockRule {
   enabled: boolean;
 }
 
+export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
+
+export interface ResilienceRule {
+  id: string;
+  type: ResilienceType;
+  urlPattern: string;
+  probability: number;
+  latencyMs: number;
+  enabled: boolean;
+}
+
 function matchesGlob(pattern: string, url: string): boolean {
   try {
     const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
@@ -39,6 +50,7 @@ export interface TestSession {
   createdAt: number;
   loadedDomains: Set<string>;
   mockRules: MockRule[];
+  resilienceRules: ResilienceRule[];
 }
 
 const TAB_COLORS = [
@@ -133,6 +145,7 @@ export class SessionManager {
       createdAt: Date.now(),
       loadedDomains: new Set<string>(),
       mockRules: [],
+      resilienceRules: [],
     };
 
     // Handle Fetch.requestPaused for mock rules
@@ -149,9 +162,40 @@ export class SessionManager {
           responseCode: rule.statusCode,
           body: Buffer.from(rule.body).toString('base64'),
         }).catch(() => {});
-      } else {
-        dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+        return;
       }
+      const res = testSession.resilienceRules.find(r =>
+        r.enabled && matchesGlob(r.urlPattern, request.url)
+      );
+      if (res && Math.random() < res.probability) {
+        switch (res.type) {
+          case 'error500':
+          case 'random500':
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 500, body: Buffer.from('Internal Server Error').toString('base64') }).catch(() => {});
+            break;
+          case 'timeout':
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 504, body: Buffer.from('Gateway Timeout').toString('base64') }).catch(() => {});
+            break;
+          case 'offline':
+            dbg.sendCommand('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' }).catch(() => {});
+            break;
+          case 'missing':
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 404, body: Buffer.from('Not Found').toString('base64') }).catch(() => {});
+            break;
+          case 'corrupt':
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 200, body: Buffer.from('\x00\x01\x02\xff\xfe' + 'x'.repeat(20)).toString('base64') }).catch(() => {});
+            break;
+          case 'latency':
+            setTimeout(() => {
+              dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+            }, res.latencyMs || 2000);
+            break;
+          default:
+            dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+        }
+        return;
+      }
+      dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
     });
     this.sessions.set(id, testSession);
 
@@ -788,18 +832,56 @@ export class SessionManager {
     this._applyMocks(id);
   }
 
-  private _applyMocks(id: string): void {
+  private _applyFetch(id: string): void {
     const s = this.sessions.get(id);
     if (!s) return;
     const dbg = s.view.webContents.debugger;
-    const active = s.mockRules.filter(r => r.enabled);
-    if (active.length === 0) {
+    const activeMocks = s.mockRules.filter(r => r.enabled);
+    const activeRes = s.resilienceRules.filter(r => r.enabled);
+    if (activeMocks.length === 0 && activeRes.length === 0) {
       dbg.sendCommand('Fetch.disable').catch(() => {});
+    } else if (activeRes.length > 0) {
+      dbg.sendCommand('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }).catch(() => {});
     } else {
       dbg.sendCommand('Fetch.enable', {
-        patterns: active.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' })),
+        patterns: activeMocks.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' })),
       }).catch(() => {});
     }
+  }
+
+  /** @deprecated use _applyFetch */
+  private _applyMocks(id: string): void { this._applyFetch(id); }
+
+  getResilienceRules(id: string): ResilienceRule[] {
+    return this.sessions.get(id)?.resilienceRules ?? [];
+  }
+
+  addResilienceRule(id: string, rule: ResilienceRule): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    s.resilienceRules.push(rule);
+    this._applyFetch(id);
+  }
+
+  removeResilienceRule(id: string, ruleId: string): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    s.resilienceRules = s.resilienceRules.filter(r => r.id !== ruleId);
+    this._applyFetch(id);
+  }
+
+  toggleResilienceRule(id: string, ruleId: string, enabled: boolean): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const rule = s.resilienceRules.find(r => r.id === ruleId);
+    if (rule) { rule.enabled = enabled; this._applyFetch(id); }
+  }
+
+  updateResilienceRule(id: string, ruleId: string, patch: Partial<ResilienceRule>): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const rule = s.resilienceRules.find(r => r.id === ruleId);
+    if (rule) { Object.assign(rule, patch); this._applyFetch(id); }
   }
 
   destroySession(id: string) {

@@ -21,6 +21,8 @@ import { initTestdata } from './testdata.js';
 import './emulation.js';
 import './security.js';
 import './mock.js';
+import './resilience.js';
+import './jira.js';
 import { initViewDropdown } from './view-dropdown.js';
 import { initShortcuts } from './shortcuts.js';
 import { initIpcEvents } from './ipc-events.js';

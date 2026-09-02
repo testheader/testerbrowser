@@ -152,6 +152,20 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('mock:removeRule', id, ruleId),
     toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('mock:toggleRule', id, ruleId, enabled),
   },
+  resilience: {
+    getRules:   (id: string) => ipcRenderer.invoke('resilience:getRules', id),
+    addRule:    (id: string, rule: object) => ipcRenderer.invoke('resilience:addRule', id, rule),
+    removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('resilience:removeRule', id, ruleId),
+    toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('resilience:toggleRule', id, ruleId, enabled),
+    updateRule: (id: string, ruleId: string, patch: object) => ipcRenderer.invoke('resilience:updateRule', id, ruleId, patch),
+  },
+
+  jira: {
+    getSettings:  () => ipcRenderer.invoke('jira:getSettings'),
+    saveSettings: (s: object) => ipcRenderer.invoke('jira:saveSettings', s),
+    fetchTicket:  (key: string) => ipcRenderer.invoke('jira:fetchTicket', key),
+    createIssue:  (summary: string, description: string) => ipcRenderer.invoke('jira:createIssue', summary, description),
+  },
 
   emulation: {
     set:   (id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; clear?: boolean }) =>
