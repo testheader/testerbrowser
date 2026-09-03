@@ -44,6 +44,9 @@
 
   /* Text drawn on top of an accent or status fill. */
   --on-fill:       #000000;
+  /* Selection marker on the active tab — deliberately neutral so it never
+     reads as a session color. */
+  --tab-selected:  #bbbbbb;
 
   --titlebar-h:    36px;
   --active-tab-color: #4fc3f7;
@@ -85,6 +88,7 @@ body.light-mode {
   --error-strong:    #b52020;
   --accent2-surface: #f0e4fa;
   --on-fill:       #ffffff;
+  --tab-selected:  #444444;
 }
 
 body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: var(--bg-primary); color: var(--text-primary); }
@@ -125,14 +129,17 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px; background: var(--bg-hover);
        border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap;
        min-width: 0; max-width: 180px; user-select: none;
-       border-left: 3px solid var(--tab-color, var(--border-strong)); border-top: 2px solid transparent;
+       border-top: 2px solid transparent;
+       border-bottom: 3px solid var(--tab-color, var(--border-strong));
        position: relative; transition: background 100ms ease, border-color 100ms ease, font-weight 100ms ease; }
+/* Three independent channels, so none is mistaken for another: the bottom edge
+   carries session color, the top edge marks selection, and drag insertion uses
+   the accent. */
 .tab.active { background: var(--bg-primary); font-weight: 600;
-              border-top: 2px solid var(--tab-color, var(--accent));
-              border-bottom: 2px solid var(--tab-color, var(--accent)); }
+              border-top-color: var(--tab-selected); }
 .tab.dragging { opacity: 0.35; box-shadow: 0 6px 14px rgba(0,0,0,0.45); }
-.tab.drag-left  { box-shadow: -2px 0 0 0 var(--tab-color, #4fc3f7); }
-.tab.drag-right { box-shadow:  2px 0 0 0 var(--tab-color, #4fc3f7); }
+.tab.drag-left  { box-shadow: -2px 0 0 0 var(--accent); }
+.tab.drag-right { box-shadow:  2px 0 0 0 var(--accent); }
 .tab-favicon { width: 14px; height: 14px; flex-shrink: 0; border-radius: 2px; }
 .tab-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .tab-dot.persistent { background: var(--accent); }
