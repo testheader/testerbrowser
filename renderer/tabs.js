@@ -5,6 +5,7 @@ import { updateBookmarkStar } from './bookmarks.js';
 import { loadStoragePanel } from './storage.js';
 import { refreshDiffPickers } from './diff.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
+import { reloadA11yIfLoaded } from './a11y.js';
 
 export function insertAfterActive(id) {
   const idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
@@ -22,6 +23,7 @@ export async function switchToSession(id) {
   state.timelineEvents.length = 0;
   document.getElementById('timelinePanel').innerHTML = '';
   if (state.activeConsoleTab === 'storage') loadStoragePanel();
+  if (state.activeConsoleTab === 'a11y') reloadA11yIfLoaded();
   recordVisit(id);
   await testerBrowser.sessions.switchTo(id);
   updateNavButtons();
