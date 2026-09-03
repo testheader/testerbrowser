@@ -5,12 +5,31 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https://www.google.com data:; connect-src 'none'">
   <title>New Tab</title>
   <style>
+    /* Mirrors the app shell's tokens so this page follows the same theme
+       toggle; the shell pushes changes over IPC (see the script below). */
+    :root {
+      --bg-primary: #1a1a1a; --bg-secondary: #252526; --bg-hover: #2e2e2e;
+      --bg-tertiary: #333333; --border-color: #3a3a3a;
+      --text-strong: #ffffff; --text-primary: #dddddd; --text-secondary: #aaaaaa;
+      --text-muted: #888888; --text-faint: #666666;
+      --accent: #4fc3f7; --accent-soft: #81d4fa; --error-strong: #c0392b;
+      --on-fill: #000000;
+    }
+    body.light-mode {
+      --bg-primary: #f7f7f7; --bg-secondary: #ededed; --bg-hover: #e4e4e4;
+      --bg-tertiary: #dcdcdc; --border-color: #cccccc;
+      --text-strong: #000000; --text-primary: #1a1a1a; --text-secondary: #333333;
+      --text-muted: #5c5c5c; --text-faint: #7a7a7a;
+      --accent: #0b7fc0; --accent-soft: #0369a1; --error-strong: #b52020;
+      --on-fill: #ffffff;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, 'Segoe UI', sans-serif;
-      background: #1a1a1a;
-      color: #ddd;
+      background: var(--bg-primary);
+      color: var(--text-primary);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -25,7 +44,7 @@
       font-weight: 500;
       letter-spacing: 3px;
       text-transform: uppercase;
-      color: #3a3a3a;
+      color: var(--text-faint);
       margin-bottom: 48px;
     }
 
@@ -44,8 +63,8 @@
     /* ── Tile ── */
     .tile {
       position: relative;
-      background: #252526;
-      border: 1px solid #2e2e2e;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
       border-radius: 12px;
       height: 130px;
       cursor: pointer;
@@ -61,8 +80,8 @@
       overflow: hidden;
     }
     .tile:hover {
-      background: #2c2c2d;
-      border-color: #3a3a3a;
+      background: var(--bg-hover);
+      border-color: var(--border-color);
       box-shadow: 0 8px 28px rgba(0,0,0,0.45);
       transform: translateY(-3px);
     }
@@ -79,19 +98,19 @@
       width: 48px;
       height: 48px;
       border-radius: 10px;
-      background: #333;
+      background: var(--bg-tertiary);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 20px;
       font-weight: 600;
-      color: #666;
+      color: var(--text-faint);
       flex-shrink: 0;
     }
 
     .tile-title {
       font-size: 12px;
-      color: #777;
+      color: var(--text-faint);
       text-align: center;
       white-space: nowrap;
       overflow: hidden;
@@ -99,7 +118,7 @@
       width: 100%;
       line-height: 1.2;
     }
-    .tile:hover .tile-title { color: #999; }
+    .tile:hover .tile-title { color: var(--text-muted); }
 
     /* Remove button */
     .tile-remove {
@@ -110,8 +129,8 @@
       height: 20px;
       border-radius: 50%;
       border: none;
-      background: #3a3a3a;
-      color: #888;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
       font-size: 13px;
       line-height: 20px;
       text-align: center;
@@ -121,29 +140,29 @@
       padding: 0;
     }
     .tile:hover .tile-remove { opacity: 1; }
-    .tile-remove:hover { background: #c0392b; color: #fff; }
+    .tile-remove:hover { background: var(--error-strong); color: var(--text-strong); }
 
     /* ── Add tile ── */
     .tile-add {
       border-style: dashed;
-      border-color: #2e2e2e;
+      border-color: var(--border-color);
       background: transparent;
     }
     .tile-add:hover {
-      border-color: #4fc3f7;
+      border-color: var(--accent);
       background: rgba(79,195,247,0.04);
       box-shadow: none;
       transform: none;
     }
     .tile-add-icon {
       font-size: 26px;
-      color: #3a3a3a;
+      color: var(--text-faint);
       line-height: 1;
       transition: color 0.12s;
     }
-    .tile-add:hover .tile-add-icon { color: #4fc3f7; }
-    .tile-add .tile-title { color: #3a3a3a; }
-    .tile-add:hover .tile-title { color: #4fc3f7; }
+    .tile-add:hover .tile-add-icon { color: var(--accent); }
+    .tile-add .tile-title { color: var(--text-faint); }
+    .tile-add:hover .tile-title { color: var(--accent); }
 
     /* ── Background settings button ── */
     #bgSettingsBtn {
@@ -153,9 +172,9 @@
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      border: 1px solid #3a3a3a;
-      background: #252526;
-      color: #777;
+      border: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      color: var(--text-faint);
       font-size: 16px;
       cursor: pointer;
       display: flex;
@@ -164,15 +183,15 @@
       transition: background 0.12s, color 0.12s;
       z-index: 40;
     }
-    #bgSettingsBtn:hover { background: #2e2e2e; color: #ddd; }
+    #bgSettingsBtn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
     /* ── Background settings panel ── */
     #bgPanel {
       position: fixed;
       bottom: 64px;
       right: 18px;
-      background: #252526;
-      border: 1px solid #3a3a3a;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
       border-radius: 10px;
       padding: 16px;
       width: 220px;
@@ -180,21 +199,21 @@
       display: none;
       z-index: 40;
     }
-    #bgPanel h3 { font-size: 12px; font-weight: 600; color: #aaa; text-transform: uppercase;
+    #bgPanel h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;
                   letter-spacing: 0.6px; margin: 0 0 12px; }
     .bg-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
     .bg-preset { width: 36px; height: 36px; border-radius: 6px; border: 2px solid transparent;
                  cursor: pointer; transition: border-color 0.1s; }
-    .bg-preset:hover, .bg-preset.active { border-color: #4fc3f7; }
+    .bg-preset:hover, .bg-preset.active { border-color: var(--accent); }
     .bg-custom-row { display: flex; align-items: center; gap: 8px; }
-    .bg-custom-row label { font-size: 11px; color: #777; flex-shrink: 0; }
-    #bgColorInput { flex: 1; background: #1e1e1e; border: 1px solid #3a3a3a; border-radius: 4px;
-                    color: #ddd; font-size: 12px; padding: 4px 6px; font-family: inherit; }
-    #bgColorInput:focus { outline: none; border-color: #4fc3f7; }
-    #bgApplyBtn { padding: 5px 12px; background: #4fc3f7; color: #000; border: none;
+    .bg-custom-row label { font-size: 11px; color: var(--text-faint); flex-shrink: 0; }
+    #bgColorInput { flex: 1; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px;
+                    color: var(--text-primary); font-size: 12px; padding: 4px 6px; font-family: inherit; }
+    #bgColorInput:focus { outline: none; border-color: var(--accent); }
+    #bgApplyBtn { padding: 5px 12px; background: var(--accent); color: var(--on-fill); border: none;
                   border-radius: 5px; cursor: pointer; font-size: 12px; font-family: inherit;
                   font-weight: 500; margin-top: 10px; width: 100%; }
-    #bgApplyBtn:hover { background: #81d4fa; }
+    #bgApplyBtn:hover { background: var(--accent-soft); }
 
     /* ── Add modal ── */
     .modal-backdrop {
@@ -207,8 +226,8 @@
       z-index: 50;
     }
     .modal {
-      background: #252526;
-      border: 1px solid #3a3a3a;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
       border-radius: 12px;
       padding: 28px 30px 24px;
       width: 360px;
@@ -217,13 +236,13 @@
     .modal h2 {
       font-size: 14px;
       font-weight: 600;
-      color: #eee;
+      color: var(--text-primary);
       margin-bottom: 20px;
     }
     .modal label {
       display: block;
       font-size: 11px;
-      color: #666;
+      color: var(--text-faint);
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 5px;
@@ -232,15 +251,15 @@
       width: 100%;
       padding: 8px 10px;
       border-radius: 6px;
-      border: 1px solid #3a3a3a;
-      background: #1e1e1e;
-      color: #ddd;
+      border: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
       font-size: 13px;
       font-family: inherit;
       margin-bottom: 14px;
       transition: border-color 0.12s;
     }
-    .modal input:focus { outline: none; border-color: #4fc3f7; }
+    .modal input:focus { outline: none; border-color: var(--accent); }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
     .btn {
       padding: 7px 18px;
@@ -251,10 +270,10 @@
       font-family: inherit;
       transition: background 0.1s;
     }
-    .btn-primary { background: #4fc3f7; color: #000; font-weight: 500; }
-    .btn-primary:hover { background: #81d4fa; }
-    .btn-secondary { background: #2e2e2e; color: #aaa; }
-    .btn-secondary:hover { background: #3a3a3a; }
+    .btn-primary { background: var(--accent); color: var(--on-fill); font-weight: 500; }
+    .btn-primary:hover { background: var(--accent-soft); }
+    .btn-secondary { background: var(--bg-hover); color: var(--text-secondary); }
+    .btn-secondary:hover { background: var(--bg-tertiary); }
   </style>
 </head>
 <body>
@@ -511,6 +530,13 @@
         applyBg(val);
         renderPresets();
       });
+    })();
+
+    (function initTheme() {
+      const apply = (scheme) => document.body.classList.toggle('light-mode', scheme === 'light');
+      if (!window.appTheme) return;
+      window.appTheme.get().then(apply).catch(() => {});
+      window.appTheme.onChange(apply);
     })();
   </script>
 </body>

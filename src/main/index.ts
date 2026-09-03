@@ -86,6 +86,8 @@ const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
 const bookmarkStore   = new JsonStore<Bookmark[]>('bookmarks.json', []);
 const urlHistoryStore = new JsonStore<string[]>('url-history.json', []);
 const speedDialStore  = new JsonStore<SpeedDialTile[]>('speed-dial.json', DEFAULT_SPEED_DIAL);
+// Mirrors the shell's theme choice so newtab views can read it on load.
+const themeStore      = new JsonStore<{ scheme: string }>('theme.json', { scheme: 'dark' });
 const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETTINGS,
   (raw) => ({ ...DEFAULT_SETTINGS, ...(raw as Partial<AppSettings>) }));
 
@@ -293,6 +295,12 @@ ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.getHAR
 ipcMain.handle('a11y:getTree',        (_e, id: string) => sessionManager?.getA11yTree(id) ?? null);
 ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
 ipcMain.handle('session:captureScreenshot', (_e, id: string, opts?: { fullPage?: boolean }) => sessionManager?.captureScreenshot(id, opts) ?? null);
+ipcMain.handle('theme:get', () => themeStore.get().scheme);
+ipcMain.handle('theme:set', (_e, scheme: string) => {
+  const value = scheme === 'light' ? 'light' : 'dark';
+  themeStore.set({ scheme: value });
+  sessionManager?.broadcastTheme(value);
+});
 ipcMain.handle('testdata:apply',      (_e, id: string, template: string) => sessionManager?.applyTemplate(id, template));
 ipcMain.handle('mock:getRules',    (_e, id: string) => sessionManager?.getMockRules(id) ?? []);
 ipcMain.handle('mock:addRule',     (_e, id: string, rule) => sessionManager?.addMockRule(id, rule));

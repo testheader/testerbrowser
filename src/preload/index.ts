@@ -237,6 +237,9 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     },
   },
 
+  theme: {
+    set: (scheme: string) => ipcRenderer.invoke('theme:set', scheme),
+  },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     maximize: () => ipcRenderer.invoke('window:maximize'),

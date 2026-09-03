@@ -822,6 +822,14 @@ export class SessionManager {
     }
   }
 
+  // newtab.html renders in its own WebContentsView, out of reach of the app
+  // shell's light-mode class, so the chosen theme is pushed to each view.
+  broadcastTheme(theme: string) {
+    for (const s of this.sessions.values()) {
+      s.view.webContents.send('theme:changed', theme);
+    }
+  }
+
   async captureScreenshot(id: string, opts?: { fullPage?: boolean }): Promise<string | null> {
     const s = this.sessions.get(id);
     if (!s) return null;

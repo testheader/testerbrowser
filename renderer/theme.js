@@ -3,15 +3,12 @@
 const LS_KEY = 'colorScheme';
 
 function applyTheme(scheme) {
-  if (scheme === 'light') {
-    document.body.classList.add('light-mode');
-    const btn = document.getElementById('themeToggleBtn');
-    if (btn) btn.title = 'Switch to dark mode';
-  } else {
-    document.body.classList.remove('light-mode');
-    const btn = document.getElementById('themeToggleBtn');
-    if (btn) btn.title = 'Switch to light mode';
-  }
+  const light = scheme === 'light';
+  document.body.classList.toggle('light-mode', light);
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) btn.title = light ? 'Switch to dark mode' : 'Switch to light mode';
+  // Session views render their own pages (newtab) and need to be told.
+  testerBrowser.theme.set(light ? 'light' : 'dark');
 }
 
 export function initTheme() {
