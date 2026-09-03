@@ -62,15 +62,15 @@ export function initRecordPlayback() {
 // ─── Recording ─────────────────────────────────────────────────────────────
 
 async function startRecording() {
-  if (!state.activeSessionId) { alert('No active session'); return; }
+  if (!state.activeId) { alert('No active session'); return; }
   isRecording = true;
   currentSteps = [];
   setRecordBtns(true);
   renderLiveSteps();
-  await testerBrowser.tests.startRecording(state.activeSessionId);
+  await testerBrowser.tests.startRecording(state.activeId);
   pollInterval = setInterval(async () => {
     if (!isRecording) return;
-    const steps = await testerBrowser.tests.pollRecordingSteps(state.activeSessionId);
+    const steps = await testerBrowser.tests.pollRecordingSteps(state.activeId);
     currentSteps = steps || [];
     renderLiveSteps();
   }, 600);
@@ -79,7 +79,7 @@ async function startRecording() {
 async function stopRecording() {
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   isRecording = false;
-  const steps = await testerBrowser.tests.stopRecording(state.activeSessionId);
+  const steps = await testerBrowser.tests.stopRecording(state.activeId);
   currentSteps = steps || [];
   setRecordBtns(false);
   renderLiveSteps();
@@ -299,7 +299,7 @@ function promptRepeatRun(testId) {
 async function runTest(testId, runCount) {
   const test = savedTests.find(t => t.id === testId);
   if (!test) return;
-  if (!state.activeSessionId) { alert('No active session'); return; }
+  if (!state.activeId) { alert('No active session'); return; }
 
   const runView = document.getElementById('rpRunView');
   const placeholder = document.getElementById('rpRunPlaceholder');
@@ -334,7 +334,7 @@ async function runTest(testId, runCount) {
 }
 
 async function executeTest(test, silent) {
-  const sessionId = state.activeSessionId;
+  const sessionId = state.activeId;
   const stepEls = document.getElementById('rpStepsList');
   if (!silent) stepEls.innerHTML = '';
 
