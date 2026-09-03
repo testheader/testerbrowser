@@ -255,6 +255,9 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #consoleTabTests::before      { content: '\25B6'; }
 .console-sep { width: 1px; height: 18px; background: #2a2a2a; flex-shrink: 0; }
 #consoleControls { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+/* Hidden until switchConsoleTab shows it. Lives here, not in a style attribute:
+   the page CSP has no 'unsafe-inline', so inline style attributes never apply. */
+#networkControls { display: none; }
 #storageControls { display: none; align-items: center; gap: 6px; flex: 1; }
 #filterText { flex: 1; min-width: 60px; padding: 3px 8px; border-radius: 3px;
               border: 1px solid #2a2a2a; background: #111; color: #ddd; font-size: 12px; }

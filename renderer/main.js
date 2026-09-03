@@ -14,7 +14,7 @@ import { initReplay } from './replay.js';
 import { initNotes } from './notes.js';
 import { initSettings } from './settings.js';
 import { initBugReport } from './bugreport.js';
-import { initConsoleTabs } from './console-tabs.js';
+import { initConsoleTabs, switchConsoleTab } from './console-tabs.js';
 import { initA11y } from './a11y.js';
 import './diff.js';
 import './visual-regression.js';
@@ -49,6 +49,9 @@ initNotes();
 initSettings();
 initBugReport();
 initConsoleTabs();
+// Drive the initial tab state through the same path as a click, so control
+// visibility never depends on static markup defaults.
+switchConsoleTab(state.activeConsoleTab);
 initA11y();
 initTestdata();
 initViewDropdown();
