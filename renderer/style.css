@@ -354,10 +354,11 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #replayOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72);
                  z-index: 100; align-items: center; justify-content: center; }
 #replayOverlay.open { display: flex; }
+#replayOverlay.open #replayModal { animation: modal-pop-in 150ms ease; }
 #replayModal { background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 8px;
                width: min(94vw, 1020px); height: min(88vh, 760px);
                box-shadow: 0 16px 56px rgba(0,0,0,0.75);
-               display: flex; flex-direction: column; overflow: hidden; }
+               display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .replay-head { padding: 14px 18px 12px; border-bottom: 1px solid #2a2a2a; flex-shrink: 0; }
 .replay-head h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #fff; }
 .replay-url-row { display: flex; gap: 6px; align-items: center; }
@@ -512,13 +513,22 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 input:checked + .toggle-slider { background: #4fc3f7; }
 input:checked + .toggle-slider:before { transform: translateX(16px); }
 
+/* ── Modal shared: close button + open animation ── */
+@keyframes modal-pop-in { from { transform: scale(0.97); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.modal-close-btn { position: absolute; top: 10px; right: 10px; background: none; border: none;
+                   color: #888; font-size: 15px; cursor: pointer; line-height: 1; padding: 5px;
+                   border-radius: 3px; z-index: 1; }
+.modal-close-btn:hover { color: #ddd; background: #383838; }
+
 /* ── Settings modal ── */
 #settingsOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                    z-index: 100; align-items: center; justify-content: center; }
 #settingsOverlay.open { display: flex; }
+#settingsOverlay.open #settingsModal { animation: modal-pop-in 150ms ease; }
 #settingsModal { background: #252526; border: 1px solid #444; border-radius: 8px;
                  width: 420px; min-width: 300px; min-height: 200px; padding: 28px 32px;
-                 box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto; }
+                 box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto;
+                 position: relative; }
 #settingsModal h2 { margin: 0 0 24px; font-size: 16px; font-weight: 600; color: #fff; }
 .setting-row { display: flex; justify-content: space-between; align-items: center;
                padding: 10px 0; border-bottom: 1px solid #333; font-size: 13px; }
@@ -542,10 +552,11 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #notesOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                 z-index: 100; align-items: center; justify-content: center; }
 #notesOverlay.open { display: flex; }
+#notesOverlay.open #notesModal { animation: modal-pop-in 150ms ease; }
 #notesModal { background: #252526; border: 1px solid #444; border-radius: 8px;
               width: 500px; min-width: 300px; padding: 24px 28px;
               box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto;
-              display: flex; flex-direction: column; }
+              display: flex; flex-direction: column; position: relative; }
 #notesModal h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; color: #fff; }
 #notesTextarea { flex: 1; min-height: 160px; background: #1e1e1e; color: #ddd; border: 1px solid #444;
                  border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: none; }
@@ -645,8 +656,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #testdataOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                    z-index: 100; align-items: center; justify-content: center; }
 #testdataOverlay.open { display: flex; }
+#testdataOverlay.open #testdataModal { animation: modal-pop-in 150ms ease; }
 #testdataModal { background: #252526; border: 1px solid #444; border-radius: 8px;
-                 width: 420px; padding: 20px 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+                 width: 420px; padding: 20px 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+                 position: relative; }
 #testdataModal h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: #fff; }
 #testdataHint { margin: 0 0 12px; font-size: 11px; color: #888; line-height: 1.5; }
 #testdataInput { width: 100%; box-sizing: border-box; background: #1e1e1e; color: #ddd;

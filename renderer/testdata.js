@@ -7,6 +7,7 @@ export function initTestdata() {
   const input      = document.getElementById('testdataInput');
   const fillBtn    = document.getElementById('testdataFillBtn');
   const cancelBtn  = document.getElementById('testdataCancelBtn');
+  const closeXBtn  = document.getElementById('testdataCloseXBtn');
 
   testerBrowser.testdata.onPromptTemplate(({ sessionId }) => {
     pendingSessionId = sessionId;
@@ -17,10 +18,13 @@ export function initTestdata() {
 
   fillBtn.addEventListener('click', applyTemplate);
   cancelBtn.addEventListener('click', close);
+  closeXBtn.addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') applyTemplate();
-    if (e.key === 'Escape') close();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) close();
   });
 
   function applyTemplate() {

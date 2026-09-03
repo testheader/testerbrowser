@@ -155,10 +155,13 @@ export function initReplay() {
     try { ta.value = formatXml(raw); } catch {}
   };
 
-  document.getElementById('closeReplayBtn').onclick = closeReplay;
-  document.getElementById('replayOverlay').onclick   = (e) => {
-    if (e.target === document.getElementById('replayOverlay')) closeReplay();
-  };
+  document.getElementById('closeReplayBtn').onclick  = closeReplay;
+  document.getElementById('replayCloseXBtn').onclick = closeReplay;
+  // No backdrop-click-to-close here: an in-flight replay request should not be
+  // dismissed by an accidental click outside the modal.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('replayOverlay').classList.contains('open')) closeReplay();
+  });
 
   document.getElementById('sendReplayBtn').onclick = async () => {
     const method = document.getElementById('replayMethod').value;

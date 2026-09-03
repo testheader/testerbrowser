@@ -145,7 +145,8 @@
   <!-- Settings -->
   <div id="settingsOverlay">
     <div id="settingsModal">
-      <h2>About / Settings</h2>
+      <button class="modal-close-btn" id="settingsCloseXBtn" title="Close">&#10005;</button>
+      <h2>Settings</h2>
       <div class="setting-row">
         <span class="setting-label">Current version</span>
         <span class="setting-value" id="currentVersion">—</span>
@@ -247,6 +248,7 @@
   <!-- Request Replay -->
   <div id="replayOverlay">
     <div id="replayModal">
+      <button class="modal-close-btn" id="replayCloseXBtn" title="Close">&#10005;</button>
       <div class="replay-head">
         <h2>Replay Request</h2>
         <div class="replay-url-row">
@@ -300,6 +302,7 @@
   <!-- Test data template prompt -->
   <div id="testdataOverlay">
     <div id="testdataModal">
+      <button class="modal-close-btn" id="testdataCloseXBtn" title="Close">&#10005;</button>
       <h2>Custom template</h2>
       <p id="testdataHint">Use tokens: {firstName} {lastName} {email} {uuid} {date} {phone} {address}</p>
       <input id="testdataInput" placeholder="{firstName} {lastName}" autocomplete="off" />
@@ -313,6 +316,7 @@
   <!-- Notes -->
   <div id="notesOverlay">
     <div id="notesModal">
+      <button class="modal-close-btn" id="notesCloseXBtn" title="Close">&#10005;</button>
       <h2 id="notesTitle">Notes</h2>
       <textarea id="notesTextarea" placeholder="Session notes…"></textarea>
       <div class="modal-actions" style="margin-top:12px">

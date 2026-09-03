@@ -66,9 +66,13 @@ function closeSettings() {
 
 export function initSettings() {
   document.getElementById('closeSettingsBtn').onclick  = closeSettings;
+  document.getElementById('settingsCloseXBtn').onclick = closeSettings;
   document.getElementById('settingsOverlay').onclick   = (e) => {
     if (e.target === document.getElementById('settingsOverlay')) closeSettings();
   };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('settingsOverlay').classList.contains('open')) closeSettings();
+  });
   document.getElementById('checkUpdatesBtn').onclick   = async () => {
     document.getElementById('updateStatusText').className   = 'info';
     document.getElementById('updateStatusText').textContent = 'Checking for updates…';

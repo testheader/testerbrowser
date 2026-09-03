@@ -25,8 +25,12 @@ export function initNotes() {
     }
     closeNotes();
   };
-  document.getElementById('closeNotesBtn').onclick = () => closeNotes();
+  document.getElementById('closeNotesBtn').onclick  = () => closeNotes();
+  document.getElementById('notesCloseXBtn').onclick = () => closeNotes();
   document.getElementById('notesOverlay').onclick  = (e) => {
     if (e.target === document.getElementById('notesOverlay')) closeNotes();
   };
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('notesOverlay').classList.contains('open')) closeNotes();
+  });
 }
