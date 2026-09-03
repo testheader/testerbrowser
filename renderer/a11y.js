@@ -15,7 +15,7 @@ export function initA11y() {
   panel.innerHTML = `
     <div class="a11y-toolbar">
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
-      <button class="a11y-btn" id="a11yInspectBtn" title="Pick an element on the page to select it in the tree">Inspect element</button>
+      <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
     </div>
     <div class="a11y-content" id="a11yContent">
       <div class="a11y-empty">Click Refresh to load the accessibility tree for this page.</div>
@@ -62,6 +62,18 @@ export function disableA11yHover() {
   if (hoveredRow) { hoveredRow.classList.remove('a11y-hovered'); hoveredRow = null; }
 }
 
+// Inspect (and hover-highlighting, which shares nodeRowMap) only work once a
+// tree has actually been rendered — otherwise clicking a page element while
+// inspecting is a silent no-op with no row to select.
+function updateInspectAvailability() {
+  const btn = document.getElementById('a11yInspectBtn');
+  if (!btn) return;
+  const available = nodeRowMap.size > 0;
+  btn.disabled = !available;
+  btn.title = available ? 'Pick an element on the page to select it in the tree' : 'Load the accessibility tree first';
+  if (!available && inspecting) disableA11yHover();
+}
+
 function selectNode(nodeId) {
   const row = nodeRowMap.get(nodeId);
   if (!row) return;
@@ -92,12 +104,16 @@ export async function loadA11yPanel() {
   try {
     const nodes = await testerBrowser.a11y.getTree(state.activeId);
     if (!nodes || nodes.length === 0) {
+      nodeRowMap.clear();
       content.innerHTML = '<div class="a11y-empty">No accessibility tree available for this page.</div>';
       return;
     }
     renderA11yTree(content, nodes);
   } catch (e) {
+    nodeRowMap.clear();
     content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+  } finally {
+    updateInspectAvailability();
   }
 }
 
