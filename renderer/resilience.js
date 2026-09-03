@@ -18,9 +18,15 @@ export function initResilience() {
 
   panel.innerHTML = `
     <div class="res-wrap">
+      <div class="res-col res-col-left">
       <div class="res-guide">
         <p>Resilience testing lets you inject network failures into the active session to verify how your app behaves under real-world conditions. Rules only affect the current session and apply immediately.</p>
-        <p class="res-guide-steps">① Choose a failure type &rarr; ② Set a URL pattern (glob) to target specific requests &rarr; ③ Set the probability % &rarr; ④ Click <strong>Add rule</strong>.</p>
+        <ol class="res-guide-steps">
+          <li>Choose a failure type</li>
+          <li>Set a URL pattern (glob) to target specific requests</li>
+          <li>Set the probability %</li>
+          <li>Click <strong>Add rule</strong></li>
+        </ol>
       </div>
       <form class="res-form" id="resForm">
         <div class="res-form-row">
@@ -29,7 +35,7 @@ export function initResilience() {
           </select>
           <input class="res-input res-url" id="resUrl" type="text" value="*" placeholder="URL pattern (* = all)" spellcheck="false" />
           <input class="res-input res-prob" id="resProb" type="number" value="100" min="1" max="100" placeholder="%" title="Probability: 1–100%" />
-          <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" style="display:none" />
+          <input class="res-input res-latency res-hidden" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" />
           <button class="res-btn res-add-btn" type="submit">Add rule</button>
         </div>
         <div class="res-type-desc" id="resTypeDesc">${TYPES[0].desc}</div>
@@ -38,13 +44,17 @@ export function initResilience() {
           <span class="res-field-hint">Probability &mdash; 1&ndash;100%. At 100% every matching request is affected; at 50% roughly half are.</span>
         </div>
       </form>
-      <div class="res-rules" id="resRules">
-        <div class="res-empty" id="resEmpty">Add a rule above to intercept requests.</div>
+      </div>
+      <div class="res-col res-col-right">
+        <div class="res-rules-title">Active rules</div>
+        <div class="res-rules" id="resRules">
+          <div class="res-empty" id="resEmpty">Add a rule to intercept requests.</div>
+        </div>
       </div>
     </div>`;
 
   document.getElementById('resType').addEventListener('change', (e) => {
-    document.getElementById('resLatency').style.display = e.target.value === 'latency' ? '' : 'none';
+    document.getElementById('resLatency').classList.toggle('res-hidden', e.target.value !== 'latency');
     const t = TYPES.find(t => t.value === e.target.value);
     if (t) document.getElementById('resTypeDesc').textContent = t.desc;
   });
