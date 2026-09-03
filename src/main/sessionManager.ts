@@ -65,6 +65,7 @@ function getHostname(url: string): string {
 }
 
 // Resolved at runtime — points to renderer/newtab.html whether packaged or in dev
+const MAX_CAPTURE_PX = 16384;
 const NEWTAB_FILE = path.join(__dirname, '..', '..', 'renderer', 'newtab.html');
 const NEWTAB_PRELOAD = path.join(__dirname, '..', 'preload', 'newtab.js');
 
@@ -821,11 +822,34 @@ export class SessionManager {
     }
   }
 
-  async captureScreenshot(id: string): Promise<string | null> {
+  async captureScreenshot(id: string, opts?: { fullPage?: boolean }): Promise<string | null> {
     const s = this.sessions.get(id);
     if (!s) return null;
+    const dbg = s.view.webContents.debugger;
     try {
-      const result = await s.view.webContents.debugger.sendCommand('Page.captureScreenshot', { format: 'png' }) as { data: string };
+      if (!opts?.fullPage) {
+        const result = await dbg.sendCommand('Page.captureScreenshot', { format: 'png' }) as { data: string };
+        return result.data ?? null;
+      }
+
+      const metrics = await dbg.sendCommand('Page.getLayoutMetrics') as {
+        cssContentSize?: { width: number; height: number };
+        contentSize?:    { width: number; height: number };
+      };
+      const size = metrics.cssContentSize ?? metrics.contentSize;
+      if (!size) {
+        const result = await dbg.sendCommand('Page.captureScreenshot', { format: 'png' }) as { data: string };
+        return result.data ?? null;
+      }
+
+      // Chromium cannot allocate a capture texture larger than 16384px per side.
+      const width  = Math.min(Math.ceil(size.width),  MAX_CAPTURE_PX);
+      const height = Math.min(Math.ceil(size.height), MAX_CAPTURE_PX);
+      const result = await dbg.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width, height, scale: 1 },
+      }) as { data: string };
       return result.data ?? null;
     } catch { return null; }
   }

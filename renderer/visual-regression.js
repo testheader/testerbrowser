@@ -2,6 +2,9 @@
 import { state } from './state.js';
 
 let baselineB64 = null;
+let currentB64  = null;
+let diffDataUrl = null;
+let viewMode    = 'baseline';
 
 export function initVR() {
   const panel = document.getElementById('vrPanel');
@@ -12,6 +15,15 @@ export function initVR() {
     <div class="vr-toolbar">
       <button class="vr-btn" id="vrCaptureBtn">Capture baseline</button>
       <button class="vr-btn" id="vrCompareBtn" disabled>Compare</button>
+      <label class="vr-toggle" title="Capture the whole scrollable page instead of just the viewport">
+        <input type="checkbox" id="vrFullPage" /> Full page
+      </label>
+      <div class="vr-views" id="vrViews">
+        <button class="vr-btn vr-view-btn active" data-view="baseline">Baseline</button>
+        <button class="vr-btn vr-view-btn" data-view="current" disabled>Current</button>
+        <button class="vr-btn vr-view-btn" data-view="diff"    disabled>Diff</button>
+        <button class="vr-btn vr-view-btn" data-view="compare" disabled>Compare view</button>
+      </div>
       <span class="vr-stats" id="vrStats"></span>
     </div>
     <div class="vr-images" id="vrImages">
@@ -20,35 +32,73 @@ export function initVR() {
 
   document.getElementById('vrCaptureBtn').addEventListener('click', captureBaseline);
   document.getElementById('vrCompareBtn').addEventListener('click', runCompare);
+  document.getElementById('vrViews').addEventListener('click', (e) => {
+    const btn = e.target.closest('.vr-view-btn');
+    if (!btn || btn.disabled) return;
+    viewMode = btn.dataset.view;
+    renderImages();
+  });
+}
+
+function renderImages() {
+  const imagesDiv = document.getElementById('vrImages');
+  document.querySelectorAll('.vr-view-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === viewMode);
+    // Only Baseline is available until a comparison has produced the others.
+    b.disabled = b.dataset.view !== 'baseline' && !diffDataUrl;
+  });
+
+  if (!baselineB64) {
+    imagesDiv.innerHTML = '<div class="vr-hint">Capture a baseline screenshot, interact with the page, then click Compare.</div>';
+    return;
+  }
+
+  const col = (label, src) =>
+    `<div class="vr-col"><div class="vr-col-label">${label}</div><img class="vr-img" src="${src}" /></div>`;
+  const png = (b64) => `data:image/png;base64,${b64}`;
+
+  if (viewMode === 'compare' && diffDataUrl) {
+    imagesDiv.classList.remove('vr-single');
+    imagesDiv.innerHTML =
+      col('Baseline', png(baselineB64)) + col('Current', png(currentB64)) + col('Diff', diffDataUrl);
+    return;
+  }
+
+  imagesDiv.classList.add('vr-single');
+  if (viewMode === 'current' && currentB64)  imagesDiv.innerHTML = col('Current', png(currentB64));
+  else if (viewMode === 'diff' && diffDataUrl) imagesDiv.innerHTML = col('Diff', diffDataUrl);
+  else imagesDiv.innerHTML = col('Baseline', png(baselineB64));
 }
 
 async function captureBaseline() {
   if (!state.activeId) return;
   const captureBtn  = document.getElementById('vrCaptureBtn');
   const compareBtn  = document.getElementById('vrCompareBtn');
-  const imagesDiv   = document.getElementById('vrImages');
   const stats       = document.getElementById('vrStats');
 
   captureBtn.disabled = true;
   captureBtn.textContent = 'Capturing…';
   stats.textContent = '';
 
-  const b64 = await testerBrowser.visualRegression.captureScreenshot(state.activeId);
+  const b64 = await testerBrowser.visualRegression.captureScreenshot(state.activeId, { fullPage: isFullPage() });
   captureBtn.disabled = false;
   captureBtn.textContent = 'Capture baseline';
 
   if (!b64) { stats.textContent = 'Screenshot failed.'; return; }
 
+  // A fresh baseline invalidates any previous comparison.
   baselineB64 = b64;
+  currentB64  = null;
+  diffDataUrl = null;
+  viewMode    = 'baseline';
   compareBtn.disabled = false;
-  imagesDiv.innerHTML = `<div class="vr-col"><div class="vr-col-label">Baseline</div><img class="vr-img" src="data:image/png;base64,${b64}" /></div>`;
+  renderImages();
   stats.textContent = 'Baseline captured. Interact with the page, then click Compare.';
 }
 
 async function runCompare() {
   if (!state.activeId || !baselineB64) return;
   const compareBtn = document.getElementById('vrCompareBtn');
-  const imagesDiv  = document.getElementById('vrImages');
   const stats      = document.getElementById('vrStats');
 
   compareBtn.disabled = true;
@@ -56,10 +106,10 @@ async function runCompare() {
   stats.textContent = '';
 
   try {
-    const currentB64 = await testerBrowser.visualRegression.captureScreenshot(state.activeId);
-    if (!currentB64) { stats.textContent = 'Screenshot failed.'; return; }
+    const captured = await testerBrowser.visualRegression.captureScreenshot(state.activeId, { fullPage: isFullPage() });
+    if (!captured) { stats.textContent = 'Screenshot failed.'; return; }
 
-    const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(currentB64)]);
+    const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(captured)]);
 
     const w = Math.max(baseImg.width,  curImg.width);
     const h = Math.max(baseImg.height, curImg.height);
@@ -67,12 +117,10 @@ async function runCompare() {
     const { diffCanvas, diffCount, total } = computeDiff(baseImg, curImg, w, h);
     const pct = total > 0 ? ((diffCount / total) * 100).toFixed(2) : '0.00';
 
-    const diffDataUrl = diffCanvas.toDataURL('image/png');
-
-    imagesDiv.innerHTML = `
-      <div class="vr-col"><div class="vr-col-label">Baseline</div><img class="vr-img" src="data:image/png;base64,${baselineB64}" /></div>
-      <div class="vr-col"><div class="vr-col-label">Current</div><img class="vr-img" src="data:image/png;base64,${currentB64}" /></div>
-      <div class="vr-col"><div class="vr-col-label">Diff</div><img class="vr-img" src="${diffDataUrl}" /></div>`;
+    currentB64  = captured;
+    diffDataUrl = diffCanvas.toDataURL('image/png');
+    viewMode    = 'diff';
+    renderImages();
 
     stats.textContent = `${diffCount.toLocaleString()} pixels differ (${pct}% of ${total.toLocaleString()})`;
   } catch (err) {
@@ -81,6 +129,10 @@ async function runCompare() {
     compareBtn.disabled = false;
     compareBtn.textContent = 'Compare';
   }
+}
+
+function isFullPage() {
+  return document.getElementById('vrFullPage').checked;
 }
 
 function loadImage(b64) {

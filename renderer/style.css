@@ -694,6 +694,12 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .vr-images { flex: 1; overflow: auto; display: flex; gap: 8px; padding: 8px;
              align-items: flex-start; }
 .vr-hint { color: #888; font-size: 12px; padding: 8px; }
+.vr-toggle { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #888;
+             cursor: pointer; user-select: none; }
+.vr-views { display: flex; gap: 4px; margin-left: 4px; }
+.vr-view-btn.active { background: #4fc3f7; color: #111; border-color: #4fc3f7; }
+/* One image at a time fills the panel; only compare view splits into columns. */
+.vr-images.vr-single .vr-col { flex: none; width: 100%; }
 .vr-col { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .vr-col-label { font-size: 11px; color: #888; text-align: center; }
 .vr-img { width: 100%; border: 1px solid #333; border-radius: 3px; display: block; }

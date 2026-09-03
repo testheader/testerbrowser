@@ -149,7 +149,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   },
 
   visualRegression: {
-    captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
+    captureScreenshot: (id: string, opts?: { fullPage?: boolean }) =>
+      ipcRenderer.invoke('session:captureScreenshot', id, opts),
   },
 
   mock: {
