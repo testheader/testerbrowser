@@ -12,14 +12,17 @@ function applyMinimized(minimized) {
   body.style.display = minimized ? 'none' : '';
   btn.innerHTML = minimized ? '&#8963;' : '&#8964;';
   btn.title = minimized ? 'Restore panel' : 'Minimize panel';
-  if (minimized) {
-    panel.style.height = CONSOLE_HEADER_H + 'px';
-    testerBrowser.layout.setConsoleHeight(0);
-  } else {
-    panel.style.height = state.consoleHeight + 'px';
-    testerBrowser.layout.setConsoleHeight(state.consoleHeight);
-  }
+  panel.style.height = (minimized ? CONSOLE_HEADER_H : state.consoleHeight) + 'px';
+  syncConsoleViewHeight();
   try { localStorage.setItem(LS_MIN_KEY, minimized ? '1' : '0'); } catch {}
+}
+
+// Single source of truth for how tall the BrowserView thinks the console panel
+// is: hidden (via View ▾) and minimized (via the panel's own button) both need
+// to collapse it to 0, and only "visible and not minimized" uses the real height.
+export function syncConsoleViewHeight() {
+  const h = (!state.consoleVisible || state.consolePanelMinimized) ? 0 : state.consoleHeight;
+  testerBrowser.layout.setConsoleHeight(h);
 }
 
 export function initMinimize() {
@@ -53,7 +56,7 @@ export function setConsoleHeight(h) {
   state.consoleHeight = Math.max(80, Math.min(h, maxH));
   if (!state.consolePanelMinimized) {
     document.getElementById('consolePanel').style.height = state.consoleHeight + 'px';
-    testerBrowser.layout.setConsoleHeight(state.consoleHeight);
+    syncConsoleViewHeight();
   }
 }
 

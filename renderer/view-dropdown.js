@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { state } from './state.js';
 import { toggleBookmarksBar } from './bookmarks.js';
+import { syncConsoleViewHeight } from './layout.js';
 
 function updateViewDropdown() {
   document.getElementById('viewConsoleCheck').textContent   = state.consoleVisible      ? '✓' : '';
@@ -39,7 +40,7 @@ export function initViewDropdown() {
   document.getElementById('viewToggleConsole').addEventListener('click', () => {
     state.consoleVisible = !state.consoleVisible;
     document.getElementById('consolePanel').style.display = state.consoleVisible ? 'flex' : 'none';
-    testerBrowser.layout.setConsoleHeight(state.consoleVisible ? state.consoleHeight : 0);
+    syncConsoleViewHeight();
     updateViewDropdown();
     closeViewDropdown();
   });
