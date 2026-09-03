@@ -246,8 +246,13 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     set: (scheme: string) => ipcRenderer.invoke('theme:set', scheme),
   },
   windowControls: {
-    minimize: () => ipcRenderer.invoke('window:minimize'),
-    maximize: () => ipcRenderer.invoke('window:maximize'),
-    close:    () => ipcRenderer.invoke('window:close'),
+    minimize:     () => ipcRenderer.invoke('window:minimize'),
+    maximize:     () => ipcRenderer.invoke('window:maximize'),
+    close:        () => ipcRenderer.invoke('window:close'),
+    isMaximized:  () => ipcRenderer.invoke('window:isMaximized'),
+    onMaximizedChanged: (cb: (maximized: boolean) => void) => {
+      ipcRenderer.removeAllListeners('window:maximizedChanged');
+      ipcRenderer.on('window:maximizedChanged', (_e, maximized) => cb(maximized));
+    },
   },
 });

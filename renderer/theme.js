@@ -29,4 +29,16 @@ export function initTheme() {
   document.getElementById('winMinBtn').addEventListener('click', () => testerBrowser.windowControls.minimize());
   document.getElementById('winMaxBtn').addEventListener('click', () => testerBrowser.windowControls.maximize());
   document.getElementById('winCloseBtn').addEventListener('click', () => testerBrowser.windowControls.close());
+
+  applyMaximizedState(false);
+  testerBrowser.windowControls.isMaximized().then(applyMaximizedState).catch(() => {});
+  testerBrowser.windowControls.onMaximizedChanged(applyMaximizedState);
+}
+
+function applyMaximizedState(maximized) {
+  const btn = document.getElementById('winMaxBtn');
+  if (!btn) return;
+  btn.title = maximized ? 'Restore' : 'Maximize';
+  document.getElementById('winMaxIcon').hidden = maximized;
+  document.getElementById('winRestoreIcon').hidden = !maximized;
 }

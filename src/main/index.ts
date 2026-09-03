@@ -136,6 +136,9 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
 
+  win.on('maximize',   () => win?.webContents.send('window:maximizedChanged', true));
+  win.on('unmaximize', () => win?.webContents.send('window:maximizedChanged', false));
+
   // Prevent the privileged renderer from being navigated away from index.html
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -578,9 +581,10 @@ ipcMain.handle('layout:setTopBarHeight', (_e, h: number) => sessionManager?.setT
 ipcMain.handle('layout:setViewerVisible',(_e, v: boolean) => sessionManager?.setViewerVisible(v));
 
 // Window control IPC
-ipcMain.handle('window:minimize', () => win?.minimize());
-ipcMain.handle('window:maximize', () => { if (win?.isMaximized()) win.unmaximize(); else win?.maximize(); });
-ipcMain.handle('window:close',    () => win?.close());
+ipcMain.handle('window:minimize',    () => win?.minimize());
+ipcMain.handle('window:maximize',    () => { if (win?.isMaximized()) win.unmaximize(); else win?.maximize(); });
+ipcMain.handle('window:close',       () => win?.close());
+ipcMain.handle('window:isMaximized', () => win?.isMaximized() ?? false);
 
 // Download IPC
 ipcMain.handle('download:list',   () => sessionManager?.listDownloads() ?? []);
