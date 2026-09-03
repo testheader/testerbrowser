@@ -157,8 +157,10 @@ function renderDetailContent() {
 export function renderDetailPanel() {
   const panel        = document.getElementById('detailPanel');
   const resizeHandle = document.getElementById('detailPanelResizeHandle');
-  const isConsoleTab = state.activeConsoleTab === 'console';
-  const hasOpen      = state.detailTabs.length > 0 && isConsoleTab;
+  // The timeline is shared by the Console and Network tabs, so rows on either
+  // can open a detail tab.
+  const showsDetail  = state.activeConsoleTab === 'console' || state.activeConsoleTab === 'network';
+  const hasOpen      = state.detailTabs.length > 0 && showsDetail;
   panel.classList.toggle('open', hasOpen);
   resizeHandle.style.display = hasOpen ? '' : 'none';
   renderDetailTabs();

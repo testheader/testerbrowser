@@ -42,9 +42,9 @@ export function switchConsoleTab(tab) {
   document.getElementById('resiliencePanel').style.display      = tab === 'resilience' ? 'flex'  : 'none';
   document.getElementById('jiraPanel').style.display            = tab === 'jira'       ? 'flex'  : 'none';
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
-  const hasDetailTabs = state.detailTabs.length > 0;
-  document.getElementById('detailPanel').classList.toggle('open', tab === 'console' && hasDetailTabs);
-  document.getElementById('detailPanelResizeHandle').style.display = tab === 'console' && hasDetailTabs ? '' : 'none';
+  const hasDetailTabs = state.detailTabs.length > 0 && timelineVisible;
+  document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
+  document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? '' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') loadStoragePanel();
   if (tab === 'a11y') { initA11y(); enableA11yHover(); }
