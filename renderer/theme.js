@@ -6,7 +6,11 @@ function applyTheme(scheme) {
   const light = scheme === 'light';
   document.body.classList.toggle('light-mode', light);
   const btn = document.getElementById('themeToggleBtn');
-  if (btn) btn.title = light ? 'Switch to dark mode' : 'Switch to light mode';
+  if (btn) {
+    btn.title = light ? 'Switch to dark mode' : 'Switch to light mode';
+    // Icon shows what clicking it switches to: a moon in light mode, a sun in dark mode.
+    btn.textContent = light ? '☽' : '☀';
+  }
   // Session views render their own pages (newtab) and need to be told.
   testerBrowser.theme.set(light ? 'light' : 'dark');
 }
