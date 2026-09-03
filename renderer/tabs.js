@@ -265,13 +265,19 @@ export function updateTabLoadingVisual(tab, id) {
   }
 }
 
+export async function newSession({ persistent = true } = {}) {
+  state.sessionCounter++;
+  const name = persistent ? `Session ${state.sessionCounter}` : `Temp ${state.sessionCounter}`;
+  const id = await testerBrowser.sessions.create(name, { persistent });
+  insertAfterActive(id);
+  await switchToSession(id);
+  return id;
+}
+
 export function initTabs() {
-  document.getElementById('newSessionBtn').onclick = async () => {
-    state.sessionCounter++;
-    const id = await testerBrowser.sessions.create(`Session ${state.sessionCounter}`, { persistent: false });
-    insertAfterActive(id);
-    await switchToSession(id);
-  };
+  // Persistent by default: an ephemeral tab and everything opened from it is
+  // discarded on quit, which is not what a "+" button implies.
+  document.getElementById('newSessionBtn').onclick = (e) => newSession({ persistent: !e.shiftKey });
 
   testerBrowser.sessions.onTitleUpdated(({ id, title }) => {
     state.tabTitles[id] = title;

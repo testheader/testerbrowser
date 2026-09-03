@@ -1,5 +1,6 @@
 import { openSettings } from './settings.js';
 import { openBugReport } from './bugreport.js';
+import { newSession } from './tabs.js';
 
 function closeAppMenu() {
   document.getElementById('appMenuDropdown').classList.remove('open');
@@ -20,6 +21,11 @@ export function initAppMenu() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAppMenu();
+  });
+
+  document.getElementById('appMenuNewTemp').addEventListener('click', () => {
+    closeAppMenu();
+    newSession({ persistent: false });
   });
 
   document.getElementById('appMenuSettings').addEventListener('click', () => {

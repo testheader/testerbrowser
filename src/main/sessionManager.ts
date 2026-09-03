@@ -178,6 +178,14 @@ export class SessionManager {
     this.win.on('resize', () => this.layoutActive());
   }
 
+  // Ephemeral sessions are never written to disk (see saveSessions) — used to
+  // warn before quit discards ones that actually went somewhere.
+  getDiscardableSessions(): string[] {
+    return Array.from(this.sessions.values())
+      .filter((s) => !s.persistent && s.currentUrl && !isNewtabUrl(s.currentUrl))
+      .map((s) => s.name);
+  }
+
   listSessions() {
     return Array.from(this.sessions.values()).map((s) => ({
       id: s.id,

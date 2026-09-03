@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, clipboard, net, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, clipboard, net, safeStorage, shell, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -245,7 +245,29 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => sessionManager?.saveSessions());
+let quitConfirmed = false;
+app.on('before-quit', (e) => {
+  if (quitConfirmed) { sessionManager?.saveSessions(); return; }
+  const discarded = sessionManager?.getDiscardableSessions() ?? [];
+  if (discarded.length === 0) { sessionManager?.saveSessions(); return; }
+
+  e.preventDefault();
+  const list = discarded.map((n) => `  • ${n}`).join('\n');
+  const options: Electron.MessageBoxSyncOptions = {
+    type: 'warning',
+    buttons: ['Quit anyway', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Temporary tabs will be lost',
+    message: `${discarded.length} temporary tab${discarded.length === 1 ? '' : 's'} will be closed and not restored:`,
+    detail: `${list}\n\nTemporary tabs (marked with a gray dot instead of blue) aren't saved between restarts. Choose Cancel to go back and bookmark anything you want to keep.`,
+  };
+  const choice = win ? dialog.showMessageBoxSync(win, options) : dialog.showMessageBoxSync(options);
+  if (choice === 0) {
+    quitConfirmed = true;
+    app.quit();
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
