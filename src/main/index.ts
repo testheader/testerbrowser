@@ -67,7 +67,8 @@ class JsonStore<T> {
 
 // --- Typed stores ---
 
-interface Bookmark { url: string; title: string; addedAt: number; }
+interface Bookmark { url: string; title: string; addedAt: number; folderId: string | null; }
+interface BookmarkFolder { id: string; name: string; createdAt: number; }
 interface SpeedDialTile { id: string; url: string; title: string; }
 interface AppSettings { redactSensitiveHeaders: boolean; }
 
@@ -83,7 +84,9 @@ const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '8', url: 'https://httpstatuses.io',       title: 'HTTP Status' },
 ];
 
-const bookmarkStore   = new JsonStore<Bookmark[]>('bookmarks.json', []);
+const bookmarkStore   = new JsonStore<Bookmark[]>('bookmarks.json', [],
+  (raw) => (raw as Partial<Bookmark>[]).map(b => ({ folderId: null, ...b } as Bookmark)));
+const bookmarkFoldersStore = new JsonStore<BookmarkFolder[]>('bookmark-folders.json', []);
 const urlHistoryStore = new JsonStore<string[]>('url-history.json', []);
 const speedDialStore  = new JsonStore<SpeedDialTile[]>('speed-dial.json', DEFAULT_SPEED_DIAL);
 // Mirrors the shell's theme choice so newtab views can read it on load.
@@ -602,11 +605,33 @@ ipcMain.handle('permission:respond', (_e, reqId: string, granted: boolean) =>
 // Bookmark IPC
 ipcMain.handle('bookmarks:list',   () => bookmarkStore.get());
 ipcMain.handle('bookmarks:add',    (_e, url: string, title: string) =>
-  bookmarkStore.update(bs => [{ url, title, addedAt: Date.now() }, ...bs.filter(b => b.url !== url)])
+  bookmarkStore.update(bs => [{ url, title, addedAt: Date.now(), folderId: null }, ...bs.filter(b => b.url !== url)])
 );
 ipcMain.handle('bookmarks:remove', (_e, url: string) =>
   bookmarkStore.update(bs => bs.filter(b => b.url !== url))
 );
+ipcMain.handle('bookmarks:rename', (_e, url: string, title: string) =>
+  bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, title } : b)))
+);
+ipcMain.handle('bookmarks:move', (_e, url: string, folderId: string | null) =>
+  bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, folderId } : b)))
+);
+
+ipcMain.handle('bookmarks:listFolders', () => bookmarkFoldersStore.get());
+ipcMain.handle('bookmarks:createFolder', (_e, name: string) =>
+  bookmarkFoldersStore.update(fs => [
+    ...fs,
+    { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, createdAt: Date.now() },
+  ])
+);
+ipcMain.handle('bookmarks:renameFolder', (_e, id: string, name: string) =>
+  bookmarkFoldersStore.update(fs => fs.map(f => (f.id === id ? { ...f, name } : f)))
+);
+ipcMain.handle('bookmarks:removeFolder', (_e, id: string) => {
+  // Bookmarks inside the deleted folder move back to the top level rather than being lost.
+  bookmarkStore.update(bs => bs.map(b => (b.folderId === id ? { ...b, folderId: null } : b)));
+  return bookmarkFoldersStore.update(fs => fs.filter(f => f.id !== id));
+});
 
 // URL history IPC
 ipcMain.handle('urlHistory:get', () => urlHistoryStore.get());

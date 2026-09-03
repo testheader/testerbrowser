@@ -24,6 +24,7 @@ export const state = {
   consoleVisible:     true,
   consolePanelMinimized: false,
   bookmarks:          [],
+  bookmarkFolders:    [],
   urlHistory:         [],
   detailTabs:         [],
   activeDetailTabId:  null,

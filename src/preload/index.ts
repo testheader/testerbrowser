@@ -125,6 +125,12 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     list:   () => ipcRenderer.invoke('bookmarks:list'),
     add:    (url: string, title: string) => ipcRenderer.invoke('bookmarks:add', url, title),
     remove: (url: string) => ipcRenderer.invoke('bookmarks:remove', url),
+    rename: (url: string, title: string) => ipcRenderer.invoke('bookmarks:rename', url, title),
+    move:   (url: string, folderId: string | null) => ipcRenderer.invoke('bookmarks:move', url, folderId),
+    listFolders:   () => ipcRenderer.invoke('bookmarks:listFolders'),
+    createFolder:  (name: string) => ipcRenderer.invoke('bookmarks:createFolder', name),
+    renameFolder:  (id: string, name: string) => ipcRenderer.invoke('bookmarks:renameFolder', id, name),
+    removeFolder:  (id: string) => ipcRenderer.invoke('bookmarks:removeFolder', id),
   },
 
   urlHistory: {

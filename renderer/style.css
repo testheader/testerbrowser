@@ -221,6 +221,18 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .bm-btn:hover { background: var(--bg-hover); color: var(--text-strong); }
 .bm-remove { color: var(--text-faint); font-size: 14px; line-height: 1; flex-shrink: 0; }
 .bm-remove:hover { color: var(--text-strong); }
+.bm-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.bm-folder-caret { font-size: 9px; color: var(--text-faint); flex-shrink: 0; }
+.bm-add-folder-btn { color: var(--text-faint); border-style: dashed; }
+.bm-rename-input { background: var(--bg-deep); color: var(--text-primary); border: 1px solid var(--accent);
+                   border-radius: 2px; font-size: 12px; padding: 1px 4px; width: 110px; outline: none; font-family: inherit; }
+.bm-context-menu { position: fixed; background: var(--bg-secondary); border: 1px solid var(--border-strong);
+                    border-radius: 6px; min-width: 160px; max-width: 280px; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+                    z-index: 200; overflow: hidden; padding: 4px 0; }
+.bm-context-item { padding: 6px 12px; font-size: 12px; color: var(--text-secondary); cursor: pointer;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bm-context-item:hover { background: var(--bg-hover); color: var(--text-strong); }
+.bm-context-sep { height: 1px; background: var(--border-color); margin: 4px 0; }
 
 /* Find bar */
 #findBar { height: 0; overflow: hidden; display: flex; align-items: center; padding: 0;
