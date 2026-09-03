@@ -12,6 +12,7 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createServer, Server } from 'http';
 import path from 'path';
+import { getMainWindow } from './helpers';
 
 let app: ElectronApplication;
 let window: Page;
@@ -39,7 +40,7 @@ test.beforeAll(async () => {
   app = await electron.launch({
     args: [path.join(__dirname, '..', 'dist', 'main', 'index.js')],
   });
-  window = await app.firstWindow();
+  window = await getMainWindow(app);
   // 'load' waits until all scripts have run, ensuring the renderer has set its
   // title before any test assertion reads it.
   await window.waitForLoadState('load');
