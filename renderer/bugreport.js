@@ -16,11 +16,11 @@ export async function openBugReport() {
   document.getElementById('bugReportArea').value = AREA_BY_CONSOLE_TAB[state.activeConsoleTab] || 'Other';
 
   const diag = await testerBrowser.bugReport.getDiagnostics();
-  document.getElementById('bugReportDiagPreview').textContent = formatDiagnostics(diag);
+  document.getElementById('bugReportDiagPreview').value = formatDiagnostics(diag);
 
   screenshotB64 = await testerBrowser.bugReport.captureScreenshot();
   const img = document.getElementById('bugReportShotPreview');
-  if (screenshotB64) img.src = `data:image/png;base64,${screenshotB64}`;
+  if (screenshotB64) img.src = `data:image/jpeg;base64,${screenshotB64}`;
   else img.removeAttribute('src');
 }
 
@@ -58,6 +58,7 @@ function closeBugReport() {
 async function submitBugReport() {
   const area = document.getElementById('bugReportArea').value;
   const description = document.getElementById('bugReportDesc').value.trim();
+  const diagnostics = document.getElementById('bugReportDiagPreview').value;
   const msg = document.getElementById('bugReportMsg');
   if (!description) {
     msg.textContent = 'Please describe what happened.';
@@ -69,7 +70,7 @@ async function submitBugReport() {
   msg.textContent = 'Submitting…';
   msg.className = '';
 
-  const result = await testerBrowser.bugReport.submit({ area, description, screenshotB64 });
+  const result = await testerBrowser.bugReport.submit({ area, description, diagnostics, screenshotB64 });
   btn.disabled = false;
 
   if (!result.ok) {
@@ -80,8 +81,13 @@ async function submitBugReport() {
 
   document.getElementById('bugReportFormView').hidden = true;
   document.getElementById('bugReportConfirmView').hidden = false;
-  document.getElementById('bugReportConfirmText').textContent =
-    `Issue #${result.number} created` + (result.boardAdded ? ' and added to the project board.' : ' — could not confirm the project board add, check it manually.');
+  let text = `Issue #${result.number} created` + (result.boardAdded ? ' and added to the project board.' : ' — could not confirm the project board add, check it manually.');
+  if (screenshotB64) {
+    text += result.screenshotAttached
+      ? ' Screenshot attached.'
+      : ` Screenshot could not be attached${result.screenshotError ? ` (${result.screenshotError})` : ''} — you can add it manually.`;
+  }
+  document.getElementById('bugReportConfirmText').textContent = text;
   const link = document.getElementById('bugReportLink');
   link.dataset.url = result.url;
   document.getElementById('bugReportSubmitBtn').hidden = true;

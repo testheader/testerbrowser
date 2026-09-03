@@ -414,21 +414,8 @@ ipcMain.handle('bugreport:saveToken', (_e, token: string) => {
   return { ok: true };
 });
 
-ipcMain.handle('bugreport:getDiagnostics', () => ({
-  version: app.getVersion(),
-  electron: process.versions.electron,
-  chrome: process.versions.chrome,
-  node: process.versions.node,
-  platform: process.platform,
-  arch: process.arch,
-  osRelease: os.release(),
-  recentErrors: recentAppErrors.slice(-10),
-}));
-
-ipcMain.handle('app:captureScreenshot', () => sessionManager?.captureAppScreenshot() ?? null);
-
-function diagnosticsBlock(area: string): string {
-  const d = {
+function getDiagnosticsData() {
+  return {
     version: app.getVersion(),
     electron: process.versions.electron,
     chrome: process.versions.chrome,
@@ -438,17 +425,34 @@ function diagnosticsBlock(area: string): string {
     osRelease: os.release(),
     recentErrors: recentAppErrors.slice(-10),
   };
+}
+
+ipcMain.handle('bugreport:getDiagnostics', () => getDiagnosticsData());
+
+ipcMain.handle('app:captureScreenshot', () => sessionManager?.captureAppScreenshot() ?? null);
+
+// Default diagnostics text — mirrors renderer/bugreport.js's own preview formatting
+// exactly, so what the user sees (and can edit) matches what gets posted verbatim.
+function defaultDiagnosticsText(): string {
+  const d = getDiagnosticsData();
   const lines = [
     `TesterBrowser: ${d.version}`,
     `Electron: ${d.electron}  Chrome: ${d.chrome}  Node: ${d.node}`,
-    `OS: ${d.platform} ${d.arch} (${d.osRelease})`,
-    `Feature area: ${area}`,
+    `${d.platform} ${d.arch} (${d.osRelease})`,
     '',
     d.recentErrors.length
-      ? `Recent app errors:\n${d.recentErrors.map(e => `[${new Date(e.ts).toISOString()}] ${e.message}`).join('\n')}`
+      ? `Recent app errors:\n${d.recentErrors.map(e => `[${new Date(e.ts).toLocaleTimeString()}] ${e.message}`).join('\n')}`
       : 'No recent app errors recorded.',
   ];
-  return ['<details><summary>Diagnostics</summary>', '', '```', ...lines, '```', '</details>'].join('\n');
+  return lines.join('\n');
+}
+
+function wrapDiagnosticsMarkdown(area: string, text: string): string {
+  return [
+    '<details><summary>Diagnostics</summary>', '',
+    '```', `Feature area: ${area}`, '', text, '```',
+    '</details>',
+  ].join('\n');
 }
 
 // Best-effort: finds a GitHub Projects (v2) board titled "Testerbrowser" owned by
@@ -487,13 +491,14 @@ async function addIssueToProjectBoard(token: string, issueNodeId: string): Promi
   } catch { return false; }
 }
 
-ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; description: string; screenshotB64?: string | null }) => {
+ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; description: string; diagnostics?: string; screenshotB64?: string | null }) => {
   const token = getGithubToken();
   if (!token) return { ok: false, error: 'No GitHub token configured. Add one in Settings.' };
   if (!payload?.description?.trim()) return { ok: false, error: 'Description is required.' };
 
   const title = `[${payload.area}] ${payload.description.trim().split('\n')[0].slice(0, 80)}`;
-  const body = `${payload.description.trim()}\n\n${diagnosticsBlock(payload.area)}`;
+  const diagnosticsText = payload.diagnostics?.trim() || defaultDiagnosticsText();
+  const body = `${payload.description.trim()}\n\n${wrapDiagnosticsMarkdown(payload.area, diagnosticsText)}`;
 
   try {
     const res = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues`, {
@@ -509,10 +514,11 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
     const data = await res.json() as Record<string, unknown>;
     if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
 
-    let screenshotUrl: string | null = null;
+    let screenshotAttached = false;
+    let screenshotError: string | null = null;
     if (payload.screenshotB64) {
       try {
-        const filePath = `.github/bug-report-screenshots/issue-${data.number}.png`;
+        const filePath = `.github/bug-report-screenshots/issue-${data.number}.jpg`;
         const putRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/contents/${filePath}`, {
           method: 'PUT',
           headers: {
@@ -523,9 +529,12 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
           },
           body: JSON.stringify({ message: `Bug report screenshot for #${data.number}`, content: payload.screenshotB64 }),
         });
-        if (putRes.ok) {
-          screenshotUrl = `https://raw.githubusercontent.com/${GH_REPO_OWNER}/${GH_REPO_NAME}/main/${filePath}`;
-          await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues/${data.number}`, {
+        if (!putRes.ok) {
+          const putData = await putRes.json().catch(() => ({})) as { message?: string };
+          screenshotError = putData.message ?? `Upload failed: HTTP ${putRes.status}`;
+        } else {
+          const screenshotUrl = `https://raw.githubusercontent.com/${GH_REPO_OWNER}/${GH_REPO_NAME}/main/${filePath}`;
+          const patchRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues/${data.number}`, {
             method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -535,12 +544,20 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
             },
             body: JSON.stringify({ body: `${body}\n\n![TesterBrowser screenshot](${screenshotUrl})` }),
           });
+          if (patchRes.ok) {
+            screenshotAttached = true;
+          } else {
+            const patchData = await patchRes.json().catch(() => ({})) as { message?: string };
+            screenshotError = patchData.message ?? `Embedding failed: HTTP ${patchRes.status}`;
+          }
         }
-      } catch { /* screenshot attach is best-effort */ }
+      } catch (e: unknown) {
+        screenshotError = e instanceof Error ? e.message : String(e);
+      }
     }
 
     const boardAdded = await addIssueToProjectBoard(token, data.node_id as string);
-    return { ok: true, url: data.html_url, number: data.number, boardAdded };
+    return { ok: true, url: data.html_url, number: data.number, boardAdded, screenshotAttached, screenshotError };
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

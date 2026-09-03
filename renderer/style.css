@@ -687,8 +687,9 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #bugReportDiagDetails { margin: 8px 0; font-size: 12px; color: var(--text-muted); }
 #bugReportDiagDetails summary { cursor: pointer; user-select: none; }
 #bugReportDiagPreview { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px;
-                        font-family: monospace; font-size: 11px; color: var(--text-secondary); white-space: pre-wrap;
-                        margin-top: 6px; max-height: 160px; overflow: auto; }
+                        font-family: monospace; font-size: 11px; color: var(--text-secondary);
+                        margin-top: 6px; height: 140px; width: 100%; resize: vertical; outline: none; }
+#bugReportDiagPreview:focus { border-color: var(--accent); }
 #bugReportShotWrap { margin-top: 6px; }
 #bugReportShotPreview { max-width: 100%; border: 1px solid var(--border-color); border-radius: 4px; display: none; }
 #bugReportShotPreview[src] { display: block; }

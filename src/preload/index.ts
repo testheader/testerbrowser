@@ -225,7 +225,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     saveToken:      (token: string) => ipcRenderer.invoke('bugreport:saveToken', token),
     getDiagnostics: () => ipcRenderer.invoke('bugreport:getDiagnostics'),
     captureScreenshot: () => ipcRenderer.invoke('app:captureScreenshot'),
-    submit: (payload: { area: string; description: string; screenshotB64?: string | null }) =>
+    submit: (payload: { area: string; description: string; diagnostics?: string; screenshotB64?: string | null }) =>
               ipcRenderer.invoke('bugreport:submit', payload),
     onShow: (cb: () => void) => {
       ipcRenderer.removeAllListeners('show:bugreport');

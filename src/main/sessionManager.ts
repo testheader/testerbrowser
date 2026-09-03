@@ -921,7 +921,11 @@ export class SessionManager {
   async captureAppScreenshot(): Promise<string | null> {
     try {
       const img = await this.win.webContents.capturePage();
-      return img.toPNG().toString('base64');
+      // Keep the upload comfortably under GitHub's Contents API size limit for
+      // embedding in bug reports — a full-resolution PNG of the whole window can
+      // easily run past 1MB, especially at high DPI, and silently fail to attach.
+      const resized = img.getSize().width > 1400 ? img.resize({ width: 1400 }) : img;
+      return resized.toJPEG(80).toString('base64');
     } catch { return null; }
   }
 

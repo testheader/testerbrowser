@@ -384,9 +384,9 @@
           </select>
         </div>
         <textarea id="bugReportDesc" placeholder="What happened? Steps to reproduce, expected vs actual…" rows="5"></textarea>
-        <details id="bugReportDiagDetails">
-          <summary>Diagnostics that will be attached &#9662;</summary>
-          <pre id="bugReportDiagPreview"></pre>
+        <details id="bugReportDiagDetails" open>
+          <summary>Diagnostics that will be attached (editable) &#9662;</summary>
+          <textarea id="bugReportDiagPreview" spellcheck="false"></textarea>
           <div id="bugReportShotWrap"><img id="bugReportShotPreview" alt="TesterBrowser UI screenshot" /></div>
         </details>
         <div id="bugReportMsg"></div>
