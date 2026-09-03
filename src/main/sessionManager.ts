@@ -579,7 +579,7 @@ export class SessionManager {
     try {
       const sessions = Array.from(this.sessions.values())
         .filter(s => s.persistent)
-        .map(s => ({ name: s.name, partition: s.partition, url: s.currentUrl }));
+        .map(s => ({ name: s.name, partition: s.partition, url: s.currentUrl, color: s.color }));
       const notes: Record<string, string> = {};
       for (const [id, note] of this.sessionNotes) {
         const s = this.sessions.get(id);
@@ -595,7 +595,7 @@ export class SessionManager {
       const { sessions, notes } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
       if (!sessions?.length) return false;
       for (const s of sessions) {
-        const sess = this.createSession(s.name, { partition: s.partition, startUrl: s.url });
+        const sess = this.createSession(s.name, { partition: s.partition, startUrl: s.url, color: s.color });
         if (notes?.[s.partition]) this.sessionNotes.set(sess.id, notes[s.partition]);
       }
       const first = this.sessions.values().next().value as TestSession | undefined;
