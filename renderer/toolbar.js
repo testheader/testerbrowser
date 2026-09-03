@@ -26,12 +26,7 @@ export function updateNavButtons() {
 
 export function updateZoomDisplay(zoom) {
   const el = document.getElementById('zoomIndicator');
-  if (Math.abs(zoom - 1) < 0.005) {
-    el.style.display = 'none';
-  } else {
-    el.style.display = '';
-    el.textContent   = Math.round(zoom * 100) + '%';
-  }
+  el.textContent = Math.round(zoom * 100) + '%';
 }
 
 export function initToolbar() {

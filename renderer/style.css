@@ -55,7 +55,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .tab.active { background: #1e1e1e; font-weight: 600;
               border-top: 2px solid var(--tab-color, #4fc3f7);
               border-bottom: 2px solid var(--tab-color, #4fc3f7); }
-.tab.dragging { opacity: 0.35; }
+.tab.dragging { opacity: 0.35; box-shadow: 0 6px 14px rgba(0,0,0,0.45); }
 .tab.drag-left  { box-shadow: -2px 0 0 0 var(--tab-color, #4fc3f7); }
 .tab.drag-right { box-shadow:  2px 0 0 0 var(--tab-color, #4fc3f7); }
 .tab-favicon { width: 14px; height: 14px; flex-shrink: 0; border-radius: 2px; }
@@ -69,7 +69,11 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .tab-close:hover { background: #555; color: #fff; }
 .tab-rename-input { background: #111; color: #ddd; border: 1px solid #4fc3f7; border-radius: 2px;
                     font-size: 13px; padding: 1px 4px; width: 100px; outline: none; font-family: inherit; }
-#newSessionBtn { flex-shrink: 0; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 0 8px; user-select: none; }
+#newSessionBtn { flex-shrink: 0; cursor: pointer; color: #4fc3f7; font-size: 18px; padding: 2px 8px;
+                 user-select: none; background: none; border: none; border-radius: 4px;
+                 line-height: 1.4; font-family: inherit; transition: background 0.1s, color 0.1s; }
+#newSessionBtn:hover { background: #333; color: #81d4fa; }
+#newSessionBtn:active { background: #3a3a3a; color: #4fc3f7; }
 .tab-group-add { flex-shrink: 0; cursor: pointer; color: #666; font-size: 13px; padding: 0 3px; user-select: none;
                  border-radius: 3px; line-height: 1; margin-right: 4px; }
 .tab-group-add:hover { color: #4fc3f7; background: #2a2a2a; }
@@ -90,7 +94,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
           background: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
 #urlbar:focus { outline: none; border-color: var(--accent); }
 #zoomIndicator { font-size: 11px; color: #888; min-width: 36px; text-align: center;
-                 display: none; cursor: pointer; padding: 2px 4px; border-radius: 3px;
+                 cursor: pointer; padding: 2px 4px; border-radius: 3px;
                  flex-shrink: 0; }
 #zoomIndicator:hover { background: #333; color: #ddd; }
 #bookmarkBtn { background: none; border: none; color: #777; font-size: 17px; cursor: pointer;
@@ -121,9 +125,9 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .bm-remove:hover { color: #fff; }
 
 /* Find bar */
-#findBar { height: 40px; display: none; align-items: center; padding: 0 10px;
-           gap: 6px; background: #1e1e1e; border-top: 1px solid #333; }
-#findBar.open { display: flex; }
+#findBar { height: 0; overflow: hidden; display: flex; align-items: center; padding: 0;
+           gap: 6px; background: #1e1e1e; border-top: 1px solid #333; transition: height 0.15s ease; }
+#findBar.open { height: 40px; padding: 0 10px; }
 #findInput { padding: 4px 8px; border-radius: 4px; border: 1px solid #444;
              background: #252526; color: #ddd; font-size: 13px; width: 220px; }
 #findInput:focus { outline: none; border-color: #4fc3f7; }
@@ -263,7 +267,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 
 /* Auto-scroll button */
 #scrollToBottomBtn { display: none; position: absolute; bottom: 8px; right: 12px;
-                     background: #252526; border: 1px solid #444; color: #4fc3f7;
+                     background: rgba(37,37,38,0.85); backdrop-filter: blur(4px);
+                     -webkit-backdrop-filter: blur(4px); border: 1px solid #444; color: #4fc3f7;
                      border-radius: 12px; padding: 3px 10px; font-size: 11px;
                      cursor: pointer; z-index: 5; }
 #scrollToBottomBtn.visible { display: block; }

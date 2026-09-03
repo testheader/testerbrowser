@@ -59,6 +59,8 @@ export function setConsoleHeight(h) {
 
 export function initLayout() {
   const handle = document.getElementById('consoleDragHandle');
+  let preSnapHeight = null;
+
   handle.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const startY = e.clientY;
@@ -72,5 +74,16 @@ export function initLayout() {
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup',   onUp);
+  });
+
+  handle.addEventListener('dblclick', () => {
+    if (state.consolePanelMinimized) return;
+    if (preSnapHeight !== null) {
+      setConsoleHeight(preSnapHeight);
+      preSnapHeight = null;
+    } else {
+      preSnapHeight = state.consoleHeight;
+      setConsoleHeight(Math.round(window.innerHeight * 0.33));
+    }
   });
 }
