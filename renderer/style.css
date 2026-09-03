@@ -515,6 +515,34 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                  border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: none; }
 #notesTextarea:focus { outline: none; border-color: #4fc3f7; }
 
+/* ── Bug report modal ── */
+#bugReportOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                    z-index: 100; align-items: center; justify-content: center; }
+#bugReportOverlay.open { display: flex; }
+#bugReportModal { background: #252526; border: 1px solid #444; border-radius: 8px;
+                  width: 520px; min-width: 320px; max-height: 80vh; padding: 24px 28px;
+                  box-shadow: 0 8px 32px rgba(0,0,0,0.5); display: flex; flex-direction: column;
+                  overflow: auto; }
+#bugReportModal h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; color: #fff; }
+#bugReportDesc { width: 100%; box-sizing: border-box; background: #1e1e1e; color: #ddd; border: 1px solid #444;
+                 border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: vertical;
+                 margin: 8px 0; }
+#bugReportDesc:focus { outline: none; border-color: #4fc3f7; }
+#bugReportDiagDetails { margin: 8px 0; font-size: 12px; color: #999; }
+#bugReportDiagDetails summary { cursor: pointer; user-select: none; }
+#bugReportDiagPreview { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 8px;
+                        font-family: monospace; font-size: 11px; color: #aaa; white-space: pre-wrap;
+                        margin-top: 6px; max-height: 160px; overflow: auto; }
+#bugReportShotWrap { margin-top: 6px; }
+#bugReportShotPreview { max-width: 100%; border: 1px solid #333; border-radius: 4px; display: none; }
+#bugReportShotPreview[src] { display: block; }
+#bugReportMsg { font-size: 12px; min-height: 16px; }
+#bugReportMsg.err { color: #e57373; }
+#bugReportMsg.ok  { color: #8fdc8f; }
+#bugReportConfirmText { font-size: 13px; color: #ddd; margin: 4px 0 8px; }
+#bugReportLink { color: #4fc3f7; font-size: 13px; cursor: pointer; text-decoration: none; }
+#bugReportLink:hover { text-decoration: underline; }
+
 /* ── A11y panel ── */
 #a11yPanel { flex: 1; overflow: hidden; display: none; flex-direction: column; }
 .a11y-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px;

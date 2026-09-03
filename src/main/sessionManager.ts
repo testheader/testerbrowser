@@ -830,6 +830,17 @@ export class SessionManager {
     } catch { return null; }
   }
 
+  // Captures the TesterBrowser chrome itself (topbar, console panel) for bug
+  // reports — win.webContents is the app's own renderer, a separate compositing
+  // layer from the child WebContentsView that shows the site under test, so this
+  // never includes page content.
+  async captureAppScreenshot(): Promise<string | null> {
+    try {
+      const img = await this.win.webContents.capturePage();
+      return img.toPNG().toString('base64');
+    } catch { return null; }
+  }
+
   async getA11yTree(id: string): Promise<object[] | null> {
     const s = this.sessions.get(id);
     if (!s) return null;

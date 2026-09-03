@@ -1,12 +1,25 @@
-import { app, BrowserWindow, ipcMain, Menu, clipboard, net } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, clipboard, net, safeStorage, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, TestStep } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
+
+// --- App-level error log (for bug reports — main process errors, not site console errors) ---
+
+interface AppErrorEntry { ts: number; message: string; }
+const MAX_APP_ERRORS = 20;
+const recentAppErrors: AppErrorEntry[] = [];
+function recordAppError(message: string) {
+  recentAppErrors.push({ ts: Date.now(), message: String(message).slice(0, 2000) });
+  if (recentAppErrors.length > MAX_APP_ERRORS) recentAppErrors.shift();
+}
+process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
+process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
 
 type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
@@ -84,6 +97,19 @@ const jiraStore = new JsonStore<JiraSettings>('jira-settings.json', DEFAULT_JIRA
 interface SavedTest { id: string; name: string; steps: object[]; createdAt: number; updatedAt: number; }
 const testsStore = new JsonStore<SavedTest[]>('tests.json', []);
 
+// GitHub token for the in-app bug reporter is encrypted at rest via OS-level
+// safeStorage (DPAPI / Keychain / libsecret) — only the ciphertext touches disk.
+interface BugReportSettings { tokenEnc: string | null; }
+const DEFAULT_BUGREPORT: BugReportSettings = { tokenEnc: null };
+const bugReportStore = new JsonStore<BugReportSettings>('bugreport-settings.json', DEFAULT_BUGREPORT,
+  (raw) => ({ ...DEFAULT_BUGREPORT, ...(raw as Partial<BugReportSettings>) }));
+
+function getGithubToken(): string | null {
+  const s = bugReportStore.get();
+  if (!s.tokenEnc || !safeStorage.isEncryptionAvailable()) return null;
+  try { return safeStorage.decryptString(Buffer.from(s.tokenEnc, 'base64')); } catch { return null; }
+}
+
 // ---
 
 function pushUpdateStatus() {
@@ -125,6 +151,11 @@ function createWindow() {
       label: 'Help',
       submenu: [
         { label: 'About / Settings', click: () => win?.webContents.send('show:settings') },
+        {
+          label: 'Report Bug…',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => win?.webContents.send('show:bugreport'),
+        },
       ],
     },
   ]);
@@ -333,6 +364,155 @@ ipcMain.handle('jira:createIssue', async (_e, summary: string, description: stri
   }
 });
 
+// --- In-app bug reporter ---
+
+const GH_REPO_OWNER = 'testheader';
+const GH_REPO_NAME = 'testerbrowser';
+
+ipcMain.handle('bugreport:hasToken', () => !!bugReportStore.get().tokenEnc);
+
+ipcMain.handle('bugreport:saveToken', (_e, token: string) => {
+  const trimmed = (token ?? '').trim();
+  if (!trimmed) { bugReportStore.set({ tokenEnc: null }); return { ok: true }; }
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { ok: false, error: 'OS-level secure storage is unavailable on this system — cannot store the token safely.' };
+  }
+  bugReportStore.set({ tokenEnc: safeStorage.encryptString(trimmed).toString('base64') });
+  return { ok: true };
+});
+
+ipcMain.handle('bugreport:getDiagnostics', () => ({
+  version: app.getVersion(),
+  electron: process.versions.electron,
+  chrome: process.versions.chrome,
+  node: process.versions.node,
+  platform: process.platform,
+  arch: process.arch,
+  osRelease: os.release(),
+  recentErrors: recentAppErrors.slice(-10),
+}));
+
+ipcMain.handle('app:captureScreenshot', () => sessionManager?.captureAppScreenshot() ?? null);
+
+function diagnosticsBlock(area: string): string {
+  const d = {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: process.platform,
+    arch: process.arch,
+    osRelease: os.release(),
+    recentErrors: recentAppErrors.slice(-10),
+  };
+  const lines = [
+    `TesterBrowser: ${d.version}`,
+    `Electron: ${d.electron}  Chrome: ${d.chrome}  Node: ${d.node}`,
+    `OS: ${d.platform} ${d.arch} (${d.osRelease})`,
+    `Feature area: ${area}`,
+    '',
+    d.recentErrors.length
+      ? `Recent app errors:\n${d.recentErrors.map(e => `[${new Date(e.ts).toISOString()}] ${e.message}`).join('\n')}`
+      : 'No recent app errors recorded.',
+  ];
+  return ['<details><summary>Diagnostics</summary>', '', '```', ...lines, '```', '</details>'].join('\n');
+}
+
+// Best-effort: finds a GitHub Projects (v2) board titled "Testerbrowser" owned by
+// the repo owner and adds the issue to it. Silently returns false on any failure
+// (missing scope, no such board, etc.) — the issue itself is still created either way.
+async function addIssueToProjectBoard(token: string, issueNodeId: string): Promise<boolean> {
+  try {
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'TesterBrowser-BugReporter',
+    };
+    const ownerQuery = `query($owner: String!) {
+      repositoryOwner(login: $owner) {
+        ... on ProjectV2Owner { projectsV2(first: 20) { nodes { id title } } }
+      }
+    }`;
+    const res1 = await net.fetch('https://api.github.com/graphql', {
+      method: 'POST', headers,
+      body: JSON.stringify({ query: ownerQuery, variables: { owner: GH_REPO_OWNER } }),
+    });
+    const json1 = await res1.json() as { data?: { repositoryOwner?: { projectsV2?: { nodes?: { id: string; title: string }[] } } } };
+    const nodes = json1.data?.repositoryOwner?.projectsV2?.nodes ?? [];
+    const project = nodes.find(p => p.title.toLowerCase().includes('testerbrowser'));
+    if (!project) return false;
+
+    const mutation = `mutation($projectId: ID!, $contentId: ID!) {
+      addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) { item { id } }
+    }`;
+    const res2 = await net.fetch('https://api.github.com/graphql', {
+      method: 'POST', headers,
+      body: JSON.stringify({ query: mutation, variables: { projectId: project.id, contentId: issueNodeId } }),
+    });
+    const json2 = await res2.json() as { data?: { addProjectV2ItemById?: { item?: { id: string } } } };
+    return !!json2.data?.addProjectV2ItemById?.item?.id;
+  } catch { return false; }
+}
+
+ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; description: string; screenshotB64?: string | null }) => {
+  const token = getGithubToken();
+  if (!token) return { ok: false, error: 'No GitHub token configured. Add one in Settings.' };
+  if (!payload?.description?.trim()) return { ok: false, error: 'Description is required.' };
+
+  const title = `[${payload.area}] ${payload.description.trim().split('\n')[0].slice(0, 80)}`;
+  const body = `${payload.description.trim()}\n\n${diagnosticsBlock(payload.area)}`;
+
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'TesterBrowser-BugReporter',
+      },
+      body: JSON.stringify({ title, body }),
+    });
+    const data = await res.json() as Record<string, unknown>;
+    if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
+
+    let screenshotUrl: string | null = null;
+    if (payload.screenshotB64) {
+      try {
+        const filePath = `.github/bug-report-screenshots/issue-${data.number}.png`;
+        const putRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/contents/${filePath}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'TesterBrowser-BugReporter',
+          },
+          body: JSON.stringify({ message: `Bug report screenshot for #${data.number}`, content: payload.screenshotB64 }),
+        });
+        if (putRes.ok) {
+          screenshotUrl = `https://raw.githubusercontent.com/${GH_REPO_OWNER}/${GH_REPO_NAME}/main/${filePath}`;
+          await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues/${data.number}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'TesterBrowser-BugReporter',
+            },
+            body: JSON.stringify({ body: `${body}\n\n![TesterBrowser screenshot](${screenshotUrl})` }),
+          });
+        }
+      } catch { /* screenshot attach is best-effort */ }
+    }
+
+    const boardAdded = await addIssueToProjectBoard(token, data.node_id as string);
+    return { ok: true, url: data.html_url, number: data.number, boardAdded };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
 ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string; headers: Record<string, string>; body?: string }) => {
   try {
     const opts: RequestInit = { method: req.method, headers: req.headers };
@@ -415,6 +595,9 @@ ipcMain.handle('app:checkForUpdates', () => {
   autoUpdater.checkForUpdatesAndNotify();
 });
 ipcMain.handle('app:restartAndInstall', () => autoUpdater.quitAndInstall());
+ipcMain.handle('app:openExternal', (_e, url: string) => {
+  if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
+});
 
 // Tests (record-playback) IPC
 ipcMain.handle('tests:list', () => testsStore.get());

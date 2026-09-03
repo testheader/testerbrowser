@@ -171,6 +171,21 @@
         </label>
       </div>
 
+      <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+        <div>
+          <div class="setting-label">GitHub token (bug reporter)</div>
+          <div style="font-size:11px;color:#555;margin-top:3px">Used by Help &rarr; Report Bug to file issues in testheader/testerbrowser. Needs "repo" and "project" scopes. Stored encrypted via your OS keychain, never in plain text.</div>
+        </div>
+        <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <input type="password" id="githubTokenInput" placeholder="ghp_…" autocomplete="off"
+                 style="width:200px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
+          <div style="display:flex;gap:6px;align-items:center">
+            <span id="githubTokenStatus" style="font-size:11px;color:#555"></span>
+            <button class="btn btn-secondary" id="githubTokenSaveBtn" style="padding:2px 10px;font-size:11px">Save</button>
+          </div>
+        </div>
+      </div>
+
       <details id="shortcutsSection">
         <summary>Keyboard shortcuts &amp; features &#9662;</summary>
         <div style="padding:4px 0 8px; background:#181818;">
@@ -295,6 +310,50 @@
       <div class="modal-actions" style="margin-top:12px">
         <button class="btn btn-secondary" id="closeNotesBtn">Close</button>
         <button class="btn btn-primary"   id="saveNotesBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bug Report -->
+  <div id="bugReportOverlay">
+    <div id="bugReportModal">
+      <h2>Report Bug</h2>
+      <div id="bugReportFormView">
+        <div class="setting-row" style="align-items:center;padding:6px 0">
+          <span class="setting-label" style="flex-shrink:0">Feature area</span>
+          <select id="bugReportArea" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
+            <option>Console / Network</option>
+            <option>Storage</option>
+            <option>A11y</option>
+            <option>Diff</option>
+            <option>Visual Regression</option>
+            <option>Spoof</option>
+            <option>Security</option>
+            <option>Mock</option>
+            <option>Resilience</option>
+            <option>Jira</option>
+            <option>Tests</option>
+            <option>Tabs / Sessions</option>
+            <option>Bookmarks / Downloads</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <textarea id="bugReportDesc" placeholder="What happened? Steps to reproduce, expected vs actual…" rows="5"></textarea>
+        <details id="bugReportDiagDetails">
+          <summary>Diagnostics that will be attached &#9662;</summary>
+          <pre id="bugReportDiagPreview"></pre>
+          <div id="bugReportShotWrap"><img id="bugReportShotPreview" alt="TesterBrowser UI screenshot" /></div>
+        </details>
+        <div id="bugReportMsg"></div>
+      </div>
+      <div id="bugReportConfirmView" hidden>
+        <p id="bugReportConfirmText"></p>
+        <a id="bugReportLink" href="#">View issue on GitHub &#8599;</a>
+      </div>
+      <div class="modal-actions" style="margin-top:12px">
+        <button class="btn btn-secondary" id="bugReportCancelBtn">Cancel</button>
+        <button class="btn btn-primary"   id="bugReportSubmitBtn">Submit</button>
+        <button class="btn btn-primary"   id="bugReportDoneBtn" hidden>Done</button>
       </div>
     </div>
   </div>

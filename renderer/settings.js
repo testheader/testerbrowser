@@ -50,6 +50,13 @@ async function openSettings() {
   let stored;
   try { stored = localStorage.getItem(THEME_LS_KEY); } catch {}
   document.getElementById('themeSelect').value = stored || 'system';
+
+  await refreshGithubTokenStatus();
+}
+
+async function refreshGithubTokenStatus() {
+  const hasToken = await testerBrowser.bugReport.hasToken();
+  document.getElementById('githubTokenStatus').textContent = hasToken ? 'Configured ✓' : 'Not configured';
 }
 
 function closeSettings() {
@@ -91,6 +98,18 @@ export function initSettings() {
     try { localStorage.setItem(THEME_LS_KEY, scheme); } catch {}
     applyThemeFromSelect(scheme);
   });
+
+  document.getElementById('githubTokenSaveBtn').onclick = async () => {
+    const input = document.getElementById('githubTokenInput');
+    const status = document.getElementById('githubTokenStatus');
+    const result = await testerBrowser.bugReport.saveToken(input.value);
+    input.value = '';
+    if (!result.ok) {
+      status.textContent = result.error || 'Failed to save token';
+      return;
+    }
+    await refreshGithubTokenStatus();
+  };
 
   testerBrowser.app.onShowSettings(() => openSettings());
   testerBrowser.app.onUpdateStatus((data) => applyUpdateStatus(data));

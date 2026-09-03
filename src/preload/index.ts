@@ -207,10 +207,24 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     set: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),
   },
 
+  bugReport: {
+    hasToken:       () => ipcRenderer.invoke('bugreport:hasToken'),
+    saveToken:      (token: string) => ipcRenderer.invoke('bugreport:saveToken', token),
+    getDiagnostics: () => ipcRenderer.invoke('bugreport:getDiagnostics'),
+    captureScreenshot: () => ipcRenderer.invoke('app:captureScreenshot'),
+    submit: (payload: { area: string; description: string; screenshotB64?: string | null }) =>
+              ipcRenderer.invoke('bugreport:submit', payload),
+    onShow: (cb: () => void) => {
+      ipcRenderer.removeAllListeners('show:bugreport');
+      ipcRenderer.on('show:bugreport', () => cb());
+    },
+  },
+
   app: {
     getVersionInfo:     () => ipcRenderer.invoke('app:versionInfo'),
     checkForUpdates:    () => ipcRenderer.invoke('app:checkForUpdates'),
     restartAndInstall:  () => ipcRenderer.invoke('app:restartAndInstall'),
+    openExternal:       (url: string) => ipcRenderer.invoke('app:openExternal', url),
     getUpdateLog:       () => ipcRenderer.invoke('app:getUpdateLog'),
     onUpdateStatus: (cb: (d: { status: string; current: string; latest: string | null }) => void) => {
       ipcRenderer.removeAllListeners('update:status');
