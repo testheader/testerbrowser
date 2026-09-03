@@ -92,9 +92,23 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
            padding: 4px 6px; border-radius: 4px; line-height: 1; flex-shrink: 0; }
 .nav-btn:hover:not(:disabled) { background: #333; color: #fff; }
 .nav-btn:disabled { color: #444; cursor: default; }
-#urlbar { flex: 1; padding: 6px 10px; border-radius: 4px; border: 1px solid #444;
-          background: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
-#urlbar:focus { outline: none; border-color: var(--active-tab-color, var(--accent)); }
+#urlbarWrap { flex: 1; position: relative; display: flex; align-items: center; min-width: 0; }
+#urlbar { width: 100%; padding: 6px 10px 6px 28px; border-radius: 4px; border: 1px solid #444;
+          background: var(--bg-primary); color: transparent; caret-color: var(--text-primary);
+          font-size: 14px; }
+#urlbar:focus { outline: none; border-color: var(--active-tab-color, var(--accent)); color: var(--text-primary); }
+#urlbar::placeholder { color: #666; }
+#urlbar:focus + #urlbarDisplay { display: none; }
+#urlbarWrap:focus-within #urlbarLock { visibility: hidden; }
+#urlbarLock { position: absolute; left: 8px; font-size: 13px; z-index: 1; pointer-events: none; line-height: 1; }
+#urlbarLock.secure  { color: #8fdc8f; }
+#urlbarLock.insecure{ color: #e57373; }
+#urlbarLock.neutral { color: #777; }
+#urlbarLock:empty { display: none; }
+#urlbarDisplay { position: absolute; left: 28px; right: 10px; top: 0; bottom: 0; display: flex;
+                 align-items: center; pointer-events: none; font-size: 14px; color: var(--text-primary);
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#urlbarDisplay .url-proto { color: #777; }
 #zoomIndicator { font-size: 11px; color: #888; min-width: 36px; text-align: center;
                  cursor: pointer; padding: 2px 4px; border-radius: 3px;
                  flex-shrink: 0; }

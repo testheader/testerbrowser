@@ -6,6 +6,7 @@ import { updateTabLoadingVisual, startRename, closeTab, refreshTabs } from './ta
 import { loadStoragePanel } from './storage.js';
 import { reloadA11yIfLoaded } from './a11y.js';
 import { openNotes } from './notes.js';
+import { updateUrlbarSecurity } from './urlbar-security.js';
 
 export function initIpcEvents() {
   // onLoading is cross-cutting: updates tab icon AND toolbar reload button / loading bar
@@ -23,6 +24,7 @@ export function initIpcEvents() {
   testerBrowser.sessions.onNavigated(({ id, url }) => {
     if (id === state.activeId) {
       document.getElementById('urlbar').value = url;
+      updateUrlbarSecurity(url);
       updateBookmarkStar();
       if (state.activeConsoleTab === 'storage') loadStoragePanel();
       if (state.activeConsoleTab === 'a11y') reloadA11yIfLoaded();

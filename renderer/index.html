@@ -24,7 +24,11 @@
       <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"    disabled>&#8592;</button>
       <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)"  disabled>&#8594;</button>
       <button class="nav-btn" id="reloadBtn" title="Reload (F5)">&#8635;</button>
-      <input id="urlbar" placeholder="Enter URL and press Enter  (Ctrl+L)" list="urlHistoryList" autocomplete="off" />
+      <div id="urlbarWrap">
+        <span id="urlbarLock" class="neutral" title="Connection security"></span>
+        <input id="urlbar" placeholder="Enter URL and press Enter  (Ctrl+L)" list="urlHistoryList" autocomplete="off" />
+        <div id="urlbarDisplay"></div>
+      </div>
       <datalist id="urlHistoryList"></datalist>
       <span id="zoomIndicator" title="Click to reset zoom (Ctrl+0)">100%</span>
       <button id="bookmarkBtn" title="Bookmark this page (Ctrl+D)">&#9734;</button>

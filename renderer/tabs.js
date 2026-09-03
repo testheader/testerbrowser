@@ -4,6 +4,7 @@ import { setLoadingBar, updateReloadBtn, updateNavButtons, updateZoomDisplay } f
 import { updateBookmarkStar } from './bookmarks.js';
 import { loadStoragePanel } from './storage.js';
 import { refreshDiffPickers } from './diff.js';
+import { updateUrlbarSecurity } from './urlbar-security.js';
 
 export function insertAfterActive(id) {
   const idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
@@ -171,6 +172,7 @@ export async function refreshTabs() {
   const active = sessionMap.get(state.activeId);
   if (active) {
     document.getElementById('urlbar').value = active.url || '';
+    updateUrlbarSecurity(active.url || '');
     updateBookmarkStar();
   }
   document.body.style.setProperty('--active-tab-color', (active && active.color) || '#4fc3f7');
