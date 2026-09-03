@@ -173,6 +173,7 @@ export async function refreshTabs() {
     document.getElementById('urlbar').value = active.url || '';
     updateBookmarkStar();
   }
+  document.body.style.setProperty('--active-tab-color', (active && active.color) || '#4fc3f7');
 
   updateNavButtons();
 }
