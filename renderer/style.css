@@ -47,11 +47,14 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #tabs { display: flex; align-items: center; height: 40px; padding: 0 8px; gap: 4px; overflow-x: auto; }
 #tabs::-webkit-scrollbar { height: 3px; }
 #tabs::-webkit-scrollbar-thumb { background: #444; }
-.tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px; background: #333;
+.tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px; background: #2d2d2d;
        border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap;
        min-width: 0; max-width: 180px; user-select: none;
-       border-left: 3px solid var(--tab-color, #555); position: relative; }
-.tab.active { background: #1e1e1e; border-bottom: 2px solid var(--tab-color, #4fc3f7); }
+       border-left: 3px solid var(--tab-color, #555); border-top: 2px solid transparent;
+       position: relative; transition: background 100ms ease, border-color 100ms ease, font-weight 100ms ease; }
+.tab.active { background: #1e1e1e; font-weight: 600;
+              border-top: 2px solid var(--tab-color, #4fc3f7);
+              border-bottom: 2px solid var(--tab-color, #4fc3f7); }
 .tab.dragging { opacity: 0.35; }
 .tab.drag-left  { box-shadow: -2px 0 0 0 var(--tab-color, #4fc3f7); }
 .tab.drag-right { box-shadow:  2px 0 0 0 var(--tab-color, #4fc3f7); }
