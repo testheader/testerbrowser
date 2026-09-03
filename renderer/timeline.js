@@ -112,19 +112,29 @@ export function renderTimeline() {
   if (state.autoScroll) panel.scrollTop = panel.scrollHeight;
 }
 
-export async function pollTimeline() {
-  if (state.activeId) {
-    const events = await testerBrowser.recording.timeline(state.activeId, { since: state.lastTs || undefined, limit: 200 });
-    if (events.length > 0) {
-      state.timelineEvents.push(...events);
-      if (state.timelineEvents.length > TIMELINE_MAX) {
-        state.timelineEvents.splice(0, state.timelineEvents.length - TIMELINE_MAX);
-      }
-      state.lastTs = Math.max(state.lastTs, ...events.map(e => e.ts));
-      renderTimeline();
+async function fetchTimeline() {
+  if (!state.activeId) return;
+  const events = await testerBrowser.recording.timeline(state.activeId, { since: state.lastTs || undefined, limit: 200 });
+  if (events.length > 0) {
+    state.timelineEvents.push(...events);
+    if (state.timelineEvents.length > TIMELINE_MAX) {
+      state.timelineEvents.splice(0, state.timelineEvents.length - TIMELINE_MAX);
     }
+    state.lastTs = Math.max(state.lastTs, ...events.map(e => e.ts));
+    renderTimeline();
   }
+}
+
+export async function pollTimeline() {
+  await fetchTimeline();
   setTimeout(pollTimeline, 1000);
+}
+
+// Switching tabs clears the timeline and would otherwise sit empty for up to
+// the full 1s polling interval before catching up — fetch immediately instead,
+// independent of (and without disturbing) the recurring pollTimeline loop.
+export function refreshTimelineNow() {
+  fetchTimeline();
 }
 
 export function initTimeline() {

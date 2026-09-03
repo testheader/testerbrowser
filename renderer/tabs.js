@@ -9,6 +9,7 @@ import { reloadA11yIfLoaded } from './a11y.js';
 import { loadRules } from './resilience.js';
 import { refreshVR, clearVRSession } from './visual-regression.js';
 import { clearSecurityFindings } from './security.js';
+import { refreshTimelineNow } from './timeline.js';
 
 export function insertAfterActive(id) {
   const idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
@@ -30,6 +31,7 @@ export async function switchToSession(id) {
   if (state.activeConsoleTab === 'resilience') loadRules();
   if (state.activeConsoleTab === 'vr') refreshVR();
   if (state.activeConsoleTab === 'security') clearSecurityFindings();
+  if (state.activeConsoleTab === 'console' || state.activeConsoleTab === 'network') refreshTimelineNow();
   recordVisit(id);
   await testerBrowser.sessions.switchTo(id);
   updateNavButtons();
