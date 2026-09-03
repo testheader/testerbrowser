@@ -37,18 +37,26 @@ export function renderBookmarksBar() {
   }
 }
 
+function isBookmarkableUrl(url) {
+  return !!url && url !== 'https://example.com';
+}
+
 export function updateBookmarkStar() {
-  const starBtn    = document.getElementById('bookmarkBtn');
-  const currentUrl = document.getElementById('urlbar').value;
-  const isBookmarked = state.bookmarks.some(b => b.url === currentUrl);
+  const starBtn      = document.getElementById('bookmarkBtn');
+  const currentUrl   = document.getElementById('urlbar').value;
+  const bookmarkable = isBookmarkableUrl(currentUrl);
+  const isBookmarked = bookmarkable && state.bookmarks.some(b => b.url === currentUrl);
   starBtn.innerHTML  = isBookmarked ? '&#9733;' : '&#9734;';
-  starBtn.title      = isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this page (Ctrl+D)';
+  starBtn.title      = bookmarkable
+    ? (isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this page (Ctrl+D)')
+    : 'Nothing to bookmark yet';
   starBtn.classList.toggle('bookmarked', isBookmarked);
+  starBtn.disabled = !bookmarkable;
 }
 
 export async function toggleBookmark() {
   const url = document.getElementById('urlbar').value;
-  if (!url || url === 'https://example.com') return;
+  if (!isBookmarkableUrl(url)) return;
   const tabEl    = document.querySelector(`.tab[data-id="${state.activeId}"] .tab-name`);
   const title    = state.tabTitles[state.activeId] || tabEl?.textContent || url;
   const isBookmarked = state.bookmarks.some(b => b.url === url);

@@ -579,6 +579,7 @@ ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string
 ipcMain.handle('layout:setConsoleHeight',(_e, h: number) => sessionManager?.setConsoleHeight(h));
 ipcMain.handle('layout:setTopBarHeight', (_e, h: number) => sessionManager?.setTopBarHeight(h));
 ipcMain.handle('layout:setViewerVisible',(_e, v: boolean) => sessionManager?.setViewerVisible(v));
+ipcMain.handle('layout:setRightPanelWidth', (_e, w: number) => sessionManager?.setRightPanelWidth(w));
 
 // Window control IPC
 ipcMain.handle('window:minimize',    () => win?.minimize());

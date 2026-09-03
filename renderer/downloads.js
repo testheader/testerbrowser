@@ -2,6 +2,7 @@
 
 const dlMap       = new Map();
 let downloadsOpen = false;
+const PANEL_WIDTH = 320; // must match #downloadsPanel's width in style.css
 
 function formatBytes(bytes) {
   if (bytes < 1024)        return bytes + ' B';
@@ -88,6 +89,9 @@ function renderDownloads() {
 function toggleDownloads() {
   downloadsOpen = !downloadsOpen;
   document.getElementById('downloadsPanel').classList.toggle('open', downloadsOpen);
+  // The WebContentsView paints on top of window HTML regardless of z-index, so the
+  // panel (docked to the right edge) needs the view's width narrowed to stay visible.
+  testerBrowser.layout.setRightPanelWidth(downloadsOpen ? PANEL_WIDTH : 0);
   if (downloadsOpen) renderDownloads();
 }
 
@@ -109,6 +113,7 @@ export function initDownloads() {
   document.getElementById('closeDownloadsBtn').onclick = () => {
     downloadsOpen = false;
     document.getElementById('downloadsPanel').classList.remove('open');
+    testerBrowser.layout.setRightPanelWidth(0);
   };
   document.getElementById('clearDownloadsBtn').onclick = () => testerBrowser.downloads.clear();
 }

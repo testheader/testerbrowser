@@ -174,6 +174,7 @@ export class SessionManager {
   private dbDir: string;
   private consoleHeight = 220;
   private topBarHeight = 88;
+  private rightPanelWidth = 0;
   private isViewVisible = true;
   private sessionNotes = new Map<string, string>();
   private colorIndex = 0;
@@ -687,7 +688,7 @@ export class SessionManager {
     s.view.setBounds({
       x: 0,
       y: this.topBarHeight,
-      width: bounds.width,
+      width: Math.max(0, bounds.width - this.rightPanelWidth),
       height: Math.max(0, bounds.height - this.topBarHeight - this.consoleHeight),
     });
   }
@@ -709,6 +710,15 @@ export class SessionManager {
 
   setTopBarHeight(height: number) {
     this.topBarHeight = Math.max(88, height);
+    this.layoutActive();
+  }
+
+  // Shrinks the active WebContentsView's width to make room for a fixed-position
+  // HTML panel (e.g. the downloads panel) docked to the right edge of the window —
+  // the view always paints on top of window HTML regardless of CSS z-index, so a
+  // panel in that region needs the view's bounds narrowed rather than just a CSS toggle.
+  setRightPanelWidth(width: number) {
+    this.rightPanelWidth = Math.max(0, width);
     this.layoutActive();
   }
 
