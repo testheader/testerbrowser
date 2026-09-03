@@ -40,7 +40,7 @@ function applyThemeFromSelect(scheme) {
   }
 }
 
-async function openSettings() {
+export async function openSettings() {
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('settingsOverlay').classList.add('open');
   applyUpdateStatus(await testerBrowser.app.getVersionInfo());

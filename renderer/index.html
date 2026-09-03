@@ -9,7 +9,18 @@
 <body>
   <div id="titlebar">
     <div id="titlebarDrag">
-      <span id="appName">TesterBrowser</span>
+      <div id="appMenuWrapper">
+        <button id="appName" title="Application menu">TesterBrowser <span id="appMenuCaret">&#9662;</span></button>
+        <div id="appMenuDropdown">
+          <div class="view-item" id="appMenuSettings">
+            <span>Settings</span>
+          </div>
+          <div class="view-item" id="appMenuBugReport">
+            <span>Report Bug…</span>
+            <span class="view-shortcut">Ctrl+Shift+R</span>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="titlebarControls">
       <button id="themeToggleBtn" title="Toggle light/dark mode">&#9728;</button>

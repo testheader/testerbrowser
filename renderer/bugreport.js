@@ -9,7 +9,7 @@ const AREA_BY_CONSOLE_TAB = {
   security: 'Security', mock: 'Mock', resilience: 'Resilience', jira: 'Jira', tests: 'Tests',
 };
 
-async function openBugReport() {
+export async function openBugReport() {
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('bugReportOverlay').classList.add('open');
   resetForm();

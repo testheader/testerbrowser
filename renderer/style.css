@@ -29,8 +29,17 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
             background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
             -webkit-app-region: drag; user-select: none; }
 #titlebarDrag { flex: 1; display: flex; align-items: center; padding: 0 12px; -webkit-app-region: drag; }
+#appMenuWrapper { position: relative; -webkit-app-region: no-drag; }
 #appName { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
-           color: var(--text-muted); }
+           color: var(--text-muted); background: none; border: none; cursor: pointer;
+           font-family: inherit; padding: 4px 8px; border-radius: 4px; display: flex;
+           align-items: center; gap: 5px; transition: background 0.1s, color 0.1s; }
+#appName:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+#appMenuCaret { font-size: 8px; letter-spacing: 0; }
+#appMenuDropdown { position: absolute; top: calc(100% + 4px); left: 0; background: #252526;
+                   border: 1px solid #444; border-radius: 6px; min-width: 200px;
+                   box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 80; display: none; overflow: hidden; }
+#appMenuDropdown.open { display: block; }
 #titlebarControls { display: flex; align-items: stretch; -webkit-app-region: no-drag; }
 #themeToggleBtn, #winMinBtn, #winMaxBtn, #winCloseBtn {
   background: none; border: none; color: var(--text-muted); cursor: pointer;
