@@ -696,9 +696,13 @@ export class SessionManager {
     if (height === 0) {
       this.consoleHeight = 0;
     } else {
+      // No floor here: the minimized header bar (42px) is a valid nonzero
+      // height that's shorter than the drag-resize minimum (80px, enforced
+      // by the renderer for manual resizing) — only cap the top end so the
+      // console can't consume the whole window.
       const bounds = this.win.getContentBounds();
       const maxH = Math.max(80, bounds.height - this.topBarHeight - 80);
-      this.consoleHeight = Math.max(80, Math.min(height, maxH));
+      this.consoleHeight = Math.max(0, Math.min(height, maxH));
     }
     this.layoutActive();
   }

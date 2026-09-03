@@ -18,10 +18,11 @@ function applyMinimized(minimized) {
 }
 
 // Single source of truth for how tall the BrowserView thinks the console panel
-// is: hidden (via View ▾) and minimized (via the panel's own button) both need
-// to collapse it to 0, and only "visible and not minimized" uses the real height.
+// is: hidden (via View ▾) has nothing to show, so it collapses to 0. Minimized
+// (via the panel's own button) still renders a real, always-visible header bar,
+// so the BrowserView must leave room for it instead of painting over it.
 export function syncConsoleViewHeight() {
-  const h = (!state.consoleVisible || state.consolePanelMinimized) ? 0 : state.consoleHeight;
+  const h = !state.consoleVisible ? 0 : state.consolePanelMinimized ? CONSOLE_HEADER_H : state.consoleHeight;
   testerBrowser.layout.setConsoleHeight(h);
 }
 
