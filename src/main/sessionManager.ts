@@ -113,11 +113,20 @@ const RECORDING_SCRIPT = `(function(){
     var el=e.target;if(!el||el===document.documentElement||el===document.body)return;
     addStep({type:'click',selector:genSel(el),description:((el.textContent||el.value||el.getAttribute('aria-label')||'').trim()).slice(0,60),tagName:el.tagName.toLowerCase()});
   },true);
-  document.addEventListener('change',function(e){
-    var el=e.target;if(!el||!('value' in el))return;
+  function upsertFill(el){
+    if(!el||!('value' in el))return;
     var pw=el.type==='password';
-    addStep({type:'fill',selector:genSel(el),value:pw?'[hidden]':el.value,sensitive:pw,tagName:el.tagName.toLowerCase()});
-  },true);
+    var sel=genSel(el);
+    var steps=window.__tbTestSteps;
+    var last=steps.length?steps[steps.length-1]:null;
+    if(last&&last.type==='fill'&&last.selector===sel){
+      last.value=pw?'[hidden]':el.value;last.sensitive=pw;last.timestamp=Date.now();
+    }else{
+      addStep({type:'fill',selector:sel,value:pw?'[hidden]':el.value,sensitive:pw,tagName:el.tagName.toLowerCase()});
+    }
+  }
+  document.addEventListener('input',function(e){upsertFill(e.target);},true);
+  document.addEventListener('change',function(e){upsertFill(e.target);},true);
   window.addEventListener('popstate',function(){addStep({type:'navigate',url:location.href});});
   var op=history.pushState.bind(history);history.pushState=function(){op.apply(history,arguments);addStep({type:'navigate',url:location.href});};
   var or=history.replaceState.bind(history);history.replaceState=function(){or.apply(history,arguments);addStep({type:'navigate',url:location.href});};
@@ -172,6 +181,9 @@ export class SessionManager {
   private permissionManager: PermissionManager;
   private getRedactHeaders: () => boolean;
   private recordingHandlers = new Map<string, () => void>();
+  // Accumulates recorded steps (keyed by step id) across a session's recording, so
+  // steps survive a full page navigation destroying the page's own JS context.
+  private recordingBuffers = new Map<string, Map<string, TestStep>>();
 
   constructor(win: BrowserWindow, getRedactHeaders: () => boolean) {
     this.win = win;
@@ -1098,43 +1110,76 @@ export class SessionManager {
     this.sessions.delete(id);
     this.sessionNotes.delete(id);
     this.recordingHandlers.delete(id);
+    this.recordingBuffers.delete(id);
+  }
+
+  // Reads the page's live in-progress steps and merges them (by id) into the
+  // session's recording buffer, which — unlike window.__tbTestSteps — survives
+  // a full page navigation destroying the current JS context.
+  private async harvestRecordingSteps(id: string): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    try {
+      const steps = await s.view.webContents.executeJavaScript(`(window.__tbTestSteps||[]).map(function(x){return x;})`);
+      if (!Array.isArray(steps)) return;
+      let buf = this.recordingBuffers.get(id);
+      if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
+      for (const step of steps as TestStep[]) buf.set(step.id, step);
+    } catch {}
+  }
+
+  private getBufferedSteps(id: string): TestStep[] {
+    const buf = this.recordingBuffers.get(id);
+    if (!buf) return [];
+    return Array.from(buf.values()).sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
   }
 
   async startRecording(id: string): Promise<boolean> {
     const s = this.sessions.get(id);
     if (!s) return false;
+    this.recordingBuffers.set(id, new Map());
     await s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch(() => {});
-    const handler = () => { s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch(() => {}); };
-    s.view.webContents.on('did-navigate', handler);
-    s.view.webContents.on('did-navigate-in-page', handler);
-    this.recordingHandlers.set(id, handler);
+    const navHandler = () => { s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch(() => {}); };
+    // A full navigation destroys the outgoing page's JS context (and
+    // window.__tbTestSteps with it) before did-navigate fires, so harvest
+    // whatever's recorded so far while that context is still alive.
+    const preNavHandler = () => { this.harvestRecordingSteps(id); };
+    s.view.webContents.on('will-navigate', preNavHandler);
+    s.view.webContents.on('did-navigate', navHandler);
+    s.view.webContents.on('did-navigate-in-page', navHandler);
+    this.recordingHandlers.set(id, () => {
+      s.view.webContents.off('will-navigate', preNavHandler);
+      s.view.webContents.off('did-navigate', navHandler);
+      s.view.webContents.off('did-navigate-in-page', navHandler);
+    });
     return true;
   }
 
   async pollRecordingSteps(id: string): Promise<TestStep[]> {
     const s = this.sessions.get(id);
     if (!s) return [];
-    try {
-      const steps = await s.view.webContents.executeJavaScript(`(window.__tbTestSteps||[]).map(function(x){return x;})`);
-      return Array.isArray(steps) ? steps as TestStep[] : [];
-    } catch { return []; }
+    await this.harvestRecordingSteps(id);
+    return this.getBufferedSteps(id);
   }
 
   async stopRecording(id: string): Promise<TestStep[]> {
     const s = this.sessions.get(id);
     if (!s) return [];
-    const handler = this.recordingHandlers.get(id);
-    if (handler) {
-      s.view.webContents.off('did-navigate', handler);
-      s.view.webContents.off('did-navigate-in-page', handler);
-      this.recordingHandlers.delete(id);
-    }
+    const dispose = this.recordingHandlers.get(id);
+    if (dispose) { dispose(); this.recordingHandlers.delete(id); }
     try {
       const steps = await s.view.webContents.executeJavaScript(
         `(function(){var r=(window.__tbTestSteps||[]).slice();window.__tbTestSteps=[];window.__tbRecording=false;return r;})()`
       );
-      return Array.isArray(steps) ? steps as TestStep[] : [];
-    } catch { return []; }
+      if (Array.isArray(steps)) {
+        let buf = this.recordingBuffers.get(id);
+        if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
+        for (const step of steps as TestStep[]) buf.set(step.id, step);
+      }
+    } catch {}
+    const result = this.getBufferedSteps(id);
+    this.recordingBuffers.delete(id);
+    return result;
   }
 
   async playbackStep(id: string, step: TestStep): Promise<{ success: boolean; error?: string }> {
