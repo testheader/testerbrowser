@@ -130,14 +130,16 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px; background: var(--bg-hover);
        border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap;
        min-width: 0; max-width: 180px; user-select: none;
-       border-top: 2px solid transparent;
+       border: 2px solid transparent;
        border-bottom: 3px solid var(--tab-color, var(--border-strong));
        position: relative; transition: background 100ms ease, border-color 100ms ease, font-weight 100ms ease; }
-/* Three independent channels, so none is mistaken for another: the bottom edge
-   carries session color, the top edge marks selection, and drag insertion uses
-   the accent. */
+/* Two independent channels, so neither is mistaken for the other: the bottom
+   edge always carries session color, while a full border on the remaining
+   three sides marks the active tab; drag insertion uses the accent shadow. */
 .tab.active { background: var(--bg-primary); font-weight: 600;
-              border-top-color: var(--tab-selected); }
+              border-top-color: var(--tab-selected);
+              border-left-color: var(--tab-selected);
+              border-right-color: var(--tab-selected); }
 .tab.dragging { opacity: 0.35; box-shadow: 0 6px 14px rgba(0,0,0,0.45); }
 .tab.drag-left  { box-shadow: -2px 0 0 0 var(--accent); }
 .tab.drag-right { box-shadow:  2px 0 0 0 var(--accent); }
