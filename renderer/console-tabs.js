@@ -44,7 +44,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
   const hasDetailTabs = state.detailTabs.length > 0 && (timelineVisible || tab === 'security');
   document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
-  document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? '' : 'none';
+  document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? 'block' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') loadStoragePanel();
   if (tab === 'a11y') { initA11y(); }
