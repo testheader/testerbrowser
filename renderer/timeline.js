@@ -80,6 +80,25 @@ export function renderTimeline() {
       summary.appendChild(replayBtn);
     }
 
+    if ((e.kind === 'network-response' || e.kind === 'network-failed') && e.payload) {
+      try {
+        const p = JSON.parse(e.payload);
+        if (p.mockRuleId) {
+          const badge = document.createElement('span');
+          badge.className = 'evt-badge evt-badge-mock';
+          badge.textContent = 'MOCK';
+          badge.title = 'Response served by a Mock rule instead of the real server';
+          summary.appendChild(badge);
+        } else if (p.resilienceRuleId) {
+          const badge = document.createElement('span');
+          badge.className = 'evt-badge evt-badge-resilience';
+          badge.textContent = 'RESILIENCE';
+          badge.title = `Altered by a Resilience rule (${p.resilienceType || 'unknown'})`;
+          summary.appendChild(badge);
+        }
+      } catch {}
+    }
+
     if (e.payload) {
       summary.style.cursor = 'pointer';
       summary.addEventListener('click', (ev) => {

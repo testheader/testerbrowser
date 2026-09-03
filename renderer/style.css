@@ -435,6 +435,12 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
                   margin-left: 6px; line-height: 1.5; vertical-align: middle; flex-shrink: 0; }
 .evt-replay-btn:hover { background: rgba(127,200,255,0.12); }
 
+/* Badge marking a network row as synthesized by a Mock/Resilience rule rather than real traffic */
+.evt-badge { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .04em;
+             border-radius: 2px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; font-family: inherit; }
+.evt-badge-mock       { background: var(--info-surface);  color: var(--info-strong); }
+.evt-badge-resilience { background: var(--warn-surface);  color: var(--warn-strong); }
+
 /* Replay modal */
 #replayOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72);
                  z-index: 100; align-items: center; justify-content: center; }
@@ -866,6 +872,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-badge { font-size: 10px; padding: 1px 5px; border-radius: 2px;
               background: var(--info-surface); color: var(--info-strong); font-family: monospace; white-space: nowrap; }
 .mock-status-badge { background: var(--success-surface); color: var(--success-strong); }
+.mock-hits-badge.mock-hits-active { background: var(--warn-surface); color: var(--warn-strong); }
 .mock-rule-url { flex: 1; font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mock-rule-body { font-size: 11px; color: var(--text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mock-toggle { display: flex; align-items: center; cursor: pointer; }
@@ -952,6 +959,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-badge { font-size: 10px; padding: 1px 5px; border-radius: 2px;
              background: var(--success-surface); color: var(--info-strong); font-family: monospace; white-space: nowrap; }
 .res-prob-badge { background: var(--info-surface); color: var(--info-strong); }
+.res-hits-badge.res-hits-active { background: var(--warn-surface); color: var(--warn-strong); }
 .res-rule-url { flex: 1; font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .res-toggle { display: flex; align-items: center; cursor: pointer; }
 .res-toggle-label { width: 10px; }

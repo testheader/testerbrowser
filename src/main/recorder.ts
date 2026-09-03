@@ -54,6 +54,7 @@ export class SessionRecorder {
   private countStmt!: Database.Statement;
   private trimStmt!: Database.Statement;
   private requestMeta = new Map<string, { url: string; method: string; startTs: number }>();
+  private requestTags = new Map<string, { mockRuleId?: string; resilienceRuleId?: string; resilienceType?: string }>();
   private redact: boolean;
 
   constructor(wc: WebContents, opts: RecorderOptions) {
@@ -125,6 +126,7 @@ export class SessionRecorder {
         }
         case 'Network.responseReceived': {
           const meta = this.requestMeta.get(params.requestId);
+          const tag  = this.requestTags.get(params.requestId);
           const resPayload = this.redact
             ? { ...params, response: { ...params.response, headers: redactHeaders(params.response.headers) } }
             : params;
@@ -132,22 +134,25 @@ export class SessionRecorder {
             kind: 'network-response',
             ts,
             summary: `${params.response.status} ${meta?.url ?? params.response.url}`,
-            payload: JSON.stringify(resPayload),
+            payload: JSON.stringify(tag ? { ...resPayload, ...tag } : resPayload),
           });
           break;
         }
         case 'Network.loadingFailed': {
           const meta = this.requestMeta.get(params.requestId);
+          const tag  = this.requestTags.get(params.requestId);
           this.record({
             kind: 'network-failed',
             ts,
             summary: `FAILED ${meta?.url ?? params.requestId}: ${params.errorText}`,
-            payload: JSON.stringify(params),
+            payload: JSON.stringify(tag ? { ...params, ...tag } : params),
           });
+          this.requestTags.delete(params.requestId);
           break;
         }
         case 'Network.loadingFinished': {
           const meta = this.requestMeta.get(params.requestId);
+          this.requestTags.delete(params.requestId);
           if (!meta) break;
           // Only fetch body for text-like responses (skip images, fonts, etc.)
           // We check the stored response kind by looking up the request meta
@@ -193,6 +198,12 @@ export class SessionRecorder {
         }
       }
     });
+  }
+
+  /** Records that a request was intercepted by a Mock/Resilience rule, so the
+   *  eventual Network.responseReceived/loadingFailed record carries the tag. */
+  tagRequest(requestId: string, tag: { mockRuleId?: string; resilienceRuleId?: string; resilienceType?: string }) {
+    this.requestTags.set(requestId, tag);
   }
 
   private record(row: Omit<EventRow, 'session_id' | 'id'>) {

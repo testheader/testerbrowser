@@ -76,6 +76,9 @@ export function initResilience() {
   });
 
   loadRules();
+  // Hit counts change as traffic flows without the user re-opening this tab;
+  // keep them fresh while the Resilience tab is the one being looked at.
+  setInterval(() => { if (state.activeConsoleTab === 'resilience') loadRules(); }, 1500);
 }
 
 async function loadRules() {
@@ -111,6 +114,7 @@ function renderRules(rules) {
       <span class="res-rule-type res-badge">${typeLabel}${extra}</span>
       <span class="res-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
       <span class="res-badge res-prob-badge">${probLabel}</span>
+      <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
       <button class="res-btn res-del-btn" title="Remove">✕</button>`;
 
     row.querySelector('.res-enable').addEventListener('change', async (e) => {

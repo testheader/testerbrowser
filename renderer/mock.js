@@ -3,7 +3,7 @@ import { state } from './state.js';
 
 export function initMock() {
   const panel = document.getElementById('mockPanel');
-  if (panel.dataset.initialized) return;
+  if (panel.dataset.initialized) { loadRules(); return; }
   panel.dataset.initialized = '1';
 
   panel.innerHTML = `
@@ -49,6 +49,9 @@ export function initMock() {
   });
 
   loadRules();
+  // Hit counts change as traffic flows without the user re-opening this tab;
+  // keep them fresh while the Mock tab is the one being looked at.
+  setInterval(() => { if (state.activeConsoleTab === 'mock') loadRules(); }, 1500);
 }
 
 async function loadRules() {
@@ -84,6 +87,7 @@ function renderRules(rules) {
       <span class="mock-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
       <span class="mock-badge mock-status-badge">${rule.statusCode}</span>
       <span class="mock-rule-body" title="${rule.body}">${rule.body.slice(0, 40)}${rule.body.length > 40 ? '…' : ''}</span>
+      <span class="mock-badge mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
       <button class="mock-btn mock-del-btn" title="Remove">✕</button>`;
 
     row.querySelector('.mock-enable').addEventListener('change', async (e) => {

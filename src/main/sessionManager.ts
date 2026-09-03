@@ -17,6 +17,8 @@ export interface MockRule {
   statusCode: number;
   body: string;
   enabled: boolean;
+  hitCount: number;
+  lastHitAt: number | null;
 }
 
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
@@ -28,6 +30,8 @@ export interface ResilienceRule {
   probability: number;
   latencyMs: number;
   enabled: boolean;
+  hitCount: number;
+  lastHitAt: number | null;
 }
 
 function matchesGlob(pattern: string, url: string): boolean {
@@ -277,6 +281,9 @@ export class SessionManager {
         r.enabled && (r.method === '*' || r.method === request.method) && matchesGlob(r.urlPattern, request.url)
       );
       if (rule) {
+        rule.hitCount = (rule.hitCount || 0) + 1;
+        rule.lastHitAt = Date.now();
+        testSession.recorder.tagRequest(requestId, { mockRuleId: rule.id });
         dbg.sendCommand('Fetch.fulfillRequest', {
           requestId,
           responseCode: rule.statusCode,
@@ -288,6 +295,9 @@ export class SessionManager {
         r.enabled && matchesGlob(r.urlPattern, request.url)
       );
       if (res && Math.random() < res.probability) {
+        res.hitCount = (res.hitCount || 0) + 1;
+        res.lastHitAt = Date.now();
+        testSession.recorder.tagRequest(requestId, { resilienceRuleId: res.id, resilienceType: res.type });
         switch (res.type) {
           case 'error500':
           case 'random500':
@@ -1008,7 +1018,7 @@ export class SessionManager {
   addMockRule(id: string, rule: MockRule): void {
     const s = this.sessions.get(id);
     if (!s) return;
-    s.mockRules.push(rule);
+    s.mockRules.push({ ...rule, hitCount: 0, lastHitAt: null });
     this._applyMocks(id);
   }
 
@@ -1054,7 +1064,7 @@ export class SessionManager {
   addResilienceRule(id: string, rule: ResilienceRule): void {
     const s = this.sessions.get(id);
     if (!s) return;
-    s.resilienceRules.push(rule);
+    s.resilienceRules.push({ ...rule, hitCount: 0, lastHitAt: null });
     this._applyFetch(id);
   }
 
