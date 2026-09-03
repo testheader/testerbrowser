@@ -6,6 +6,7 @@ import { loadStoragePanel } from './storage.js';
 import { refreshDiffPickers } from './diff.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 import { reloadA11yIfLoaded } from './a11y.js';
+import { loadRules } from './resilience.js';
 
 export function insertAfterActive(id) {
   const idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
@@ -24,6 +25,7 @@ export async function switchToSession(id) {
   document.getElementById('timelinePanel').innerHTML = '';
   if (state.activeConsoleTab === 'storage') loadStoragePanel();
   if (state.activeConsoleTab === 'a11y') reloadA11yIfLoaded();
+  if (state.activeConsoleTab === 'resilience') loadRules();
   recordVisit(id);
   await testerBrowser.sessions.switchTo(id);
   updateNavButtons();

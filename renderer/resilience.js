@@ -81,7 +81,7 @@ export function initResilience() {
   setInterval(() => { if (state.activeConsoleTab === 'resilience') loadRules(); }, 1500);
 }
 
-async function loadRules() {
+export async function loadRules() {
   if (!state.activeId) return;
   const rules = await testerBrowser.resilience.getRules(state.activeId);
   renderRules(rules);
