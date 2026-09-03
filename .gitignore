@@ -1,6 +1,8 @@
 node_modules/
 dist/
 release/
+test-results/
+playwright-report/
 *.sqlite
 *.sqlite-*
 .DS_Store
