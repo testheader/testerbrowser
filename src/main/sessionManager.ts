@@ -254,6 +254,22 @@ export class SessionManager {
         } catch {}
         return;
       }
+      if (method === 'Runtime.bindingCalled' && (params as { name?: string }).name === '__a11yClick' && testSession.a11yInspecting) {
+        try {
+          const { x, y } = JSON.parse((params as { payload?: string }).payload ?? '{}') as { x?: number; y?: number };
+          if (typeof x === 'number' && typeof y === 'number') {
+            (async () => {
+              const dbg = view.webContents.debugger;
+              const loc = await dbg.sendCommand('DOM.getNodeForLocation', { x, y, includeUserAgentShadowDOM: false }) as { backendNodeId?: number };
+              if (!loc.backendNodeId) return;
+              const ax = await dbg.sendCommand('Accessibility.queryAXTree', { backendNodeId: loc.backendNodeId }) as { nodes?: unknown[] };
+              const node = ax.nodes?.[0];
+              if (node) view.webContents.send('a11y:nodeClicked', node);
+            })().catch(() => {});
+          }
+        } catch {}
+        return;
+      }
       if (method !== 'Fetch.requestPaused') return;
       const { requestId, request } = params as { requestId: string; request: { url: string; method: string } };
       const dbg = view.webContents.debugger;
@@ -903,8 +919,9 @@ export class SessionManager {
       try {
         await dbg.sendCommand('Accessibility.enable');
         await dbg.sendCommand('Runtime.addBinding', { name: '__a11yHover' });
+        await dbg.sendCommand('Runtime.addBinding', { name: '__a11yClick' });
         await dbg.sendCommand('Runtime.evaluate', {
-          expression: `(function(){if(window.__a11yHoverSetup)return;window.__a11yHoverSetup=true;let t=0;document.addEventListener('mousemove',function(e){const n=Date.now();if(n-t<150)return;t=n;window.__a11yHover(JSON.stringify({x:Math.round(e.clientX),y:Math.round(e.clientY)}));},{passive:true});})();`,
+          expression: `(function(){if(window.__a11yHoverSetup)return;window.__a11yHoverSetup=true;let t=0;document.addEventListener('mousemove',function(e){const n=Date.now();if(n-t<150)return;t=n;window.__a11yHover(JSON.stringify({x:Math.round(e.clientX),y:Math.round(e.clientY)}));},{passive:true});document.addEventListener('click',function(e){if(!window.__a11yHoverSetup)return;e.preventDefault();e.stopPropagation();window.__a11yClick(JSON.stringify({x:Math.round(e.clientX),y:Math.round(e.clientY)}));},{capture:true});})();`,
           includeCommandLineAPI: false,
         });
       } catch {}
@@ -915,6 +932,7 @@ export class SessionManager {
           includeCommandLineAPI: false,
         });
         await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yHover' });
+        await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yClick' });
       } catch {}
     }
   }

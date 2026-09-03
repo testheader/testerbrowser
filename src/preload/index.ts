@@ -146,6 +146,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
       ipcRenderer.on('a11y:nodeHovered', (_e, node) => cb(node));
     },
     offNodeHovered: () => ipcRenderer.removeAllListeners('a11y:nodeHovered'),
+    onNodeClicked: (cb: (node: unknown) => void) => {
+      ipcRenderer.removeAllListeners('a11y:nodeClicked');
+      ipcRenderer.on('a11y:nodeClicked', (_e, node) => cb(node));
+    },
+    offNodeClicked: () => ipcRenderer.removeAllListeners('a11y:nodeClicked'),
   },
 
   visualRegression: {

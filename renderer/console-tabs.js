@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { loadStoragePanel } from './storage.js';
-import { initA11y, enableA11yHover, disableA11yHover } from './a11y.js';
+import { initA11y, disableA11yHover } from './a11y.js';
 import { initDiff } from './diff.js';
 import { initVR } from './visual-regression.js';
 import { initSpoof } from './emulation.js';
@@ -47,7 +47,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? '' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') loadStoragePanel();
-  if (tab === 'a11y') { initA11y(); enableA11yHover(); }
+  if (tab === 'a11y') { initA11y(); }
   if (tab === 'spoof') initSpoof();
   if (tab === 'security') initSecurity();
   if (tab === 'mock') initMock();

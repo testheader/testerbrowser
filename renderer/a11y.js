@@ -4,7 +4,9 @@ import { state } from './state.js';
 const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
 let hoveredRow = null;
+let selectedRow = null;
 let hasLoadedOnce = false;
+let inspecting = false;
 
 export function initA11y() {
   const panel = document.getElementById('a11yPanel');
@@ -13,11 +15,15 @@ export function initA11y() {
   panel.innerHTML = `
     <div class="a11y-toolbar">
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
+      <button class="a11y-btn" id="a11yInspectBtn" title="Pick an element on the page to select it in the tree">Inspect element</button>
     </div>
     <div class="a11y-content" id="a11yContent">
       <div class="a11y-empty">Click Refresh to load the accessibility tree for this page.</div>
     </div>`;
   document.getElementById('a11yRefreshBtn').addEventListener('click', loadA11yPanel);
+  document.getElementById('a11yInspectBtn').addEventListener('click', () => {
+    if (inspecting) disableA11yHover(); else enableA11yHover();
+  });
 }
 
 // Called after navigation — only refresh if the tree has already been loaded once,
@@ -28,6 +34,8 @@ export function reloadA11yIfLoaded() {
 
 export function enableA11yHover() {
   if (!state.activeId) return;
+  inspecting = true;
+  document.getElementById('a11yInspectBtn')?.classList.add('on');
   testerBrowser.a11y.setInspect(state.activeId, true).catch(() => {});
   testerBrowser.a11y.onNodeHovered((node) => {
     if (!node || !node.nodeId) return;
@@ -38,13 +46,38 @@ export function enableA11yHover() {
     row.classList.add('a11y-hovered');
     row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
+  testerBrowser.a11y.onNodeClicked((node) => {
+    if (!node || !node.nodeId) return;
+    selectNode(node.nodeId);
+  });
 }
 
 export function disableA11yHover() {
+  inspecting = false;
+  document.getElementById('a11yInspectBtn')?.classList.remove('on');
   if (!state.activeId) return;
   testerBrowser.a11y.setInspect(state.activeId, false).catch(() => {});
   testerBrowser.a11y.offNodeHovered();
+  testerBrowser.a11y.offNodeClicked();
   if (hoveredRow) { hoveredRow.classList.remove('a11y-hovered'); hoveredRow = null; }
+}
+
+function selectNode(nodeId) {
+  const row = nodeRowMap.get(nodeId);
+  if (!row) return;
+  if (selectedRow) selectedRow.classList.remove('a11y-selected');
+  selectedRow = row;
+  row.classList.add('a11y-selected');
+  for (let li = row.closest('li.a11y-node')?.parentElement?.closest('li.a11y-node'); li; li = li.parentElement?.closest('li.a11y-node')) {
+    const childList = li.querySelector(':scope > .a11y-children');
+    const toggle = li.querySelector(':scope > .a11y-row > .a11y-toggle');
+    if (childList && toggle && childList.style.display === 'none') {
+      childList.style.display = '';
+      toggle.textContent = '▾';
+      if (li.dataset.nodeId) expandedIds.add(li.dataset.nodeId);
+    }
+  }
+  row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 export async function loadA11yPanel() {
@@ -71,6 +104,7 @@ export async function loadA11yPanel() {
 function renderA11yTree(panel, nodes) {
   nodeRowMap.clear();
   hoveredRow = null;
+  selectedRow = null;
   const nodeMap = new Map();
   for (const n of nodes) nodeMap.set(n.nodeId, n);
   const root = nodes.find(n => !n.parentId) ?? nodes[0];
@@ -88,6 +122,7 @@ function renderA11yTree(panel, nodes) {
 function buildNode(node, nodeMap) {
   const li = document.createElement('li');
   li.className = 'a11y-node';
+  li.dataset.nodeId = node.nodeId;
 
   const hasChildren = node.childIds && node.childIds.length > 0;
   const expanded = expandedIds.has(node.nodeId);

@@ -681,6 +681,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .a11y-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px;
             padding: 3px 10px; font-size: 12px; cursor: pointer; }
 .a11y-btn:hover:not([disabled]) { background: var(--bg-raised); }
+.a11y-btn.on { background: var(--accent); color: var(--text-on-accent, #fff); border-color: var(--accent); }
+.a11y-btn.on:hover:not([disabled]) { background: var(--accent-soft); }
 .a11y-content { flex: 1; overflow: auto; padding: 6px 8px; }
 .a11y-empty, .a11y-loading { color: var(--text-muted); font-size: 12px; padding: 12px; }
 .a11y-tree, .a11y-children { list-style: none; margin: 0; padding: 0 0 0 14px; }
@@ -690,6 +692,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
              font-family: monospace; white-space: nowrap; cursor: default; border-radius: 3px; }
 .a11y-row:hover { background: var(--bg-hover); }
 .a11y-row.a11y-hovered { background: var(--info-surface); outline: 1px solid var(--info-border); }
+.a11y-row.a11y-selected { background: var(--info-surface); outline: 2px solid var(--info-strong); }
 .a11y-toggle { width: 14px; flex-shrink: 0; color: var(--text-muted); cursor: pointer; user-select: none; text-align: center; }
 .a11y-toggle-leaf { cursor: default; }
 .a11y-role { color: var(--info-strong); font-weight: 600; }
