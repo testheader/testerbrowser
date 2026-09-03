@@ -59,12 +59,25 @@ async function refreshGithubTokenStatus() {
   document.getElementById('githubTokenStatus').textContent = hasToken ? 'Configured ✓' : 'Not configured';
 }
 
+function switchSettingsTab(pane) {
+  document.querySelectorAll('.settings-nav-btn').forEach((btn) =>
+    btn.classList.toggle('active', btn.dataset.pane === pane)
+  );
+  document.querySelectorAll('.settings-pane').forEach((el) =>
+    el.classList.toggle('active', el.dataset.pane === pane)
+  );
+}
+
 function closeSettings() {
   document.getElementById('settingsOverlay').classList.remove('open');
   testerBrowser.layout.setViewerVisible(true);
 }
 
 export function initSettings() {
+  document.querySelectorAll('.settings-nav-btn').forEach((btn) =>
+    btn.addEventListener('click', () => switchSettingsTab(btn.dataset.pane))
+  );
+
   document.getElementById('closeSettingsBtn').onclick  = closeSettings;
   document.getElementById('settingsCloseXBtn').onclick = closeSettings;
   document.getElementById('settingsOverlay').onclick   = (e) => {

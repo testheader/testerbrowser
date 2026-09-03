@@ -523,13 +523,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .view-check { width: 14px; font-size: 12px; color: var(--accent); flex-shrink: 0; }
 .view-shortcut { margin-left: auto; font-size: 10px; color: var(--text-faint); font-family: monospace; padding-left: 8px; }
 
-/* ── Shortcuts in settings ── */
-#shortcutsSection { margin: 16px 0 0; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; }
-#shortcutsSection summary { padding: 9px 12px; cursor: pointer; font-size: 13px; color: var(--text-muted);
-                             background: var(--bg-primary); user-select: none; list-style: none; }
-#shortcutsSection summary::-webkit-details-marker { display: none; }
-#shortcutsSection summary:hover { color: var(--text-primary); }
-.shortcut-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 12px; font-size: 12px; }
+/* ── Shortcuts/features panes in settings ── */
+.shortcut-row { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; font-size: 12px; }
 .shortcut-row kbd { flex-shrink: 0; font-family: monospace; font-size: 11px; color: var(--text-primary);
                     background: var(--bg-hover); border: 1px solid var(--border-strong); border-radius: 3px;
                     padding: 1px 5px; white-space: nowrap; min-width: 130px; display: inline-block; }
@@ -617,10 +612,19 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #settingsOverlay.open { display: flex; }
 #settingsOverlay.open #settingsModal { animation: modal-pop-in 150ms ease; }
 #settingsModal { background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px;
-                 width: 420px; min-width: 300px; min-height: 200px; padding: 28px 32px;
-                 box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto;
-                 position: relative; }
-#settingsModal h2 { margin: 0 0 24px; font-size: 16px; font-weight: 600; color: var(--text-strong); }
+                 width: 640px; height: 480px; padding: 28px 32px 20px; display: flex; flex-direction: column;
+                 box-shadow: 0 8px 32px rgba(0,0,0,0.5); position: relative; }
+#settingsModal h2 { margin: 0 0 20px; font-size: 16px; font-weight: 600; color: var(--text-strong); flex-shrink: 0; }
+.settings-body { display: flex; flex: 1; min-height: 0; gap: 20px; }
+.settings-sidebar { display: flex; flex-direction: column; gap: 2px; width: 150px; flex-shrink: 0;
+                    border-right: 1px solid var(--border-color); padding-right: 16px; }
+.settings-nav-btn { text-align: left; background: none; border: none; color: var(--text-muted);
+                    font-size: 13px; padding: 8px 10px; border-radius: 4px; cursor: pointer; }
+.settings-nav-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-nav-btn.active { background: var(--bg-hover); color: var(--text-strong); font-weight: 600; }
+.settings-content { flex: 1; min-width: 0; overflow-y: auto; }
+.settings-pane { display: none; }
+.settings-pane.active { display: block; }
 .setting-row { display: flex; justify-content: space-between; align-items: center;
                padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
 .setting-label { color: var(--text-muted); }

@@ -165,94 +165,109 @@
     <div id="settingsModal">
       <button class="modal-close-btn" id="settingsCloseXBtn" title="Close">&#10005;</button>
       <h2>Settings</h2>
-      <div class="setting-row">
-        <span class="setting-label">Current version</span>
-        <span class="setting-value" id="currentVersion">—</span>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Latest version</span>
-        <span class="setting-value" id="latestVersion">—</span>
-      </div>
-      <div id="updateStatusText" class="info">Checking for updates…</div>
-
-      <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-        <div>
-          <div class="setting-label">Theme</div>
-          <div style="font-size:11px;color:#555;margin-top:3px">Appearance of the browser chrome.</div>
+      <div class="settings-body">
+        <div class="settings-sidebar" id="settingsSidebar">
+          <button class="settings-nav-btn active" data-pane="general">General</button>
+          <button class="settings-nav-btn" data-pane="shortcuts">Keyboard Shortcuts</button>
+          <button class="settings-nav-btn" data-pane="features">Features</button>
+          <button class="settings-nav-btn" data-pane="about">About / Version</button>
         </div>
-        <select id="themeSelect" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
-          <option value="system">System default</option>
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
-        </select>
-      </div>
+        <div class="settings-content">
 
-      <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-        <div>
-          <div class="setting-label">Redact sensitive headers</div>
-          <div style="font-size:11px;color:#555;margin-top:3px">Replaces Authorization, Cookie, Set-Cookie, and similar values with [REDACTED] in the timeline. Applies to new sessions only.</div>
-        </div>
-        <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
-          <input type="checkbox" id="redactHeadersToggle" />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
+          <div class="settings-pane active" data-pane="general">
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">Theme</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">Appearance of the browser chrome.</div>
+              </div>
+              <select id="themeSelect" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
+                <option value="system">System default</option>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </div>
 
-      <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-        <div>
-          <div class="setting-label">GitHub token (bug reporter)</div>
-          <div style="font-size:11px;color:#555;margin-top:3px">Used by Help &rarr; Report Bug to file issues in testheader/testerbrowser. Needs "repo" and "project" scopes. Stored encrypted via your OS keychain, never in plain text.</div>
-        </div>
-        <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <input type="password" id="githubTokenInput" placeholder="ghp_…" autocomplete="off"
-                 style="width:200px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
-          <div style="display:flex;gap:6px;align-items:center">
-            <span id="githubTokenStatus" style="font-size:11px;color:#555"></span>
-            <button class="btn btn-secondary" id="githubTokenSaveBtn" style="padding:2px 10px;font-size:11px">Save</button>
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">Redact sensitive headers</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">Replaces Authorization, Cookie, Set-Cookie, and similar values with [REDACTED] in the timeline. Applies to new sessions only.</div>
+              </div>
+              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
+                <input type="checkbox" id="redactHeadersToggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">GitHub token (bug reporter)</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">Used by Help &rarr; Report Bug to file issues in testheader/testerbrowser. Needs "repo" and "project" scopes. Stored encrypted via your OS keychain, never in plain text.</div>
+              </div>
+              <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+                <input type="password" id="githubTokenInput" placeholder="ghp_…" autocomplete="off"
+                       style="width:200px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
+                <div style="display:flex;gap:6px;align-items:center">
+                  <span id="githubTokenStatus" style="font-size:11px;color:#555"></span>
+                  <button class="btn btn-secondary" id="githubTokenSaveBtn" style="padding:2px 10px;font-size:11px">Save</button>
+                </div>
+              </div>
+            </div>
           </div>
+
+          <div class="settings-pane" data-pane="shortcuts">
+            <div class="shortcut-row"><kbd>Ctrl+T</kbd><span>New tab</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+W</kbd><span>Close tab</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+Shift+T</kbd><span>Reopen closed tab</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+Tab</kbd><span>Cycle to last-used tab</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+1–9</kbd><span>Switch to tab by number</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+L</kbd><span>Focus URL bar</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+F</kbd><span>Find in page</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+D</kbd><span>Bookmark page</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+Shift+B</kbd><span>Toggle bookmarks bar</span></div>
+            <div class="shortcut-row"><kbd>Ctrl++ / Ctrl+-</kbd><span>Zoom in / out</span></div>
+            <div class="shortcut-row"><kbd>Ctrl+0</kbd><span>Reset zoom</span></div>
+            <div class="shortcut-row"><kbd>F5 / Ctrl+R</kbd><span>Reload</span></div>
+            <div class="shortcut-row"><kbd>F12</kbd><span>DevTools</span></div>
+            <div class="shortcut-row"><kbd>Alt+← / →</kbd><span>Back / Forward</span></div>
+            <div class="shortcut-row"><kbd>Middle-click tab</kbd><span>Close tab</span></div>
+            <div class="shortcut-row"><kbd>Middle-click link</kbd><span>Open in new tab (same session)</span></div>
+            <div class="shortcut-row"><kbd>Right-click tab</kbd><span>Rename, pin, clone, notes…</span></div>
+          </div>
+
+          <div class="settings-pane" data-pane="features">
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Console tab</kbd><span>Live network &amp; console timeline — filter by Req/Res/Err/JS/Log</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Storage tab</kbd><span>Cookies &amp; localStorage per session, 1st vs 3rd party</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Security tab</kbd><span>Auto-flags missing headers, insecure cookies, CORS, mixed content</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Mock tab</kbd><span>Intercept &amp; rewrite network requests with URL glob rules</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Resilience tab</kbd><span>Inject failures: 500s, timeouts, offline mode, latency, corrupted responses</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">A11y tab</kbd><span>Full accessibility tree (role, name, description, states)</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">VR tab</kbd><span>Visual regression — screenshot diff with pixel-level overlay</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Diff tab</kbd><span>Compare network timelines across two sessions side by side</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Spoof tab</kbd><span>Override time, date, geolocation, timezone and language per session</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Jira tab</kbd><span>Keep the ticket under test in view; quick-add bugs with session state</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Tests tab</kbd><span>Record, replay, repeat and flaky-detect browser interactions — no AI</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Isolated sessions</kbd><span>Each tab has its own cookies, cache and localStorage</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Session snapshot</kbd><span>Save &amp; restore full session state (cookies, storage, open tabs)</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Test data</kbd><span>Right-click any form field → Fill with test data (name/email/UUID/date…)</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">HAR export</kbd><span>Export network traffic as a HAR file from the Console tab</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Speed Dial</kbd><span>Editable quick-access tiles on the new-tab page</span></div>
+            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Request replay</kbd><span>Right-click any request in the timeline to resend it with edited headers/body</span></div>
+          </div>
+
+          <div class="settings-pane" data-pane="about">
+            <div class="setting-row">
+              <span class="setting-label">Current version</span>
+              <span class="setting-value" id="currentVersion">—</span>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Latest version</span>
+              <span class="setting-value" id="latestVersion">—</span>
+            </div>
+            <div id="updateStatusText" class="info">Checking for updates…</div>
+          </div>
+
         </div>
       </div>
-
-      <details id="shortcutsSection">
-        <summary>Keyboard shortcuts &amp; features &#9662;</summary>
-        <div style="padding:4px 0 8px; background:#181818;">
-          <div class="shortcut-row"><kbd>Ctrl+T</kbd><span>New tab</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+W</kbd><span>Close tab</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+Shift+T</kbd><span>Reopen closed tab</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+Tab</kbd><span>Cycle to last-used tab</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+1–9</kbd><span>Switch to tab by number</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+L</kbd><span>Focus URL bar</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+F</kbd><span>Find in page</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+D</kbd><span>Bookmark page</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+Shift+B</kbd><span>Toggle bookmarks bar</span></div>
-          <div class="shortcut-row"><kbd>Ctrl++ / Ctrl+-</kbd><span>Zoom in / out</span></div>
-          <div class="shortcut-row"><kbd>Ctrl+0</kbd><span>Reset zoom</span></div>
-          <div class="shortcut-row"><kbd>F5 / Ctrl+R</kbd><span>Reload</span></div>
-          <div class="shortcut-row"><kbd>F12</kbd><span>DevTools</span></div>
-          <div class="shortcut-row"><kbd>Alt+← / →</kbd><span>Back / Forward</span></div>
-          <div class="shortcut-row"><kbd>Middle-click tab</kbd><span>Close tab</span></div>
-          <div class="shortcut-row"><kbd>Middle-click link</kbd><span>Open in new tab (same session)</span></div>
-          <div class="shortcut-row"><kbd>Right-click tab</kbd><span>Rename, pin, clone, notes…</span></div>
-          <div style="margin:6px 12px 2px; border-top:1px solid #2a2a2a; padding-top:8px; font-size:11px; font-weight:600; color:#4fc3f7; text-transform:uppercase; letter-spacing:0.6px;">Features</div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Console tab</kbd><span>Live network &amp; console timeline — filter by Req/Res/Err/JS/Log</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Storage tab</kbd><span>Cookies &amp; localStorage per session, 1st vs 3rd party</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Security tab</kbd><span>Auto-flags missing headers, insecure cookies, CORS, mixed content</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Mock tab</kbd><span>Intercept &amp; rewrite network requests with URL glob rules</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Resilience tab</kbd><span>Inject failures: 500s, timeouts, offline mode, latency, corrupted responses</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">A11y tab</kbd><span>Full accessibility tree (role, name, description, states)</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">VR tab</kbd><span>Visual regression — screenshot diff with pixel-level overlay</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Diff tab</kbd><span>Compare network timelines across two sessions side by side</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Spoof tab</kbd><span>Override time, date, geolocation, timezone and language per session</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Jira tab</kbd><span>Keep the ticket under test in view; quick-add bugs with session state</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Tests tab</kbd><span>Record, replay, repeat and flaky-detect browser interactions — no AI</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Isolated sessions</kbd><span>Each tab has its own cookies, cache and localStorage</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Session snapshot</kbd><span>Save &amp; restore full session state (cookies, storage, open tabs)</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Test data</kbd><span>Right-click any form field → Fill with test data (name/email/UUID/date…)</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">HAR export</kbd><span>Export network traffic as a HAR file from the Console tab</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Speed Dial</kbd><span>Editable quick-access tiles on the new-tab page</span></div>
-          <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Request replay</kbd><span>Right-click any request in the timeline to resend it with edited headers/body</span></div>
-        </div>
-      </details>
 
       <div class="modal-actions">
         <button class="btn btn-danger"    id="restartBtn"        style="display:none">Restart to install</button>
