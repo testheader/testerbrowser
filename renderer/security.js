@@ -38,12 +38,12 @@ async function runScan() {
   btn.disabled = false;
 }
 
-function analyze(events) {
+export function analyze(events) {
   const findings = [];
   const seenUrls = new Set();
 
   for (const ev of events) {
-    if (ev.type !== 'network-response') continue;
+    if (ev.kind !== 'network-response') continue;
     let payload;
     try { payload = JSON.parse(ev.payload); } catch { continue; }
 
@@ -67,7 +67,9 @@ function analyze(events) {
     }
 
     const setCookie = norm['set-cookie'] ?? '';
-    if (setCookie) {
+    // The recorder replaces sensitive header values with [REDACTED] when that
+    // setting is on; flag-checking the placeholder would report every cookie.
+    if (setCookie && setCookie !== '[REDACTED]') {
       const lc = setCookie.toLowerCase();
       if (!lc.includes('secure')) {
         findings.push({ severity: 'medium', url, issue: 'Insecure cookie', detail: 'Cookie set without Secure flag' });
