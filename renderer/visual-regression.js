@@ -1,10 +1,22 @@
 /* global testerBrowser */
 import { state } from './state.js';
 
-let baselineB64 = null;
-let currentB64  = null;
-let diffDataUrl = null;
-let viewMode    = 'baseline';
+// Baselines/comparisons are page-scoped (per session) — see #88.
+const sessionData = new Map(); // sessionId -> { baselineB64, currentB64, diffDataUrl, viewMode }
+
+export function clearVRSession(sessionId) {
+  sessionData.delete(sessionId);
+}
+
+function activeData() {
+  if (!state.activeId) return { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline' };
+  let d = sessionData.get(state.activeId);
+  if (!d) {
+    d = { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline' };
+    sessionData.set(state.activeId, d);
+  }
+  return d;
+}
 
 export function initVR() {
   const panel = document.getElementById('vrPanel');
@@ -35,13 +47,27 @@ export function initVR() {
   document.getElementById('vrViews').addEventListener('click', (e) => {
     const btn = e.target.closest('.vr-view-btn');
     if (!btn || btn.disabled) return;
-    viewMode = btn.dataset.view;
+    activeData().viewMode = btn.dataset.view;
     renderImages();
   });
 }
 
+// Re-render the panel for the currently active session — called on init and
+// whenever the user switches sessions, so a baseline never silently gets
+// compared against a different session's page.
+export function refreshVR() {
+  const compareBtn = document.getElementById('vrCompareBtn');
+  const stats       = document.getElementById('vrStats');
+  if (!compareBtn) return; // panel not initialized yet
+  const { baselineB64 } = activeData();
+  compareBtn.disabled = !baselineB64;
+  if (stats) stats.textContent = '';
+  renderImages();
+}
+
 function renderImages() {
   const imagesDiv = document.getElementById('vrImages');
+  const { baselineB64, currentB64, diffDataUrl, viewMode } = activeData();
   document.querySelectorAll('.vr-view-btn').forEach((b) => {
     b.classList.toggle('active', b.dataset.view === viewMode);
     // Only Baseline is available until a comparison has produced the others.
@@ -72,6 +98,7 @@ function renderImages() {
 
 async function captureBaseline() {
   if (!state.activeId) return;
+  const sessionId   = state.activeId;
   const captureBtn  = document.getElementById('vrCaptureBtn');
   const compareBtn  = document.getElementById('vrCompareBtn');
   const stats       = document.getElementById('vrStats');
@@ -80,24 +107,29 @@ async function captureBaseline() {
   captureBtn.textContent = 'Capturing…';
   stats.textContent = '';
 
-  const b64 = await testerBrowser.visualRegression.captureScreenshot(state.activeId, { fullPage: isFullPage() });
+  const b64 = await testerBrowser.visualRegression.captureScreenshot(sessionId, { fullPage: isFullPage() });
   captureBtn.disabled = false;
   captureBtn.textContent = 'Capture baseline';
 
+  // The user may have switched sessions while the screenshot was in flight.
+  if (sessionId !== state.activeId) return;
   if (!b64) { stats.textContent = 'Screenshot failed.'; return; }
 
-  // A fresh baseline invalidates any previous comparison.
-  baselineB64 = b64;
-  currentB64  = null;
-  diffDataUrl = null;
-  viewMode    = 'baseline';
+  // A fresh baseline invalidates any previous comparison for this session.
+  const d = activeData();
+  d.baselineB64 = b64;
+  d.currentB64  = null;
+  d.diffDataUrl = null;
+  d.viewMode    = 'baseline';
   compareBtn.disabled = false;
   renderImages();
   stats.textContent = 'Baseline captured. Interact with the page, then click Compare.';
 }
 
 async function runCompare() {
-  if (!state.activeId || !baselineB64) return;
+  const sessionId = state.activeId;
+  const { baselineB64 } = activeData();
+  if (!sessionId || !baselineB64) return;
   const compareBtn = document.getElementById('vrCompareBtn');
   const stats      = document.getElementById('vrStats');
 
@@ -106,7 +138,8 @@ async function runCompare() {
   stats.textContent = '';
 
   try {
-    const captured = await testerBrowser.visualRegression.captureScreenshot(state.activeId, { fullPage: isFullPage() });
+    const captured = await testerBrowser.visualRegression.captureScreenshot(sessionId, { fullPage: isFullPage() });
+    if (sessionId !== state.activeId) return;
     if (!captured) { stats.textContent = 'Screenshot failed.'; return; }
 
     const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(captured)]);
@@ -117,9 +150,10 @@ async function runCompare() {
     const { diffCanvas, diffCount, total } = computeDiff(baseImg, curImg, w, h);
     const pct = total > 0 ? ((diffCount / total) * 100).toFixed(2) : '0.00';
 
-    currentB64  = captured;
-    diffDataUrl = diffCanvas.toDataURL('image/png');
-    viewMode    = 'diff';
+    const d = activeData();
+    d.currentB64  = captured;
+    d.diffDataUrl = diffCanvas.toDataURL('image/png');
+    d.viewMode    = 'diff';
     renderImages();
 
     stats.textContent = `${diffCount.toLocaleString()} pixels differ (${pct}% of ${total.toLocaleString()})`;

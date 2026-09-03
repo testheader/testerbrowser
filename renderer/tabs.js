@@ -7,6 +7,7 @@ import { refreshDiffPickers } from './diff.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 import { reloadA11yIfLoaded } from './a11y.js';
 import { loadRules } from './resilience.js';
+import { refreshVR, clearVRSession } from './visual-regression.js';
 
 export function insertAfterActive(id) {
   const idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
@@ -26,6 +27,7 @@ export async function switchToSession(id) {
   if (state.activeConsoleTab === 'storage') loadStoragePanel();
   if (state.activeConsoleTab === 'a11y') reloadA11yIfLoaded();
   if (state.activeConsoleTab === 'resilience') loadRules();
+  if (state.activeConsoleTab === 'vr') refreshVR();
   recordVisit(id);
   await testerBrowser.sessions.switchTo(id);
   updateNavButtons();
@@ -227,6 +229,7 @@ export async function closeTab(id) {
   delete state.tabTitles[id];
   delete state.navState[id];
   delete state.tabLoading[id];
+  clearVRSession(id);
 
   if (state.activeId === id) {
     state.activeId = null;

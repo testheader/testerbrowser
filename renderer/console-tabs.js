@@ -2,7 +2,7 @@ import { state } from './state.js';
 import { loadStoragePanel } from './storage.js';
 import { initA11y, disableA11yHover } from './a11y.js';
 import { initDiff } from './diff.js';
-import { initVR } from './visual-regression.js';
+import { initVR, refreshVR } from './visual-regression.js';
 import { initSpoof } from './emulation.js';
 import { initSecurity } from './security.js';
 import { initMock } from './mock.js';
@@ -62,7 +62,7 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabStorage').addEventListener('click', () => switchConsoleTab('storage'));
   document.getElementById('consoleTabA11y').addEventListener('click', () => switchConsoleTab('a11y'));
   document.getElementById('consoleTabDiff').addEventListener('click', () => { switchConsoleTab('diff'); initDiff(); });
-  document.getElementById('consoleTabVR').addEventListener('click', () => { switchConsoleTab('vr'); initVR(); });
+  document.getElementById('consoleTabVR').addEventListener('click', () => { switchConsoleTab('vr'); initVR(); refreshVR(); });
   document.getElementById('consoleTabSpoof').addEventListener('click', () => switchConsoleTab('spoof'));
   document.getElementById('consoleTabSecurity').addEventListener('click', () => switchConsoleTab('security'));
   document.getElementById('consoleTabMock').addEventListener('click', () => switchConsoleTab('mock'));
