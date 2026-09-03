@@ -13,6 +13,18 @@ let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
 let updateLogFile: string;
 
+// Compares two "x.y.z"-style version strings. Returns true if `a` is strictly newer than `b`.
+function isVersionNewer(a: string, b: string): boolean {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] ?? 0;
+    const nb = pb[i] ?? 0;
+    if (na !== nb) return na > nb;
+  }
+  return false;
+}
+
 // --- Generic JSON file store ---
 
 class JsonStore<T> {
@@ -148,7 +160,9 @@ app.whenReady().then(() => {
               if (rel.assets.some(a => a.name === 'latest.yml')) {
                 const foundVersion = rel.tag_name.replace(/^v/, '');
                 latestVersion = foundVersion;
-                updateStatus = foundVersion === app.getVersion() ? 'not-available' : 'available';
+                // A release found while scanning back for a valid latest.yml can be
+                // older than what's already installed — that's not an available update.
+                updateStatus = isVersionNewer(foundVersion, app.getVersion()) ? 'available' : 'not-available';
                 pushUpdateStatus();
                 return;
               }
