@@ -27,7 +27,7 @@ export function initMock() {
         </div>
       </form>
       <div class="mock-rules" id="mockRules">
-        <div class="mock-empty" id="mockEmpty">No mock rules. Add one above.</div>
+        <div class="mock-empty" id="mockEmpty">Add a rule above to intercept requests.</div>
       </div>
     </div>`;
 

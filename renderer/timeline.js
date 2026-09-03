@@ -36,6 +36,15 @@ export function renderTimeline() {
   const visible = filtered.slice(-TIMELINE_DOM_MAX);
   panel.innerHTML = '';
 
+  if (state.activeId && state.timelineEvents.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'timeline-empty';
+    empty.innerHTML = '<span class="timeline-empty-dot"></span><span>Recording — waiting for activity…</span>';
+    panel.appendChild(empty);
+    if (state.autoScroll) panel.scrollTop = panel.scrollHeight;
+    return;
+  }
+
   if (filtered.length > TIMELINE_DOM_MAX) {
     const msg = document.createElement('div');
     msg.className   = 'evt-overflow-msg';

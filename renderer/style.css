@@ -230,6 +230,10 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .evt-overflow-msg { padding: 4px 10px; font-size: 11px; color: #555; font-style: italic;
                     border-bottom: 1px solid #2a2a2a; margin-bottom: 4px; }
 #timelinePanel { flex: 1; min-height: 0; font-family: monospace; font-size: 12px; overflow-y: auto; padding: 4px 0; }
+.timeline-empty { display: flex; align-items: center; gap: 8px; padding: 16px 12px; color: #888; font-size: 12px; }
+.timeline-empty-dot { width: 8px; height: 8px; border-radius: 50%; background: #e06c75; flex-shrink: 0;
+                       animation: pulse-dot 1.4s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
 
 /* ── Storage panel ── */
 #storagePanel { flex: 1; overflow: auto; display: none; }
@@ -507,7 +511,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #notesTextarea:focus { outline: none; border-color: #4fc3f7; }
 
 /* ── A11y panel ── */
-#a11yPanel { flex: 1; overflow: auto; display: none; padding: 6px 8px; }
+#a11yPanel { flex: 1; overflow: hidden; display: none; flex-direction: column; }
+.a11y-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+                border-bottom: 1px solid #2a2a2a; flex-shrink: 0; }
+.a11y-btn { background: #333; color: #ddd; border: 1px solid #444; border-radius: 3px;
+            padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.a11y-btn:hover:not([disabled]) { background: #444; }
+.a11y-content { flex: 1; overflow: auto; padding: 6px 8px; }
 .a11y-empty, .a11y-loading { color: #888; font-size: 12px; padding: 12px; }
 .a11y-tree, .a11y-children { list-style: none; margin: 0; padding: 0 0 0 14px; }
 .a11y-tree { padding-left: 0; }

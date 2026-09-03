@@ -19,7 +19,7 @@ export function initSecurity() {
       <span class="sec-status" id="secStatus"></span>
     </div>
     <div class="sec-results" id="secResults">
-      <div class="sec-hint">Click "Scan session" to analyze recorded traffic.</div>
+      <div class="sec-hint">Click Scan to analyse headers and cookies for the current page.</div>
     </div>`;
   document.getElementById('secScanBtn').addEventListener('click', runScan);
 }

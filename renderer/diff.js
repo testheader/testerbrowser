@@ -20,7 +20,7 @@ export function initDiff() {
       <button class="diff-har-btn" id="diffHarBtn" disabled>Export HAR</button>
     </div>
     <div class="diff-body" id="diffBody">
-      <div class="diff-hint">Pick two sessions and click Compare.</div>
+      <div class="diff-hint">Select two sessions above and click Compare.</div>
     </div>`;
 
   populatePickers();

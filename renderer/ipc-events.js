@@ -4,7 +4,7 @@ import { setLoadingBar, updateReloadBtn } from './toolbar.js';
 import { updateBookmarkStar } from './bookmarks.js';
 import { updateTabLoadingVisual, startRename, closeTab, refreshTabs } from './tabs.js';
 import { loadStoragePanel } from './storage.js';
-import { loadA11yPanel } from './a11y.js';
+import { reloadA11yIfLoaded } from './a11y.js';
 import { openNotes } from './notes.js';
 
 export function initIpcEvents() {
@@ -25,7 +25,7 @@ export function initIpcEvents() {
       document.getElementById('urlbar').value = url;
       updateBookmarkStar();
       if (state.activeConsoleTab === 'storage') loadStoragePanel();
-      if (state.activeConsoleTab === 'a11y') loadA11yPanel();
+      if (state.activeConsoleTab === 'a11y') reloadA11yIfLoaded();
     }
   });
 

@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { loadStoragePanel } from './storage.js';
-import { loadA11yPanel, enableA11yHover, disableA11yHover } from './a11y.js';
+import { initA11y, enableA11yHover, disableA11yHover } from './a11y.js';
 import { initDiff } from './diff.js';
 import { initVR } from './visual-regression.js';
 import { initSpoof } from './emulation.js';
@@ -33,7 +33,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('storageControls').style.display      = tab === 'storage'  ? 'flex'  : 'none';
   document.getElementById('timelinePanelWrapper').style.display = timelineVisible    ? 'flex'  : 'none';
   document.getElementById('storagePanel').style.display         = tab === 'storage'  ? 'block' : 'none';
-  document.getElementById('a11yPanel').style.display            = tab === 'a11y'     ? 'block' : 'none';
+  document.getElementById('a11yPanel').style.display            = tab === 'a11y'     ? 'flex'  : 'none';
   document.getElementById('diffPanel').style.display            = tab === 'diff'     ? 'flex'  : 'none';
   document.getElementById('vrPanel').style.display              = tab === 'vr'       ? 'flex'  : 'none';
   document.getElementById('spoofPanel').style.display           = tab === 'spoof'    ? 'flex'  : 'none';
@@ -47,7 +47,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('detailPanelResizeHandle').style.display = tab === 'console' && hasDetailTabs ? '' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') loadStoragePanel();
-  if (tab === 'a11y') { loadA11yPanel(); enableA11yHover(); }
+  if (tab === 'a11y') { initA11y(); enableA11yHover(); }
   if (tab === 'spoof') initSpoof();
   if (tab === 'security') initSecurity();
   if (tab === 'mock') initMock();

@@ -15,7 +15,7 @@ export function initVR() {
       <span class="vr-stats" id="vrStats"></span>
     </div>
     <div class="vr-images" id="vrImages">
-      <div class="vr-hint">Capture a baseline, then interact with the page and click Compare.</div>
+      <div class="vr-hint">Capture a baseline screenshot, interact with the page, then click Compare.</div>
     </div>`;
 
   document.getElementById('vrCaptureBtn').addEventListener('click', captureBaseline);

@@ -254,7 +254,7 @@ async function refreshTestList() {
   const el = document.getElementById('rpTestList');
   if (!el) return;
   if (savedTests.length === 0) {
-    el.innerHTML = '<div class="rp-hint">No saved tests yet</div>';
+    el.innerHTML = '<div class="rp-hint">Click Record to start capturing browser interactions.</div>';
     return;
   }
   el.innerHTML = savedTests.map(t => `

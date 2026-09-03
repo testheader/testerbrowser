@@ -39,7 +39,7 @@ export function initResilience() {
         </div>
       </form>
       <div class="res-rules" id="resRules">
-        <div class="res-empty" id="resEmpty">No resilience rules. Add one above.</div>
+        <div class="res-empty" id="resEmpty">Add a rule above to intercept requests.</div>
       </div>
     </div>`;
 

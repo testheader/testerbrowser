@@ -4,9 +4,26 @@ import { state } from './state.js';
 const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
 let hoveredRow = null;
+let hasLoadedOnce = false;
 
 export function initA11y() {
-  // Tree is loaded on demand when the tab is activated
+  const panel = document.getElementById('a11yPanel');
+  if (!panel || panel.dataset.initialized) return;
+  panel.dataset.initialized = '1';
+  panel.innerHTML = `
+    <div class="a11y-toolbar">
+      <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
+    </div>
+    <div class="a11y-content" id="a11yContent">
+      <div class="a11y-empty">Click Refresh to load the accessibility tree for this page.</div>
+    </div>`;
+  document.getElementById('a11yRefreshBtn').addEventListener('click', loadA11yPanel);
+}
+
+// Called after navigation — only refresh if the tree has already been loaded once,
+// so the initial "Click Refresh…" empty state isn't skipped on first activation.
+export function reloadA11yIfLoaded() {
+  if (hasLoadedOnce) loadA11yPanel();
 }
 
 export function enableA11yHover() {
@@ -31,22 +48,23 @@ export function disableA11yHover() {
 }
 
 export async function loadA11yPanel() {
-  const panel = document.getElementById('a11yPanel');
-  if (!panel) return;
+  const content = document.getElementById('a11yContent');
+  if (!content) return;
   if (!state.activeId) {
-    panel.innerHTML = '<div class="a11y-empty">No active session.</div>';
+    content.innerHTML = '<div class="a11y-empty">No active session.</div>';
     return;
   }
-  panel.innerHTML = '<div class="a11y-loading">Loading accessibility tree…</div>';
+  hasLoadedOnce = true;
+  content.innerHTML = '<div class="a11y-loading">Loading accessibility tree…</div>';
   try {
     const nodes = await testerBrowser.a11y.getTree(state.activeId);
     if (!nodes || nodes.length === 0) {
-      panel.innerHTML = '<div class="a11y-empty">No accessibility tree available for this page.</div>';
+      content.innerHTML = '<div class="a11y-empty">No accessibility tree available for this page.</div>';
       return;
     }
-    renderA11yTree(panel, nodes);
+    renderA11yTree(content, nodes);
   } catch (e) {
-    panel.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
   }
 }
 

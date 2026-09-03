@@ -66,7 +66,7 @@ export function initJira() {
           </div>
         </div>
         <div id="jiraNotConfigured" class="jira-not-configured" hidden>
-          <span>Configure Jira credentials using the &#9881; button above.</span>
+          <span>Configure your Jira workspace in settings above.</span>
         </div>
       </div>
     </div>`;
