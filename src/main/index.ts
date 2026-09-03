@@ -168,8 +168,22 @@ app.whenReady().then(() => {
 
   if (app.isPackaged) {
     autoUpdater.allowPrerelease = true;
+    // electron-updater's own "update-available" signal isn't trusted blindly — a stale feed
+    // or a version tag mishap can fire it for the version already running. Downloading (and
+    // therefore reinstalling) only proceeds once we've independently confirmed it's newer.
+    autoUpdater.autoDownload = false;
     autoUpdater.on('checking-for-update', () => { updateStatus = 'checking'; latestVersion = null; pushUpdateStatus(); });
-    autoUpdater.on('update-available', (info) => { updateStatus = 'available'; latestVersion = info.version; pushUpdateStatus(); });
+    autoUpdater.on('update-available', (info) => {
+      latestVersion = info.version;
+      if (!isVersionNewer(info.version, app.getVersion())) {
+        updateStatus = 'not-available';
+        pushUpdateStatus();
+        return;
+      }
+      updateStatus = 'available';
+      pushUpdateStatus();
+      autoUpdater.downloadUpdate();
+    });
     autoUpdater.on('download-progress', () => { updateStatus = 'downloading'; pushUpdateStatus(); });
     autoUpdater.on('update-downloaded', (info) => { updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus(); });
     autoUpdater.on('update-not-available', (info) => { updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus(); });
@@ -219,7 +233,7 @@ app.whenReady().then(() => {
         .slice(0, 120);
       pushUpdateStatus();
     });
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.checkForUpdates();
   } else {
     updateStatus = 'not-available';
   }
@@ -592,7 +606,7 @@ ipcMain.handle('app:checkForUpdates', () => {
   if (!app.isPackaged) return;
   updateStatus = 'checking'; latestVersion = null;
   pushUpdateStatus();
-  autoUpdater.checkForUpdatesAndNotify();
+  autoUpdater.checkForUpdates();
 });
 ipcMain.handle('app:restartAndInstall', () => autoUpdater.quitAndInstall());
 ipcMain.handle('app:openExternal', (_e, url: string) => {
