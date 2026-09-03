@@ -201,13 +201,33 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #consoleDragHandle:hover, #consoleDragHandle.dragging { background: #4fc3f7; }
 #consoleHeader { display: flex; align-items: center; gap: 6px; padding: 0 10px 0 0;
                  background: #1a1a1a; border-bottom: 1px solid #222; flex-shrink: 0; height: 36px; }
-.console-tabs { display: flex; height: 100%; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+#consoleTabsWrap { display: flex; align-items: center; height: 100%; min-width: 0; flex-shrink: 1; }
+.console-tabs-chevron { flex-shrink: 0; background: #1a1a1a; border: none; color: #888; cursor: pointer;
+                        font-size: 15px; padding: 0 4px; height: 100%; line-height: 1; }
+.console-tabs-chevron:hover { color: #ddd; background: #222; }
+.console-tabs-chevron[hidden] { display: none; }
+.console-tabs { display: flex; height: 100%; overflow-x: auto; min-width: 0; scrollbar-width: none;
+                scroll-behavior: smooth; }
 .console-tabs::-webkit-scrollbar { display: none; }
 .console-tab { background: none; border: none; border-bottom: 2px solid transparent; color: #555;
                font-size: 12px; cursor: pointer; padding: 0 14px; text-transform: uppercase;
                letter-spacing: 0.5px; font-family: inherit; height: 100%; }
 .console-tab:hover:not(.active) { color: #999; }
 .console-tab.active { color: #ddd; border-bottom-color: #4fc3f7; }
+.console-tab::before { font-size: 13px; margin-right: 5px; text-transform: none; letter-spacing: normal;
+                        display: inline-block; }
+#consoleTabConsole::before    { content: '\26A1'; }
+#consoleTabNetwork::before    { content: '\1F310'; }
+#consoleTabStorage::before    { content: '\1F4E6'; }
+#consoleTabA11y::before       { content: '\267F'; }
+#consoleTabDiff::before       { content: '\27F7'; }
+#consoleTabVR::before         { content: '\1F441'; }
+#consoleTabSpoof::before      { content: '\1F30D'; }
+#consoleTabSecurity::before   { content: '\1F512'; }
+#consoleTabMock::before       { content: '\1F3AD'; }
+#consoleTabResilience::before { content: '\26A0'; }
+#consoleTabJira::before       { content: '\1F3AB'; }
+#consoleTabTests::before      { content: '\25B6'; }
 .console-sep { width: 1px; height: 18px; background: #2a2a2a; flex-shrink: 0; }
 #consoleControls { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
 #storageControls { display: none; align-items: center; gap: 6px; flex: 1; }

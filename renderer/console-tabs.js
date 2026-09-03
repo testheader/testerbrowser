@@ -69,4 +69,26 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabResilience').addEventListener('click', () => switchConsoleTab('resilience'));
   document.getElementById('consoleTabJira').addEventListener('click', () => { switchConsoleTab('jira'); initJira(); });
   document.getElementById('consoleTabTests').addEventListener('click', () => switchConsoleTab('tests'));
+
+  initTabOverflow();
+}
+
+function initTabOverflow() {
+  const strip = document.getElementById('consoleTabsStrip');
+  const prevBtn = document.getElementById('consoleTabsPrevBtn');
+  const nextBtn = document.getElementById('consoleTabsNextBtn');
+
+  function updateChevrons() {
+    const overflowing = strip.scrollWidth > strip.clientWidth + 1;
+    prevBtn.hidden = !overflowing || strip.scrollLeft <= 0;
+    nextBtn.hidden = !overflowing || strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 1;
+  }
+
+  prevBtn.addEventListener('click', () => { strip.scrollLeft -= 120; });
+  nextBtn.addEventListener('click', () => { strip.scrollLeft += 120; });
+  strip.addEventListener('scroll', updateChevrons);
+  window.addEventListener('resize', updateChevrons);
+  new ResizeObserver(updateChevrons).observe(strip);
+
+  updateChevrons();
 }

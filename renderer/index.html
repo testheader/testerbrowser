@@ -75,7 +75,9 @@
   <div id="consolePanel">
     <div id="consoleDragHandle"></div>
     <div id="consoleHeader">
-      <div class="console-tabs">
+      <div id="consoleTabsWrap">
+      <button class="console-tabs-chevron" id="consoleTabsPrevBtn" title="Scroll tabs left" hidden>&#8249;</button>
+      <div class="console-tabs" id="consoleTabsStrip">
         <button class="console-tab active" id="consoleTabConsole">Console</button>
         <button class="console-tab" id="consoleTabNetwork">Network</button>
         <button class="console-tab" id="consoleTabStorage">Storage</button>
@@ -88,6 +90,9 @@
         <button class="console-tab" id="consoleTabResilience">Resilience</button>
         <button class="console-tab" id="consoleTabJira">Jira</button>
         <button class="console-tab" id="consoleTabTests">Tests</button>
+      </div>
+      <button class="console-tabs-chevron" id="consoleTabsNextBtn" title="Scroll tabs right" hidden>&#8250;</button>
+      </div>
       </div>
       <div class="console-sep"></div>
       <div id="consoleControls">
