@@ -41,6 +41,18 @@ export function initSecurity() {
   );
 }
 
+// Findings are page-scoped — clear them whenever the active session changes
+// or the current session navigates, so stale results are never shown as if
+// they applied to a different page.
+export function clearSecurityFindings() {
+  lastFindings = [];
+  const results = document.getElementById('secResults');
+  if (results) results.innerHTML = '<div class="sec-hint">Click Scan to analyse headers and cookies for the current page.</div>';
+  const status = document.getElementById('secStatus');
+  if (status) status.textContent = '';
+  document.querySelectorAll('#secPills .pill-count').forEach((el) => { el.textContent = ''; });
+}
+
 async function runScan() {
   if (!state.activeId) return;
   const btn    = document.getElementById('secScanBtn');

@@ -5,6 +5,7 @@ import { updateBookmarkStar } from './bookmarks.js';
 import { updateTabLoadingVisual, startRename, closeTab, refreshTabs } from './tabs.js';
 import { loadStoragePanel } from './storage.js';
 import { reloadA11yIfLoaded } from './a11y.js';
+import { clearSecurityFindings } from './security.js';
 import { openNotes } from './notes.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 
@@ -28,6 +29,7 @@ export function initIpcEvents() {
       updateBookmarkStar();
       if (state.activeConsoleTab === 'storage') loadStoragePanel();
       if (state.activeConsoleTab === 'a11y') reloadA11yIfLoaded();
+      if (state.activeConsoleTab === 'security') clearSecurityFindings();
     }
   });
 
