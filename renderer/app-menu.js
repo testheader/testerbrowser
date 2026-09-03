@@ -1,9 +1,24 @@
+/* global testerBrowser */
 import { openSettings } from './settings.js';
 import { openBugReport } from './bugreport.js';
 import { newSession } from './tabs.js';
 
+// The dropdown can extend past the topbar into the region the BrowserView
+// occupies — that native view always paints over page HTML regardless of
+// z-index, so it must be detached while the dropdown is open (same pattern
+// as view-dropdown.js) or its lower items are invisible/unclickable.
+function openAppMenu() {
+  const dropdown = document.getElementById('appMenuDropdown');
+  if (dropdown.classList.contains('open')) return;
+  dropdown.classList.add('open');
+  testerBrowser.layout.setViewerVisible(false);
+}
+
 function closeAppMenu() {
-  document.getElementById('appMenuDropdown').classList.remove('open');
+  const dropdown = document.getElementById('appMenuDropdown');
+  if (!dropdown.classList.contains('open')) return;
+  dropdown.classList.remove('open');
+  testerBrowser.layout.setViewerVisible(true);
 }
 
 export function initAppMenu() {
@@ -12,7 +27,7 @@ export function initAppMenu() {
 
   document.getElementById('appName').addEventListener('click', (e) => {
     e.stopPropagation();
-    dropdown.classList.toggle('open');
+    dropdown.classList.contains('open') ? closeAppMenu() : openAppMenu();
   });
 
   document.addEventListener('click', (e) => {
