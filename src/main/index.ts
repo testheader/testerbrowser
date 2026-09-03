@@ -233,7 +233,6 @@ ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.
 ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.getHAR(id) ?? null);
 ipcMain.handle('a11y:getTree',        (_e, id: string) => sessionManager?.getA11yTree(id) ?? null);
 ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
-ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
 ipcMain.handle('session:captureScreenshot', (_e, id: string) => sessionManager?.captureScreenshot(id) ?? null);
 ipcMain.handle('testdata:apply',      (_e, id: string, template: string) => sessionManager?.applyTemplate(id, template));
 ipcMain.handle('mock:getRules',    (_e, id: string) => sessionManager?.getMockRules(id) ?? []);
