@@ -274,11 +274,83 @@
     .btn-primary:hover { background: var(--accent-soft); }
     .btn-secondary { background: var(--bg-hover); color: var(--text-secondary); }
     .btn-secondary:hover { background: var(--bg-tertiary); }
+
+    /* ── Dashboard layout ── */
+    .dashboard { display: flex; gap: 24px; width: 100%; max-width: 980px; align-items: flex-start; }
+    .dash-main { flex: 1; min-width: 0; }
+    .dash-side { width: 280px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+    @media (max-width: 900px) { .dashboard { flex-direction: column; } .dash-side { width: 100%; } }
+
+    .panel { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px;
+             padding: 16px 18px; }
+    .panel h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;
+                letter-spacing: 0.6px; margin: 0 0 12px; }
+
+    /* Bookmarks panel */
+    #bookmarksList { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+    .bm-empty { font-size: 12px; color: var(--text-faint); padding: 6px 0; }
+    .bm-folder-heading { font-size: 10px; font-weight: 600; color: var(--text-faint); text-transform: uppercase;
+                          letter-spacing: 0.5px; margin: 10px 0 2px; }
+    .bm-folder-heading:first-child { margin-top: 0; }
+    .bm-row { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
+    .bm-row:hover { background: var(--bg-hover); }
+    .bm-row-favicon { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; object-fit: contain; }
+    .bm-row-initial { width: 18px; height: 18px; border-radius: 4px; background: var(--bg-tertiary);
+                       display: flex; align-items: center; justify-content: center; font-size: 10px;
+                       font-weight: 600; color: var(--text-faint); flex-shrink: 0; }
+    .bm-row-title { flex: 1; min-width: 0; font-size: 12px; color: var(--text-primary); overflow: hidden;
+                     text-overflow: ellipsis; white-space: nowrap; }
+    .bm-row-remove { flex-shrink: 0; border: none; background: none; color: var(--text-faint); font-size: 13px;
+                      cursor: pointer; line-height: 1; padding: 2px 4px; opacity: 0; transition: opacity 0.1s; }
+    .bm-row:hover .bm-row-remove { opacity: 1; }
+    .bm-row-remove:hover { color: var(--error-strong); }
+
+    /* Quick settings panel */
+    .qs-row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+               padding: 8px 0; border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-secondary); }
+    .qs-row:last-of-type { border-bottom: none; }
+    .qs-theme-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+    .qs-theme-toggle button { background: none; border: none; color: var(--text-faint); font-size: 11px;
+                               padding: 4px 8px; cursor: pointer; font-family: inherit; }
+    .qs-theme-toggle button + button { border-left: 1px solid var(--border-color); }
+    .qs-theme-toggle button.active { background: var(--accent); color: var(--on-fill); }
+    #qsVersion { font-family: monospace; color: var(--text-primary); }
+    #qsUpdateStatus { font-size: 11px; color: var(--text-faint); margin-top: 8px; }
   </style>
 </head>
 <body>
   <div class="wordmark">TesterBrowser</div>
-  <div class="grid" id="grid"></div>
+  <div class="dashboard">
+    <div class="dash-main">
+      <div class="grid" id="grid"></div>
+    </div>
+    <aside class="dash-side">
+      <section class="panel" id="bookmarksPanel">
+        <h3>Bookmarks</h3>
+        <div id="bookmarksList"></div>
+      </section>
+      <section class="panel" id="quickSettingsPanel">
+        <h3>Quick settings</h3>
+        <div class="qs-row">
+          <span>Theme</span>
+          <div class="qs-theme-toggle" id="themeToggleGroup">
+            <button data-scheme="system">System</button>
+            <button data-scheme="light">Light</button>
+            <button data-scheme="dark">Dark</button>
+          </div>
+        </div>
+        <div class="qs-row">
+          <span>Redact sensitive headers</span>
+          <input type="checkbox" id="redactToggle" />
+        </div>
+        <div class="qs-row">
+          <span>Version</span>
+          <span id="qsVersion">—</span>
+        </div>
+        <div id="qsUpdateStatus"></div>
+      </section>
+    </aside>
+  </div>
 
   <!-- Background settings -->
   <button id="bgSettingsBtn" title="Customize background">&#9881;</button>
@@ -538,6 +610,139 @@
       window.appTheme.get().then(apply).catch(() => {});
       window.appTheme.onChange(apply);
     })();
+
+    // ── Bookmarks panel ──
+    function makeBookmarkFavicon(bm) {
+      const src = faviconSrc(bm.url);
+      if (!src) return makeBookmarkInitial(bm);
+      const img = document.createElement('img');
+      img.className = 'bm-row-favicon';
+      img.src = src;
+      img.onerror = () => img.replaceWith(makeBookmarkInitial(bm));
+      return img;
+    }
+
+    function makeBookmarkInitial(bm) {
+      const el = document.createElement('span');
+      el.className = 'bm-row-initial';
+      el.textContent = ((bm.title || bm.url)[0] || '?').toUpperCase();
+      return el;
+    }
+
+    function makeBookmarkRow(bm) {
+      const row = document.createElement('div');
+      row.className = 'bm-row';
+      row.title = bm.url;
+      row.appendChild(makeBookmarkFavicon(bm));
+
+      const label = document.createElement('span');
+      label.className = 'bm-row-title';
+      label.textContent = bm.title || bm.url;
+      row.appendChild(label);
+
+      const rm = document.createElement('button');
+      rm.className = 'bm-row-remove';
+      rm.textContent = '×';
+      rm.title = 'Remove bookmark';
+      rm.onclick = async (e) => {
+        e.stopPropagation();
+        await window.bookmarksApi.remove(bm.url);
+        loadBookmarksPanel();
+      };
+      row.appendChild(rm);
+
+      row.onclick = () => { if (/^https?:\/\//i.test(bm.url)) window.location.href = bm.url; };
+      return row;
+    }
+
+    async function loadBookmarksPanel() {
+      const listEl = document.getElementById('bookmarksList');
+      if (!window.bookmarksApi) { listEl.innerHTML = '<div class="bm-empty">Not available</div>'; return; }
+
+      const [bookmarks, folders] = await Promise.all([
+        window.bookmarksApi.list(),
+        window.bookmarksApi.listFolders(),
+      ]);
+
+      listEl.innerHTML = '';
+      if (bookmarks.length === 0) {
+        listEl.innerHTML = '<div class="bm-empty">No bookmarks yet — press Ctrl+D on a page to add one.</div>';
+        return;
+      }
+
+      const folderIds = new Set(folders.map((f) => f.id));
+      const topLevel  = bookmarks.filter((b) => !b.folderId || !folderIds.has(b.folderId));
+      for (const bm of topLevel) listEl.appendChild(makeBookmarkRow(bm));
+
+      for (const folder of folders) {
+        const inFolder = bookmarks.filter((b) => b.folderId === folder.id);
+        if (inFolder.length === 0) continue;
+        const heading = document.createElement('div');
+        heading.className = 'bm-folder-heading';
+        heading.textContent = folder.name;
+        listEl.appendChild(heading);
+        for (const bm of inFolder) listEl.appendChild(makeBookmarkRow(bm));
+      }
+    }
+
+    // ── Quick settings panel ──
+    function initQuickSettingsTheme() {
+      const group = document.getElementById('themeToggleGroup');
+      const btns  = [...group.querySelectorAll('button')];
+      const THEME_CHOICE_KEY = 'newtabThemeChoice';
+
+      const setActive = (scheme) => btns.forEach((b) => b.classList.toggle('active', b.dataset.scheme === scheme));
+      let choice;
+      try { choice = localStorage.getItem(THEME_CHOICE_KEY); } catch {}
+      setActive(choice || 'system');
+
+      btns.forEach((btn) => btn.addEventListener('click', () => {
+        const scheme = btn.dataset.scheme;
+        try { localStorage.setItem(THEME_CHOICE_KEY, scheme); } catch {}
+        setActive(scheme);
+        // The shared theme store only tracks a light/dark binary, so "system" is
+        // resolved to whichever it currently reads before persisting — the actual
+        // class toggle happens reactively via the appTheme.onChange listener above.
+        const resolved = scheme === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+          : scheme;
+        window.appTheme?.set?.(resolved);
+      }));
+    }
+
+    async function initRedactToggle() {
+      const toggle = document.getElementById('redactToggle');
+      if (!window.appSettings) { toggle.disabled = true; return; }
+      try {
+        const settings = await window.appSettings.get();
+        toggle.checked = !!settings.redactSensitiveHeaders;
+      } catch {}
+      toggle.addEventListener('change', () => {
+        window.appSettings.set({ redactSensitiveHeaders: toggle.checked });
+      });
+    }
+
+    async function initVersionInfo() {
+      const versionEl = document.getElementById('qsVersion');
+      const statusEl  = document.getElementById('qsUpdateStatus');
+      if (!window.appInfo) return;
+      try {
+        const info = await window.appInfo.getVersionInfo();
+        versionEl.textContent = info.current || '—';
+        if (info.latest && info.latest !== info.current) {
+          statusEl.textContent = `Update available: ${info.latest}`;
+        } else if (info.status === 'downloaded') {
+          statusEl.textContent = 'Update downloaded — restart the app to install';
+        } else if (info.isPackaged) {
+          statusEl.textContent = "You're up to date";
+        }
+      } catch {}
+    }
+
+    loadBookmarksPanel();
+    initQuickSettingsTheme();
+    initRedactToggle();
+    initVersionInfo();
   </script>
 </body>
 </html>
