@@ -198,11 +198,13 @@ export class SessionManager {
   private recordingBuffers = new Map<string, Map<string, TestStep>>();
   // Live leader→follower links ("Follow Along"), keyed by leader session id.
   private followPairings = new Map<string, FollowPairing>();
+  private recordFeatureError: (message: string) => void;
 
-  constructor(win: BrowserWindow, getRedactHeaders: () => boolean) {
+  constructor(win: BrowserWindow, getRedactHeaders: () => boolean, recordFeatureError: (message: string) => void = () => {}) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
     this.getRedactHeaders = getRedactHeaders;
+    this.recordFeatureError = recordFeatureError;
     this.downloadManager = new DownloadManager(win);
     this.permissionManager = new PermissionManager(win);
     this.win.on('resize', () => this.layoutActive());
@@ -1242,6 +1244,11 @@ export class SessionManager {
       if (result && typeof result === 'object') return result as { success: boolean; error?: string };
       return { success: true };
     } catch (e) {
+      // A thrown (rather than a returned {success:false,...}) error means the
+      // injected script itself failed to run — that's a genuine functionality
+      // bug (Tests playback or Follow Along mirroring), not an expected
+      // assertion miss, so surface it in bug-report diagnostics too.
+      this.recordFeatureError(`Playback '${step.type}'${step.selector ? ` (${step.selector})` : ''} on session ${s.name}: ${String(e)}`);
       return { success: false, error: String(e) };
     }
   }

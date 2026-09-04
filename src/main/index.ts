@@ -146,7 +146,7 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  sessionManager = new SessionManager(win, () => settingsStore.get().redactSensitiveHeaders);
+  sessionManager = new SessionManager(win, () => settingsStore.get().redactSensitiveHeaders, recordAppError);
 
   const restored = sessionManager.loadAndRestoreSessions();
   if (!restored) {
