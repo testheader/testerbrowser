@@ -956,13 +956,16 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-guide-steps { color: var(--success-strong); margin: 6px 0 0; padding-left: 20px; font-size: 12px; line-height: 1.6; }
 .res-guide-steps li { margin: 0; }
 .res-form { display: flex; flex-direction: column; gap: 6px; }
-.res-form-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.res-form-row { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
+.res-field { display: flex; flex-direction: column; gap: 2px; }
+.res-field-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); }
+.res-field-url { flex: 1; min-width: 120px; }
 .res-select { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);
               border-radius: 3px; padding: 4px 6px; font-size: 12px; }
 .res-input { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);
              border-radius: 3px; padding: 4px 8px; font-size: 12px; box-sizing: border-box; }
 .res-input:focus { outline: none; border-color: var(--accent); }
-.res-url { flex: 1; min-width: 120px; }
+.res-field-url .res-input { width: 100%; }
 .res-prob { width: 64px; }
 .res-latency { width: 90px; }
 .res-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px;

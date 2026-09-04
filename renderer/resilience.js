@@ -30,12 +30,24 @@ export function initResilience() {
       </div>
       <form class="res-form" id="resForm">
         <div class="res-form-row">
-          <select class="res-select" id="resType">
-            ${TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
-          </select>
-          <input class="res-input res-url" id="resUrl" type="text" value="*" placeholder="URL pattern (* = all)" spellcheck="false" />
-          <input class="res-input res-prob" id="resProb" type="number" value="100" min="1" max="100" placeholder="%" title="Probability: 1–100%" />
-          <input class="res-input res-latency res-hidden" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" />
+          <div class="res-field">
+            <label class="res-field-label" for="resType">Type</label>
+            <select class="res-select" id="resType">
+              ${TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="res-field res-field-url">
+            <label class="res-field-label" for="resUrl">URL pattern</label>
+            <input class="res-input res-url" id="resUrl" type="text" value="*" placeholder="URL pattern (* = all)" spellcheck="false" />
+          </div>
+          <div class="res-field">
+            <label class="res-field-label" for="resProb">Probability %</label>
+            <input class="res-input res-prob" id="resProb" type="number" value="100" min="1" max="100" placeholder="%" title="Probability: 1–100%" />
+          </div>
+          <div class="res-field res-latency-field res-hidden" id="resLatencyField">
+            <label class="res-field-label" for="resLatency">Delay ms</label>
+            <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" />
+          </div>
           <button class="res-btn res-add-btn" type="submit">Add rule</button>
         </div>
         <div class="res-type-desc" id="resTypeDesc">${TYPES[0].desc}</div>
@@ -54,7 +66,7 @@ export function initResilience() {
     </div>`;
 
   document.getElementById('resType').addEventListener('change', (e) => {
-    document.getElementById('resLatency').classList.toggle('res-hidden', e.target.value !== 'latency');
+    document.getElementById('resLatencyField').classList.toggle('res-hidden', e.target.value !== 'latency');
     const t = TYPES.find(t => t.value === e.target.value);
     if (t) document.getElementById('resTypeDesc').textContent = t.desc;
   });
