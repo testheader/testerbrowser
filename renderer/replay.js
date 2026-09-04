@@ -213,19 +213,28 @@ export function initReplay() {
     resArea.appendChild(hdrToggle);
     resArea.appendChild(hdrRows);
 
-    const bodyOut = document.createElement('pre');
-    bodyOut.id = 'replayBodyOut';
     const ct = (result.headers['content-type'] || '').toLowerCase();
-    if (ct.includes('json')) {
-      try { bodyOut.textContent = JSON.stringify(JSON.parse(result.body), null, 2); }
-      catch { bodyOut.textContent = result.body; }
-    } else if (ct.includes('xml') || ct.includes('html')) {
-      try { bodyOut.textContent = formatXml(result.body); }
-      catch { bodyOut.textContent = result.body; }
+    if (result.bodyBase64 && ct.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.id  = 'replayBodyOut';
+      img.className = 'detail-body-image';
+      img.src = `data:${ct};base64,${result.bodyBase64}`;
+      img.alt = 'Response image preview';
+      resArea.appendChild(img);
     } else {
-      bodyOut.textContent = result.body;
+      const bodyOut = document.createElement('pre');
+      bodyOut.id = 'replayBodyOut';
+      if (ct.includes('json')) {
+        try { bodyOut.textContent = JSON.stringify(JSON.parse(result.body), null, 2); }
+        catch { bodyOut.textContent = result.body; }
+      } else if (ct.includes('xml') || ct.includes('html')) {
+        try { bodyOut.textContent = formatXml(result.body); }
+        catch { bodyOut.textContent = result.body; }
+      } else {
+        bodyOut.textContent = result.body;
+      }
+      resArea.appendChild(bodyOut);
     }
-    resArea.appendChild(bodyOut);
   };
 
   document.getElementById('exportHarBtn').onclick = async () => {

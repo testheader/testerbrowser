@@ -127,6 +127,7 @@ export class SessionRecorder {
         case 'Network.responseReceived': {
           const meta = this.requestMeta.get(params.requestId);
           const tag  = this.requestTags.get(params.requestId);
+          const durationMs = meta ? ts - meta.startTs : undefined;
           const resPayload = this.redact
             ? { ...params, response: { ...params.response, headers: redactHeaders(params.response.headers) } }
             : params;
@@ -134,7 +135,7 @@ export class SessionRecorder {
             kind: 'network-response',
             ts,
             summary: `${params.response.status} ${meta?.url ?? params.response.url}`,
-            payload: JSON.stringify(tag ? { ...resPayload, ...tag } : resPayload),
+            payload: JSON.stringify({ ...resPayload, ...tag, durationMs }),
           });
           break;
         }

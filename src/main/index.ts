@@ -570,9 +570,14 @@ ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string
       opts.body = req.body;
     }
     const res = await net.fetch(req.url, opts);
-    const body = await res.text();
     const headers: Record<string, string> = {};
     res.headers.forEach((value: string, key: string) => { headers[key] = value; });
+    const isImage = (headers['content-type'] || '').toLowerCase().startsWith('image/');
+    if (isImage) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      return { ok: true, status: res.status, statusText: res.statusText, headers, bodyBase64: buf.toString('base64') };
+    }
+    const body = await res.text();
     return { ok: true, status: res.status, statusText: res.statusText, headers, body };
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { escHtml, getEventTabId } from './utils.js';
+import { escHtml, getEventTabId, getHeader } from './utils.js';
 
 function statusClass(code) {
   if (!code) return 'detail-status-err';
@@ -109,12 +109,15 @@ function renderDetailContent() {
         }
       }
 
+      let res = null;
       if (resEvt && resEvt.payload) {
-        const res = (JSON.parse(resEvt.payload).response) || {};
+        const resPayload = JSON.parse(resEvt.payload);
+        res = resPayload.response || {};
         html += `<div class="detail-section">
           <h3>Response</h3>
           <span class="${statusClass(res.status)}">${escHtml(String(res.status || ''))}</span>
           <span style="color:#666;margin:0 6px">${escHtml(res.statusText || '')}</span>
+          ${resPayload.durationMs != null ? `<span class="detail-timing">${Math.round(resPayload.durationMs)} ms</span>` : ''}
         </div>`;
         if (res.headers && Object.keys(res.headers).length) {
           html += `<div class="detail-section"><h3>Response Headers</h3><table class="headers-table">`;
@@ -130,8 +133,14 @@ function renderDetailContent() {
       if (bodyEvt && bodyEvt.payload) {
         const bp = JSON.parse(bodyEvt.payload);
         html += `<div class="detail-section"><h3>Response Body</h3>`;
-        if (bp.base64Encoded) html += `<div style="color:#555;font-size:11px;margin-bottom:4px">[base64 encoded]</div>`;
-        html += `<pre class="detail-body-pre">${escHtml(String(bp.body || ''))}</pre></div>`;
+        const contentType = getHeader(res?.headers, 'content-type').toLowerCase();
+        if (bp.base64Encoded && contentType.startsWith('image/')) {
+          html += `<img class="detail-body-image" src="data:${escHtml(contentType)};base64,${bp.body}" alt="Response image preview" />`;
+        } else {
+          if (bp.base64Encoded) html += `<div style="color:#555;font-size:11px;margin-bottom:4px">[base64 encoded]</div>`;
+          html += `<pre class="detail-body-pre">${escHtml(String(bp.body || ''))}</pre>`;
+        }
+        html += `</div>`;
       }
 
       if (failEvt && failEvt.payload) {

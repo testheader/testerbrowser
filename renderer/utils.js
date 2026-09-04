@@ -16,6 +16,13 @@ export function getEventTabId(e) {
   return `${e.ts}-${e.kind}`;
 }
 
+// CDP response headers preserve whatever case the server sent them in.
+export function getHeader(headers, name) {
+  if (!headers) return '';
+  const key = Object.keys(headers).find(k => k.toLowerCase() === name.toLowerCase());
+  return key ? String(headers[key]) : '';
+}
+
 export function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');
