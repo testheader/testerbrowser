@@ -163,7 +163,7 @@ export function renderDetailPanel() {
   const showsDetail  = state.activeConsoleTab === 'console' || state.activeConsoleTab === 'network' || state.activeConsoleTab === 'security';
   const hasOpen      = state.detailTabs.length > 0 && showsDetail;
   panel.classList.toggle('open', hasOpen);
-  resizeHandle.style.display = hasOpen ? '' : 'none';
+  resizeHandle.style.display = hasOpen ? 'block' : 'none';
   renderDetailTabs();
   renderDetailContent();
   // Update detail-row-active highlights without a full timeline re-render

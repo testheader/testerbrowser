@@ -371,6 +371,9 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .console-icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
 .evt-overflow-msg { padding: 4px 10px; font-size: 11px; color: var(--text-faint); font-style: italic;
                     border-bottom: 1px solid var(--border-color); margin-bottom: 4px; }
+/* Lives here, not in a style attribute: the page CSP has no 'unsafe-inline',
+   so inline style attributes never apply. */
+#timelinePanelWrapper { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #timelinePanel { flex: 1; min-height: 0; font-family: monospace; font-size: 12px; overflow-y: auto; padding: 4px 0; }
 .timeline-empty { display: flex; align-items: center; gap: 8px; padding: 16px 12px; color: var(--text-muted); font-size: 12px; }
 .timeline-empty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error-strong); flex-shrink: 0;
