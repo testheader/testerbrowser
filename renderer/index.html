@@ -238,23 +238,84 @@
           </div>
 
           <div class="settings-pane" data-pane="features">
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Console tab</kbd><span>Live network &amp; console timeline — filter by Req/Res/Err/JS/Log</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Storage tab</kbd><span>Cookies &amp; localStorage per session, 1st vs 3rd party</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Security tab</kbd><span>Auto-flags missing headers, insecure cookies, CORS, mixed content</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Mock tab</kbd><span>Intercept &amp; rewrite network requests with URL glob rules</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Resilience tab</kbd><span>Inject failures: 500s, timeouts, offline mode, latency, corrupted responses</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">A11y tab</kbd><span>Full accessibility tree (role, name, description, states)</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">VR tab</kbd><span>Visual regression — screenshot diff with pixel-level overlay</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Diff tab</kbd><span>Compare network timelines across two sessions side by side</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Spoof tab</kbd><span>Override time, date, geolocation, timezone and language per session</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Jira tab</kbd><span>Keep the ticket under test in view; quick-add bugs with session state</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Tests tab</kbd><span>Record, replay, repeat and flaky-detect browser interactions — no AI</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Isolated sessions</kbd><span>Each tab has its own cookies, cache and localStorage</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Session snapshot</kbd><span>Save &amp; restore full session state (cookies, storage, open tabs)</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Test data</kbd><span>Right-click any form field → Fill with test data (name/email/UUID/date…)</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">HAR export</kbd><span>Export network traffic as a HAR file from the Console tab</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Speed Dial</kbd><span>Editable quick-access tiles on the new-tab page</span></div>
-            <div class="shortcut-row"><kbd style="color:#888;border-color:#333;">Request replay</kbd><span>Right-click any request in the timeline to resend it with edited headers/body</span></div>
+
+            <h3 class="feature-group-title">Session &amp; tab management</h3>
+
+            <div class="feature-item">
+              <div class="feature-name">Isolated sessions</div>
+              <p>Every tab is its own Electron session partition, with its own cookies, cache and localStorage. New tabs default to an in-memory partition that's discarded on close; marking a tab persistent (or restoring a closed one) keeps its partition on disk so its data survives a restart. Right-click a tab → <b>New tab in this session</b> opens another tab sharing the same partition — handy for testing multiple pages under one logged-in identity.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Session snapshot</div>
+              <p>Right-click a tab → <b>Export snapshot…</b> to save that session's cookies, localStorage, sessionStorage and current URL to a JSON file via a save dialog. <b>Import snapshot…</b> restores a previously exported file back into a tab — useful for capturing a specific logged-in/test state and handing it to someone else, or reproducing it later. This is separate from <b>Clone</b> (same menu), which duplicates a tab into a brand-new session and copies its cookies live, without going through a file.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Test data</div>
+              <p>Right-click any editable form field for a <b>Fill with test data</b> submenu with one-click generators — first/last/full name, email, UUID, today's date, phone, address. <b>Custom template…</b> opens a small input where you can type your own template string to generate more specific values, then inject it straight into the focused field.</p>
+            </div>
+
+            <h3 class="feature-group-title">Console panel tabs</h3>
+
+            <div class="feature-item">
+              <div class="feature-name">Console tab</div>
+              <p>Shows the live console/log portion of the session's always-on recorded timeline — page <code>console.*</code> calls and browser log entries, color-coded by level (error/warn/info/log). Type in the filter box to substring-match log text; click a line with extra payload data to open it in the detail panel. <b>Clear</b> empties the visible buffer.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Storage tab</div>
+              <p>Live tables of the active session's cookies and localStorage. Cookies show domain/name/value/path/SameSite/expiry/Secure/HttpOnly with a badge distinguishing first- vs third-party, and a domain filter can narrow the list to cookies relevant to the page currently loaded. Double-click any row to edit it inline, click to copy a value, use <b>+ Add</b> to create new entries, and <b>×</b> / <b>Clear All</b> to delete.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Security tab</div>
+              <p>Click <b>Scan session</b> to run a heuristic pass over everything recorded so far: plain-HTTP requests, missing security headers (CSP, X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy) on HTTPS responses, cookies set without Secure/HttpOnly, and 401/403 auth failures. Findings are grouped High/Medium/Low with a filter and severity toggles; clicking one opens the underlying request/response in the detail panel.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Mock tab</div>
+              <p>Define request-interception rules — a URL glob pattern, an HTTP method (or Any), a fake status code and a response body — then <b>Add rule</b> to apply it immediately to the active session's traffic. Rules track live hit counts and last-hit time, can be toggled on/off, and matched requests show a MOCK badge in the timeline.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Resilience tab</div>
+              <p>Injects network failure conditions into the active session so you can see how the app under test copes: 500 errors, timeouts (504), offline, 404s, corrupted responses, added latency, or a random-500 chance. Pick a failure type, a URL pattern and a probability %, then <b>Add rule</b> — matched responses get a RESILIENCE badge in the timeline, and each rule tracks how many times it's fired.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">A11y tab</div>
+              <p>Click <b>Refresh</b> to pull the full accessibility tree (role, accessible name, description, states) for the current page into an expandable tree view. <b>Inspect element</b> turns on a live hover/click mode over the page itself — hovering highlights the matching node in the tree, so you can quickly check what role and name a specific element actually exposes.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">VR tab (visual regression)</div>
+              <p>Click <b>Capture baseline</b> to screenshot the current page (the visible viewport, or the whole scrollable page with "Full page" checked). After making a change, click <b>Compare</b> to take a new screenshot and generate a pixel-level diff — differing pixels highlighted, the rest dimmed — plus the percentage of the page that changed. View toggles switch between Baseline / Current / Diff / side-by-side.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Diff tab (network diff)</div>
+              <p>Pick two open sessions (Session A / Session B) and click <b>Compare</b> to diff their recorded requests by method + URL — same, different status, or only present in one side — in a color-coded table. Once a comparison has run, <b>Export HAR</b> downloads it as a HAR file, which is useful for comparing the same flow across two environments (e.g. staging vs. production).</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Spoof tab</div>
+              <p>Overrides timezone, locale and geolocation for the active session. Pick a city preset to auto-fill sensible values, or enter custom timezone/locale/coordinates, then <b>Apply to session</b> — <b>Reset overrides</b> clears them again. Reload the page afterwards so it picks up the new values.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Jira tab</div>
+              <p>Configure your Jira URL, email, API token and default project once via the gear icon. Type a ticket key and click <b>Load</b> to see its summary, status, assignee and priority right next to the page under test. <b>+ Add Bug</b> opens a form pre-filled from the current tab's URL/title, and <b>Submit Bug</b> files it as a real Jira issue.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Tests tab (record &amp; playback)</div>
+              <p>Click <b>Start</b> to record real clicks, fills and navigations on the page as a step list — right-click a step to insert assertions (visible, text, URL, wait-for) — then <b>Stop</b> and <b>Save</b> to name the test. Saved tests can be run once, or repeated many times in a row to flag flaky steps, with a pass/fail breakdown per run and an auto-captured screenshot on failure. No AI involved — it's a literal record/replay of the actions you performed.</p>
+            </div>
+
+            <h3 class="feature-group-title">Productivity tools</h3>
+
+            <div class="feature-item">
+              <div class="feature-name">HAR export</div>
+              <p>The <b>HAR</b> button (Console tab toolbar, and in the network-diff view) exports everything recorded for a session as a standard HAR file — for handing off to an external HAR viewer, attaching to a bug report, or archiving a run.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Speed Dial</div>
+              <p>The new-tab page shows a grid of site tiles with favicons; <b>+ Add site</b> adds one by URL and title, and each tile has a <b>×</b> to remove it. Tiles are shared across every session (not tied to one tab's isolated storage), so your frequently-tested environments are always one click away from a fresh tab.</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-name">Request replay</div>
+              <p>Click <b>↺ Replay</b> on any recorded network request to open it in an editable form — method, URL, headers, cookies and body all pre-filled from the original call. Edit whatever you need to probe (add/remove a header, reformat the body, pull cookies from a different open session), then <b>Send</b> to actually issue the request and see the live response, without going back through the app's UI.</p>
+            </div>
+
           </div>
 
           <div class="settings-pane" data-pane="about">
