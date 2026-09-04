@@ -45,7 +45,7 @@ export function updateTopBarHeight() {
   document.getElementById('permissionNotifications').style.top = h + 'px';
 }
 
-function currentTopBarHeight() {
+export function currentTopBarHeight() {
   let h = TOPBAR_BASE;
   if (state.bookmarksBarVisible) h += BOOKMARKS_BAR_H;
   if (state.findOpen) h += FIND_BAR_H;

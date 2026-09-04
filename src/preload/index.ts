@@ -143,6 +143,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     setTopBarHeight:  (h: number)  => ipcRenderer.invoke('layout:setTopBarHeight', h),
     setViewerVisible: (v: boolean) => ipcRenderer.invoke('layout:setViewerVisible', v),
     setRightPanelWidth: (w: number) => ipcRenderer.invoke('layout:setRightPanelWidth', w),
+    setTopInset: (px: number) => ipcRenderer.invoke('layout:setTopInset', px),
   },
 
   a11y: {

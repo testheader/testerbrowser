@@ -175,6 +175,7 @@ export class SessionManager {
   private consoleHeight = 220;
   private topBarHeight = 88;
   private rightPanelWidth = 0;
+  private topInset = 0;
   private isViewVisible = true;
   private sessionNotes = new Map<string, string>();
   private colorIndex = 0;
@@ -677,11 +678,12 @@ export class SessionManager {
     const s = this.sessions.get(this.activeId);
     if (!s) return;
     const bounds = this.win.getContentBounds();
+    const top = this.topBarHeight + this.topInset;
     s.view.setBounds({
       x: 0,
-      y: this.topBarHeight,
+      y: top,
       width: Math.max(0, bounds.width - this.rightPanelWidth),
-      height: Math.max(0, bounds.height - this.topBarHeight - this.consoleHeight),
+      height: Math.max(0, bounds.height - top - this.consoleHeight),
     });
   }
 
@@ -711,6 +713,15 @@ export class SessionManager {
   // panel in that region needs the view's bounds narrowed rather than just a CSS toggle.
   setRightPanelWidth(width: number) {
     this.rightPanelWidth = Math.max(0, width);
+    this.layoutActive();
+  }
+
+  // Same idea as setRightPanelWidth, but for HTML overlays that extend below
+  // the topbar (e.g. the View/app-menu dropdowns) — push the view's top edge
+  // down to clear the overlay instead of detaching the view entirely, so the
+  // rest of the page keeps rendering underneath it.
+  setTopInset(px: number) {
+    this.topInset = Math.max(0, px);
     this.layoutActive();
   }
 
