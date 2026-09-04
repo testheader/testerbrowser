@@ -347,6 +347,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
    the page CSP has no 'unsafe-inline', so inline style attributes never apply. */
 #networkControls { display: none; }
 #storageControls { display: none; align-items: center; gap: 6px; flex: 1; }
+.filter-label { flex-shrink: 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase;
+                letter-spacing: 0.03em; white-space: nowrap; }
 #filterText { flex: 1; min-width: 60px; padding: 3px 8px; border-radius: 3px;
               border: 1px solid var(--border-color); background: var(--bg-deep); color: var(--text-primary); font-size: 12px; }
 #filterText:focus { outline: none; border-color: var(--accent); }
