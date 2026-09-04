@@ -318,7 +318,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #consoleDragHandle { height: 6px; min-height: 6px; background: var(--bg-primary); border-top: 1px solid var(--border-color);
                      cursor: ns-resize; flex-shrink: 0; }
 #consoleDragHandle:hover, #consoleDragHandle.dragging { background: var(--accent); }
-#consoleHeader { display: flex; align-items: center; gap: 6px; padding: 0 10px 0 0;
+#consoleHeader { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 10px 0 0;
                  background: var(--bg-primary); border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; height: 36px; }
 #consoleTabsWrap { display: flex; align-items: center; height: 100%; min-width: 0; flex-shrink: 1; }
 .console-tabs-chevron { flex-shrink: 0; background: var(--bg-primary); border: none; color: var(--text-muted); cursor: pointer;
@@ -347,12 +347,15 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #consoleTabResilience::before { content: '\26A0'; }
 #consoleTabJira::before       { content: '\1F3AB'; }
 #consoleTabTests::before      { content: '\25B6'; }
-.console-sep { width: 1px; height: 18px; background: var(--bg-hover); flex-shrink: 0; }
-#consoleControls { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-/* Hidden until switchConsoleTab shows it. Lives here, not in a style attribute:
-   the page CSP has no 'unsafe-inline', so inline style attributes never apply. */
-#networkControls { display: none; }
-#storageControls { display: none; align-items: center; gap: 6px; flex: 1; }
+/* Per-tab filter/search sub-header, docked to the top of that tab's own panel
+   (not the shared tab-strip row) so it visually reads as part of the active
+   panel. Hidden until switchConsoleTab shows it — lives here, not in a style
+   attribute, since the page CSP has no 'unsafe-inline'. */
+#consoleControls, #networkControls, #storageControls {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-width: 0;
+  height: 32px; padding: 0 10px; border-bottom: 1px solid var(--border-subtle);
+}
+#networkControls, #storageControls { display: none; }
 .filter-label { flex-shrink: 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase;
                 letter-spacing: 0.03em; white-space: nowrap; }
 #filterText { flex: 1; min-width: 60px; padding: 3px 8px; border-radius: 3px;
@@ -387,7 +390,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
 
 /* ── Storage panel ── */
-#storagePanel { flex: 1; overflow: auto; display: none; }
+#storagePanel { flex: 1; display: none; flex-direction: column; min-height: 0; }
+#storagePanelContent { flex: 1; overflow: auto; min-height: 0; }
 .storage-section-header { padding: 5px 10px; font-size: 11px; font-weight: 600; color: var(--text-faint);
                            text-transform: uppercase; letter-spacing: 0.8px; background: var(--bg-primary);
                            border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; z-index: 1; }

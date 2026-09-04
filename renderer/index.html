@@ -116,37 +116,38 @@
       </div>
       <button class="console-tabs-chevron" id="consoleTabsNextBtn" title="Scroll tabs right" hidden>&#8250;</button>
       </div>
-      <div class="console-sep"></div>
-      <div id="consoleControls">
-        <span class="filter-label">Filter</span>
-        <input id="filterText" placeholder="Filter console…" />
-        <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console">&#10005;</button>
-      </div>
-      <div id="networkControls">
-        <span class="filter-label">Filter</span>
-        <input id="networkFilterText" placeholder="Filter requests…" />
-        <div class="filter-pills" id="networkPills">
-          <button class="filter-pill on" data-type="network-request"  title="Network requests">Req<span class="pill-count"></span></button>
-          <button class="filter-pill on" data-type="network-response" title="Network responses">Res<span class="pill-count"></span></button>
-          <button class="filter-pill on" data-type="network-failed"   title="Failed requests">Err<span class="pill-count"></span></button>
-        </div>
-        <button id="exportHarBtn" title="Export HAR">HAR</button>
-        <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log">&#10005;</button>
-      </div>
-      <div id="storageControls">
-        <span class="filter-label">Filter</span>
-        <input id="storageFilter" placeholder="Filter…" />
-        <button class="storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
-        <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage">&#8635;</button>
-      </div>
       <button class="console-icon-btn" id="consolePanelMinBtn" title="Minimize / restore panel">&#8964;</button>
     </div>
     <div id="consolePanelBody">
       <div id="timelinePanelWrapper">
+        <div id="consoleControls">
+          <span class="filter-label">Filter</span>
+          <input id="filterText" placeholder="Filter console…" />
+          <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console">&#10005;</button>
+        </div>
+        <div id="networkControls">
+          <span class="filter-label">Filter</span>
+          <input id="networkFilterText" placeholder="Filter requests…" />
+          <div class="filter-pills" id="networkPills">
+            <button class="filter-pill on" data-type="network-request"  title="Network requests">Req<span class="pill-count"></span></button>
+            <button class="filter-pill on" data-type="network-response" title="Network responses">Res<span class="pill-count"></span></button>
+            <button class="filter-pill on" data-type="network-failed"   title="Failed requests">Err<span class="pill-count"></span></button>
+          </div>
+          <button id="exportHarBtn" title="Export HAR">HAR</button>
+          <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log">&#10005;</button>
+        </div>
         <div id="timelinePanel"></div>
         <button id="scrollToBottomBtn" title="Scroll to bottom">&#8595; Latest</button>
       </div>
-      <div id="storagePanel"></div>
+      <div id="storagePanel">
+        <div id="storageControls">
+          <span class="filter-label">Filter</span>
+          <input id="storageFilter" placeholder="Filter…" />
+          <button class="storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
+          <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage">&#8635;</button>
+        </div>
+        <div id="storagePanelContent"></div>
+      </div>
       <div id="a11yPanel"></div>
       <div id="diffPanel"></div>
       <div id="vrPanel"></div>

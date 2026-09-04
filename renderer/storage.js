@@ -25,7 +25,7 @@ async function copyToClipboard(text) {
 
 export async function loadStoragePanel() {
   if (!state.activeId) return;
-  const panel = document.getElementById('storagePanel');
+  const panel = document.getElementById('storagePanelContent');
   panel.innerHTML = '<div class="storage-empty">Loading…</div>';
 
   const filterText = document.getElementById('storageFilter').value.toLowerCase();

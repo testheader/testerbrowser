@@ -34,7 +34,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('networkControls').style.display      = tab === 'network'  ? 'flex'  : 'none';
   document.getElementById('storageControls').style.display      = tab === 'storage'  ? 'flex'  : 'none';
   document.getElementById('timelinePanelWrapper').style.display = timelineVisible    ? 'flex'  : 'none';
-  document.getElementById('storagePanel').style.display         = tab === 'storage'  ? 'block' : 'none';
+  document.getElementById('storagePanel').style.display         = tab === 'storage'  ? 'flex'  : 'none';
   document.getElementById('a11yPanel').style.display            = tab === 'a11y'     ? 'flex'  : 'none';
   document.getElementById('diffPanel').style.display            = tab === 'diff'     ? 'flex'  : 'none';
   document.getElementById('vrPanel').style.display              = tab === 'vr'       ? 'flex'  : 'none';
