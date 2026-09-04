@@ -146,6 +146,15 @@ export interface TestStep {
   sensitive?: boolean;
 }
 
+interface FollowPairing {
+  leaderId: string;
+  followerId: string;
+  mirrorNavigation: boolean;
+  relayedStepIds: Set<string>;
+  pollTimer: ReturnType<typeof setInterval>;
+  navHandler: (_e: unknown, url: string) => void;
+}
+
 function buildPlaybackScript(step: TestStep): string {
   const sel = JSON.stringify(step.selector ?? '');
   const val = JSON.stringify(step.value ?? '');
@@ -186,6 +195,8 @@ export class SessionManager {
   // Accumulates recorded steps (keyed by step id) across a session's recording, so
   // steps survive a full page navigation destroying the page's own JS context.
   private recordingBuffers = new Map<string, Map<string, TestStep>>();
+  // Live leader→follower links ("Follow Along"), keyed by leader session id.
+  private followPairings = new Map<string, FollowPairing>();
 
   constructor(win: BrowserWindow, getRedactHeaders: () => boolean) {
     this.win = win;
@@ -1125,6 +1136,10 @@ export class SessionManager {
   destroySession(id: string) {
     const s = this.sessions.get(id);
     if (!s) return;
+    for (const leaderId of Array.from(this.followPairings.keys())) {
+      const p = this.followPairings.get(leaderId);
+      if (p && (p.leaderId === id || p.followerId === id)) this.stopFollowAlong(leaderId).catch(() => {});
+    }
     if (this.activeId === id) { this.win.contentView.removeChildView(s.view); this.activeId = null; }
     s.recorder.destroy();
     (s.view.webContents as any).destroy?.();
@@ -1212,6 +1227,103 @@ export class SessionManager {
       return { success: true };
     } catch (e) {
       return { success: false, error: String(e) };
+    }
+  }
+
+  // ─── Follow Along ─────────────────────────────────────────────────────────
+  // Links a "leader" session to a "follower" session: the leader keeps
+  // recording clicks/fills via the same mechanism as Tests recording, but
+  // instead of only buffering steps for later replay, each new step is
+  // relayed to the follower and played back there in near real time via the
+  // existing selector-based playbackStep(). Full-page navigation on the
+  // leader (link clicks, redirecting submits, address-bar changes) is
+  // mirrored separately at the WebContents level, gated by the pairing's own
+  // mirrorNavigation toggle, since it isn't captured as a recorded step.
+
+  private isSessionLinked(id: string): boolean {
+    for (const p of this.followPairings.values()) {
+      if (p.leaderId === id || p.followerId === id) return true;
+    }
+    return false;
+  }
+
+  async startFollowAlong(
+    leaderId: string, followerId: string, mirrorNavigation: boolean
+  ): Promise<{ ok: boolean; error?: string }> {
+    if (leaderId === followerId) return { ok: false, error: 'Pick two different sessions.' };
+    const leader = this.sessions.get(leaderId);
+    const follower = this.sessions.get(followerId);
+    if (!leader || !follower) return { ok: false, error: 'Session not found.' };
+    if (this.isSessionLinked(leaderId) || this.isSessionLinked(followerId)) {
+      return { ok: false, error: 'One of these sessions is already part of a Follow Along link.' };
+    }
+    if (this.recordingHandlers.has(leaderId)) {
+      return { ok: false, error: 'That session is already being recorded (Tests tab) — stop that first.' };
+    }
+
+    await this.startRecording(leaderId);
+
+    const navHandler = (_e: unknown, url: string) => {
+      const pairing = this.followPairings.get(leaderId);
+      if (!pairing?.mirrorNavigation) return;
+      const followerSession = this.sessions.get(pairing.followerId);
+      if (!followerSession) return;
+      if (followerSession.view.webContents.getURL() === url) return;
+      followerSession.view.webContents.loadURL(url).catch(() => {});
+    };
+    leader.view.webContents.on('did-navigate', navHandler);
+    leader.view.webContents.on('did-navigate-in-page', navHandler);
+
+    const pollTimer = setInterval(() => { this.relayFollowSteps(leaderId).catch(() => {}); }, 300);
+
+    this.followPairings.set(leaderId, {
+      leaderId, followerId, mirrorNavigation, relayedStepIds: new Set(), pollTimer, navHandler,
+    });
+    return { ok: true };
+  }
+
+  async stopFollowAlong(leaderId: string): Promise<boolean> {
+    const pairing = this.followPairings.get(leaderId);
+    if (!pairing) return false;
+    clearInterval(pairing.pollTimer);
+    const leader = this.sessions.get(leaderId);
+    if (leader) {
+      leader.view.webContents.off('did-navigate', pairing.navHandler);
+      leader.view.webContents.off('did-navigate-in-page', pairing.navHandler);
+    }
+    this.followPairings.delete(leaderId);
+    if (this.recordingHandlers.has(leaderId)) await this.stopRecording(leaderId);
+    return true;
+  }
+
+  setFollowMirrorNavigation(leaderId: string, mirrorNavigation: boolean): boolean {
+    const pairing = this.followPairings.get(leaderId);
+    if (!pairing) return false;
+    pairing.mirrorNavigation = mirrorNavigation;
+    return true;
+  }
+
+  listFollowPairings(): { leaderId: string; followerId: string; mirrorNavigation: boolean }[] {
+    return Array.from(this.followPairings.values()).map((p) => ({
+      leaderId: p.leaderId, followerId: p.followerId, mirrorNavigation: p.mirrorNavigation,
+    }));
+  }
+
+  private async relayFollowSteps(leaderId: string): Promise<void> {
+    const pairing = this.followPairings.get(leaderId);
+    if (!pairing) return;
+    await this.harvestRecordingSteps(leaderId);
+    const steps = this.getBufferedSteps(leaderId);
+    for (const step of steps) {
+      if (pairing.relayedStepIds.has(step.id)) continue;
+      pairing.relayedStepIds.add(step.id);
+      // Full navigations are mirrored separately (see navHandler above) — the
+      // recorded 'navigate' step type only covers in-page history API calls.
+      if (step.type !== 'click' && step.type !== 'fill') continue;
+      const result = await this.playbackStep(pairing.followerId, step);
+      this.win.webContents.send('followAlong:stepResult', {
+        leaderId, followerId: pairing.followerId, step, result,
+      });
     }
   }
 }

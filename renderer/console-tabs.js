@@ -9,6 +9,7 @@ import { initMock } from './mock.js';
 import { initResilience } from './resilience.js';
 import { initJira } from './jira.js';
 import { initRecordPlayback } from './record-playback.js';
+import { initFollow, refreshFollowPickers } from './followalong.js';
 import { renderTimeline } from './timeline.js';
 
 export function switchConsoleTab(tab) {
@@ -27,6 +28,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('consoleTabResilience').classList.toggle('active', tab === 'resilience');
   document.getElementById('consoleTabJira').classList.toggle('active', tab === 'jira');
   document.getElementById('consoleTabTests').classList.toggle('active', tab === 'tests');
+  document.getElementById('consoleTabFollow').classList.toggle('active', tab === 'follow');
   const timelineVisible = tab === 'console' || tab === 'network';
   document.getElementById('consoleControls').style.display      = tab === 'console'  ? ''      : 'none';
   document.getElementById('networkControls').style.display      = tab === 'network'  ? 'flex'  : 'none';
@@ -42,6 +44,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('resiliencePanel').style.display      = tab === 'resilience' ? 'flex'  : 'none';
   document.getElementById('jiraPanel').style.display            = tab === 'jira'       ? 'flex'  : 'none';
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
+  document.getElementById('followPanel').style.display          = tab === 'follow'     ? 'flex'  : 'none';
   const hasDetailTabs = state.detailTabs.length > 0 && (timelineVisible || tab === 'security');
   document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? 'block' : 'none';
@@ -54,6 +57,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'resilience') initResilience();
   if (tab === 'jira') initJira();
   if (tab === 'tests') initRecordPlayback();
+  if (tab === 'follow') initFollow();
 }
 
 export function initConsoleTabs() {
@@ -69,6 +73,7 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabResilience').addEventListener('click', () => switchConsoleTab('resilience'));
   document.getElementById('consoleTabJira').addEventListener('click', () => { switchConsoleTab('jira'); initJira(); });
   document.getElementById('consoleTabTests').addEventListener('click', () => switchConsoleTab('tests'));
+  document.getElementById('consoleTabFollow').addEventListener('click', () => switchConsoleTab('follow'));
 
   initTabOverflow();
 }

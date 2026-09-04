@@ -25,6 +25,7 @@ import './mock.js';
 import './resilience.js';
 import './jira.js';
 import { initRecordPlayback } from './record-playback.js';
+import './followalong.js';
 import { initViewDropdown } from './view-dropdown.js';
 import { initAppMenu } from './app-menu.js';
 import { initShortcuts } from './shortcuts.js';

@@ -695,6 +695,13 @@ ipcMain.handle('session:stopRecording',      (_e, id: string) => sessionManager?
 ipcMain.handle('session:pollRecordingSteps', (_e, id: string) => sessionManager?.pollRecordingSteps(id) ?? []);
 ipcMain.handle('session:playbackStep',       (_e, id: string, step: TestStep) => sessionManager?.playbackStep(id, step) ?? null);
 
+ipcMain.handle('followalong:start', (_e, leaderId: string, followerId: string, mirrorNavigation: boolean) =>
+  sessionManager?.startFollowAlong(leaderId, followerId, mirrorNavigation) ?? { ok: false, error: 'No session manager' });
+ipcMain.handle('followalong:stop', (_e, leaderId: string) => sessionManager?.stopFollowAlong(leaderId) ?? false);
+ipcMain.handle('followalong:setMirrorNavigation', (_e, leaderId: string, mirrorNavigation: boolean) =>
+  sessionManager?.setFollowMirrorNavigation(leaderId, mirrorNavigation) ?? false);
+ipcMain.handle('followalong:list', () => sessionManager?.listFollowPairings() ?? []);
+
 // Settings IPC
 ipcMain.handle('settings:get', () => settingsStore.get());
 ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) =>

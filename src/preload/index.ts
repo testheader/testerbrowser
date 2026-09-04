@@ -216,6 +216,19 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
   },
 
+  followAlong: {
+    start: (leaderId: string, followerId: string, mirrorNavigation: boolean) =>
+      ipcRenderer.invoke('followalong:start', leaderId, followerId, mirrorNavigation),
+    stop: (leaderId: string) => ipcRenderer.invoke('followalong:stop', leaderId),
+    setMirrorNavigation: (leaderId: string, mirrorNavigation: boolean) =>
+      ipcRenderer.invoke('followalong:setMirrorNavigation', leaderId, mirrorNavigation),
+    list: () => ipcRenderer.invoke('followalong:list'),
+    onStepResult: (cb: (d: { leaderId: string; followerId: string; step: object; result: { success: boolean; error?: string } }) => void) => {
+      ipcRenderer.removeAllListeners('followAlong:stepResult');
+      ipcRenderer.on('followAlong:stepResult', (_e, d) => cb(d));
+    },
+  },
+
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),

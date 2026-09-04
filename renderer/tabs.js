@@ -4,6 +4,7 @@ import { setLoadingBar, updateReloadBtn, updateNavButtons, updateZoomDisplay } f
 import { updateBookmarkStar } from './bookmarks.js';
 import { loadStoragePanel } from './storage.js';
 import { refreshDiffPickers } from './diff.js';
+import { refreshFollowPickers } from './followalong.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 import { reloadA11yIfLoaded } from './a11y.js';
 import { loadRules } from './resilience.js';
@@ -63,6 +64,7 @@ export async function refreshTabs() {
   const sessions   = await testerBrowser.sessions.list();
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   refreshDiffPickers();
+  refreshFollowPickers();
 
   state.tabOrder = state.tabOrder.filter((id) => sessionMap.has(id));
   for (const s of sessions) if (!state.tabOrder.includes(s.id)) state.tabOrder.push(s.id);
