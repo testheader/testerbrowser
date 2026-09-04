@@ -16,6 +16,7 @@ export function initA11y() {
     <div class="a11y-toolbar">
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
+      <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
     </div>
     <div class="a11y-content" id="a11yContent">
       <div class="a11y-empty">Click Refresh to load the accessibility tree for this page.</div>
@@ -46,10 +47,26 @@ export function enableA11yHover() {
     row.classList.add('a11y-hovered');
     row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
-  testerBrowser.a11y.onNodeClicked((node) => {
+  testerBrowser.a11y.onNodeClicked(async (node) => {
     if (!node || !node.nodeId) return;
-    selectNode(node.nodeId);
+    if (selectNode(node.nodeId)) return;
+    // Not in the currently rendered tree (e.g. page changed since the last
+    // snapshot) — refresh and retry once before giving up.
+    await loadA11yPanel();
+    if (!selectNode(node.nodeId)) {
+      showInspectMessage("Selected element isn't in the accessibility tree");
+    }
   });
+}
+
+let inspectMsgTimer = null;
+function showInspectMessage(text) {
+  const el = document.getElementById('a11yInspectMsg');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('visible');
+  clearTimeout(inspectMsgTimer);
+  inspectMsgTimer = setTimeout(() => el.classList.remove('visible'), 3000);
 }
 
 export function disableA11yHover() {
@@ -76,7 +93,7 @@ function updateInspectAvailability() {
 
 function selectNode(nodeId) {
   const row = nodeRowMap.get(nodeId);
-  if (!row) return;
+  if (!row) return false;
   if (selectedRow) selectedRow.classList.remove('a11y-selected');
   selectedRow = row;
   row.classList.add('a11y-selected');
@@ -90,6 +107,7 @@ function selectNode(nodeId) {
     }
   }
   row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  return true;
 }
 
 export async function loadA11yPanel() {
