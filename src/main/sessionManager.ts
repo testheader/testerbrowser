@@ -293,7 +293,13 @@ export class SessionManager {
         return;
       }
       if (method !== 'Fetch.requestPaused') return;
-      const { requestId, request } = params as { requestId: string; request: { url: string; method: string } };
+      const { requestId, request, networkId } = params as { requestId: string; request: { url: string; method: string }; networkId?: string };
+      // Fetch.requestPaused's requestId is a Fetch-domain id, distinct from the
+      // Network-domain requestId the recorder's Network.* events key off of —
+      // tag the request under networkId (falling back to requestId when no
+      // correlated network event exists) so the recorded response/failure
+      // event actually carries the mock/resilience tag.
+      const tagId = networkId || requestId;
       const dbg = view.webContents.debugger;
       const rule = testSession.mockRules.find(r =>
         r.enabled && (r.method === '*' || r.method === request.method) && matchesGlob(r.urlPattern, request.url)
@@ -301,7 +307,7 @@ export class SessionManager {
       if (rule) {
         rule.hitCount = (rule.hitCount || 0) + 1;
         rule.lastHitAt = Date.now();
-        testSession.recorder.tagRequest(requestId, { mockRuleId: rule.id });
+        testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
         dbg.sendCommand('Fetch.fulfillRequest', {
           requestId,
           responseCode: rule.statusCode,
@@ -315,7 +321,7 @@ export class SessionManager {
       if (res && Math.random() < res.probability) {
         res.hitCount = (res.hitCount || 0) + 1;
         res.lastHitAt = Date.now();
-        testSession.recorder.tagRequest(requestId, { resilienceRuleId: res.id, resilienceType: res.type });
+        testSession.recorder.tagRequest(tagId, { resilienceRuleId: res.id, resilienceType: res.type });
         switch (res.type) {
           case 'error500':
           case 'random500':
