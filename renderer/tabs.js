@@ -11,8 +11,21 @@ import { refreshVR, clearVRSession } from './visual-regression.js';
 import { clearSecurityFindings } from './security.js';
 import { refreshTimelineNow } from './timeline.js';
 
-export function insertAfterActive(id) {
-  const idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
+export async function insertAfterActive(id) {
+  const sessions   = await testerBrowser.sessions.list();
+  const sessionMap = new Map(sessions.map((s) => [s.id, s]));
+  const partition  = sessionMap.get(id)?.partition;
+
+  // Keep same-session tabs grouped: insert after the last tab sharing this
+  // partition, wherever it sits, instead of always after the active tab.
+  let idx = -1;
+  if (partition) {
+    for (let i = state.tabOrder.length - 1; i >= 0; i--) {
+      const tid = state.tabOrder[i];
+      if (tid !== id && sessionMap.get(tid)?.partition === partition) { idx = i; break; }
+    }
+  }
+  if (idx === -1) idx = state.activeId ? state.tabOrder.indexOf(state.activeId) : -1;
   if (idx === -1) state.tabOrder.push(id);
   else state.tabOrder.splice(idx + 1, 0, id);
 }
@@ -248,7 +261,7 @@ export async function reopenTab() {
   if (!entry) return;
   const id = await testerBrowser.sessions.reopen(entry);
   if (!id) return;
-  insertAfterActive(id);
+  await insertAfterActive(id);
   await switchToSession(id);
 }
 
@@ -280,7 +293,7 @@ export async function newSession({ persistent = true } = {}) {
   state.sessionCounter++;
   const name = persistent ? `Session ${state.sessionCounter}` : `Temp ${state.sessionCounter}`;
   const id = await testerBrowser.sessions.create(name, { persistent });
-  insertAfterActive(id);
+  await insertAfterActive(id);
   await switchToSession(id);
   return id;
 }
@@ -303,5 +316,5 @@ export function initTabs() {
 
   testerBrowser.sessions.onTabCycle(({ reverse }) => cycleTab(reverse));
 
-  testerBrowser.sessions.onNewTab(({ id }) => { insertAfterActive(id); switchToSession(id); });
+  testerBrowser.sessions.onNewTab(async ({ id }) => { await insertAfterActive(id); switchToSession(id); });
 }
