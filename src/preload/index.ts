@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     destroy:     (id: string) => ipcRenderer.invoke('sessions:destroy', id),
     rename:      (id: string, name: string) => ipcRenderer.invoke('sessions:rename', id, name),
     pin:         (id: string, pinned: boolean) => ipcRenderer.invoke('sessions:pin', id, pinned),
+    setTabOrder: (order: string[]) => ipcRenderer.invoke('sessions:setTabOrder', order),
     reopen:      (opts: { name: string; url: string; partition: string }) => ipcRenderer.invoke('sessions:reopen', opts),
     back:        (id: string) => ipcRenderer.invoke('sessions:back', id),
     forward:     (id: string) => ipcRenderer.invoke('sessions:forward', id),

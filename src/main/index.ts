@@ -271,6 +271,7 @@ ipcMain.handle('sessions:destroy', (_e, id: string) => sessionManager?.destroySe
 ipcMain.handle('sessions:navigate',(_e, id: string, url: string) => sessionManager?.navigate(id, url));
 ipcMain.handle('sessions:rename',  (_e, id: string, name: string) => sessionManager?.renameSession(id, name));
 ipcMain.handle('sessions:pin',     (_e, id: string, pinned: boolean) => sessionManager?.pinSession(id, pinned));
+ipcMain.handle('sessions:setTabOrder', (_e, order: string[]) => sessionManager?.setTabOrder(order));
 ipcMain.handle('sessions:reopen',  (_e, opts: { name: string; url: string; partition: string; color?: string }) => {
   // Only restore http/https URLs; empty string falls through to the newtab page
   const startUrl = /^https?:\/\//i.test(opts.url ?? '') ? opts.url : undefined;

@@ -186,6 +186,7 @@ export class SessionManager {
   private rightPanelWidth = 0;
   private topInset = 0;
   private isViewVisible = true;
+  private tabOrder: string[] = [];
   private sessionNotes = new Map<string, string>();
   private colorIndex = 0;
   private downloadManager: DownloadManager;
@@ -618,10 +619,19 @@ export class SessionManager {
     return path.join(app.getPath('userData'), 'open-sessions.json');
   }
 
+  // Called by the renderer whenever its tab strip order changes (drag-reorder,
+  // new tab, close, restore) so saveSessions() can persist that order instead
+  // of just the Map's creation-order iteration — see #102.
+  setTabOrder(order: string[]) {
+    this.tabOrder = order;
+  }
+
   saveSessions() {
     try {
+      const orderIndex = new Map(this.tabOrder.map((id, i) => [id, i]));
       const sessions = Array.from(this.sessions.values())
         .filter(s => s.persistent)
+        .sort((a, b) => (orderIndex.get(a.id) ?? Infinity) - (orderIndex.get(b.id) ?? Infinity))
         .map(s => ({ name: s.name, partition: s.partition, url: s.currentUrl, color: s.color }));
       const notes: Record<string, string> = {};
       for (const [id, note] of this.sessionNotes) {

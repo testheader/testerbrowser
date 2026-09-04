@@ -68,6 +68,7 @@ export async function refreshTabs() {
 
   state.tabOrder = state.tabOrder.filter((id) => sessionMap.has(id));
   for (const s of sessions) if (!state.tabOrder.includes(s.id)) state.tabOrder.push(s.id);
+  testerBrowser.sessions.setTabOrder(state.tabOrder);
 
   const tabsEl = document.getElementById('tabs');
   tabsEl.querySelectorAll('.tab, .tab-group-add').forEach((el) => el.remove());
