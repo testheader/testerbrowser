@@ -119,6 +119,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #themeToggleBtn:hover, #winMinBtn:hover, #winMaxBtn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 #winCloseBtn:hover { background: var(--error-strong); color: var(--text-strong); }
 .win-icon { display: block; width: 10px; height: 10px; }
+.win-icon[hidden] { display: none; }
 
 /* ── Top bar ── */
 #topbar { display: flex; flex-direction: column; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
