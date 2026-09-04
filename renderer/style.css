@@ -1,5 +1,12 @@
 * { box-sizing: border-box; }
 
+/* Native number-input spin buttons render as unwanted scrollbar-like arrows
+   in every browser theme — every number field in the app is small and
+   typed directly, so the stepper adds noise without adding value. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
 /* ── Theme tokens ──
    Every panel reads these; no rule outside this block should hard-code a
    neutral or status color, or it won't follow the light/dark toggle.
