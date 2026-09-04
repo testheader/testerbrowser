@@ -10,18 +10,57 @@ const AREA_BY_CONSOLE_TAB = {
 };
 
 export async function openBugReport() {
+  // Capture the app's current state before the modal ever appears — capturing
+  // after showing it means the screenshot mostly just shows the report form.
+  const captured = await testerBrowser.bugReport.captureScreenshot();
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('bugReportOverlay').classList.add('open');
   resetForm();
   document.getElementById('bugReportArea').value = AREA_BY_CONSOLE_TAB[state.activeConsoleTab] || 'Other';
+  setScreenshot(captured);
 
   const diag = await testerBrowser.bugReport.getDiagnostics();
   document.getElementById('bugReportDiagPreview').value = formatDiagnostics(diag);
+}
 
-  screenshotB64 = await testerBrowser.bugReport.captureScreenshot();
+function setScreenshot(b64) {
+  screenshotB64 = b64 || null;
   const img = document.getElementById('bugReportShotPreview');
   if (screenshotB64) img.src = `data:image/jpeg;base64,${screenshotB64}`;
   else img.removeAttribute('src');
+}
+
+async function retakeScreenshot() {
+  const btn = document.getElementById('bugReportRetakeBtn');
+  btn.disabled = true;
+  document.getElementById('bugReportOverlay').classList.remove('open');
+  await testerBrowser.layout.setViewerVisible(true);
+  // capturePage() reads whatever is currently composited, so wait a couple of
+  // frames for the window to actually repaint with the modal hidden first.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const captured = await testerBrowser.bugReport.captureScreenshot();
+  await testerBrowser.layout.setViewerVisible(false);
+  document.getElementById('bugReportOverlay').classList.add('open');
+  setScreenshot(captured);
+  btn.disabled = false;
+}
+
+function uploadScreenshot(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    // Normalize to JPEG so it matches what capture already produces (the
+    // preview's data URI and the .jpg filename the backend attaches under).
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width  = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+      setScreenshot(canvas.toDataURL('image/jpeg', 0.85).split(',')[1] || '');
+    };
+    image.src = reader.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 function formatDiagnostics(d) {
@@ -101,6 +140,13 @@ export function initBugReport() {
     if (e.target === document.getElementById('bugReportOverlay')) closeBugReport();
   };
   document.getElementById('bugReportSubmitBtn').onclick = submitBugReport;
+  document.getElementById('bugReportRetakeBtn').onclick = retakeScreenshot;
+  document.getElementById('bugReportUploadBtn').onclick = () => document.getElementById('bugReportShotFile').click();
+  document.getElementById('bugReportShotFile').onchange = (e) => {
+    const file = e.target.files[0];
+    if (file) uploadScreenshot(file);
+    e.target.value = '';
+  };
   document.getElementById('bugReportLink').onclick = (e) => {
     e.preventDefault();
     const url = e.currentTarget.dataset.url;

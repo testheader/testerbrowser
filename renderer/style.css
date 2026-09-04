@@ -701,6 +701,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #bugReportShotWrap { margin-top: 6px; }
 #bugReportShotPreview { max-width: 100%; border: 1px solid var(--border-color); border-radius: 4px; display: none; }
 #bugReportShotPreview[src] { display: block; }
+#bugReportShotActions { display: flex; gap: 8px; margin-top: 6px; }
 #bugReportMsg { font-size: 12px; min-height: 16px; }
 #bugReportMsg.err { color: var(--error-strong); }
 #bugReportMsg.ok  { color: var(--success-strong); }

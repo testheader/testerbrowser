@@ -390,7 +390,14 @@
         <details id="bugReportDiagDetails" open>
           <summary>Diagnostics that will be attached (editable) &#9662;</summary>
           <textarea id="bugReportDiagPreview" spellcheck="false"></textarea>
-          <div id="bugReportShotWrap"><img id="bugReportShotPreview" alt="TesterBrowser UI screenshot" /></div>
+          <div id="bugReportShotWrap">
+            <img id="bugReportShotPreview" alt="TesterBrowser UI screenshot" />
+            <div id="bugReportShotActions">
+              <button type="button" class="btn btn-secondary" id="bugReportRetakeBtn">Retake screenshot</button>
+              <button type="button" class="btn btn-secondary" id="bugReportUploadBtn">Upload image…</button>
+              <input type="file" id="bugReportShotFile" accept="image/*" hidden />
+            </div>
+          </div>
         </details>
         <div id="bugReportMsg"></div>
       </div>
