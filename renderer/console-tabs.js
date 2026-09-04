@@ -57,7 +57,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'resilience') initResilience();
   if (tab === 'jira') initJira();
   if (tab === 'tests') initRecordPlayback();
-  if (tab === 'follow') initFollow();
+  if (tab === 'follow') { initFollow(); refreshFollowPickers(); }
 }
 
 export function initConsoleTabs() {

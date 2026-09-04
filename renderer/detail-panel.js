@@ -117,7 +117,7 @@ function renderDetailContent() {
           <h3>Response</h3>
           <span class="${statusClass(res.status)}">${escHtml(String(res.status || ''))}</span>
           <span style="color:#666;margin:0 6px">${escHtml(res.statusText || '')}</span>
-          ${resPayload.durationMs != null ? `<span class="detail-timing">${Math.round(resPayload.durationMs)} ms</span>` : ''}
+          ${typeof resPayload.durationMs === 'number' ? `<span class="detail-timing">${Math.round(resPayload.durationMs)} ms</span>` : ''}
         </div>`;
         if (res.headers && Object.keys(res.headers).length) {
           html += `<div class="detail-section"><h3>Response Headers</h3><table class="headers-table">`;
