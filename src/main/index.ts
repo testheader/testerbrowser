@@ -509,7 +509,7 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
         'Content-Type': 'application/json',
         'User-Agent': 'TesterBrowser-BugReporter',
       },
-      body: JSON.stringify({ title, body }),
+      body: JSON.stringify({ title, body, labels: ['status-ready'] }),
     });
     const data = await res.json() as Record<string, unknown>;
     if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
