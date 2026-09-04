@@ -114,7 +114,13 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
   background: none; border: none; color: var(--text-muted); cursor: pointer;
   width: 46px; height: 36px; display: flex; align-items: center; justify-content: center;
   font-size: 14px; transition: background 0.1s, color 0.1s; -webkit-app-region: no-drag;
-  padding: 0;
+  padding: 0; position: relative;
+}
+/* Small dot marks "follow system" so the toggle can represent all three
+   theme states, not just the two concrete light/dark icons it shows. */
+#themeToggleBtn.theme-system::after {
+  content: ''; position: absolute; bottom: 6px; right: 12px;
+  width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
 }
 #themeToggleBtn:hover, #winMinBtn:hover, #winMaxBtn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 #winCloseBtn:hover { background: var(--error-strong); color: var(--text-strong); }
