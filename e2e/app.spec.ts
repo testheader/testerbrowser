@@ -12,7 +12,7 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createServer, Server } from 'http';
 import path from 'path';
-import { getMainWindow } from './helpers';
+import { getMainWindow, destroyExtraSessions } from './helpers';
 
 let app: ElectronApplication;
 let window: Page;
@@ -47,6 +47,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  await destroyExtraSessions(window);
   await app.close();
   await new Promise<void>(resolve => testServer.close(() => resolve()));
 });
@@ -246,14 +247,18 @@ async function openStorageTab(win: Page, port: number) {
   await win.waitForTimeout(500);
 }
 
-// Returns the session whose URL is on 127.0.0.1 — i.e. the one the storage
-// panel is bound to via state.activeId. Throws if openStorageTab was not called
-// first, since no session would have a loopback URL yet.
+// Returns the session the Storage tab is actually bound to (state.activeId,
+// read via the active tab's DOM element rather than guessing from the URL —
+// once more than one session has ever visited 127.0.0.1, which happens by
+// the time later tests in this file run, a URL-substring match is ambiguous
+// and can silently resolve to the wrong session).
 async function activeSession(win: Page): Promise<{ id: string; partition: string; url: string }> {
+  const activeId = await win.evaluate(() => document.querySelector('.tab.active')?.getAttribute('data-id'));
+  if (!activeId) throw new Error('No active tab found');
   const sessions: Array<{ id: string; partition: string; url: string }> =
     await win.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const s = sessions.find(s => s.url?.includes('127.0.0.1'));
-  if (!s) throw new Error('No session navigated to 127.0.0.1 — call openStorageTab first');
+  const s = sessions.find(s => s.id === activeId);
+  if (!s) throw new Error(`Active session ${activeId} not found in sessions.list()`);
   return s;
 }
 
@@ -279,12 +284,13 @@ test('storage tab: add cookie via "+ Add" button', async () => {
   await addRow.locator('input').nth(2).fill('e2e_value');
   await addRow.locator('input').nth(1).press('Enter');
 
-  await window.waitForTimeout(500);
-
-  const cookies: Array<{ name: string; value: string }> =
-    await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
-  const added = cookies.find(c => c.name === 'e2e_added_cookie');
-  expect(added).toBeDefined();
+  let added: { name: string; value: string } | undefined;
+  await expect(async () => {
+    const cookies: Array<{ name: string; value: string }> =
+      await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
+    added = cookies.find(c => c.name === 'e2e_added_cookie');
+    expect(added).toBeDefined();
+  }).toPass({ timeout: 5_000 });
   expect(added?.value).toBe('e2e_value');
 });
 

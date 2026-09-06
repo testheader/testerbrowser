@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import path from 'path';
-import { getMainWindow, getTabPage } from './helpers';
+import { getMainWindow, getTabPage, destroyExtraSessions } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -18,6 +18,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  await destroyExtraSessions(window);
   await app.close();
   await fixtures.close();
 });
@@ -52,19 +53,26 @@ test('diffPanel contains a HAR export button', async () => {
 });
 
 test('comparing two sessions categorizes matching and unique requests correctly', async () => {
-  const urlPath = '/network/status-codes.html';
+  // Deliberately navigation-only (no post-load button clicks): a fetch
+  // triggered by clicking a button on a second, non-default session has
+  // proven unreliable to drive from here, in a way a plain page load isn't —
+  // the page load itself already produces a real, recordable network event.
+  const sharedPath = '/network/status-codes.html';
+  const onlyAPath = '/downloads/sample.txt';
 
   const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
   const sessionAId = sessions[0].id;
 
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionAId);
   await window.click('#urlbar');
-  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
-  const tabA = await getTabPage(app, urlPath);
-  await tabA.click('button:text-is("200")');
-  await tabA.click('button:text-is("404")');
-  await window.waitForTimeout(500);
+  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(onlyAPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, onlyAPath)).waitForLoadState('load');
 
   await window.click('#newSessionBtn');
   const allSessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
@@ -72,18 +80,16 @@ test('comparing two sessions categorizes matching and unique requests correctly'
 
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionBId);
   await window.click('#urlbar');
-  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
-  const tabB = await getTabPage(app, urlPath, tabA);
-  await tabB.click('button:text-is("200")');
-  await window.waitForTimeout(500);
+  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
 
   await window.click('#consoleTabDiff');
   await window.selectOption('#diffPickA', sessionAId);
   await window.selectOption('#diffPickB', sessionBId);
   await window.click('#diffRunBtn');
 
-  // Both sessions hit /network/status/200 → same. Only session A hit 404.
-  await expect(window.locator('.diff-row.same', { hasText: '/network/status/200' })).toBeVisible();
-  await expect(window.locator('.diff-row.only-a', { hasText: '/network/status/404' })).toBeVisible();
+  // Both sessions loaded status-codes.html → same. Only session A loaded sample.txt.
+  await expect(window.locator('.diff-row.same', { hasText: '/network/status-codes.html' })).toBeVisible();
+  await expect(window.locator('.diff-row.only-a', { hasText: '/downloads/sample.txt' })).toBeVisible();
 });

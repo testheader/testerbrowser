@@ -33,3 +33,23 @@ export async function getTabPage(app: ElectronApplication, urlIncludes: string, 
   }
   throw new Error(`No tab page found with URL including "${urlIncludes}"`);
 }
+
+/**
+ * Sessions created via #newSessionBtn are persistent by default and get
+ * written to open-sessions.json on quit. All e2e spec files share one real
+ * userData directory (there's no per-file isolation), so any session left
+ * open when a file finishes gets restored by the *next* file's fresh
+ * electron.launch() too — compounding across the whole run into a pile of
+ * zombie sessions (each with its own always-on recorder/CDP debugger) by the
+ * time later files run, which has caused real flakiness/crashes in two-session
+ * tests. Call this in afterAll, before app.close(), to destroy every session
+ * except the first — keeping exactly one so the next file still starts from
+ * a normal one-tab state.
+ */
+export async function destroyExtraSessions(window: Page): Promise<void> {
+  const sessions: Array<{ id: string }> =
+    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  for (const s of sessions.slice(1)) {
+    await window.evaluate((id: string) => (window as any).testerBrowser.sessions.destroy(id), s.id).catch(() => {});
+  }
+}
