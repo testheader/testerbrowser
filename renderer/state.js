@@ -6,7 +6,6 @@ export const state = {
   sessionCounter:     0,
   mruStack:           [],
   tabOrder:           [],
-  tabClickTimer:      null,
   dragSourceId:       null,
   tabFavicons:        {},
   tabTitles:          {},

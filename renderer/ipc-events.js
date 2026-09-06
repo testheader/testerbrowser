@@ -37,7 +37,7 @@ export function initIpcEvents() {
   testerBrowser.sessions.onTabAction(({ action, id }) => {
     if (action === 'rename') {
       const el = document.querySelector(`.tab[data-id="${id}"] .tab-name`);
-      if (el) { clearTimeout(state.tabClickTimer); startRename(id, el); }
+      if (el) startRename(id, el);
     }
     if (action === 'close')   closeTab(id);
     if (action === 'notes')   openNotes(id);
