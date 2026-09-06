@@ -289,6 +289,47 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .perm-block { background: var(--bg-raised); color: var(--text-primary); }
 .perm-block:hover { background: var(--bg-raised); }
 
+/* ── Custom JS-dialog notifications (alert/confirm/prompt) ── */
+#dialogNotifications { position: fixed; top: 88px; left: 50%; transform: translateX(-50%); z-index: 65;
+                        display: flex; flex-direction: column; gap: 6px; width: 420px; max-width: 90vw; }
+.dlg-notif { background: var(--bg-hover); border: 1px solid var(--border-strong); border-radius: 6px;
+             padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+             box-shadow: 0 4px 16px rgba(0,0,0,0.5); animation: perm-slide 0.2s ease; }
+.dlg-msg { font-size: 12px; color: var(--text-primary); line-height: 1.4; white-space: pre-wrap; }
+.dlg-input { font-size: 12px; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border-strong);
+             background: var(--bg-primary); color: var(--text-primary); }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dlg-btn { padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; flex-shrink: 0; }
+.dlg-ok { background: var(--accent); color: var(--on-fill); }
+.dlg-ok:hover { background: var(--accent-soft); }
+.dlg-cancel { background: var(--bg-raised); color: var(--text-primary); }
+
+/* ── App-level banners (main-process errors, certificate errors) ── */
+.app-banner { position: fixed; top: 88px; left: 50%; transform: translateX(-50%); z-index: 70;
+              display: flex; align-items: center; gap: 10px; max-width: 640px; width: 90vw;
+              background: var(--bg-hover); border: 1px solid var(--border-strong); border-radius: 6px;
+              padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); animation: perm-slide 0.2s ease; }
+.app-banner-danger { border-color: #e06c75; }
+.app-banner-icon { flex-shrink: 0; }
+.app-banner-msg { flex: 1; font-size: 12px; color: var(--text-primary); line-height: 1.4;
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-banner-dismiss { background: transparent; border: none; color: var(--text-secondary); cursor: pointer;
+                       font-size: 13px; flex-shrink: 0; }
+.app-banner-dismiss:hover { color: var(--text-primary); }
+.app-banner[hidden] { display: none; }
+
+/* ── Per-tab crash recovery overlay ── */
+.crash-overlay { position: fixed; left: 0; right: 0; top: 88px; bottom: 0; z-index: 40;
+                  display: flex; align-items: center; justify-content: center;
+                  background: var(--bg-primary); }
+.crash-overlay[hidden] { display: none; }
+.crash-box { text-align: center; max-width: 420px; padding: 24px; }
+.crash-title { font-size: 18px; color: var(--text-primary); margin-bottom: 8px; }
+.crash-sub { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px; }
+.crash-reload-btn { padding: 6px 18px; border-radius: 4px; border: none; cursor: pointer;
+                     font-size: 13px; background: var(--accent); color: var(--on-fill); }
+.crash-reload-btn:hover { background: var(--accent-soft); }
+
 /* ── Downloads panel ── */
 #downloadsPanel { position: fixed; top: 88px; right: 0; width: 320px; background: var(--bg-secondary);
                   border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); z-index: 50;

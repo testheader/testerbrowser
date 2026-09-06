@@ -31,6 +31,9 @@ import { initAppMenu } from './app-menu.js';
 import { initShortcuts } from './shortcuts.js';
 import { initIpcEvents } from './ipc-events.js';
 import { initTheme } from './theme.js';
+import { initDialogs } from './dialogs.js';
+import { initCrashRecovery } from './crash-recovery.js';
+import { initErrors } from './errors.js';
 
 initTheme();
 initLayout();
@@ -59,6 +62,9 @@ initViewDropdown();
 initAppMenu();
 initShortcuts();
 initIpcEvents();
+initDialogs();
+initCrashRecovery();
+initErrors();
 
 // Boot
 updateTopBarHeight();

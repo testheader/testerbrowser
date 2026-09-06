@@ -18,11 +18,14 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
 let window: Page;
+let fixtures: FixtureServer;
 
 test.beforeAll(async () => {
+  fixtures = await startFixtureServer();
   app = await launchApp(MAIN_PATH);
   window = await getMainWindow(app);
   await window.waitForLoadState('load');
@@ -30,6 +33,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app.close();
+  await fixtures.close();
 });
 
 // Clicks a tab's name (the real click target a user drives) and resolves
@@ -118,4 +122,124 @@ test('tab-switch latency does not scale with the number of open tabs', async () 
   await measureTabSwitchMs(window, b); // warm-up
   const ms = await measureTabSwitchMs(window, a);
   expect(ms).toBeLessThan(150);
+});
+
+// ── IPC bridge performance (contextBridge invoke round-trips) ───────────────
+// debug.ping() is a deliberately trivial main-process handler (see index.ts)
+// so these measure IPC/contextBridge overhead itself, not any feature's own
+// processing cost.
+
+test('IPC round-trip latency: 200 sequential pings average under 15ms', async () => {
+  const avgMs = await window.evaluate(async () => {
+    const tb = (window as any).testerBrowser;
+    await tb.debug.ping(); // warm-up — JIT/first-call overhead isn't representative
+    const start = performance.now();
+    for (let i = 0; i < 200; i++) await tb.debug.ping();
+    return (performance.now() - start) / 200;
+  });
+  // Generous for a software-rendered CI sandbox under xvfb — tight enough to
+  // catch a regression that makes every IPC call meaningfully slower.
+  expect(avgMs).toBeLessThan(15);
+});
+
+test('IPC flood does not freeze the renderer: rAF keeps ticking under load', async () => {
+  const maxFrameGapMs = await window.evaluate(async () => {
+    const tb = (window as any).testerBrowser;
+    let maxGap = 0;
+    let last = performance.now();
+    let rafRunning = true;
+    function tick() {
+      const now = performance.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+      if (rafRunning) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // Fire a flood of concurrent IPC calls — not awaited one at a time —
+    // simulating rapid status updates hammering the bridge.
+    const flood: Promise<unknown>[] = [];
+    for (let i = 0; i < 3000; i++) flood.push(tb.debug.ping());
+    await Promise.all(flood);
+
+    await new Promise((r) => setTimeout(r, 100)); // let a couple more frames land
+    rafRunning = false;
+    return maxGap;
+  });
+  // A responsive 60fps shell should never show a multi-hundred-ms stall even
+  // under an IPC flood — that would mean the flood blocked the UI thread.
+  expect(maxFrameGapMs).toBeLessThan(500);
+});
+
+test('large IPC payload (a "huge browsing history"-sized object) round-trips without a multi-second UI stall', async () => {
+  const result = await window.evaluate(async () => {
+    const tb = (window as any).testerBrowser;
+    // 20k entries comfortably exceeds urlHistoryStore's own 500-entry cap —
+    // an intentionally oversized "browsing history" to stress the IPC path.
+    const big = new Array(20_000).fill(0).map((_, i) => ({ i, url: 'https://example.com/page/' + i, title: 'Page ' + i }));
+
+    let maxGap = 0;
+    let last = performance.now();
+    let rafRunning = true;
+    function tick() {
+      const now = performance.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+      if (rafRunning) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    const start = performance.now();
+    const echoed = await tb.debug.echo(big);
+    const roundTripMs = performance.now() - start;
+
+    await new Promise((r) => setTimeout(r, 100));
+    rafRunning = false;
+    return { length: echoed.length, roundTripMs, maxGap };
+  });
+  expect(result.length).toBe(20_000);
+  // Serializing a payload this size across contextBridge is inherently
+  // synchronous work on the render thread — some stall is expected and not
+  // a bug. What this guards against is a regression that makes it far worse
+  // (e.g. accidentally round-tripping the payload multiple times).
+  expect(result.maxGap).toBeLessThan(1500);
+});
+
+// ── Framerate isolation (#4) ─────────────────────────────────────────────────
+
+test('chrome framerate stays high while a heavy page loads in a background tab', async () => {
+  // Create a second tab (backgrounded — creating a tab switches to it, so the
+  // original active tab is what stays in the foreground for the FPS sample)
+  // and point it at a CPU/DOM-heavy fixture page, without switching to it.
+  const before: Array<{ id: string }> = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const activeId = before[0].id;
+
+  await window.evaluate(async (activeId) => {
+    const tb = (window as any).testerBrowser;
+    await tb.sessions.create('heavy-bg', {});
+    // Switch back to the original tab so the heavy one loads in the background.
+    await tb.sessions.switchTo(activeId);
+  }, activeId);
+
+  const sessions: Array<{ id: string }> = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const bgId = sessions[sessions.length - 1].id;
+  await window.evaluate((args) => (window as any).testerBrowser.sessions.navigate(args.id, args.url), {
+    id: bgId, url: fixtures.url('/perf/heavy'),
+  });
+  await window.waitForTimeout(500); // let the heavy page start its busy-loop
+
+  const avgFps = await window.evaluate(() => new Promise<number>((resolve) => {
+    let frames = 0;
+    const start = performance.now();
+    function tick() {
+      frames++;
+      if (performance.now() - start < 1000) requestAnimationFrame(tick);
+      else resolve(frames / ((performance.now() - start) / 1000));
+    }
+    requestAnimationFrame(tick);
+  }));
+
+  // Each tab is its own renderer process — a background tab hogging its own
+  // CPU core should barely dent the chrome shell's own frame rate.
+  expect(avgFps).toBeGreaterThan(30);
 });

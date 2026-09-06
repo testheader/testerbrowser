@@ -11,6 +11,7 @@ import { loadRules } from './resilience.js';
 import { refreshVR, clearVRSession } from './visual-regression.js';
 import { clearSecurityFindings } from './security.js';
 import { refreshTimelineNow } from './timeline.js';
+import { syncCrashOverlay } from './crash-recovery.js';
 
 export async function insertAfterActive(id) {
   const sessions   = await testerBrowser.sessions.list();
@@ -48,6 +49,7 @@ export async function switchToSession(id) {
   if (state.activeConsoleTab === 'console' || state.activeConsoleTab === 'network') refreshTimelineNow();
   recordVisit(id);
   await testerBrowser.sessions.switchTo(id);
+  syncCrashOverlay();
   updateNavButtons();
   updateReloadBtn();
   setLoadingBar(state.tabLoading[id] || false);
@@ -89,9 +91,18 @@ function createTabElement(s) {
     tab.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
   });
-  tab.addEventListener('dragend', () => {
+  tab.addEventListener('dragend', (e) => {
+    const sourceId = state.dragSourceId;
     state.dragSourceId = null;
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('dragging', 'drag-left', 'drag-right'));
+    // Dragging a tab well below the tab strip (into the page area) tears it
+    // off into its own native window — the same gesture Chrome uses, and the
+    // only way (short of a context-menu action) to trigger a pop-out.
+    const TEAR_OFF_THRESHOLD_PX = 60;
+    const stripBottom = document.getElementById('tabs').getBoundingClientRect().bottom;
+    if (sourceId && e.clientY > stripBottom + TEAR_OFF_THRESHOLD_PX) {
+      testerBrowser.sessions.popOut(sourceId);
+    }
   });
   tab.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -373,4 +384,22 @@ export function initTabs() {
   testerBrowser.sessions.onTabCycle(({ reverse }) => cycleTab(reverse));
 
   testerBrowser.sessions.onNewTab(async ({ id }) => { await insertAfterActive(id); switchToSession(id); });
+
+  // The session already moved to its own native window on the main side
+  // (see sessionManager.ts popOutSession) — just drop its tab from this
+  // window's strip, same bookkeeping as closeTab minus destroying anything.
+  testerBrowser.sessions.onPoppedOut(async ({ id }) => {
+    state.tabOrder = state.tabOrder.filter((x) => x !== id);
+    state.mruStack = state.mruStack.filter((x) => x !== id);
+    delete state.tabFavicons[id];
+    delete state.tabTitles[id];
+    delete state.navState[id];
+    delete state.tabLoading[id];
+    if (state.activeId === id) {
+      state.activeId = null;
+      const next = state.mruStack[0] ?? null;
+      if (next) { await switchToSession(next); return; }
+    }
+    refreshTabs();
+  });
 }

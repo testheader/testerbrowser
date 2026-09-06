@@ -13,6 +13,7 @@ function applyMinimized(minimized) {
   btn.innerHTML = minimized ? '&#8963;' : '&#8964;';
   btn.title = minimized ? 'Restore panel' : 'Minimize panel';
   panel.style.height = (minimized ? CONSOLE_HEADER_H : state.consoleHeight) + 'px';
+  document.getElementById('crashOverlay').style.bottom = (minimized ? CONSOLE_HEADER_H : state.consoleHeight) + 'px';
   syncConsoleViewHeight();
   try { localStorage.setItem(LS_MIN_KEY, minimized ? '1' : '0'); } catch {}
 }
@@ -43,6 +44,7 @@ export function updateTopBarHeight() {
   testerBrowser.layout.setTopBarHeight(h);
   document.getElementById('downloadsPanel').style.top          = h + 'px';
   document.getElementById('permissionNotifications').style.top = h + 'px';
+  document.getElementById('crashOverlay').style.top             = h + 'px';
 }
 
 export function currentTopBarHeight() {
@@ -59,6 +61,7 @@ export function setConsoleHeight(h) {
     document.getElementById('consolePanel').style.height = state.consoleHeight + 'px';
     syncConsoleViewHeight();
   }
+  document.getElementById('crashOverlay').style.bottom = (state.consolePanelMinimized ? CONSOLE_HEADER_H : state.consoleHeight) + 'px';
 }
 
 export function initLayout() {

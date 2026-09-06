@@ -68,10 +68,18 @@ export function initTheme() {
   testerBrowser.windowControls.onMaximizedChanged(applyMaximizedState);
 }
 
+// Toggles the `hidden` attribute directly rather than the `.hidden` IDL
+// property: on an <svg> element (unlike HTML elements), setting `.hidden`
+// does not reflect to the content attribute in Chromium, so the [hidden]
+// CSS rule never applies and the icon silently never actually hides.
+function setHiddenAttr(el, hidden) {
+  if (hidden) el.setAttribute('hidden', ''); else el.removeAttribute('hidden');
+}
+
 function applyMaximizedState(maximized) {
   const btn = document.getElementById('winMaxBtn');
   if (!btn) return;
   btn.title = maximized ? 'Restore' : 'Maximize';
-  document.getElementById('winMaxIcon').hidden = maximized;
-  document.getElementById('winRestoreIcon').hidden = !maximized;
+  setHiddenAttr(document.getElementById('winMaxIcon'), maximized);
+  setHiddenAttr(document.getElementById('winRestoreIcon'), !maximized);
 }

@@ -84,6 +84,32 @@
   <!-- Permission notifications (floating) -->
   <div id="permissionNotifications"></div>
 
+  <!-- Custom JS-dialog notifications (alert/confirm/prompt) — floating, same pattern as permissions -->
+  <div id="dialogNotifications"></div>
+
+  <!-- Main-process error banner (uncaught exceptions, recording failures, ...) -->
+  <div id="mainErrorBanner" class="app-banner" hidden>
+    <span class="app-banner-icon">&#9888;</span>
+    <span id="mainErrorMsg" class="app-banner-msg"></span>
+    <button id="mainErrorDismiss" class="app-banner-dismiss" title="Dismiss">&#10005;</button>
+  </div>
+
+  <!-- Certificate error banner -->
+  <div id="certErrorBanner" class="app-banner app-banner-danger" hidden>
+    <span class="app-banner-icon">&#128274;</span>
+    <span id="certErrorMsg" class="app-banner-msg"></span>
+    <button id="certErrorDismiss" class="app-banner-dismiss" title="Dismiss">&#10005;</button>
+  </div>
+
+  <!-- Per-tab crash recovery overlay — shown in place of a crashed tab's (blank) view -->
+  <div id="crashOverlay" class="crash-overlay" hidden>
+    <div class="crash-box">
+      <div class="crash-title">&#128533; This tab crashed</div>
+      <div class="crash-sub">Its process stopped unexpectedly. Every other tab — and the rest of TesterBrowser — is unaffected.</div>
+      <button id="crashReloadBtn" class="crash-reload-btn">Reload tab</button>
+    </div>
+  </div>
+
   <!-- Downloads panel (slide-in from right) -->
   <div id="downloadsPanel">
     <div id="downloadsPanelHeader">

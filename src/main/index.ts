@@ -5,6 +5,7 @@ import os from 'os';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, TestStep } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
+import { findDeepLinkArg, parseDeepLink } from './deeplink';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -15,11 +16,52 @@ interface AppErrorEntry { ts: number; message: string; }
 const MAX_APP_ERRORS = 20;
 const recentAppErrors: AppErrorEntry[] = [];
 function recordAppError(message: string) {
-  recentAppErrors.push({ ts: Date.now(), message: String(message).slice(0, 2000) });
+  const entry = { ts: Date.now(), message: String(message).slice(0, 2000) };
+  recentAppErrors.push(entry);
   if (recentAppErrors.length > MAX_APP_ERRORS) recentAppErrors.shift();
+  // Surface it to the user instead of failing silently or, worse, letting an
+  // unhandled main-process error take the whole app down with no explanation —
+  // the renderer shows this as a small dismissible banner (see main.js/errors.js).
+  win?.webContents.send('app:mainError', entry);
 }
 process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
 process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
+
+// --- Custom protocol / deep linking (testerbrowser://open?url=...) ---
+
+function openDeepLink(target: string) {
+  if (!sessionManager) return;
+  let name = 'New tab';
+  try { name = new URL(target).hostname || name; } catch {}
+  const s = sessionManager.createSession(name, { startUrl: target });
+  sessionManager.switchTo(s.id);
+  win?.webContents.send('session:newTab', { id: s.id });
+}
+
+if (!app.isDefaultProtocolClient('testerbrowser')) {
+  app.setAsDefaultProtocolClient('testerbrowser');
+}
+
+// Windows/Linux deliver the protocol URL as a CLI arg to a second launch —
+// requestSingleInstanceLock forwards it to the already-running instance
+// instead of spawning a second app.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, argv) => {
+    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+    const link = findDeepLinkArg(argv);
+    if (link) openDeepLink(link);
+  });
+}
+
+// macOS delivers it via this event instead.
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  const link = parseDeepLink(url);
+  if (link) openDeepLink(link);
+});
 
 type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
@@ -174,6 +216,10 @@ app.whenReady().then(() => {
   updateLogFile = path.join(app.getPath('userData'), 'update-errors.jsonl');
   createWindow();
 
+  // Cold start via the protocol (not a second-instance forward) on Windows/Linux.
+  const coldStartLink = findDeepLinkArg(process.argv);
+  if (coldStartLink) openDeepLink(coldStartLink);
+
   if (app.isPackaged) {
     autoUpdater.allowPrerelease = true;
     // electron-updater's own "update-available" signal isn't trusted blindly — a stale feed
@@ -291,6 +337,7 @@ ipcMain.handle('sessions:stop',     (_e, id: string) => sessionManager?.stop(id)
 ipcMain.handle('sessions:setZoom',  (_e, id: string, delta: number) => sessionManager?.setZoom(id, delta));
 ipcMain.handle('sessions:resetZoom',(_e, id: string) => sessionManager?.resetZoom(id));
 ipcMain.handle('sessions:getZoom',  (_e, id: string) => sessionManager?.getZoom(id) ?? 1);
+ipcMain.handle('sessions:isViewVisible', (_e, id: string) => sessionManager?.isSessionViewVisible(id) ?? null);
 ipcMain.handle('devtools:toggle',   (_e, id: string) => sessionManager?.toggleDevTools(id));
 
 ipcMain.handle('find:start', (_e, id: string, text: string, forward: boolean, findNext: boolean) =>
@@ -596,6 +643,33 @@ ipcMain.handle('window:minimize',    () => win?.minimize());
 ipcMain.handle('window:maximize',    () => { if (win?.isMaximized()) win.unmaximize(); else win?.maximize(); });
 ipcMain.handle('window:close',       () => win?.close());
 ipcMain.handle('window:isMaximized', () => win?.isMaximized() ?? false);
+
+// Tab pop-out to its own native window
+ipcMain.handle('sessions:popOut', (_e, id: string) => sessionManager?.popOutSession(id) ?? null);
+
+// Custom JS-dialog (alert/confirm/prompt) responses — see sessionManager.ts requestDialog()
+ipcMain.handle('dialog:respond', (_e, reqId: string, result: unknown) => sessionManager?.respondDialog(reqId, result));
+
+// --- Debug/benchmark IPC surface ---
+// A deliberately trivial, business-logic-free channel so e2e perf tests
+// measure IPC/renderer overhead itself, not some feature's processing cost.
+ipcMain.handle('debug:ping', () => Date.now());
+// Echoes a payload back so a large-payload round trip can be timed without
+// needing any particular feature to carry that much data.
+ipcMain.handle('debug:echo', (_e, payload: unknown) => payload);
+ipcMain.handle('debug:getMemory', () => ({
+  main: process.memoryUsage(),
+  processes: app.getAppMetrics().map(m => ({ type: m.type, pid: m.pid, memory: m.memory })),
+}));
+// Every OS process backing the running app, for a zombie-process check after
+// quit (see e2e/process.spec.ts) — deliberately not shelling out to
+// `tasklist`/`ps`, which would only work on one platform.
+ipcMain.handle('debug:listPids', () => app.getAppMetrics().map(m => m.pid));
+// Exercises the exact same path a real uncaught main-process error takes
+// (recordAppError → app:mainError banner) without actually crashing
+// anything — lets e2e tests verify #21's "inform the user" behavior without
+// needing to provoke a real uncaught exception from outside the app.
+ipcMain.handle('debug:simulateMainError', (_e, message: string) => recordAppError(String(message)));
 
 // Download IPC
 ipcMain.handle('download:list',   () => sessionManager?.listDownloads() ?? []);

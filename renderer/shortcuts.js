@@ -1,12 +1,15 @@
 /* global testerBrowser */
 import { state } from './state.js';
-import { closeTab, reopenTab, switchToSession, cycleTab } from './tabs.js';
+import { closeTab, reopenTab, switchToSession, cycleTab, newSession } from './tabs.js';
 import { openFind, closeFind, doFind } from './find.js';
 import { toggleBookmark, toggleBookmarksBar } from './bookmarks.js';
 
 function handleShortcut(key) {
   switch (key) {
-    case 'newTab':             document.getElementById('newSessionBtn').onclick(); break;
+    // Not routed through the "+" button's own onclick: that handler expects
+    // a real click event (it reads e.shiftKey), and calling it directly with
+    // no argument throws — silently swallowing every Ctrl+T press.
+    case 'newTab':             newSession(); break;
     case 'closeTab':           if (state.activeId) closeTab(state.activeId); break;
     case 'reopenTab':          reopenTab(); break;
     case 'focusUrl':           { const u = document.getElementById('urlbar'); u.focus(); u.select(); } break;

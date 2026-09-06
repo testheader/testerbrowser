@@ -19,6 +19,11 @@ export interface RecorderOptions {
   dbDir: string;
   maxEventsPerSession?: number;
   redactSensitiveHeaders?: boolean;
+  /** Called once (not per event) if a write to the ring buffer starts failing —
+   *  e.g. a corrupt/locked SQLite file — so the host can inform the user
+   *  instead of the whole app going down. Recording is then disabled for
+   *  just this session; every other session keeps recording normally. */
+  onError?: (message: string) => void;
 }
 
 const SENSITIVE_HEADERS = new Set([
@@ -46,7 +51,7 @@ type EventRow = {
 };
 
 export class SessionRecorder {
-  private db: Database.Database;
+  private db: Database.Database | null = null;
   private sessionId: string;
   private maxEvents: number;
   private wc: WebContents;
@@ -56,38 +61,49 @@ export class SessionRecorder {
   private requestMeta = new Map<string, { url: string; method: string; startTs: number }>();
   private requestTags = new Map<string, { mockRuleId?: string; resilienceRuleId?: string; resilienceType?: string }>();
   private redact: boolean;
+  private onError: (message: string) => void;
+  private disabled = false;
 
   constructor(wc: WebContents, opts: RecorderOptions) {
     this.wc = wc;
     this.sessionId = opts.sessionId;
     this.maxEvents = opts.maxEventsPerSession ?? 20000;
     this.redact = opts.redactSensitiveHeaders ?? false;
+    this.onError = opts.onError ?? (() => {});
 
-    if (!fs.existsSync(opts.dbDir)) fs.mkdirSync(opts.dbDir, { recursive: true });
-    const dbPath = path.join(opts.dbDir, `${this.sessionId}.sqlite`);
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        ts INTEGER NOT NULL,
-        kind TEXT NOT NULL,
-        summary TEXT NOT NULL,
-        payload TEXT NOT NULL
+    // A corrupt or locked SQLite file must not take the whole app down —
+    // recording is a nice-to-have; the browsing session itself must survive.
+    try {
+      if (!fs.existsSync(opts.dbDir)) fs.mkdirSync(opts.dbDir, { recursive: true });
+      const dbPath = path.join(opts.dbDir, `${this.sessionId}.sqlite`);
+      this.db = new Database(dbPath);
+      this.db.pragma('journal_mode = WAL');
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          ts INTEGER NOT NULL,
+          kind TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          payload TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+        CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
+      `);
+      this.insertStmt = this.db.prepare(
+        `INSERT INTO events (session_id, ts, kind, summary, payload) VALUES (?, ?, ?, ?, ?)`
       );
-      CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
-      CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
-    `);
-    this.insertStmt = this.db.prepare(
-      `INSERT INTO events (session_id, ts, kind, summary, payload) VALUES (?, ?, ?, ?, ?)`
-    );
-    this.countStmt = this.db.prepare(
-      `SELECT COUNT(*) as c FROM events WHERE session_id = ?`
-    );
-    this.trimStmt = this.db.prepare(
-      `DELETE FROM events WHERE id IN (SELECT id FROM events WHERE session_id = ? ORDER BY id ASC LIMIT ?)`
-    );
+      this.countStmt = this.db.prepare(
+        `SELECT COUNT(*) as c FROM events WHERE session_id = ?`
+      );
+      this.trimStmt = this.db.prepare(
+        `DELETE FROM events WHERE id IN (SELECT id FROM events WHERE session_id = ? ORDER BY id ASC LIMIT ?)`
+      );
+    } catch (e) {
+      this.disabled = true;
+      this.onError(`Recording database unavailable, recording disabled for this session: ${String(e)}`);
+      return;
+    }
 
     this.attach();
   }
@@ -208,8 +224,17 @@ export class SessionRecorder {
   }
 
   private record(row: Omit<EventRow, 'session_id' | 'id'>) {
-    this.insertStmt.run(this.sessionId, row.ts, row.kind, row.summary, row.payload);
-    this.trimIfNeeded();
+    if (this.disabled) return;
+    try {
+      this.insertStmt.run(this.sessionId, row.ts, row.kind, row.summary, row.payload);
+      this.trimIfNeeded();
+    } catch (e) {
+      // A single bad write (disk full, DB locked mid-session, ...) shouldn't
+      // spam the user or the app — disable this session's recording quietly
+      // after the one notification.
+      this.disabled = true;
+      this.onError(`Recording write failed, recording disabled for this session: ${String(e)}`);
+    }
   }
 
   private trimCounter = 0;
@@ -225,6 +250,7 @@ export class SessionRecorder {
 
   /** Query the merged timeline, most recent last. */
   getTimeline(opts: { limit?: number; since?: number } = {}): EventRow[] {
+    if (!this.db) return [];
     const limit = opts.limit ?? 500;
     if (opts.since) {
       return this.db
@@ -241,6 +267,7 @@ export class SessionRecorder {
   }
 
   exportHAR(): object {
+    if (!this.db) return { log: { version: '1.2', creator: { name: 'TesterBrowser', version: '0.1.0' }, entries: [] } };
     // Minimal HAR-ish export from stored network events; extend as needed.
     const rows = this.db
       .prepare(
@@ -260,6 +287,8 @@ export class SessionRecorder {
     try {
       this.wc.debugger.detach();
     } catch {}
-    this.db.close();
+    try {
+      this.db?.close();
+    } catch {}
   }
 }

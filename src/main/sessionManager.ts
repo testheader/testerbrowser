@@ -56,6 +56,16 @@ export interface TestSession {
   mockRules: MockRule[];
   resilienceRules: ResilienceRule[];
   a11yInspecting: boolean;
+  /** Set when the tab's renderer process has gone away (crash/OOM/killed) and
+   *  cleared again once a reload/navigation starts. While true the view is
+   *  kept out of the window so the chrome can show a recovery overlay in its
+   *  place instead of a dead/blank surface. */
+  crashed: boolean;
+}
+
+/** Net error codes in Chromium's certificate-error range (net::ERR_CERT_*). */
+function isCertificateErrorCode(errorCode: number): boolean {
+  return errorCode <= -200 && errorCode >= -299;
 }
 
 const TAB_COLORS = [
@@ -130,6 +140,19 @@ const RECORDING_SCRIPT = `(function(){
   window.addEventListener('popstate',function(){addStep({type:'navigate',url:location.href});});
   var op=history.pushState.bind(history);history.pushState=function(){op.apply(history,arguments);addStep({type:'navigate',url:location.href});};
   var or=history.replaceState.bind(history);history.replaceState=function(){or.apply(history,arguments);addStep({type:'navigate',url:location.href});};
+})();`;
+
+// Reassigns window.alert/confirm/prompt in the page's *real* main world (see
+// preload/newtab.ts for why a preload-side assignment can't do this under
+// contextIsolation) to route through the __tbDialogs bridge that preload
+// exposes via contextBridge. Injected via CDP's
+// Page.addScriptToEvaluateOnNewDocument so it runs before any page script,
+// on every navigation — not just the first one.
+const DIALOG_OVERRIDE_SCRIPT = `(function(){
+  if (!window.__tbDialogs) return;
+  window.alert = function(message) { return window.__tbDialogs.alertSync(message == null ? '' : String(message)); };
+  window.confirm = function(message) { return window.__tbDialogs.confirmSync(message == null ? '' : String(message)); };
+  window.prompt = function(message, defaultValue) { return window.__tbDialogs.promptSync(message == null ? '' : String(message), defaultValue == null ? '' : String(defaultValue)); };
 })();`;
 
 export interface TestStep {
@@ -220,6 +243,7 @@ export class SessionManager {
       pinned: s.pinned,
       color: s.color,
       createdAt: s.createdAt,
+      crashed: s.crashed,
     }));
   }
 
@@ -235,13 +259,22 @@ export class SessionManager {
     this.permissionManager.attach(ses, partition);
 
     const view = new WebContentsView({
-      webPreferences: { session: ses, contextIsolation: true, sandbox: true, preload: NEWTAB_PRELOAD },
+      webPreferences: {
+        session: ses, contextIsolation: true, sandbox: true, preload: NEWTAB_PRELOAD,
+        // Explicit even though it's Electron's default: background tabs (removed
+        // from the window's contentView on switchTo — see below) must keep
+        // Chromium's normal page-lifecycle throttling of timers/rAF so an idle
+        // background tab doesn't burn CPU, while staying alive (not destroyed)
+        // so its scroll position and JS state survive reactivation.
+        backgroundThrottling: true,
+      },
     });
 
     const recorder = new SessionRecorder(view.webContents, {
       sessionId: id,
       dbDir: this.dbDir,
       redactSensitiveHeaders: this.getRedactHeaders(),
+      onError: (message) => this.recordFeatureError(`Recording (session "${name}"): ${message}`),
     });
 
     const color = opts.color ?? TAB_COLORS[this.colorIndex++ % TAB_COLORS.length];
@@ -258,6 +291,7 @@ export class SessionManager {
       mockRules: [],
       resilienceRules: [],
       a11yInspecting: false,
+      crashed: false,
     };
 
     // Handle CDP events: Fetch.requestPaused for mock/resilience rules, Runtime.bindingCalled for a11y hover
@@ -362,6 +396,12 @@ export class SessionManager {
       } catch {}
     });
 
+    {
+      const dbg = view.webContents.debugger;
+      dbg.sendCommand('Page.enable').catch(() => {});
+      dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: DIALOG_OVERRIDE_SCRIPT }).catch(() => {});
+    }
+
     if (opts.startUrl) {
       view.webContents.loadURL(opts.startUrl);
     } else {
@@ -397,6 +437,18 @@ export class SessionManager {
     // Loading state
     view.webContents.on('did-start-loading', () => {
       this.win.webContents.send('session:loading', { id, loading: true });
+      // A reload/navigation is the recovery path out of a crashed tab — put
+      // the view back in the window the moment it starts, not only once it
+      // finishes, so the page is visible again as soon as anything paints.
+      if (testSession.crashed) {
+        testSession.crashed = false;
+        if (this.activeId === id && this.isViewVisible) {
+          this.win.contentView.addChildView(view);
+          view.setVisible(true);
+          this.layoutActive();
+        }
+        this.win.webContents.send('session:recovered', { id });
+      }
     });
     view.webContents.on('did-stop-loading', () => {
       this.win.webContents.send('session:loading', { id, loading: false });
@@ -406,6 +458,25 @@ export class SessionManager {
     view.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
       if (!isMainFrame || errorCode === -3) return; // ignore subframe failures and user-aborted
       this.win.webContents.send('session:loadFailed', { id, errorCode, errorDescription, url: validatedURL });
+      // Chromium's own interstitial already blocks the page for an invalid/
+      // expired certificate (we never override the default certificate-error
+      // handling) — this just lets the chrome surface its own warning too.
+      if (isCertificateErrorCode(errorCode)) {
+        this.win.webContents.send('session:certificateError', { id, errorCode, errorDescription, url: validatedURL });
+      }
+    });
+
+    // Renderer crash / OOM kill / killed process — pull the dead view out of
+    // the window immediately so the chrome can show a per-tab recovery
+    // overlay instead of a frozen or blank surface, and so other tabs (and
+    // the app as a whole) are entirely unaffected.
+    view.webContents.on('render-process-gone', (_e, details) => {
+      testSession.crashed = true;
+      if (this.activeId === id) {
+        view.setVisible(false);
+        this.win.contentView.removeChildView(view);
+      }
+      this.win.webContents.send('session:crashed', { id, reason: details.reason });
     });
 
     // Right-click context menu on page
@@ -514,7 +585,82 @@ export class SessionManager {
       return { action: 'deny' };
     });
 
+    // JS dialogs (alert/confirm/prompt) are overridden from the tab preload
+    // (see preload/newtab.ts) to call these synchronous channels instead of
+    // letting Chromium show its default dialog — a default JS dialog is
+    // modal to the whole native window (see CLAUDE.md's BrowserView-input
+    // gotcha), which would freeze the entire browser chrome, not just the
+    // offending tab. Routing through our own floating notification (same
+    // pattern as permission requests) keeps every other tab and the toolbar
+    // fully interactive while only the calling page's script stays blocked,
+    // matching real alert()/confirm()/prompt() semantics.
+    view.webContents.ipc.on('dialog:alert', (event, message: string) => {
+      this.requestDialog(id, 'alert', message).then(() => { event.returnValue = undefined; });
+    });
+    view.webContents.ipc.on('dialog:confirm', (event, message: string) => {
+      this.requestDialog(id, 'confirm', message).then((ok) => { event.returnValue = !!ok; });
+    });
+    view.webContents.ipc.on('dialog:prompt', (event, message: string, defaultValue: string) => {
+      this.requestDialog(id, 'prompt', message, defaultValue).then((val) => { event.returnValue = val ?? null; });
+    });
+
     return testSession;
+  }
+
+  // ─── Custom JS-dialog notifications (alert/confirm/prompt) ─────────────────
+
+  private pendingDialogs = new Map<string, (result: unknown) => void>();
+
+  private requestDialog(sessionId: string, kind: 'alert' | 'confirm' | 'prompt', message: string, defaultValue?: string): Promise<unknown> {
+    return new Promise((resolve) => {
+      const reqId = `dlg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      this.pendingDialogs.set(reqId, resolve);
+      this.win.webContents.send('dialog:show', { reqId, sessionId, kind, message, defaultValue: defaultValue ?? '' });
+    });
+  }
+
+  respondDialog(reqId: string, result: unknown): void {
+    const resolve = this.pendingDialogs.get(reqId);
+    if (!resolve) return;
+    this.pendingDialogs.delete(reqId);
+    resolve(result);
+  }
+
+  // ─── Pop a tab out into its own native window ──────────────────────────────
+  // Tearing a tab off keeps its WebContentsView (and therefore its session
+  // partition, cookies, and recorder) alive — it just moves to a plain,
+  // OS-decorated top-level window instead of the app's own tabbed chrome.
+  // The popped session stops being tracked by this SessionManager (it no
+  // longer appears in listSessions()); it's a standalone window from then on.
+
+  popOutSession(id: string): number | null {
+    const s = this.sessions.get(id);
+    if (!s || this.sessions.size < 2) return null; // nothing left to tear off from
+    if (this.activeId === id) {
+      s.view.setVisible(false);
+      this.win.contentView.removeChildView(s.view);
+      this.activeId = this.tabOrder.find((tid) => tid !== id && this.sessions.has(tid)) ?? null;
+      if (this.activeId) this.switchTo(this.activeId);
+    }
+    this.sessions.delete(id);
+    this.tabOrder = this.tabOrder.filter((tid) => tid !== id);
+
+    const popup = new BrowserWindow({ width: 1024, height: 720, title: s.name });
+    popup.contentView.addChildView(s.view);
+    s.view.setVisible(true);
+    const layout = () => {
+      const b = popup.getContentBounds();
+      s.view.setBounds({ x: 0, y: 0, width: b.width, height: b.height });
+    };
+    layout();
+    popup.on('resize', layout);
+    popup.on('closed', () => {
+      s.recorder.destroy();
+      (s.view.webContents as any).destroy?.();
+    });
+
+    this.win.webContents.send('session:poppedOut', { id });
+    return popup.id;
   }
 
   private sendNavState(id: string) {
@@ -576,6 +722,18 @@ export class SessionManager {
     return this.sessions.get(id)?.view.webContents.getZoomFactor() ?? 1;
   }
 
+  /** Whether this session's view is currently marked visible (see switchTo's
+   *  setVisible calls) — used by e2e tests to verify #14's background-tab
+   *  throttling wiring itself, since Chromium's own document.visibilityState
+   *  can't be observed reliably through Playwright (its CDP automation layer
+   *  keeps pages reporting "visible" regardless of real window attachment,
+   *  which is a Playwright characteristic, not something TesterBrowser
+   *  controls or real end users are affected by). */
+  isSessionViewVisible(id: string): boolean | null {
+    const s = this.sessions.get(id);
+    return s ? s.view.getVisible() : null;
+  }
+
   toggleDevTools(id: string) {
     const s = this.sessions.get(id);
     if (!s) return;
@@ -613,6 +771,8 @@ export class SessionManager {
         if (c) this.win.webContents.send('session:newTab', { id: c.id });
       }},
       { label: 'Notes…', click: () => send('notes') },
+      { type: 'separator' },
+      { label: 'Pop out to new window', enabled: this.sessions.size > 1, click: () => this.popOutSession(id) },
       { type: 'separator' },
       { label: 'Export snapshot…', click: () => this.exportSnapshotDialog(id) },
       { label: 'Import snapshot…', click: () => this.importSnapshotDialog(id) },
@@ -691,11 +851,23 @@ export class SessionManager {
     if (!s) return;
     if (this.activeId) {
       const prev = this.sessions.get(this.activeId);
-      if (prev) this.win.contentView.removeChildView(prev.view);
+      if (prev) {
+        // Explicitly mark it hidden — see setVisible(true) below for why
+        // removeChildView by itself isn't enough — so Chromium's normal page
+        // lifecycle actually throttles rAF/timers for the backgrounded tab
+        // (#14), while the process/JS state/scroll position stay alive for
+        // an instant, unchanged reactivation.
+        prev.view.setVisible(false);
+        this.win.contentView.removeChildView(prev.view);
+      }
     }
     this.activeId = id;
-    if (this.isViewVisible) {
+    if (this.isViewVisible && !s.crashed) {
       this.win.contentView.addChildView(s.view);
+      // addChildView alone doesn't mark the page visible again (Chromium's
+      // page-visibility state, and therefore rAF/timer throttling, is driven
+      // by View.setVisible — see the matching setVisible(false) below).
+      s.view.setVisible(true);
       this.layoutActive();
     }
     this.sendNavState(id);
@@ -759,8 +931,8 @@ export class SessionManager {
     if (!this.activeId) return;
     const s = this.sessions.get(this.activeId);
     if (!s) return;
-    if (visible) { this.win.contentView.addChildView(s.view); this.layoutActive(); }
-    else { this.win.contentView.removeChildView(s.view); }
+    if (visible) { this.win.contentView.addChildView(s.view); s.view.setVisible(true); this.layoutActive(); }
+    else { s.view.setVisible(false); this.win.contentView.removeChildView(s.view); }
   }
 
   async cloneSession(sourceId: string, newName: string): Promise<TestSession | null> {

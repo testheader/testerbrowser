@@ -9,6 +9,9 @@ const PERM_LABELS = {
   midi:              'access MIDI devices',
   'clipboard-read':  'read the clipboard',
   'clipboard-write': 'write to the clipboard',
+  // Chromium requests this exact permission name for navigator.clipboard.writeText,
+  // distinct from the plain 'clipboard-write' the Permissions API itself uses.
+  'clipboard-sanitized-write': 'write to the clipboard',
 };
 
 export function initPermissions() {

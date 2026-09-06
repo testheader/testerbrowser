@@ -9,8 +9,10 @@
  * the e2e run itself and adds no extra sequential CI job.
  */
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
+import { createServer as createHttpsServer } from 'https';
 import { readFile } from 'fs/promises';
 import path from 'path';
+import { SELF_SIGNED_CERT, SELF_SIGNED_KEY } from './selfsigned-cert';
 
 const TEST_PAGES_ROOT = path.join(__dirname, '..', '..', 'test-pages');
 
@@ -49,6 +51,29 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   };
 }
 
+/**
+ * HTTPS server using a self-signed cert Chromium doesn't trust — the only
+ * way to exercise TesterBrowser's certificate-error handling without
+ * depending on a real expired/invalid-cert host reachable from CI.
+ */
+export async function startHttpsFixtureServer(): Promise<FixtureServer> {
+  const server = createHttpsServer({ cert: SELF_SIGNED_CERT, key: SELF_SIGNED_KEY }, (req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<html><body><h1>should never be reached</h1></body></html>');
+  });
+
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as { port: number }).port;
+
+  return {
+    port,
+    url: (pathAndQuery = '/') => `https://127.0.0.1:${port}${pathAndQuery}`,
+    close: () => new Promise<void>((resolve, reject) =>
+      server.close(err => (err ? reject(err) : resolve()))
+    ),
+  };
+}
+
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const u = new URL(req.url ?? '/', 'http://localhost');
 
@@ -58,6 +83,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/downloads/file') return handleDownload(u, res);
   if (u.pathname === '/storage/set-cookie') return handleSetCookie(u, res);
   if (u.pathname === '/perf/echo') return handleEcho(u, res);
+  if (u.pathname === '/perf/heavy') return handleHeavy(u, res);
 
   return handleStatic(u, res);
 }
@@ -117,6 +143,32 @@ function handleSetCookie(u: URL, res: ServerResponse): void {
 function handleEcho(u: URL, res: ServerResponse): void {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ ok: true, i: u.searchParams.get('i') }));
+}
+
+// A CPU/DOM-heavy page for #4 (framerate of the chrome shell while a
+// background tab renders something demanding) — thousands of animated nodes
+// plus a synchronous busy-loop on a timer, to actually load a CPU core.
+function handleHeavy(u: URL, res: ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'text/html' });
+  res.end(`<!doctype html><html><body style="margin:0">
+<div id="grid"></div>
+<script>
+  var grid = document.getElementById('grid');
+  for (var i = 0; i < 3000; i++) {
+    var d = document.createElement('div');
+    d.style.cssText = 'display:inline-block;width:8px;height:8px;background:hsl(' + (i % 360) + ',80%,50%);animation:spin 0.5s linear infinite';
+    grid.appendChild(d);
+  }
+  var style = document.createElement('style');
+  style.textContent = '@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}';
+  document.head.appendChild(style);
+  setInterval(function() {
+    var start = Date.now();
+    while (Date.now() - start < 40) { /* busy-loop: hog this process's CPU */ }
+  }, 16);
+  document.title = 'heavy';
+</script>
+</body></html>`);
 }
 
 async function handleStatic(u: URL, res: ServerResponse): Promise<void> {

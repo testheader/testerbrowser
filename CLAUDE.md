@@ -28,7 +28,11 @@ test-pages/                Static HTML fixtures for testing TesterBrowser itself
                            Dev/CI only — excluded from the packaged build automatically by
                            build.files in package.json. See test-pages/README.md.
 e2e/fixtures/server.ts     Shared HTTP server serving test-pages/ + dynamic routes (status
-                           codes, delay, redirects, generated downloads) for e2e tests.
+                           codes, delay, redirects, generated downloads) for e2e tests, plus
+                           startHttpsFixtureServer() (self-signed cert) for certificate-error
+                           tests. Both bind to 127.0.0.1 only — the whole e2e suite has zero
+                           live network dependency, guarded by
+                           src/__tests__/e2e-network-isolation.test.ts.
 .github/workflows/build.yml  CI: typecheck → bump-version → build-windows → build-linux
 ```
 

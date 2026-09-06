@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     setZoom:     (id: string, delta: number) => ipcRenderer.invoke('sessions:setZoom', id, delta),
     resetZoom:   (id: string) => ipcRenderer.invoke('sessions:resetZoom', id),
     getZoom:     (id: string) => ipcRenderer.invoke('sessions:getZoom', id),
+    isViewVisible: (id: string) => ipcRenderer.invoke('sessions:isViewVisible', id),
     devtools:    (id: string) => ipcRenderer.invoke('devtools:toggle', id),
     contextMenu: (id: string) => ipcRenderer.invoke('sessions:contextMenu', id),
     findInPage:  (id: string, text: string, forward: boolean, findNext: boolean) =>
@@ -88,6 +89,39 @@ contextBridge.exposeInMainWorld('testerBrowser', {
       ipcRenderer.removeAllListeners('session:zoomChanged');
       ipcRenderer.on('session:zoomChanged', (_e, d) => cb(d));
     },
+    popOut: (id: string) => ipcRenderer.invoke('sessions:popOut', id),
+    onPoppedOut: (cb: (d: { id: string }) => void) => {
+      ipcRenderer.removeAllListeners('session:poppedOut');
+      ipcRenderer.on('session:poppedOut', (_e, d) => cb(d));
+    },
+    onCrashed: (cb: (d: { id: string; reason: string }) => void) => {
+      ipcRenderer.removeAllListeners('session:crashed');
+      ipcRenderer.on('session:crashed', (_e, d) => cb(d));
+    },
+    onRecovered: (cb: (d: { id: string }) => void) => {
+      ipcRenderer.removeAllListeners('session:recovered');
+      ipcRenderer.on('session:recovered', (_e, d) => cb(d));
+    },
+    onCertificateError: (cb: (d: { id: string; errorCode: number; errorDescription: string; url: string }) => void) => {
+      ipcRenderer.removeAllListeners('session:certificateError');
+      ipcRenderer.on('session:certificateError', (_e, d) => cb(d));
+    },
+  },
+
+  dialogs: {
+    respond: (reqId: string, result: unknown) => ipcRenderer.invoke('dialog:respond', reqId, result),
+    onShow: (cb: (d: { reqId: string; sessionId: string; kind: 'alert' | 'confirm' | 'prompt'; message: string; defaultValue: string }) => void) => {
+      ipcRenderer.removeAllListeners('dialog:show');
+      ipcRenderer.on('dialog:show', (_e, d) => cb(d));
+    },
+  },
+
+  debug: {
+    ping:              () => ipcRenderer.invoke('debug:ping'),
+    echo:              (payload: unknown) => ipcRenderer.invoke('debug:echo', payload),
+    getMemory:         () => ipcRenderer.invoke('debug:getMemory'),
+    listPids:          () => ipcRenderer.invoke('debug:listPids'),
+    simulateMainError: (message: string) => ipcRenderer.invoke('debug:simulateMainError', message),
   },
 
   recording: {
@@ -261,6 +295,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     onShowSettings: (cb: () => void) => {
       ipcRenderer.removeAllListeners('show:settings');
       ipcRenderer.on('show:settings', () => cb());
+    },
+    onMainError: (cb: (d: { ts: number; message: string }) => void) => {
+      ipcRenderer.removeAllListeners('app:mainError');
+      ipcRenderer.on('app:mainError', (_e, d) => cb(d));
     },
   },
 

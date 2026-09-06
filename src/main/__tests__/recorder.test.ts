@@ -464,4 +464,49 @@ describe('SessionRecorder', () => {
       expect(wc.debugger.detach).toHaveBeenCalled();
     });
   });
+
+  // ── crash resilience (#21 — a broken recording DB must not take the app down) ──
+
+  describe('resilience to a broken database', () => {
+    it('reports the error and keeps working (as a no-op) when opening the DB throws', () => {
+      const Database = jest.requireMock('better-sqlite3') as jest.Mock;
+      Database.mockImplementationOnce(() => { throw new Error('disk I/O error'); });
+
+      const { wc, emit: e } = makeMockWc();
+      const onError = jest.fn();
+      const rec = new SessionRecorder(wc, { sessionId: 'broken-db', dbDir: os.tmpdir(), onError });
+
+      expect(onError).toHaveBeenCalledWith(expect.stringContaining('disk I/O error'));
+
+      // The session keeps browsing fine — recording is just silently a no-op.
+      e('Log.entryAdded', { entry: { level: 'info', text: 'ignored' } });
+      expect(rec.getTimeline()).toEqual([]);
+      expect(rec.exportHAR()).toMatchObject({ log: { entries: [] } });
+      expect(() => rec.destroy()).not.toThrow();
+    });
+
+    it('disables recording (once, not per-event) when a write starts failing mid-session', () => {
+      const { wc, emit: e } = makeMockWc();
+      const onError = jest.fn();
+      const rec = new SessionRecorder(wc, { sessionId: 'write-fails', dbDir: os.tmpdir(), onError });
+
+      e('Log.entryAdded', { entry: { level: 'info', text: 'ok-before' } });
+      expect(rec.getTimeline()).toHaveLength(1);
+
+      // Simulate the DB going bad mid-session (e.g. disk full).
+      (rec as unknown as { insertStmt: { run: jest.Mock } }).insertStmt.run = jest.fn(() => {
+        throw new Error('database or disk is full');
+      });
+
+      e('Log.entryAdded', { entry: { level: 'info', text: 'lost-1' } });
+      e('Log.entryAdded', { entry: { level: 'info', text: 'lost-2' } });
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.stringContaining('database or disk is full'));
+      // Still just the one event recorded before the failure — no crash, no duplicate errors.
+      expect(rec.getTimeline()).toHaveLength(1);
+
+      rec.destroy();
+    });
+  });
 });
