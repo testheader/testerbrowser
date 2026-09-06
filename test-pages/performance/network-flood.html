@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Network flood fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / performance / network-flood</nav>
+<h1>Network flood</h1>
+<p>Fires a burst of concurrent requests at the fixture server's fast
+<code>/perf/echo</code> route, to stress the CDP Network event pipeline and the
+Console tab's Network sub-view under high request volume.</p>
+
+<div class="grid">
+  <button data-n="50">50 concurrent requests</button>
+  <button data-n="200">200 concurrent requests</button>
+  <button data-n="500">500 concurrent requests</button>
+</div>
+<p id="status">(idle)</p>
+
+<script>
+  const status = document.getElementById('status');
+  document.querySelectorAll('button[data-n]').forEach(btn => {
+    btn.onclick = async () => {
+      const n = Number(btn.dataset.n);
+      status.textContent = `firing ${n} requests...`;
+      const start = performance.now();
+      const results = await Promise.allSettled(
+        Array.from({ length: n }, (_, i) => fetch('/perf/echo?i=' + i))
+      );
+      const ok = results.filter(r => r.status === 'fulfilled').length;
+      status.textContent = `${ok}/${n} succeeded in ${Math.round(performance.now() - start)}ms`;
+    };
+  });
+</script>
+</body>
+</html>

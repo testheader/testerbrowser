@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Popups &amp; iframes fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / windows / popup</nav>
+<h1>Popups, iframes &amp; link targets</h1>
+<p>Exercises session-colour inheritance on window.open / middle-click, and
+same-session tab grouping.</p>
+
+<h2>window.open</h2>
+<div class="grid">
+  <button onclick="window.open('child.html', '_blank')">window.open('_blank')</button>
+  <button onclick="window.open('child.html', 'named-popup', 'width=400,height=300')">window.open (named + sized)</button>
+</div>
+
+<h2>Link targets (try middle-click too)</h2>
+<div class="grid">
+  <a href="child.html" target="_blank"><button>&lt;a target=_blank&gt;</button></a>
+  <a href="child.html"><button>&lt;a&gt; (same tab)</button></a>
+</div>
+
+<h2>iframe</h2>
+<iframe src="child.html" width="100%" height="150" style="border:1px solid #ccc;border-radius:4px;"></iframe>
+</body>
+</html>

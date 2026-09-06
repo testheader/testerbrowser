@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Console logs fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / console / logs</nav>
+<h1>Console log levels</h1>
+<p>Exercises the Console tab's Log/Err pill filters and event rendering.</p>
+
+<div class="grid">
+  <button onclick="console.log('plain log', 1, true)">console.log</button>
+  <button onclick="console.info('info message')">console.info</button>
+  <button onclick="console.warn('warning message')">console.warn</button>
+  <button onclick="console.error('error message')">console.error</button>
+  <button onclick="console.debug('debug message')">console.debug</button>
+  <button onclick="console.log({ nested: { object: [1,2,3], ok: true } })">console.log(object)</button>
+  <button onclick="console.table([{a:1,b:2},{a:3,b:4}])">console.table</button>
+  <button onclick="(function(){ console.group('group'); console.log('inside group'); console.groupEnd(); })()">console.group</button>
+  <button onclick="console.assert(false, 'assertion failed on purpose')">console.assert(false)</button>
+  <button onclick="console.trace('trace me')">console.trace</button>
+  <button onclick="for (let i = 0; i < 20; i++) console.log('burst log #' + i)">20x console.log burst</button>
+</div>
+
+<p>On load this page already emitted one of each level once, so opening it fresh
+always produces a baseline set of events.</p>
+
+<script>
+  console.log('page loaded: logs.html');
+  console.info('info on load');
+  console.warn('warn on load');
+  console.error('error on load');
+</script>
+</body>
+</html>

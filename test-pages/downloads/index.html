@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Downloads fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / downloads</nav>
+<h1>Downloads</h1>
+<p>Exercises the download manager (progress, list, open, reveal, cancel, clear).</p>
+
+<h2>Static file (served as-is)</h2>
+<p><a href="sample.txt" download>sample.txt (~40 bytes)</a></p>
+
+<h2>Generated file via fixture server</h2>
+<p>Uses <code>/downloads/file?name=&amp;size=</code> — <code>Content-Disposition: attachment</code>
+with a generated body of the requested size.</p>
+<div class="grid">
+  <a href="/downloads/file?name=small.txt&size=1024"><button>1KB .txt</button></a>
+  <a href="/downloads/file?name=medium.bin&size=1048576"><button>1MB .bin</button></a>
+  <a href="/downloads/file?name=large.bin&size=20971520"><button>20MB .bin (cancel-mid-flight test)</button></a>
+  <a href="/downloads/file?name=report.json&size=2048&type=application/json"><button>2KB .json</button></a>
+</div>
+</body>
+</html>

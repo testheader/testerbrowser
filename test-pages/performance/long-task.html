@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Long task / jank fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / performance / long-task</nav>
+<h1>Long task / main-thread jank</h1>
+<p>Runs a synchronous CPU-bound loop to block the main thread, and a live FPS
+counter (via requestAnimationFrame) so the jank is visible while it happens.
+Useful for testing that the app chrome (tabs, console panel) stays responsive
+even when a page's own thread is blocked, since each session is its own
+process.</p>
+
+<div class="grid">
+  <button data-ms="500">Block 500ms</button>
+  <button data-ms="2000">Block 2s</button>
+  <button data-ms="5000">Block 5s</button>
+</div>
+<p>FPS: <span id="fps">-</span></p>
+<p id="status">(idle)</p>
+
+<script>
+  const status = document.getElementById('status');
+  document.querySelectorAll('button[data-ms]').forEach(btn => {
+    btn.onclick = () => {
+      const ms = Number(btn.dataset.ms);
+      status.textContent = `blocking for ${ms}ms...`;
+      const end = performance.now() + ms;
+      while (performance.now() < end) { /* busy-wait: intentional jank */ }
+      status.textContent = `done blocking ${ms}ms`;
+    };
+  });
+
+  // Simple rAF-based FPS meter so jank from the button handlers above is visible.
+  let frames = 0;
+  let lastReport = performance.now();
+  function loop() {
+    frames++;
+    const now = performance.now();
+    if (now - lastReport >= 1000) {
+      document.getElementById('fps').textContent = frames;
+      frames = 0;
+      lastReport = now;
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+</script>
+</body>
+</html>

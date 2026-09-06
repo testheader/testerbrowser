@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Status codes fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / network / status-codes</nav>
+<h1>Network status codes</h1>
+<p>Fires fetch() at the fixture server's <code>/network/status/&lt;code&gt;</code> route.
+Requires the shared fixture server (e2e/fixtures/server.ts) — plain static serving
+can't fabricate arbitrary status codes.</p>
+
+<div class="grid" id="buttons"></div>
+<pre class="out" id="out">(click a code)</pre>
+
+<script>
+  const codes = [200, 201, 204, 301, 302, 304, 400, 401, 403, 404, 429, 500, 502, 503];
+  const buttons = document.getElementById('buttons');
+  const out = document.getElementById('out');
+  codes.forEach(code => {
+    const btn = document.createElement('button');
+    btn.textContent = String(code);
+    btn.onclick = async () => {
+      const start = performance.now();
+      try {
+        const res = await fetch('/network/status/' + code, { redirect: 'manual' });
+        out.textContent = `GET /network/status/${code} -> ${res.status} ${res.type} (${Math.round(performance.now() - start)}ms)`;
+      } catch (err) {
+        out.textContent = `GET /network/status/${code} -> fetch error: ${err.message}`;
+      }
+    };
+    buttons.appendChild(btn);
+  });
+</script>
+</body>
+</html>

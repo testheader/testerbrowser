@@ -23,6 +23,12 @@ renderer/index.html        All CSS + HTML shell: topbar, console panel (Console+
                            modals (settings, notes), View dropdown, permission notifications
 renderer/renderer.js       All renderer logic: tabs, URL bar, find, bookmarks, downloads,
                            console filter pills, Storage tab, View dropdown, timeline polling
+test-pages/                Static HTML fixtures for testing TesterBrowser itself (cookies,
+                           console/errors, network, downloads, popups, permissions, perf).
+                           Dev/CI only — excluded from the packaged build automatically by
+                           build.files in package.json. See test-pages/README.md.
+e2e/fixtures/server.ts     Shared HTTP server serving test-pages/ + dynamic routes (status
+                           codes, delay, redirects, generated downloads) for e2e tests.
 .github/workflows/build.yml  CI: typecheck → bump-version → build-windows → build-linux
 ```
 

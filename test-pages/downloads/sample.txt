@@ -1,0 +1,1 @@
+This is a static TesterBrowser fixture file used to test the download manager.

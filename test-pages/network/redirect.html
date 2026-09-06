@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Redirects fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / network / redirect</nav>
+<h1>Redirect chains</h1>
+<p>Uses the fixture server's <code>/network/redirect?hops=N</code> route, which 302s
+N times before landing on a final page. Useful for testing the timeline shows every
+hop as its own network event.</p>
+
+<div class="grid">
+  <a href="/network/redirect?hops=1"><button>1 hop</button></a>
+  <a href="/network/redirect?hops=3"><button>3 hops</button></a>
+  <a href="/network/redirect?hops=10"><button>10 hops</button></a>
+</div>
+</body>
+</html>

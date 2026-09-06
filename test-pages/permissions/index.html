@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Permissions fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / permissions</nav>
+<h1>Permission prompts</h1>
+<p>Each button triggers a browser permission request, exercising the
+permission notification UI and grant/deny IPC round-trip.</p>
+
+<div class="grid">
+  <button id="geo">Geolocation</button>
+  <button id="notif">Notifications</button>
+  <button id="mic">Microphone (getUserMedia audio)</button>
+  <button id="cam">Camera (getUserMedia video)</button>
+  <button id="clip">Clipboard write</button>
+</div>
+<pre class="out" id="out">(idle)</pre>
+
+<script>
+  const out = document.getElementById('out');
+  const log = msg => { out.textContent = msg; };
+
+  document.getElementById('geo').onclick = () => {
+    navigator.geolocation.getCurrentPosition(
+      pos => log('granted: ' + pos.coords.latitude + ', ' + pos.coords.longitude),
+      err => log('denied/error: ' + err.message)
+    );
+  };
+  document.getElementById('notif').onclick = async () => {
+    const perm = await Notification.requestPermission();
+    log('Notification permission: ' + perm);
+    if (perm === 'granted') new Notification('TesterBrowser fixture', { body: 'Notifications work' });
+  };
+  document.getElementById('mic').onclick = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      log('mic granted, tracks: ' + stream.getTracks().length);
+      stream.getTracks().forEach(t => t.stop());
+    } catch (err) { log('mic denied/error: ' + err.message); }
+  };
+  document.getElementById('cam').onclick = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      log('camera granted, tracks: ' + stream.getTracks().length);
+      stream.getTracks().forEach(t => t.stop());
+    } catch (err) { log('camera denied/error: ' + err.message); }
+  };
+  document.getElementById('clip').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText('TesterBrowser fixture clipboard write');
+      log('clipboard write succeeded');
+    } catch (err) { log('clipboard denied/error: ' + err.message); }
+  };
+</script>
+</body>
+</html>

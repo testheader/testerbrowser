@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>localStorage fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / storage / localStorage</nav>
+<h1>localStorage / sessionStorage</h1>
+<p>getLocalStorage is page-scoped (runs executeJavaScript against whatever origin is
+currently loaded), so this page is deliberately plain HTTP/localhost — no redirects.</p>
+
+<div class="grid">
+  <button id="seed">Seed 3 keys</button>
+  <button id="seedLarge">Seed a large value (~50KB)</button>
+  <button id="seedUnicode">Seed unicode/emoji value</button>
+  <button id="seedSession">Seed sessionStorage key</button>
+  <button id="clear">Clear localStorage</button>
+  <button id="refresh">Refresh view</button>
+</div>
+
+<h2>localStorage</h2>
+<pre class="out" id="ls"></pre>
+<h2>sessionStorage</h2>
+<pre class="out" id="ss"></pre>
+
+<script>
+  function render() {
+    document.getElementById('ls').textContent = JSON.stringify(localStorage, null, 2);
+    document.getElementById('ss').textContent = JSON.stringify(sessionStorage, null, 2);
+  }
+  document.getElementById('seed').onclick = () => {
+    localStorage.setItem('username', 'tester');
+    localStorage.setItem('theme', 'dark');
+    localStorage.setItem('lastVisit', new Date().toISOString());
+    render();
+  };
+  document.getElementById('seedLarge').onclick = () => {
+    localStorage.setItem('bigBlob', 'x'.repeat(50 * 1024));
+    render();
+  };
+  document.getElementById('seedUnicode').onclick = () => {
+    localStorage.setItem('unicode', '日本語 🐛 café — "quotes" & <tags>');
+    render();
+  };
+  document.getElementById('seedSession').onclick = () => {
+    sessionStorage.setItem('tabOnly', 'gone after tab close: ' + Date.now());
+    render();
+  };
+  document.getElementById('clear').onclick = () => { localStorage.clear(); render(); };
+  document.getElementById('refresh').onclick = render;
+  render();
+</script>
+</body>
+</html>

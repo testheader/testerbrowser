@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slow responses fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / network / slow</nav>
+<h1>Delayed &amp; hanging responses</h1>
+<p>Uses the fixture server's <code>/network/slow?ms=N</code> route. Useful for testing
+the timeline's in-flight vs completed request rendering, and any timeout handling.</p>
+
+<div class="grid">
+  <button data-ms="500">500ms</button>
+  <button data-ms="2000">2s</button>
+  <button data-ms="8000">8s</button>
+  <button id="abort">Fire 5s request then abort() after 1s</button>
+</div>
+<pre class="out" id="out">(idle)</pre>
+
+<script>
+  const out = document.getElementById('out');
+  document.querySelectorAll('button[data-ms]').forEach(btn => {
+    btn.onclick = async () => {
+      const ms = btn.dataset.ms;
+      out.textContent = `requesting /network/slow?ms=${ms} ...`;
+      const start = performance.now();
+      const res = await fetch('/network/slow?ms=' + ms);
+      out.textContent = `done in ${Math.round(performance.now() - start)}ms, status ${res.status}`;
+    };
+  });
+  document.getElementById('abort').onclick = () => {
+    const controller = new AbortController();
+    out.textContent = 'requesting /network/slow?ms=5000, will abort at 1s ...';
+    fetch('/network/slow?ms=5000', { signal: controller.signal })
+      .then(() => { out.textContent = 'request unexpectedly completed'; })
+      .catch(err => { out.textContent = 'request aborted: ' + err.message; });
+    setTimeout(() => controller.abort(), 1000);
+  };
+</script>
+</body>
+</html>

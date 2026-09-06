@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Popup child</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<h1>Popup / iframe child page</h1>
+<p>Opened from windows/popup.html. If this is a real window (not an iframe), it
+should share the same session partition and tab colour as its opener.</p>
+<script>console.log('child page loaded, opener present:', !!window.opener);</script>
+</body>
+</html>

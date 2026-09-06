@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Memory growth fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / performance / memory-growth</nav>
+<h1>Memory growth</h1>
+<p>Retains allocated arrays so JS heap usage grows monotonically until released —
+for exercising DevTools' memory profiler / task manager against a session, or
+verifying tab close actually frees memory. Each chunk is ~10MB of string data.</p>
+
+<div class="grid">
+  <button id="grow">Allocate +10MB chunk</button>
+  <button id="growFast">Allocate 10 chunks (~100MB)</button>
+  <button id="release">Release all</button>
+</div>
+<p id="status">Retained: 0 chunks (~0MB)</p>
+
+<script>
+  const retained = [];
+  const CHUNK_BYTES = 10 * 1024 * 1024;
+  const status = document.getElementById('status');
+
+  function allocateChunk() {
+    // Each char is 2 bytes in a JS string (UTF-16), so repeat half the byte count.
+    retained.push('a'.repeat(CHUNK_BYTES / 2));
+    render();
+  }
+  function render() {
+    status.textContent = `Retained: ${retained.length} chunks (~${retained.length * 10}MB)`;
+  }
+
+  document.getElementById('grow').onclick = allocateChunk;
+  document.getElementById('growFast').onclick = () => { for (let i = 0; i < 10; i++) allocateChunk(); };
+  document.getElementById('release').onclick = () => { retained.length = 0; render(); };
+</script>
+</body>
+</html>

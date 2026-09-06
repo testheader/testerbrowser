@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cookies fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / storage / cookies</nav>
+<h1>Cookies</h1>
+<p>Exercises the Storage tab's cookie table (add / edit / delete) against a real page.</p>
+
+<div class="grid">
+  <button id="setSession">Set session cookie</button>
+  <button id="setPersistent">Set persistent cookie (1h)</button>
+  <button id="setSecure">Set Secure + HttpOnly-style (JS can't set HttpOnly — server route does)</button>
+  <button id="setThirdPartyLike">Set path-scoped cookie (/storage/)</button>
+  <button id="clear">Clear all document.cookie-visible cookies</button>
+  <button id="refresh">Refresh view</button>
+</div>
+
+<h2>document.cookie</h2>
+<pre class="out" id="out"></pre>
+
+<h2>Set via server response header</h2>
+<p>
+  <a href="/storage/set-cookie?name=server_cookie&value=1">Navigate with Set-Cookie header</a>
+  (useful for testing cookies set outside of JS, e.g. HttpOnly via the fixture server).
+</p>
+
+<script>
+  const out = document.getElementById('out');
+  function render() { out.textContent = document.cookie || '(none)'; }
+
+  document.getElementById('setSession').onclick = () => {
+    document.cookie = 'session_cookie=' + Date.now() + '; Path=/';
+    render();
+  };
+  document.getElementById('setPersistent').onclick = () => {
+    const expires = new Date(Date.now() + 3600_000).toUTCString();
+    document.cookie = 'persistent_cookie=' + Date.now() + '; Path=/; Expires=' + expires;
+    render();
+  };
+  document.getElementById('setSecure').onclick = () => {
+    // Secure requires https; on http this silently no-ops, which is itself
+    // a useful thing to verify in the Storage tab.
+    document.cookie = 'secure_cookie=1; Path=/; Secure; SameSite=Strict';
+    render();
+  };
+  document.getElementById('setThirdPartyLike').onclick = () => {
+    document.cookie = 'scoped_cookie=1; Path=/storage/';
+    render();
+  };
+  document.getElementById('clear').onclick = () => {
+    document.cookie.split(';').forEach(c => {
+      const name = c.split('=')[0].trim();
+      if (name) document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    });
+    render();
+  };
+  document.getElementById('refresh').onclick = render;
+  render();
+</script>
+</body>
+</html>

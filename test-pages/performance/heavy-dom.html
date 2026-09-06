@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Heavy DOM fixture</title>
+<link rel="stylesheet" href="../shared.css">
+<style>
+  #grid { display: grid; grid-template-columns: repeat(20, 1fr); gap: 1px; }
+  #grid div { background: #eee; font-size: 8px; padding: 2px; }
+</style>
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / performance / heavy-dom</nav>
+<h1>Heavy DOM</h1>
+<p>Renders a large number of DOM nodes to stress page rendering and scrolling.
+Pass <code>?count=N</code> to override the default (5000). Useful for checking the
+browser stays responsive (tab switching, DevTools open) under DOM pressure.</p>
+
+<div class="grid">
+  <button id="render">Render</button>
+  <button id="clear">Clear</button>
+</div>
+<p id="status"></p>
+<div id="grid"></div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const count = Number(params.get('count')) || 5000;
+  const status = document.getElementById('status');
+  const grid = document.getElementById('grid');
+
+  document.getElementById('render').onclick = () => {
+    const start = performance.now();
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < count; i++) {
+      const cell = document.createElement('div');
+      cell.textContent = i;
+      frag.appendChild(cell);
+    }
+    grid.appendChild(frag);
+    status.textContent = `Rendered ${count} nodes in ${Math.round(performance.now() - start)}ms`;
+  };
+  document.getElementById('clear').onclick = () => {
+    grid.textContent = '';
+    status.textContent = 'cleared';
+  };
+</script>
+</body>
+</html>

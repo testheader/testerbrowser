@@ -18,3 +18,18 @@ export async function getMainWindow(app: ElectronApplication): Promise<Page> {
   }
   return app.firstWindow();
 }
+
+/**
+ * Each browser tab is its own WebContentsView — a separate Playwright Page,
+ * not an element inside the chrome window's DOM (see getMainWindow above).
+ * Anything a loaded page renders (buttons, forms, ...) has to be driven
+ * through the Page this returns, not through the chrome `window`.
+ */
+export async function getTabPage(app: ElectronApplication, urlIncludes: string): Promise<Page> {
+  for (let i = 0; i < 50; i++) {
+    const found = app.windows().find(p => p.url().includes(urlIncludes));
+    if (found) return found;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error(`No tab page found with URL including "${urlIncludes}"`);
+}

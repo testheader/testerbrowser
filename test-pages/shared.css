@@ -1,0 +1,40 @@
+/* Shared styling for TesterBrowser fixture pages. Not shipped in the packaged
+   app — see test-pages/README.md. */
+body {
+  font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+  max-width: 720px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+h1 { font-size: 1.4rem; }
+h1 small { display: block; font-size: 0.8rem; font-weight: normal; color: #666; }
+nav.crumbs { font-size: 0.85rem; margin-bottom: 1rem; }
+nav.crumbs a { color: #0645ad; }
+button {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  margin: 0.25rem 0.4rem 0.25rem 0;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+button:hover { background: #f0f0f0; }
+pre#log, pre.out {
+  background: #111;
+  color: #d8d8d8;
+  padding: 0.75rem;
+  border-radius: 4px;
+  min-height: 2rem;
+  max-height: 40vh;
+  overflow: auto;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; }
+td, th { border: 1px solid #ddd; padding: 0.35rem 0.5rem; font-size: 0.85rem; text-align: left; }
+.grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }

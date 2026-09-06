@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Console flood fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / performance / console-flood</nav>
+<h1>Console flood</h1>
+<p>Emits a large burst of console messages. The recorder caps each session at
+20,000 events (see recorder.ts) — this page is meant to approach/exceed that cap
+so you can verify old events are evicted and the Console tab / HAR export stay
+responsive under a high polling load (pollTimeline runs every 1s).</p>
+
+<div class="grid">
+  <button data-n="1000">1,000 logs</button>
+  <button data-n="10000">10,000 logs</button>
+  <button data-n="25000">25,000 logs (exceeds ring buffer)</button>
+</div>
+<p id="status">(idle)</p>
+
+<script>
+  const status = document.getElementById('status');
+  document.querySelectorAll('button[data-n]').forEach(btn => {
+    btn.onclick = () => {
+      const n = Number(btn.dataset.n);
+      const start = performance.now();
+      // Batch in chunks via setTimeout so the page doesn't lock the main thread
+      // entirely and CDP has a chance to flush events as they're produced.
+      let i = 0;
+      const chunk = 500;
+      function tick() {
+        const end = Math.min(i + chunk, n);
+        for (; i < end; i++) console.log('flood log #' + i, { i });
+        status.textContent = `emitted ${i}/${n} (${Math.round(performance.now() - start)}ms)`;
+        if (i < n) setTimeout(tick, 0);
+        else status.textContent = `done: ${n} logs in ${Math.round(performance.now() - start)}ms`;
+      }
+      tick();
+    };
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>JS errors fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / console / js-error</nav>
+<h1>Uncaught errors</h1>
+<p>Exercises Log.entryAdded / Runtime.exceptionThrown capture — the "Err" pill in the Console tab.</p>
+
+<div class="grid">
+  <button id="throwSync">Throw synchronous error</button>
+  <button id="throwAsync">Throw inside setTimeout</button>
+  <button id="rejectPromise">Unhandled promise rejection</button>
+  <button id="referenceError">Trigger ReferenceError</button>
+  <button id="typeError">Trigger TypeError (null deref)</button>
+  <button id="stackOverflow">Trigger RangeError (stack overflow)</button>
+  <button id="cspViolation">Trigger CSP-style network error (bad URL fetch)</button>
+</div>
+
+<script>
+  document.getElementById('throwSync').onclick = () => { throw new Error('synchronous uncaught error'); };
+  document.getElementById('throwAsync').onclick = () => {
+    setTimeout(() => { throw new Error('uncaught error inside setTimeout'); }, 0);
+  };
+  document.getElementById('rejectPromise').onclick = () => {
+    Promise.reject(new Error('unhandled promise rejection'));
+  };
+  document.getElementById('referenceError').onclick = () => { thisFunctionDoesNotExist(); };
+  document.getElementById('typeError').onclick = () => { const x = null; x.someProperty; };
+  document.getElementById('stackOverflow').onclick = () => {
+    (function recurse() { recurse(); })();
+  };
+  document.getElementById('cspViolation').onclick = () => {
+    fetch('http://127.0.0.1:1/definitely-unreachable').catch(err => console.error('fetch failed as expected:', err.message));
+  };
+</script>
+</body>
+</html>
