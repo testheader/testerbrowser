@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / accessibility</nav>
+<h1 data-testid="a11y-heading">Accessibility fixture</h1>
+<p>Distinct roles/names for exercising the A11y tab's tree and Inspect element
+feature. Each interactive element has a stable <code>data-testid</code> too,
+useful for Record Playback selector generation.</p>
+
+<p>
+  <button data-testid="a11y-button" aria-label="Save changes">Save</button>
+</p>
+
+<p>
+  <a href="#" data-testid="a11y-link">Learn more</a>
+</p>
+
+<p>
+  <label for="a11yName">Full name</label>
+  <input id="a11yName" data-testid="a11y-input" type="text" />
+</p>
+
+<p>
+  <input type="checkbox" id="a11yCheck" data-testid="a11y-checkbox" />
+  <label for="a11yCheck">Subscribe to updates</label>
+</p>
+</body>
+</html>

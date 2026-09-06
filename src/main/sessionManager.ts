@@ -272,7 +272,7 @@ export class SessionManager {
               if (!loc.backendNodeId) return;
               const ax = await dbg.sendCommand('Accessibility.queryAXTree', { backendNodeId: loc.backendNodeId }) as { nodes?: unknown[] };
               const node = ax.nodes?.[0];
-              if (node) view.webContents.send('a11y:nodeHovered', node);
+              if (node) this.win.webContents.send('a11y:nodeHovered', node);
             })().catch(() => {});
           }
         } catch {}
@@ -288,7 +288,7 @@ export class SessionManager {
               if (!loc.backendNodeId) return;
               const ax = await dbg.sendCommand('Accessibility.queryAXTree', { backendNodeId: loc.backendNodeId }) as { nodes?: unknown[] };
               const node = ax.nodes?.[0];
-              if (node) view.webContents.send('a11y:nodeClicked', node);
+              if (node) this.win.webContents.send('a11y:nodeClicked', node);
             })().catch(() => {});
           }
         } catch {}

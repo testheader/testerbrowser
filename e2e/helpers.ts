@@ -25,9 +25,9 @@ export async function getMainWindow(app: ElectronApplication): Promise<Page> {
  * Anything a loaded page renders (buttons, forms, ...) has to be driven
  * through the Page this returns, not through the chrome `window`.
  */
-export async function getTabPage(app: ElectronApplication, urlIncludes: string): Promise<Page> {
+export async function getTabPage(app: ElectronApplication, urlIncludes: string, exclude?: Page): Promise<Page> {
   for (let i = 0; i < 50; i++) {
-    const found = app.windows().find(p => p.url().includes(urlIncludes));
+    const found = app.windows().find(p => p.url().includes(urlIncludes) && p !== exclude);
     if (found) return found;
     await new Promise(resolve => setTimeout(resolve, 100));
   }

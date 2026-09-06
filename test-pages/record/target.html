@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Record Playback fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / record / target</nav>
+<h1>Record Playback fixture</h1>
+<p>A minimal form for recording a fill + click cycle. Elements carry
+<code>data-testid</code> so the recorder generates a stable
+<code>[data-testid="..."]</code> selector instead of a fragile
+<code>nth-of-type</code> chain.</p>
+
+<p>
+  <input data-testid="rp-input" type="text" placeholder="Your name" />
+</p>
+<p>
+  <button data-testid="rp-btn">Submit</button>
+</p>
+<p id="rp-result" data-testid="rp-result"></p>
+
+<script>
+  document.querySelector('[data-testid="rp-btn"]').addEventListener('click', () => {
+    const name = document.querySelector('[data-testid="rp-input"]').value;
+    document.getElementById('rp-result').textContent = 'Clicked: ' + name;
+  });
+</script>
+</body>
+</html>

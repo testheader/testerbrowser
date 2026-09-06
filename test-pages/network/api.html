@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>API fetch fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / network / api</nav>
+<h1>API fetch</h1>
+<p>Fetches an arbitrary same-origin path and reports the outcome. With no
+Mock/Resilience rule active, an unrecognized path 404s from the fixture
+server's static handler — a clean baseline for testing that a Mock or
+Resilience rule actually intercepts it.</p>
+
+<div class="grid">
+  <input id="apiPath" type="text" value="/api/widgets" style="flex:1;min-width:220px" />
+  <button id="apiFetchBtn">Fetch</button>
+</div>
+<pre class="out" id="apiOut">(idle)</pre>
+
+<script>
+  document.getElementById('apiFetchBtn').onclick = async () => {
+    const path = document.getElementById('apiPath').value;
+    const out = document.getElementById('apiOut');
+    out.textContent = 'fetching ' + path + ' ...';
+    const start = performance.now();
+    try {
+      const res = await fetch(path);
+      const text = await res.text();
+      out.textContent = JSON.stringify({ status: res.status, body: text, ms: Math.round(performance.now() - start) });
+    } catch (err) {
+      out.textContent = JSON.stringify({ error: err.message });
+    }
+  };
+</script>
+</body>
+</html>
