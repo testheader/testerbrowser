@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
-import path from 'path';
-import { getMainWindow } from './helpers';
+import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: Awaited<ReturnType<typeof electron.launch>>;
@@ -10,9 +9,7 @@ let fixtures: FixtureServer;
 
 test.beforeAll(async () => {
   fixtures = await startFixtureServer();
-  app = await electron.launch({
-    args: [path.join(__dirname, '..', 'dist', 'main', 'index.js')],
-  });
+  app = await launchApp(MAIN_PATH);
   page = await getMainWindow(app);
   await page.waitForLoadState('domcontentloaded');
 });

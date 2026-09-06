@@ -1,15 +1,12 @@
-import { test, expect, _electron as electron } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import path from 'path';
-import { getMainWindow } from './helpers';
+import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
 
 let app: ElectronApplication;
 let window: Page;
 
 test.beforeAll(async () => {
-  app = await electron.launch({
-    args: [path.join(__dirname, '..', 'dist', 'main', 'index.js')],
-  });
+  app = await launchApp(MAIN_PATH);
   window = await getMainWindow(app);
   await window.waitForLoadState('domcontentloaded');
 });

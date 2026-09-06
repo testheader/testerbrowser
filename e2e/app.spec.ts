@@ -8,11 +8,10 @@
  * is required — tests are fully hermetic.
  */
 
-import { test, expect, _electron as electron } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createServer, Server } from 'http';
-import path from 'path';
-import { getMainWindow, destroyExtraSessions } from './helpers';
+import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
 
 let app: ElectronApplication;
 let window: Page;
@@ -37,9 +36,7 @@ test.beforeAll(async () => {
     });
   });
 
-  app = await electron.launch({
-    args: [path.join(__dirname, '..', 'dist', 'main', 'index.js')],
-  });
+  app = await launchApp(MAIN_PATH);
   window = await getMainWindow(app);
   // 'load' waits until all scripts have run, ensuring the renderer has set its
   // title before any test assertion reads it.
@@ -47,7 +44,6 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await destroyExtraSessions(window);
   await app.close();
   await new Promise<void>(resolve => testServer.close(() => resolve()));
 });
