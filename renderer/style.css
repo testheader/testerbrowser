@@ -890,6 +890,11 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .spoof-reset { background: var(--error-surface); border-color: var(--error-border); }
 .spoof-reset:hover:not([disabled]) { background: var(--error-surface); }
 .spoof-status { font-size: 11px; }
+.spoof-current { font-size: 11px; color: var(--text-muted); padding: 6px 8px; border-radius: 3px;
+                  background: var(--bg-hover); border: 1px solid var(--border-color); }
+.spoof-current.spoof-current-active { color: var(--info-strong); background: var(--info-surface); border-color: var(--info-border); }
+.spoof-dirty { font-size: 11px; color: var(--warn-strong); background: var(--warn-surface);
+               border-radius: 3px; padding: 1px 7px; font-weight: 600; }
 
 /* ── Security panel ── */
 #securityPanel { flex: 1; overflow: hidden; display: none; flex-direction: column; }

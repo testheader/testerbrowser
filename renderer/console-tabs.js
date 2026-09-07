@@ -2,7 +2,7 @@ import { loadStoragePanel } from './storage.js';
 import { initA11y, disableA11yHover } from './a11y.js';
 import { initDiff } from './diff.js';
 import { initVR, refreshVR } from './visual-regression.js';
-import { initSpoof } from './emulation.js';
+import { initSpoof, refreshSpoofStatus } from './emulation.js';
 import { initSecurity } from './security.js';
 import { initMock } from './mock.js';
 import { initResilience } from './resilience.js';
@@ -58,7 +58,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') loadStoragePanel();
   if (tab === 'a11y') { initA11y(); }
-  if (tab === 'spoof') initSpoof();
+  if (tab === 'spoof') { initSpoof(); refreshSpoofStatus(); }
   if (tab === 'security') initSecurity();
   if (tab === 'mock') initMock();
   if (tab === 'resilience') initResilience();

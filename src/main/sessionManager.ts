@@ -56,6 +56,14 @@ export interface TestSession {
   mockRules: MockRule[];
   resilienceRules: ResilienceRule[];
   a11yInspecting: boolean;
+  emulation: EmulationOverrides | null;
+}
+
+export interface EmulationOverrides {
+  timezone?: string;
+  locale?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 const TAB_COLORS = [
@@ -261,6 +269,7 @@ export class SessionManager {
       mockRules: [],
       resilienceRules: [],
       a11yInspecting: false,
+      emulation: null,
     };
 
     // Handle CDP events: Fetch.requestPaused for mock/resilience rules, Runtime.bindingCalled for a11y hover
@@ -912,13 +921,28 @@ export class SessionManager {
       await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
       await dbg.sendCommand('Emulation.setLocaleOverride', { locale: '' }).catch(() => {});
       await dbg.sendCommand('Emulation.clearGeolocationOverride').catch(() => {});
+      s.emulation = null;
       return;
     }
-    if (opts.timezone !== undefined) await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone }).catch(() => {});
-    if (opts.locale !== undefined)   await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale }).catch(() => {});
+    const applied: EmulationOverrides = { ...(s.emulation ?? {}) };
+    if (opts.timezone !== undefined) {
+      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone }).catch(() => {});
+      applied.timezone = opts.timezone;
+    }
+    if (opts.locale !== undefined) {
+      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale }).catch(() => {});
+      applied.locale = opts.locale;
+    }
     if (opts.latitude !== undefined && opts.longitude !== undefined) {
       await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude: opts.latitude, longitude: opts.longitude, accuracy: opts.accuracy ?? 10 }).catch(() => {});
+      applied.latitude = opts.latitude;
+      applied.longitude = opts.longitude;
     }
+    s.emulation = applied;
+  }
+
+  getEmulation(id: string): EmulationOverrides | null {
+    return this.sessions.get(id)?.emulation ?? null;
   }
 
   // newtab.html renders in its own WebContentsView, out of reach of the app

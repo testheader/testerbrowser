@@ -8,6 +8,7 @@ import { updateUrlbarSecurity } from './urlbar-security.js';
 import { reloadA11yIfLoaded } from './a11y.js';
 import { loadRules } from './resilience.js';
 import { refreshVR, refreshVRComparePicker, clearVRSession } from './visual-regression.js';
+import { refreshSpoofStatus } from './emulation.js';
 import { clearSecurityFindings } from './security.js';
 import { refreshTimelineNow, resetTimelineForNewSession } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
@@ -65,6 +66,7 @@ export async function switchToSession(id) {
   if (activeConsoleTab === 'a11y') reloadA11yIfLoaded();
   if (activeConsoleTab === 'resilience') loadRules();
   if (activeConsoleTab === 'vr') refreshVR();
+  if (activeConsoleTab === 'spoof') refreshSpoofStatus();
   if (activeConsoleTab === 'security') clearSecurityFindings();
   if (activeConsoleTab === 'console' || activeConsoleTab === 'network') refreshTimelineNow();
   recordVisit(id);

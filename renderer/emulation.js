@@ -17,6 +17,10 @@ const PRESETS = [
 ];
 
 let initialized = false;
+// Overrides actually applied to the currently displayed session, as last
+// confirmed by the backend — drives both the "currently applied" summary and
+// the dirty-field detection (edited-but-not-applied) below it.
+let appliedForActiveSession = null;
 
 export function initSpoof() {
   const panel = document.getElementById('spoofPanel');
@@ -25,6 +29,7 @@ export function initSpoof() {
 
   panel.innerHTML = `
     <div class="spoof-wrap">
+      <div class="spoof-current" id="spoofCurrent"></div>
       <div class="spoof-section">
         <label class="spoof-label">Quick preset</label>
         <div class="spoof-presets" id="spoofPresets"></div>
@@ -50,6 +55,7 @@ export function initSpoof() {
       <div class="spoof-actions">
         <button class="spoof-btn spoof-apply" id="spoofApply">Apply to session</button>
         <button class="spoof-btn spoof-reset" id="spoofReset">Reset overrides</button>
+        <span class="spoof-dirty" id="spoofDirty" hidden>Unapplied changes</span>
         <span class="spoof-status" id="spoofStatus"></span>
       </div>
     </div>`;
@@ -65,6 +71,11 @@ export function initSpoof() {
 
   document.getElementById('spoofApply').addEventListener('click', applySpoof);
   document.getElementById('spoofReset').addEventListener('click', resetSpoof);
+  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon']) {
+    document.getElementById(id).addEventListener('input', updateDirtyState);
+  }
+
+  refreshSpoofStatus();
 }
 
 function fillPreset(p) {
@@ -72,6 +83,57 @@ function fillPreset(p) {
   document.getElementById('spoofLocale').value   = p.locale;
   document.getElementById('spoofLat').value      = p.latitude;
   document.getElementById('spoofLon').value      = p.longitude;
+  updateDirtyState();
+}
+
+// Re-fetches what's actually applied to the active session's page (not just
+// what the fields show) and refreshes the "currently applied" summary. Call
+// this whenever the active session changes or the spoof tab is (re)shown, so
+// the panel never silently shows a stale session's overrides as if they were
+// the active one.
+export async function refreshSpoofStatus() {
+  const current = document.getElementById('spoofCurrent');
+  if (!current) return; // panel not yet initialised
+
+  const id = getActiveId();
+  appliedForActiveSession = id ? await testerBrowser.emulation.get(id) : null;
+  renderCurrent();
+  updateDirtyState();
+}
+
+function renderCurrent() {
+  const current = document.getElementById('spoofCurrent');
+  if (!current) return;
+  const a = appliedForActiveSession;
+  if (!a || (a.timezone === undefined && a.locale === undefined && a.latitude === undefined)) {
+    current.textContent = 'No overrides applied to this session.';
+    current.classList.remove('spoof-current-active');
+    return;
+  }
+  const parts = [];
+  if (a.timezone !== undefined) parts.push(`timezone ${a.timezone}`);
+  if (a.locale !== undefined) parts.push(`locale ${a.locale}`);
+  if (a.latitude !== undefined && a.longitude !== undefined) parts.push(`location ${a.latitude}, ${a.longitude}`);
+  current.textContent = `Applied to this session: ${parts.join(' · ')}`;
+  current.classList.add('spoof-current-active');
+}
+
+function updateDirtyState() {
+  const dirty = document.getElementById('spoofDirty');
+  if (!dirty) return;
+  const a = appliedForActiveSession ?? {};
+  const timezone = document.getElementById('spoofTimezone').value.trim();
+  const locale   = document.getElementById('spoofLocale').value.trim();
+  const latRaw   = document.getElementById('spoofLat').value.trim();
+  const lonRaw   = document.getElementById('spoofLon').value.trim();
+
+  const changed =
+    timezone !== (a.timezone ?? '') ||
+    locale !== (a.locale ?? '') ||
+    latRaw !== (a.latitude !== undefined ? String(a.latitude) : '') ||
+    lonRaw !== (a.longitude !== undefined ? String(a.longitude) : '');
+
+  dirty.hidden = !changed;
 }
 
 async function applySpoof() {
@@ -90,6 +152,7 @@ async function applySpoof() {
   btn.disabled = true;
   try {
     await testerBrowser.emulation.set(getActiveId(), { timezone, locale, latitude, longitude });
+    await refreshSpoofStatus();
     showStatus('Overrides applied. Reload the page for full effect.', false);
   } catch {
     showStatus('Failed to apply overrides.', true);
@@ -104,6 +167,7 @@ async function resetSpoof() {
   btn.disabled = true;
   try {
     await testerBrowser.emulation.set(getActiveId(), { clear: true });
+    await refreshSpoofStatus();
     showStatus('Overrides cleared.', false);
   } finally {
     btn.disabled = false;
