@@ -52,6 +52,24 @@ test('console/logs.html produces console events at every level', async () => {
 
 // ── Network ──────────────────────────────────────────────────────────────────
 
+test('a request with a very long URL stays a single line and scrolls horizontally instead of wrapping', async () => {
+  const longQuery = 'x'.repeat(3000);
+  await navigate('/network/status-codes.html?' + longQuery);
+  await window.click('#consoleTabNetwork');
+  await window.waitForTimeout(500);
+
+  const row = window.locator('.evt.network-request', { hasText: 'x'.repeat(50) });
+  await expect(row).toBeVisible();
+
+  const box = await row.evaluate(el => ({
+    height:      el.getBoundingClientRect().height,
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(box.height).toBeLessThan(40);
+  expect(box.scrollWidth).toBeGreaterThan(box.clientWidth + 100);
+});
+
 test('network/status-codes.html: a 404 shows up as a network event', async () => {
   const tab = await navigate('/network/status-codes.html');
   await window.click('#consoleTabNetwork');

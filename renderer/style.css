@@ -398,7 +398,10 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
                     border-bottom: 1px solid var(--border-color); margin-bottom: 4px; }
 /* Lives here, not in a style attribute: the page CSP has no 'unsafe-inline',
    so inline style attributes never apply. */
-#timelinePanelWrapper { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+/* min-width: 0 overrides the flex default (min-content, i.e. the widest
+   unbreakable child) — without it, a single very-long-URL row would grow
+   this whole panel instead of scrolling horizontally on its own. */
+#timelinePanelWrapper { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 #timelinePanel { flex: 1; min-height: 0; font-family: monospace; font-size: 12px; overflow-y: auto; padding: 4px 0; }
 .timeline-empty { display: flex; align-items: center; gap: 8px; padding: 16px 12px; color: var(--text-muted); font-size: 12px; }
 .timeline-empty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error-strong); flex-shrink: 0;
@@ -592,7 +595,7 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .feature-item p code { font-family: monospace; font-size: 11px; background: var(--bg-hover); border-radius: 3px; padding: 1px 4px; }
 
 /* Timeline events */
-.evt { padding: 1px 10px; cursor: pointer; white-space: pre-wrap; word-break: break-all; }
+.evt { padding: 1px 10px; cursor: pointer; white-space: nowrap; overflow-x: auto; }
 .evt:hover { background: var(--bg-primary); }
 .evt-summary { }
 .evt-detail { background: var(--bg-deep); border-left: 2px solid var(--border-strong); margin: 4px 10px 4px 0;
