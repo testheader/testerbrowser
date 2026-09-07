@@ -1059,6 +1059,15 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-toggle-label { width: 10px; }
 .res-del-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; font-size: 13px; }
 .res-del-btn:hover { color: var(--error-strong); }
+.res-edit-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; font-size: 13px; }
+.res-edit-btn:hover { color: var(--accent); }
+.res-network-btn { background: none; border: 1px solid var(--info-border); color: var(--info-strong);
+                    border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer; white-space: nowrap; }
+.res-network-btn:hover { background: var(--info-surface); }
+.res-rule-row-editing { flex-wrap: wrap; }
+.res-rule-row-editing .res-edit-url { flex: 1; min-width: 120px; }
+.res-rule-row-editing .res-edit-prob { width: 60px; }
+.res-rule-row-editing .res-edit-latency { width: 80px; }
 
 /* ── Record-Playback panel ────────────────────────────────────────────────── */
 .rp-wrap { display: flex; height: 100%; overflow: hidden; }

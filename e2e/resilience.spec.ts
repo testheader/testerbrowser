@@ -71,3 +71,24 @@ test('a 100% error500 rule actually fails a matching fetch, and hits increments'
   const requestRow = window.locator('.evt.network-request', { hasText: '/api/resilience-target' });
   await expect(requestRow.locator('.evt-badge-resilience')).toBeVisible({ timeout: 5_000 });
 });
+
+test('an existing rule can be edited in place', async () => {
+  await window.click('#consoleTabResilience');
+  const row = window.locator('.res-rule-row').first();
+  await row.locator('.res-edit-btn').click();
+
+  const editRow = window.locator('.res-rule-row-editing');
+  await expect(editRow).toBeVisible();
+  await editRow.locator('.res-edit-prob').fill('42');
+  await editRow.locator('.res-save-btn').click();
+
+  await expect(window.locator('.res-rule-row').first().locator('.res-prob-badge')).toHaveText('42%');
+});
+
+test('the "View in Network" button on a rule filters the Network tab to its pattern', async () => {
+  await window.click('#consoleTabResilience');
+  await window.locator('.res-rule-row').first().locator('.res-network-btn').click();
+
+  await expect(window.locator('#consoleTabNetwork')).toHaveClass(/active/);
+  await expect(window.locator('#networkFilterText')).toHaveValue('/api/resilience-target');
+});

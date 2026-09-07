@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
-import { getActiveConsoleTab } from './console-tabs.js';
+import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 
 const TYPES = [
   { value: 'error500',  label: '500 Error',           desc: 'Return HTTP 500 Internal Server Error' },
@@ -113,30 +113,88 @@ function renderRules(rules) {
   if (empty) empty.hidden = true;
 
   for (const rule of rules) {
-    const typeLabel = TYPES.find(t => t.value === rule.type)?.label ?? rule.type;
-    const probLabel = Math.round(rule.probability * 100) + '%';
-    const extra = rule.type === 'latency' ? ` ${rule.latencyMs}ms` : '';
-    const row = document.createElement('div');
-    row.className = 'res-rule-row';
-    row.dataset.id = rule.id;
-    row.innerHTML = `
-      <label class="res-toggle" title="Enable/disable">
-        <input type="checkbox" class="res-enable" ${rule.enabled ? 'checked' : ''} />
-        <span class="res-toggle-label"></span>
-      </label>
-      <span class="res-rule-type res-badge">${typeLabel}${extra}</span>
-      <span class="res-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
-      <span class="res-badge res-prob-badge">${probLabel}</span>
-      <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
-      <button class="res-btn res-del-btn" title="Remove">✕</button>`;
-
-    row.querySelector('.res-enable').addEventListener('change', async (e) => {
-      await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, e.target.checked);
-    });
-    row.querySelector('.res-del-btn').addEventListener('click', async () => {
-      await testerBrowser.resilience.removeRule(getActiveId(), rule.id);
-      await loadRules();
-    });
-    container.appendChild(row);
+    container.appendChild(buildRuleRow(rule));
   }
+}
+
+function buildRuleRow(rule) {
+  const typeLabel = TYPES.find(t => t.value === rule.type)?.label ?? rule.type;
+  const probLabel = Math.round(rule.probability * 100) + '%';
+  const extra = rule.type === 'latency' ? ` ${rule.latencyMs}ms` : '';
+  const row = document.createElement('div');
+  row.className = 'res-rule-row';
+  row.dataset.id = rule.id;
+  row.innerHTML = `
+    <label class="res-toggle" title="Enable/disable">
+      <input type="checkbox" class="res-enable" ${rule.enabled ? 'checked' : ''} />
+      <span class="res-toggle-label"></span>
+    </label>
+    <span class="res-rule-type res-badge">${typeLabel}${extra}</span>
+    <span class="res-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
+    <span class="res-badge res-prob-badge">${probLabel}</span>
+    <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
+    <button class="res-btn res-network-btn" title="View matching calls in the Network tab">⇒ Network</button>
+    <button class="res-btn res-edit-btn" title="Edit rule">✎</button>
+    <button class="res-btn res-del-btn" title="Remove">✕</button>`;
+
+  row.querySelector('.res-enable').addEventListener('change', async (e) => {
+    await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, e.target.checked);
+  });
+  row.querySelector('.res-del-btn').addEventListener('click', async () => {
+    await testerBrowser.resilience.removeRule(getActiveId(), rule.id);
+    await loadRules();
+  });
+  row.querySelector('.res-network-btn').addEventListener('click', () => viewRuleInNetwork(rule));
+  row.querySelector('.res-edit-btn').addEventListener('click', () => {
+    row.replaceWith(buildEditRow(rule));
+  });
+  return row;
+}
+
+function buildEditRow(rule) {
+  const row = document.createElement('div');
+  row.className = 'res-rule-row res-rule-row-editing';
+  row.dataset.id = rule.id;
+  row.innerHTML = `
+    <select class="res-select res-edit-type">
+      ${TYPES.map(t => `<option value="${t.value}" ${t.value === rule.type ? 'selected' : ''}>${t.label}</option>`).join('')}
+    </select>
+    <input class="res-input res-edit-url" type="text" value="${rule.urlPattern}" spellcheck="false" />
+    <input class="res-input res-edit-prob" type="number" min="1" max="100" value="${Math.round(rule.probability * 100)}" title="Probability %" />
+    <input class="res-input res-edit-latency${rule.type === 'latency' ? '' : ' res-hidden'}" type="number" min="0" value="${rule.latencyMs ?? 2000}" title="Delay ms" />
+    <button class="res-btn res-save-btn" title="Save">Save</button>
+    <button class="res-btn res-cancel-btn" title="Cancel">Cancel</button>`;
+
+  const typeSel = row.querySelector('.res-edit-type');
+  const latencyInput = row.querySelector('.res-edit-latency');
+  typeSel.addEventListener('change', () => {
+    latencyInput.classList.toggle('res-hidden', typeSel.value !== 'latency');
+  });
+
+  row.querySelector('.res-cancel-btn').addEventListener('click', () => {
+    row.replaceWith(buildRuleRow(rule));
+  });
+  row.querySelector('.res-save-btn').addEventListener('click', async () => {
+    const patch = {
+      type: typeSel.value,
+      urlPattern: row.querySelector('.res-edit-url').value.trim() || '*',
+      probability: Math.min(1, Math.max(0.01, parseInt(row.querySelector('.res-edit-prob').value, 10) / 100)),
+      latencyMs: parseInt(latencyInput.value, 10) || 2000,
+    };
+    await testerBrowser.resilience.updateRule(getActiveId(), rule.id, patch);
+    await loadRules();
+  });
+  return row;
+}
+
+// Jumps to the Network tab and filters it down to calls matching this rule's
+// URL pattern, so the user can see exactly which traffic the rule affects.
+function viewRuleInNetwork(rule) {
+  const filterInput = document.getElementById('networkFilterText');
+  if (filterInput) {
+    // The network filter matches plain substrings, not globs — strip glob
+    // wildcards so a pattern like "*/api/*" becomes the substring "/api/".
+    filterInput.value = rule.urlPattern === '*' ? '' : rule.urlPattern.replace(/\*/g, '');
+  }
+  switchConsoleTab('network'); // re-renders the timeline using the filter set above
 }
