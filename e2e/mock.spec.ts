@@ -66,13 +66,22 @@ test('a rule actually intercepts a matching fetch and its hit count increments',
 
 test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, status and body', async () => {
   const urlPath = '/network/status-codes.html';
+
+  // Clear first: by this point in the file the timeline already holds every
+  // event from earlier tests (initial load, api.html, the mocked fetch...).
+  // Every poll tick re-renders the *entire* visible list from scratch, and
+  // on a loaded CI runner that redraw can still be in flight right as
+  // Playwright clicks a row — clearing keeps the list to just this one
+  // request, so there's nothing expensive to race against.
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(urlPath));
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, urlPath)).waitForLoadState('load');
   await window.waitForTimeout(1_500); // pollTimeline runs every 1s
 
-  await window.click('#consoleTabNetwork');
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await requestRow.first().locator('.evt-summary').click();
