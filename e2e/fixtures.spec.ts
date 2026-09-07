@@ -62,6 +62,27 @@ test('network/status-codes.html: a 404 shows up as a network event', async () =>
   await expect(resPill).not.toHaveText('');
 });
 
+test('network/status-codes.html: Clear button empties the log and it stays empty on the next poll', async () => {
+  const tab = await navigate('/network/status-codes.html');
+  await window.click('#consoleTabNetwork');
+  await tab.click('button:text-is("404")');
+  await window.waitForTimeout(1_500);
+
+  const resPill = window.locator('#networkPills .filter-pill[data-type="network-response"] .pill-count');
+  await expect(resPill).not.toHaveText('');
+
+  await window.click('#clearNetworkBtn');
+  await expect(window.locator('.evt.network-request, .evt.network-response')).toHaveCount(0);
+  await expect(resPill).toHaveText('');
+
+  // pollTimeline runs every 1s — the bug re-fetched everything from the
+  // backend ring buffer on the next tick because Clear reset the polling
+  // cursor back to 0, dropping the `since` filter.
+  await window.waitForTimeout(1_500);
+  await expect(window.locator('.evt.network-request, .evt.network-response')).toHaveCount(0);
+  await expect(resPill).toHaveText('');
+});
+
 test('performance/network-flood.html: burst of 50 requests all get recorded', async () => {
   const tab = await navigate('/performance/network-flood.html');
   await window.click('#consoleTabNetwork');

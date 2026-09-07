@@ -182,7 +182,10 @@ export function initTimeline() {
 
   function clearTimeline() {
     timelineEvents.length = 0;
-    lastTs  = 0;
+    // lastTs is intentionally left alone: it's the polling high-water mark
+    // against the backend's SQLite ring buffer, which Clear doesn't touch.
+    // Resetting it to 0 makes `since: lastTs || undefined` drop the filter
+    // entirely, so the next poll re-fetches everything Clear just wiped.
     timelinePanel.innerHTML = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     autoScroll = true;
