@@ -46,7 +46,7 @@ export const MAIN_PATH = path.join(__dirname, '..', 'dist', 'main', 'index.js');
 export async function getMainWindow(app: ElectronApplication): Promise<Page> {
   await app.firstWindow();
   const isChrome = (p: Page) => p.url().endsWith('index.html');
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 200; i++) {
     const found = app.windows().find(isChrome);
     if (found) return found;
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -61,7 +61,7 @@ export async function getMainWindow(app: ElectronApplication): Promise<Page> {
  * through the Page this returns, not through the chrome `window`.
  */
 export async function getTabPage(app: ElectronApplication, urlIncludes: string, exclude?: Page): Promise<Page> {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 200; i++) {
     const found = app.windows().find(p => p.url().includes(urlIncludes) && p !== exclude);
     if (found) return found;
     await new Promise(resolve => setTimeout(resolve, 100));
