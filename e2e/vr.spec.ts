@@ -65,3 +65,53 @@ test('capturing a baseline, mutating the page, and comparing reports a nonzero d
   expect(match).toBeTruthy();
   expect(Number(match![1].replace(/,/g, ''))).toBeGreaterThan(0);
 });
+
+test('comparing against a different session captures that session\'s screenshot, not the baseline session\'s own (#127)', async () => {
+  const urlPath = '/performance/heavy-dom.html?count=50';
+
+  const sessionsBefore = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const baselineSessionId = sessionsBefore[sessionsBefore.length - 1].id;
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), baselineSessionId);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const baselineTab = await getTabPage(app, 'heavy-dom.html');
+
+  await window.click('#consoleTabVR');
+  await window.click('#vrCaptureBtn');
+  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+
+  // A second, unrelated session navigated to the same page and then mutated —
+  // if Compare still screenshots the baseline session itself (the pre-#127
+  // bug), it'll capture the unmutated page and report ~0 diff.
+  await window.click('#newSessionBtn');
+  const sessionsAfter = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const otherSessionId = sessionsAfter.find((s: { id: string }) => s.id !== baselineSessionId
+    && !sessionsBefore.some((b: { id: string }) => b.id === s.id)).id;
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), otherSessionId);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const otherTab = await getTabPage(app, 'heavy-dom.html', baselineTab);
+  await otherTab.click('#render');
+
+  // Switch back to the baseline session via a real tab click — unlike
+  // testerBrowser.sessions.switchTo() (a raw IPC call to the main process
+  // only), clicking a tab also updates the renderer's own notion of the
+  // active session, which activeData()/getActiveId() (and so the VR panel)
+  // depend on.
+  await window.click(`.tab[data-id="${baselineSessionId}"] .tab-name`);
+  await window.click('#consoleTabVR');
+  await expect(window.locator('#vrCompareBtn')).toBeEnabled();
+  await window.selectOption('#vrComparePick', otherSessionId);
+
+  await window.click('#vrCompareBtn');
+  await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
+
+  const statsText = (await window.locator('#vrStats').textContent()) || '';
+  const match = statsText.match(/^([\d,]+) pixels differ/);
+  expect(match).toBeTruthy();
+  expect(Number(match![1].replace(/,/g, ''))).toBeGreaterThan(0);
+});

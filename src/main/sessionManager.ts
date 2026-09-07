@@ -709,14 +709,18 @@ export class SessionManager {
     if (!this.activeId || !this.isViewVisible) return;
     const s = this.sessions.get(this.activeId);
     if (!s) return;
+    s.view.setBounds(this.computeCaptureBounds());
+  }
+
+  private computeCaptureBounds() {
     const bounds = this.win.getContentBounds();
     const top = this.topBarHeight + this.topInset;
-    s.view.setBounds({
+    return {
       x: 0,
       y: top,
       width: Math.max(0, bounds.width - this.rightPanelWidth),
       height: Math.max(0, bounds.height - top - this.consoleHeight),
-    });
+    };
   }
 
   setConsoleHeight(height: number) {
@@ -928,6 +932,22 @@ export class SessionManager {
   async captureScreenshot(id: string, opts?: { fullPage?: boolean }): Promise<string | null> {
     const s = this.sessions.get(id);
     if (!s) return null;
+
+    // A WebContentsView not currently attached to the window (any session
+    // other than the active tab — switchTo() detaches every inactive
+    // session's view) won't composite frames, so Page.captureScreenshot
+    // can hang indefinitely on it. Mount it behind the active view just
+    // long enough to capture — it renders below whatever tab is actually
+    // showing, so it's invisible to the user — then detach it again
+    // afterward, leaving switchTo()'s own bookkeeping untouched. This is
+    // what makes comparing a baseline against a *different* session's
+    // current screenshot possible — see #127.
+    const isAttached = id === this.activeId;
+    if (!isAttached) {
+      s.view.setBounds(this.computeCaptureBounds());
+      this.win.contentView.addChildView(s.view, 0);
+    }
+
     const dbg = s.view.webContents.debugger;
     try {
       if (!opts?.fullPage) {
@@ -954,7 +974,11 @@ export class SessionManager {
         clip: { x: 0, y: 0, width, height, scale: 1 },
       }) as { data: string };
       return result.data ?? null;
-    } catch { return null; }
+    } catch {
+      return null;
+    } finally {
+      if (!isAttached) this.win.contentView.removeChildView(s.view);
+    }
   }
 
   // Captures the TesterBrowser chrome itself (topbar, console panel) for bug

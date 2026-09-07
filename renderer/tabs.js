@@ -7,7 +7,7 @@ import { refreshFollowPickers } from './followalong.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 import { reloadA11yIfLoaded } from './a11y.js';
 import { loadRules } from './resilience.js';
-import { refreshVR, clearVRSession } from './visual-regression.js';
+import { refreshVR, refreshVRComparePicker, clearVRSession } from './visual-regression.js';
 import { clearSecurityFindings } from './security.js';
 import { refreshTimelineNow, resetTimelineForNewSession } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
@@ -214,6 +214,7 @@ export async function refreshTabs() {
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   refreshDiffPickers();
   refreshFollowPickers();
+  refreshVRComparePicker();
 
   tabOrder = tabOrder.filter((id) => sessionMap.has(id));
   for (const s of sessions) if (!tabOrder.includes(s.id)) tabOrder.push(s.id);

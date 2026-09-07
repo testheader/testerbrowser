@@ -1,18 +1,24 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
+import { escHtml } from './utils.js';
 
-// Baselines/comparisons are page-scoped (per session) — see #88.
-const sessionData = new Map(); // sessionId -> { baselineB64, currentB64, diffDataUrl, viewMode }
+// Baseline capture is page-scoped (per session, see #88), but the "current"
+// screenshot compared against it can come from a different session — see #127.
+const sessionData = new Map(); // sessionId -> { baselineB64, currentB64, diffDataUrl, viewMode, compareSessionId }
 
 export function clearVRSession(sessionId) {
   sessionData.delete(sessionId);
 }
 
+function emptyData() {
+  return { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline', compareSessionId: '' };
+}
+
 function activeData() {
-  if (!getActiveId()) return { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline' };
+  if (!getActiveId()) return emptyData();
   let d = sessionData.get(getActiveId());
   if (!d) {
-    d = { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline' };
+    d = emptyData();
     sessionData.set(getActiveId(), d);
   }
   return d;
@@ -29,6 +35,9 @@ export function initVR() {
       <button class="vr-btn" id="vrCompareBtn" disabled>Compare</button>
       <label class="vr-toggle" title="Capture the whole scrollable page instead of just the viewport">
         <input type="checkbox" id="vrFullPage" /> Full page
+      </label>
+      <label class="diff-label" title="Session to capture the 'current' screenshot from when comparing">Compare against
+        <select class="diff-pick" id="vrComparePick"></select>
       </label>
       <div class="vr-views" id="vrViews">
         <button class="vr-btn vr-view-btn active" data-view="baseline">Baseline</button>
@@ -50,6 +59,30 @@ export function initVR() {
     activeData().viewMode = btn.dataset.view;
     renderImages();
   });
+  document.getElementById('vrComparePick').addEventListener('change', (e) => {
+    activeData().compareSessionId = e.target.value;
+  });
+
+  refreshVRComparePicker();
+}
+
+// Repopulates the "Compare against" session picker. Called on init and
+// whenever the session list changes (new/closed/renamed tabs), independent
+// of whether the VR tab is currently visible — so the list is current
+// whenever the user opens it, without disturbing an in-progress comparison
+// the way a full refreshVR() (which resets stats/view) would.
+export async function refreshVRComparePicker() {
+  const pick = document.getElementById('vrComparePick');
+  if (!pick) return; // panel not initialized yet
+
+  const sessions = await testerBrowser.sessions.list();
+  const current = pick.value;
+  const options = sessions.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+  pick.innerHTML = `<option value="">This session (same as baseline)</option>${options}`;
+
+  const stillValid = current && sessions.some(s => s.id === current);
+  pick.value = stillValid ? current : '';
+  activeData().compareSessionId = pick.value;
 }
 
 // Re-render the panel for the currently active session — called on init and
@@ -58,10 +91,15 @@ export function initVR() {
 export function refreshVR() {
   const compareBtn = document.getElementById('vrCompareBtn');
   const stats       = document.getElementById('vrStats');
+  const comparePick = document.getElementById('vrComparePick');
   if (!compareBtn) return; // panel not initialized yet
-  const { baselineB64 } = activeData();
-  compareBtn.disabled = !baselineB64;
+  const data = activeData();
+  compareBtn.disabled = !data.baselineB64;
   if (stats) stats.textContent = '';
+  // The picker is one shared element — resync its displayed value to the
+  // newly-active session's own stored preference, not whatever was left
+  // showing for the previously active session.
+  if (comparePick) comparePick.value = data.compareSessionId || '';
   renderImages();
 }
 
@@ -128,8 +166,12 @@ async function captureBaseline() {
 
 async function runCompare() {
   const sessionId = getActiveId();
-  const { baselineB64 } = activeData();
+  const { baselineB64, compareSessionId } = activeData();
   if (!sessionId || !baselineB64) return;
+  // Defaults to the baseline's own session (this feature's original,
+  // single-session behavior) unless the user picked a different one to
+  // capture the "current" screenshot from — see #127.
+  const targetId = compareSessionId || sessionId;
   const compareBtn = document.getElementById('vrCompareBtn');
   const stats      = document.getElementById('vrStats');
 
@@ -138,9 +180,9 @@ async function runCompare() {
   stats.textContent = '';
 
   try {
-    const captured = await testerBrowser.visualRegression.captureScreenshot(sessionId, { fullPage: isFullPage() });
+    const captured = await testerBrowser.visualRegression.captureScreenshot(targetId, { fullPage: isFullPage() });
     if (sessionId !== getActiveId()) return;
-    if (!captured) { stats.textContent = 'Screenshot failed.'; return; }
+    if (!captured) { stats.textContent = 'Screenshot failed — the selected session may have been closed.'; return; }
 
     const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(captured)]);
 
