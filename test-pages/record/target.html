@@ -19,12 +19,20 @@
 <p>
   <button data-testid="rp-btn">Submit</button>
 </p>
-<p id="rp-result" data-testid="rp-result"></p>
+<p id="rp-result" data-testid="rp-result" data-status="idle"></p>
+<!-- Increments on every click, never resets on its own — a repeat test run
+     against this without reloading between iterations would see 2, 3, 4...
+     instead of 1 each time, exposing state bleed from the previous run. -->
+<p id="rp-counter" data-testid="rp-counter">0</p>
 
 <script>
+  let rpClickCount = 0;
   document.querySelector('[data-testid="rp-btn"]').addEventListener('click', () => {
     const name = document.querySelector('[data-testid="rp-input"]').value;
     document.getElementById('rp-result').textContent = 'Clicked: ' + name;
+    document.getElementById('rp-result').dataset.status = 'clicked';
+    rpClickCount++;
+    document.getElementById('rp-counter').textContent = String(rpClickCount);
   });
 </script>
 </body>

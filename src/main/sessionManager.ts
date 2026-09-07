@@ -147,7 +147,6 @@ export interface TestStep {
   value?: string;
   url?: string;
   attr?: string;
-  attrValue?: string;
   timestamp?: number;
   description?: string;
   tagName?: string;
@@ -180,7 +179,7 @@ function buildPlaybackScript(step: TestStep): string {
     case 'assert-value': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};var v=String(el.value||'');if(v!==${val})return {success:false,error:'Value "'+v+'" !== "'+${val}+'"'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'assert-url': return `(function(){var u=location.href;if(!u.includes(${val})&&u!==${val})return {success:false,error:'URL "'+u+'" does not match "'+${val}+'"'};return {success:true};})()`;
     case 'assert-enabled': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};if(el.disabled)return {success:false,error:'Element is disabled'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
-    case 'assert-attr': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};var v=el.getAttribute(${JSON.stringify(step.attr??'')});if(v!==${JSON.stringify(step.attrValue??'')})return {success:false,error:'Attr mismatch: "'+v+'"'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'assert-attr': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};var v=el.getAttribute(${JSON.stringify(step.attr??'')});if(v!==${val})return {success:false,error:'Attr mismatch: "'+v+'"'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'wait-visible': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;},15000);return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'wait-navigation': return `(async function(){${helpers}try{await __wait(function(){return document.readyState==='complete'?true:null;},15000);return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     default: return `(function(){return {success:false,error:'Unknown step type'};})()`;

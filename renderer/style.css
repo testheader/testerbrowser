@@ -1130,7 +1130,9 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .rp-test-item { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; }
 .rp-test-name { font-size: 12px; color: var(--text-primary); font-weight: 500; margin-bottom: 2px; }
 .rp-test-meta { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }
-.rp-test-actions { display: flex; gap: 4px; }
+.rp-test-actions { display: flex; align-items: center; gap: 4px; }
+.rp-repeat-input { width: 52px; flex: 0 0 auto; padding: 2px 4px; font-size: 11px; }
+.rp-input-invalid { border-color: var(--error-strong) !important; }
 .rp-run-view { display: flex; flex-direction: column; gap: 6px; }
 .rp-run-header { display: flex; align-items: center; justify-content: space-between; }
 .rp-run-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }

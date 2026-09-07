@@ -264,6 +264,7 @@ async function refreshTestList() {
       <div class="rp-test-meta">${t.steps.length} steps</div>
       <div class="rp-test-actions">
         <button class="rp-btn rp-btn-sm rp-run-once" data-id="${t.id}">Run</button>
+        <input class="rp-input rp-repeat-input" type="number" min="1" max="500" value="10" data-id="${t.id}" title="Number of times to run" />
         <button class="rp-btn rp-btn-sm rp-run-many" data-id="${t.id}">Run N×</button>
         <button class="rp-btn rp-btn-sm rp-btn-del" data-id="${t.id}">&#10005;</button>
       </div>
@@ -273,8 +274,23 @@ async function refreshTestList() {
   el.querySelectorAll('.rp-run-once').forEach(btn => {
     btn.addEventListener('click', () => runTest(btn.dataset.id, 1));
   });
+  el.querySelectorAll('.rp-repeat-input').forEach(input => {
+    input.addEventListener('input', () => input.classList.remove('rp-input-invalid'));
+  });
   el.querySelectorAll('.rp-run-many').forEach(btn => {
-    btn.addEventListener('click', () => promptRepeatRun(btn.dataset.id));
+    btn.addEventListener('click', () => {
+      const input = el.querySelector(`.rp-repeat-input[data-id="${btn.dataset.id}"]`);
+      const n = parseInt(input.value, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        input.classList.add('rp-input-invalid');
+        input.focus();
+        return;
+      }
+      input.classList.remove('rp-input-invalid');
+      const clamped = Math.min(n, 500);
+      input.value = String(clamped);
+      runTest(btn.dataset.id, clamped);
+    });
   });
   el.querySelectorAll('.rp-btn-del').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -282,17 +298,6 @@ async function refreshTestList() {
       await refreshTestList();
     });
   });
-}
-
-function promptRepeatRun(testId) {
-  const test = savedTests.find(t => t.id === testId);
-  if (!test) return;
-  const options = ['10', '50', '100', 'Custom'];
-  const choice = window.prompt(`Run "${test.name}" how many times?\n${options.slice(0, 3).join(' / ')} / Custom`);
-  if (!choice) return;
-  const n = parseInt(choice, 10);
-  if (!n || n < 1) { alert('Invalid number'); return; }
-  runTest(testId, Math.min(n, 500));
 }
 
 // ─── Playback ───────────────────────────────────────────────────────────────
@@ -320,6 +325,16 @@ async function runTest(testId, runCount) {
   for (let run = 0; run < runCount; run++) {
     if (runCount > 1) {
       document.getElementById('rpRunTitle').textContent = `${test.name} (${run + 1}/${runCount})`;
+    }
+    // Repeat runs otherwise execute back-to-back with no reset in between —
+    // if the test's own first step isn't a navigate, run 2..N would run
+    // against whatever DOM state the previous run left behind, producing
+    // false FLAKY verdicts that are really state bleed, not real flakiness.
+    // This reloads whatever URL is *currently* active, not necessarily the
+    // test's original recorded start URL, so a multi-page test won't be
+    // fully reset by a plain reload — an accepted scope limit for now.
+    if (run > 0 && test.steps[0]?.type !== 'navigate') {
+      await testerBrowser.sessions.reload(getActiveId());
     }
     const result = await executeTest(test, runCount > 1);
     allRunResults.push(result);

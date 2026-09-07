@@ -70,3 +70,139 @@ test('recording a fill + click and running it back actually replays successfully
   await testItem.locator('.rp-run-once').click();
   await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
 });
+
+// ── assert-attr: field-name bug (step.attrValue vs step.value) ──────────────
+
+// Dispatches a synthetic contextmenu event at a fixed, known-on-screen
+// position rather than a real right-click at the row's own coordinates —
+// showAssertionMenu() positions the popup at event.clientX/clientY with no
+// viewport-bounds clamping, so right-clicking a row lower in the list can
+// place the menu partly off-screen and unclickable in a small test window.
+async function openAssertionMenu(rowIdx: number) {
+  const row = window.locator(`.rp-live-step[data-idx="${rowIdx}"]`);
+  await row.dispatchEvent('contextmenu', { clientX: 60, clientY: 60, bubbles: true });
+}
+
+async function addAssertAttrStep(afterStepIdx: number, selector: string, attr: string, value: string) {
+  await openAssertionMenu(afterStepIdx);
+  await window.locator('.rp-assert-menu-item', { hasText: 'Assert: attribute equals' }).click();
+  await window.fill('#rpAssertSel', selector);
+  await window.fill('#rpAssertAttr', attr);
+  await window.fill('#rpAssertVal', value);
+  await window.click('#rpAssertOk');
+}
+
+test('assert-attr passes when the expected value matches the live attribute', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'assert-attr passes');
+  await window.click('#rpStartBtn');
+  await tab.fill('[data-testid="rp-input"]', 'Ada');
+  await tab.click('[data-testid="rp-btn"]');
+  await window.click('#rpStopBtn');
+
+  // The click handler sets data-status="clicked" on #rp-result — a real,
+  // known attribute value to assert against.
+  await addAssertAttrStep(1, '[data-testid="rp-result"]', 'data-status', 'clicked');
+  await expect(window.locator('.rp-live-step[data-idx="2"]')).toContainText('assert-attr');
+
+  await window.click('#rpSaveBtn');
+  const testItem = window.locator('.rp-test-item', { hasText: 'assert-attr passes' });
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+});
+
+test('assert-attr fails when the expected value does not match', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'assert-attr fails');
+  await window.click('#rpStartBtn');
+  await tab.fill('[data-testid="rp-input"]', 'Ada');
+  await tab.click('[data-testid="rp-btn"]');
+  await window.click('#rpStopBtn');
+
+  await addAssertAttrStep(1, '[data-testid="rp-result"]', 'data-status', 'not-the-real-value');
+  await window.click('#rpSaveBtn');
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'assert-attr fails' });
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toContainText('Failed at step 3', { timeout: 10_000 });
+});
+
+// ── "Run N×" inline input ────────────────────────────────────────────────────
+
+test('"Run N×" uses an inline number input with inline validation, not an OS prompt', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
+  const repeatInput = testItem.locator('.rp-repeat-input');
+  await expect(repeatInput).toHaveValue('10');
+
+  // window.prompt()/alert() would hang the renderer waiting on a native
+  // dialog this harness never dismisses — registering a handler that fails
+  // the test if one fires proves this path really never opens one.
+  window.on('dialog', () => { throw new Error('Unexpected native dialog opened'); });
+
+  await repeatInput.fill('0');
+  await testItem.locator('.rp-run-many').click();
+  await expect(repeatInput).toHaveClass(/rp-input-invalid/);
+  // No native dialog fired (the listener above would have thrown) and the
+  // invalid class is the only observable effect — runTest() was never called.
+
+  await repeatInput.fill('3');
+  await testItem.locator('.rp-run-many').click();
+  await expect(repeatInput).not.toHaveClass(/rp-input-invalid/);
+  await expect(window.locator('.rp-repeat-header')).toContainText('STABLE', { timeout: 15_000 });
+  await expect(window.locator('.rp-repeat-summary')).toContainText('Runs: 3');
+  await expect(window.locator('.rp-repeat-summary')).toContainText('Passed: 3');
+});
+
+// ── Repeat runs reset state between iterations (#145 fix 3) ─────────────────
+
+test('a repeated run resets page state between iterations instead of accumulating it', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'counter reset');
+  await window.click('#rpStartBtn');
+  await tab.click('[data-testid="rp-btn"]'); // first step is a click, not a navigate
+
+  // #rp-counter increments on every click and never resets itself — without
+  // reloading between repeat runs, run 2 would see "2" and run 3 "3", both
+  // failing an assert-text expecting "1".
+  await openAssertionMenu(0);
+  await window.locator('.rp-assert-menu-item', { hasText: 'Assert: element contains text' }).click();
+  await window.fill('#rpAssertSel', '[data-testid="rp-counter"]');
+  await window.fill('#rpAssertVal', '1');
+  await window.click('#rpAssertOk');
+
+  await window.click('#rpStopBtn');
+  await window.click('#rpSaveBtn');
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'counter reset' });
+  await testItem.locator('.rp-repeat-input').fill('3');
+  await testItem.locator('.rp-run-many').click();
+
+  await expect(window.locator('.rp-repeat-header')).toContainText('STABLE', { timeout: 15_000 });
+  await expect(window.locator('.rp-repeat-summary')).toContainText('Passed: 3');
+  await expect(window.locator('.rp-repeat-summary')).toContainText('Failed: 0');
+});
