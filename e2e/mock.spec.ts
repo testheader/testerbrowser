@@ -70,13 +70,15 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   await window.fill('#urlbar', fixtures.url(urlPath));
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, urlPath)).waitForLoadState('load');
+  await window.waitForTimeout(1_500); // pollTimeline runs every 1s
 
   await window.click('#consoleTabNetwork');
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await requestRow.first().locator('.evt-summary').click();
 
   const detailMockBtn = window.locator('#detailMockBtn');
-  await expect(detailMockBtn).toBeVisible();
+  await expect(detailMockBtn).toBeVisible({ timeout: 10_000 });
   await detailMockBtn.click();
 
   await expect(window.locator('#mockPanel')).toBeVisible();

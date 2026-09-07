@@ -18,7 +18,7 @@ export function openMockFromRequest(method, url, statusCode, body) {
   urlInput.value  = url || '';
   methodSel.value = MOCK_METHODS.includes(method) ? method : '*';
   if (statusInput && statusCode) statusInput.value = statusCode;
-  if (bodyInput && body != null) bodyInput.value = body;
+  if (bodyInput && body !== null && body !== undefined) bodyInput.value = body;
   urlInput.focus();
 }
 
