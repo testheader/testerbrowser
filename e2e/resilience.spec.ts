@@ -63,4 +63,11 @@ test('a 100% error500 rule actually fails a matching fetch, and hits increments'
   await expect(tab.locator('#apiOut')).toContainText('"status":500', { timeout: 5_000 });
 
   await expect(window.locator('.res-hits-badge')).toHaveText('Hits: 1', { timeout: 3_000 });
+
+  // The RESILIENCE flag should show on the request row, not just the response
+  // row — the request is recorded before Fetch.requestPaused tags it, so this
+  // also exercises the retroactive tag-patch onto the already-recorded row.
+  await window.click('#consoleTabNetwork');
+  const requestRow = window.locator('.evt.network-request', { hasText: '/api/resilience-target' });
+  await expect(requestRow.locator('.evt-badge-resilience')).toBeVisible({ timeout: 5_000 });
 });

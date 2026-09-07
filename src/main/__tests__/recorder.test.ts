@@ -14,7 +14,25 @@ jest.mock('better-sqlite3', () => {
       if (/INSERT/.test(sql)) {
         return {
           run: jest.fn((session_id: string, ts: number, kind: string, summary: string, payload: string) => {
-            rows.push({ id: nextId++, session_id, ts, kind, summary, payload });
+            const id = nextId++;
+            rows.push({ id, session_id, ts, kind, summary, payload });
+            return { lastInsertRowid: id };
+          }),
+        };
+      }
+      if (/UPDATE events SET payload/.test(sql)) {
+        return {
+          run: jest.fn((payload: string, id: number) => {
+            const row = rows.find(r => r.id === id);
+            if (row) row.payload = payload;
+          }),
+        };
+      }
+      if (/SELECT payload FROM events WHERE id/.test(sql)) {
+        return {
+          get: jest.fn((id: number) => {
+            const row = rows.find(r => r.id === id);
+            return row ? { payload: row.payload } : undefined;
           }),
         };
       }
@@ -135,6 +153,44 @@ describe('SessionRecorder', () => {
 
       const payload = JSON.parse(recorder.getTimeline()[0].payload);
       expect(payload).toMatchObject({ requestId: 'r1' });
+    });
+  });
+
+  describe('tagRequest (mock/resilience rule attribution)', () => {
+    it('patches the tag onto the already-recorded request event, not just the response', () => {
+      emit('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+      // Fetch.requestPaused (and therefore tagRequest) arrives after
+      // requestWillBeSent has already been recorded — the common ordering.
+      recorder.tagRequest('r1', { resilienceRuleId: 'res-1', resilienceType: 'error500' });
+      emit('Network.responseReceived', {
+        requestId: 'r1',
+        response: { status: 500, url: 'https://example.com', headers: {} },
+      });
+
+      const request = recorder.getTimeline().find(e => e.kind === 'network-request')!;
+      expect(JSON.parse(request.payload)).toMatchObject({ resilienceRuleId: 'res-1', resilienceType: 'error500' });
+
+      const response = recorder.getTimeline().find(e => e.kind === 'network-response')!;
+      expect(JSON.parse(response.payload)).toMatchObject({ resilienceRuleId: 'res-1', resilienceType: 'error500' });
+    });
+
+    it('tags the request event immediately when the tag exists before requestWillBeSent', () => {
+      recorder.tagRequest('r1', { mockRuleId: 'mock-1' });
+      emit('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+
+      const request = recorder.getTimeline().find(e => e.kind === 'network-request')!;
+      expect(JSON.parse(request.payload)).toMatchObject({ mockRuleId: 'mock-1' });
+    });
+
+    it('is a no-op when the requestId has no recorded request row', () => {
+      expect(() => recorder.tagRequest('unknown', { mockRuleId: 'mock-1' })).not.toThrow();
+      expect(recorder.getTimeline()).toHaveLength(0);
     });
   });
 

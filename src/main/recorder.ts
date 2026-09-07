@@ -55,6 +55,11 @@ export class SessionRecorder {
   private trimStmt!: Database.Statement;
   private requestMeta = new Map<string, { url: string; method: string; startTs: number }>();
   private requestTags = new Map<string, { mockRuleId?: string; resilienceRuleId?: string; resilienceType?: string }>();
+  // Row id of the still-open network-request event for a requestId, so a tag
+  // that arrives (Fetch.requestPaused) after the request was already recorded
+  // can be stamped onto that same row instead of only the eventual response.
+  private requestRowId = new Map<string, number>();
+  private updatePayloadStmt!: Database.Statement;
   private redact: boolean;
 
   constructor(wc: WebContents, opts: RecorderOptions) {
@@ -88,6 +93,9 @@ export class SessionRecorder {
     this.trimStmt = this.db.prepare(
       `DELETE FROM events WHERE id IN (SELECT id FROM events WHERE session_id = ? ORDER BY id ASC LIMIT ?)`
     );
+    this.updatePayloadStmt = this.db.prepare(
+      `UPDATE events SET payload = ? WHERE id = ?`
+    );
 
     this.attach();
   }
@@ -116,12 +124,14 @@ export class SessionRecorder {
           const reqPayload = this.redact
             ? { ...params, request: { ...params.request, headers: redactHeaders(params.request.headers) } }
             : params;
-          this.record({
+          const tag = this.requestTags.get(params.requestId);
+          const rowId = this.record({
             kind: 'network-request',
             ts,
             summary: `${params.request.method} ${params.request.url}`,
-            payload: JSON.stringify(reqPayload),
+            payload: JSON.stringify(tag ? { ...reqPayload, ...tag } : reqPayload),
           });
+          this.requestRowId.set(params.requestId, rowId);
           break;
         }
         case 'Network.responseReceived': {
@@ -149,11 +159,13 @@ export class SessionRecorder {
             payload: JSON.stringify(tag ? { ...params, ...tag } : params),
           });
           this.requestTags.delete(params.requestId);
+          this.requestRowId.delete(params.requestId);
           break;
         }
         case 'Network.loadingFinished': {
           const meta = this.requestMeta.get(params.requestId);
           this.requestTags.delete(params.requestId);
+          this.requestRowId.delete(params.requestId);
           if (!meta) break;
           // Only fetch body for text-like responses (skip images, fonts, etc.)
           // We check the stored response kind by looking up the request meta
@@ -202,14 +214,27 @@ export class SessionRecorder {
   }
 
   /** Records that a request was intercepted by a Mock/Resilience rule, so the
-   *  eventual Network.responseReceived/loadingFailed record carries the tag. */
+   *  eventual Network.responseReceived/loadingFailed record carries the tag.
+   *  If the request event was already recorded (the common case — Fetch's
+   *  requestPaused arrives after Network's requestWillBeSent), patch the tag
+   *  onto that row too, so the flag shows up on the request, not just the
+   *  eventual response/failure. */
   tagRequest(requestId: string, tag: { mockRuleId?: string; resilienceRuleId?: string; resilienceType?: string }) {
     this.requestTags.set(requestId, tag);
+    const rowId = this.requestRowId.get(requestId);
+    if (rowId === undefined) return;
+    const row = this.db.prepare(`SELECT payload FROM events WHERE id = ?`).get(rowId) as { payload: string } | undefined;
+    if (!row) return;
+    try {
+      const payload = { ...JSON.parse(row.payload), ...tag };
+      this.updatePayloadStmt.run(JSON.stringify(payload), rowId);
+    } catch {}
   }
 
-  private record(row: Omit<EventRow, 'session_id' | 'id'>) {
-    this.insertStmt.run(this.sessionId, row.ts, row.kind, row.summary, row.payload);
+  private record(row: Omit<EventRow, 'session_id' | 'id'>): number {
+    const info = this.insertStmt.run(this.sessionId, row.ts, row.kind, row.summary, row.payload);
     this.trimIfNeeded();
+    return info.lastInsertRowid as number;
   }
 
   private trimCounter = 0;

@@ -92,7 +92,7 @@ export function renderTimeline() {
       summary.appendChild(replayBtn);
     }
 
-    if ((e.kind === 'network-response' || e.kind === 'network-failed') && e.payload) {
+    if ((e.kind === 'network-request' || e.kind === 'network-response' || e.kind === 'network-failed') && e.payload) {
       try {
         const p = JSON.parse(e.payload);
         if (p.mockRuleId) {
