@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId } from './tabs.js';
 
 const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
@@ -34,10 +34,10 @@ export function reloadA11yIfLoaded() {
 }
 
 export function enableA11yHover() {
-  if (!state.activeId) return;
+  if (!getActiveId()) return;
   inspecting = true;
   document.getElementById('a11yInspectBtn')?.classList.add('on');
-  testerBrowser.a11y.setInspect(state.activeId, true).catch(() => {});
+  testerBrowser.a11y.setInspect(getActiveId(), true).catch(() => {});
   testerBrowser.a11y.onNodeHovered((node) => {
     if (!node || !node.nodeId) return;
     if (hoveredRow) hoveredRow.classList.remove('a11y-hovered');
@@ -72,8 +72,8 @@ function showInspectMessage(text) {
 export function disableA11yHover() {
   inspecting = false;
   document.getElementById('a11yInspectBtn')?.classList.remove('on');
-  if (!state.activeId) return;
-  testerBrowser.a11y.setInspect(state.activeId, false).catch(() => {});
+  if (!getActiveId()) return;
+  testerBrowser.a11y.setInspect(getActiveId(), false).catch(() => {});
   testerBrowser.a11y.offNodeHovered();
   testerBrowser.a11y.offNodeClicked();
   if (hoveredRow) { hoveredRow.classList.remove('a11y-hovered'); hoveredRow = null; }
@@ -113,14 +113,14 @@ function selectNode(nodeId) {
 export async function loadA11yPanel() {
   const content = document.getElementById('a11yContent');
   if (!content) return;
-  if (!state.activeId) {
+  if (!getActiveId()) {
     content.innerHTML = '<div class="a11y-empty">No active session.</div>';
     return;
   }
   hasLoadedOnce = true;
   content.innerHTML = '<div class="a11y-loading">Loading accessibility tree…</div>';
   try {
-    const nodes = await testerBrowser.a11y.getTree(state.activeId);
+    const nodes = await testerBrowser.a11y.getTree(getActiveId());
     if (!nodes || nodes.length === 0) {
       nodeRowMap.clear();
       content.innerHTML = '<div class="a11y-empty">No accessibility tree available for this page.</div>';

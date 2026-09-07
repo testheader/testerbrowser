@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId } from './tabs.js';
 
 // Baselines/comparisons are page-scoped (per session) — see #88.
 const sessionData = new Map(); // sessionId -> { baselineB64, currentB64, diffDataUrl, viewMode }
@@ -9,11 +9,11 @@ export function clearVRSession(sessionId) {
 }
 
 function activeData() {
-  if (!state.activeId) return { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline' };
-  let d = sessionData.get(state.activeId);
+  if (!getActiveId()) return { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline' };
+  let d = sessionData.get(getActiveId());
   if (!d) {
     d = { baselineB64: null, currentB64: null, diffDataUrl: null, viewMode: 'baseline' };
-    sessionData.set(state.activeId, d);
+    sessionData.set(getActiveId(), d);
   }
   return d;
 }
@@ -97,8 +97,8 @@ function renderImages() {
 }
 
 async function captureBaseline() {
-  if (!state.activeId) return;
-  const sessionId   = state.activeId;
+  if (!getActiveId()) return;
+  const sessionId   = getActiveId();
   const captureBtn  = document.getElementById('vrCaptureBtn');
   const compareBtn  = document.getElementById('vrCompareBtn');
   const stats       = document.getElementById('vrStats');
@@ -112,7 +112,7 @@ async function captureBaseline() {
   captureBtn.textContent = 'Capture baseline';
 
   // The user may have switched sessions while the screenshot was in flight.
-  if (sessionId !== state.activeId) return;
+  if (sessionId !== getActiveId()) return;
   if (!b64) { stats.textContent = 'Screenshot failed.'; return; }
 
   // A fresh baseline invalidates any previous comparison for this session.
@@ -127,7 +127,7 @@ async function captureBaseline() {
 }
 
 async function runCompare() {
-  const sessionId = state.activeId;
+  const sessionId = getActiveId();
   const { baselineB64 } = activeData();
   if (!sessionId || !baselineB64) return;
   const compareBtn = document.getElementById('vrCompareBtn');
@@ -139,7 +139,7 @@ async function runCompare() {
 
   try {
     const captured = await testerBrowser.visualRegression.captureScreenshot(sessionId, { fullPage: isFullPage() });
-    if (sessionId !== state.activeId) return;
+    if (sessionId !== getActiveId()) return;
     if (!captured) { stats.textContent = 'Screenshot failed.'; return; }
 
     const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(captured)]);

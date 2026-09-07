@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveConsoleTab } from './console-tabs.js';
 
 let screenshotB64 = null;
 
@@ -17,7 +17,7 @@ export async function openBugReport() {
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('bugReportOverlay').classList.add('open');
   resetForm();
-  document.getElementById('bugReportArea').value = AREA_BY_CONSOLE_TAB[state.activeConsoleTab] || 'Other';
+  document.getElementById('bugReportArea').value = AREA_BY_CONSOLE_TAB[getActiveConsoleTab()] || 'Other';
   setScreenshot(captured);
 
   const diag = await testerBrowser.bugReport.getDiagnostics();

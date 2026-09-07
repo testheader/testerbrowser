@@ -1,5 +1,6 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId } from './tabs.js';
+import { getActiveConsoleTab } from './console-tabs.js';
 
 const TYPES = [
   { value: 'error500',  label: '500 Error',           desc: 'Return HTTP 500 Internal Server Error' },
@@ -73,7 +74,7 @@ export function initResilience() {
 
   document.getElementById('resForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!state.activeId) return;
+    if (!getActiveId()) return;
     const type = document.getElementById('resType').value;
     const rule = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -83,19 +84,19 @@ export function initResilience() {
       latencyMs: parseInt(document.getElementById('resLatency').value, 10) || 2000,
       enabled: true,
     };
-    await testerBrowser.resilience.addRule(state.activeId, rule);
+    await testerBrowser.resilience.addRule(getActiveId(), rule);
     await loadRules();
   });
 
   loadRules();
   // Hit counts change as traffic flows without the user re-opening this tab;
   // keep them fresh while the Resilience tab is the one being looked at.
-  setInterval(() => { if (state.activeConsoleTab === 'resilience') loadRules(); }, 1500);
+  setInterval(() => { if (getActiveConsoleTab() === 'resilience') loadRules(); }, 1500);
 }
 
 export async function loadRules() {
-  if (!state.activeId) return;
-  const rules = await testerBrowser.resilience.getRules(state.activeId);
+  if (!getActiveId()) return;
+  const rules = await testerBrowser.resilience.getRules(getActiveId());
   renderRules(rules);
 }
 
@@ -130,10 +131,10 @@ function renderRules(rules) {
       <button class="res-btn res-del-btn" title="Remove">✕</button>`;
 
     row.querySelector('.res-enable').addEventListener('change', async (e) => {
-      await testerBrowser.resilience.toggleRule(state.activeId, rule.id, e.target.checked);
+      await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, e.target.checked);
     });
     row.querySelector('.res-del-btn').addEventListener('click', async () => {
-      await testerBrowser.resilience.removeRule(state.activeId, rule.id);
+      await testerBrowser.resilience.removeRule(getActiveId(), rule.id);
       await loadRules();
     });
     container.appendChild(row);

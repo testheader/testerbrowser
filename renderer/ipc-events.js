@@ -1,21 +1,21 @@
 /* global testerBrowser */
-import { state } from './state.js';
 import { setLoadingBar, updateReloadBtn } from './toolbar.js';
 import { updateBookmarkStar } from './bookmarks.js';
-import { updateTabLoadingVisual, startRename, closeTab, refreshTabs } from './tabs.js';
+import { updateTabLoadingVisual, startRename, closeTab, refreshTabs, getActiveId, setTabLoading } from './tabs.js';
 import { loadStoragePanel } from './storage.js';
 import { reloadA11yIfLoaded } from './a11y.js';
 import { clearSecurityFindings } from './security.js';
 import { openNotes } from './notes.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
+import { getActiveConsoleTab } from './console-tabs.js';
 
 export function initIpcEvents() {
   // onLoading is cross-cutting: updates tab icon AND toolbar reload button / loading bar
   testerBrowser.sessions.onLoading(({ id, loading }) => {
-    state.tabLoading[id] = loading;
+    setTabLoading(id, loading);
     const tab = document.querySelector(`.tab[data-id="${id}"]`);
     if (tab) updateTabLoadingVisual(tab, id);
-    if (id === state.activeId) {
+    if (id === getActiveId()) {
       updateReloadBtn();
       setLoadingBar(loading);
     }
@@ -23,13 +23,14 @@ export function initIpcEvents() {
 
   // onNavigated touches toolbar (URL bar), bookmarks (star), and storage panel
   testerBrowser.sessions.onNavigated(({ id, url }) => {
-    if (id === state.activeId) {
+    if (id === getActiveId()) {
       document.getElementById('urlbar').value = url;
       updateUrlbarSecurity(url);
       updateBookmarkStar();
-      if (state.activeConsoleTab === 'storage') loadStoragePanel();
-      if (state.activeConsoleTab === 'a11y') reloadA11yIfLoaded();
-      if (state.activeConsoleTab === 'security') clearSecurityFindings();
+      const activeConsoleTab = getActiveConsoleTab();
+      if (activeConsoleTab === 'storage') loadStoragePanel();
+      if (activeConsoleTab === 'a11y') reloadA11yIfLoaded();
+      if (activeConsoleTab === 'security') clearSecurityFindings();
     }
   });
 

@@ -1,6 +1,6 @@
 /* global testerBrowser */
-import { state } from './state.js';
 import { escHtml } from './utils.js';
+import { getActiveId, getTabTitle } from './tabs.js';
 
 let initialized = false;
 
@@ -168,7 +168,7 @@ function openBugForm() {
   const form = document.getElementById('jiraBugForm');
   form.hidden = false;
   const currentUrl = document.getElementById('urlbar')?.value ?? '';
-  const currentTitle = state.tabTitles[state.activeId] ?? '';
+  const currentTitle = getTabTitle(getActiveId()) ?? '';
   document.getElementById('jiraBugSummary').value = `Bug in ${currentTitle || currentUrl}`;
   document.getElementById('jiraBugDesc').value =
     `URL: ${currentUrl}\n\nSteps to reproduce:\n1. \n\nExpected:\n\nActual:\n`;

@@ -1,5 +1,14 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId, isTabLoading } from './tabs.js';
+
+// navState (per-tab back/forward availability) and urlHistory (the URL bar's
+// autocomplete list) are both toolbar-only concerns — nothing outside this
+// file reads or writes them, aside from tabs.js clearing a closed tab's
+// navState entry via clearNavState().
+const navState = {};
+let urlHistory = [];
+
+export function clearNavState(id) { delete navState[id]; }
 
 export function setLoadingBar(loading) {
   document.getElementById('loadingBar').classList.toggle('loading', loading);
@@ -7,19 +16,20 @@ export function setLoadingBar(loading) {
 
 export function updateReloadBtn() {
   const btn = document.getElementById('reloadBtn');
-  if (state.tabLoading[state.activeId]) {
+  const activeId = getActiveId();
+  if (isTabLoading(activeId)) {
     btn.innerHTML = '&#10005;';
     btn.title     = 'Stop loading (Esc)';
-    btn.onclick   = () => state.activeId && testerBrowser.sessions.stop(state.activeId);
+    btn.onclick   = () => activeId && testerBrowser.sessions.stop(activeId);
   } else {
     btn.innerHTML = '&#8635;';
     btn.title     = 'Reload (F5)';
-    btn.onclick   = () => state.activeId && testerBrowser.sessions.reload(state.activeId);
+    btn.onclick   = () => activeId && testerBrowser.sessions.reload(activeId);
   }
 }
 
 export function updateNavButtons() {
-  const ns = state.navState[state.activeId] || {};
+  const ns = navState[getActiveId()] || {};
   document.getElementById('backBtn').disabled = !ns.canBack;
   document.getElementById('fwdBtn').disabled  = !ns.canForward;
 }
@@ -31,18 +41,18 @@ export function updateZoomDisplay(zoom) {
 
 export function initToolbar() {
   document.getElementById('zoomIndicator').onclick = () =>
-    state.activeId && testerBrowser.sessions.resetZoom(state.activeId);
+    getActiveId() && testerBrowser.sessions.resetZoom(getActiveId());
 
-  document.getElementById('backBtn').onclick     = () => state.activeId && testerBrowser.sessions.back(state.activeId);
-  document.getElementById('fwdBtn').onclick      = () => state.activeId && testerBrowser.sessions.forward(state.activeId);
-  document.getElementById('devtoolsBtn').onclick = () => state.activeId && testerBrowser.sessions.devtools(state.activeId);
+  document.getElementById('backBtn').onclick     = () => getActiveId() && testerBrowser.sessions.back(getActiveId());
+  document.getElementById('fwdBtn').onclick      = () => getActiveId() && testerBrowser.sessions.forward(getActiveId());
+  document.getElementById('devtoolsBtn').onclick = () => getActiveId() && testerBrowser.sessions.devtools(getActiveId());
 
   document.getElementById('urlbar').addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter' && state.activeId) {
+    if (e.key === 'Enter' && getActiveId()) {
       const url = e.target.value;
-      await testerBrowser.sessions.navigate(state.activeId, url);
+      await testerBrowser.sessions.navigate(getActiveId(), url);
       const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-      state.urlHistory = await testerBrowser.urlHistory.add(fullUrl);
+      urlHistory = await testerBrowser.urlHistory.add(fullUrl);
       refreshUrlDatalist();
       e.target.blur();
     }
@@ -50,24 +60,24 @@ export function initToolbar() {
   });
 
   testerBrowser.sessions.onNavState(({ id, canBack, canForward }) => {
-    state.navState[id] = { canBack, canForward };
-    if (id === state.activeId) updateNavButtons();
+    navState[id] = { canBack, canForward };
+    if (id === getActiveId()) updateNavButtons();
   });
 
   testerBrowser.sessions.onZoomChanged(({ id, zoom }) => {
-    if (id === state.activeId) updateZoomDisplay(zoom);
+    if (id === getActiveId()) updateZoomDisplay(zoom);
   });
 }
 
 export async function loadUrlHistory() {
-  state.urlHistory = await testerBrowser.urlHistory.get();
+  urlHistory = await testerBrowser.urlHistory.get();
   refreshUrlDatalist();
 }
 
 function refreshUrlDatalist() {
   const dl = document.getElementById('urlHistoryList');
   dl.innerHTML = '';
-  for (const url of state.urlHistory) {
+  for (const url of urlHistory) {
     const opt = document.createElement('option');
     opt.value = url;
     dl.appendChild(opt);

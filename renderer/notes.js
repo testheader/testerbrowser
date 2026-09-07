@@ -1,8 +1,11 @@
 /* global testerBrowser */
-import { state } from './state.js';
+
+// notesSessionId (which session's notes overlay is open, if any) is entirely
+// private to this file — nothing else reads or writes it.
+let notesSessionId = null;
 
 export async function openNotes(id) {
-  state.notesSessionId = id;
+  notesSessionId = id;
   const sessions = await testerBrowser.sessions.list();
   const s = sessions.find((x) => x.id === id);
   document.getElementById('notesTitle').textContent    = 'Notes — ' + (s?.name || id);
@@ -15,13 +18,13 @@ export async function openNotes(id) {
 async function closeNotes() {
   document.getElementById('notesOverlay').classList.remove('open');
   await testerBrowser.layout.setViewerVisible(true);
-  state.notesSessionId = null;
+  notesSessionId = null;
 }
 
 export function initNotes() {
   document.getElementById('saveNotesBtn').onclick  = async () => {
-    if (state.notesSessionId) {
-      await testerBrowser.sessions.setNotes(state.notesSessionId, document.getElementById('notesTextarea').value);
+    if (notesSessionId) {
+      await testerBrowser.sessions.setNotes(notesSessionId, document.getElementById('notesTextarea').value);
     }
     closeNotes();
   };

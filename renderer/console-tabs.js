@@ -1,4 +1,3 @@
-import { state } from './state.js';
 import { loadStoragePanel } from './storage.js';
 import { initA11y, disableA11yHover } from './a11y.js';
 import { initDiff } from './diff.js';
@@ -11,10 +10,18 @@ import { initJira } from './jira.js';
 import { initRecordPlayback } from './record-playback.js';
 import { initFollow, refreshFollowPickers } from './followalong.js';
 import { renderTimeline } from './timeline.js';
+import { getDetailTabsCount } from './detail-panel.js';
+
+// The only external readers of activeConsoleTab (many — find, timeline,
+// detail-panel, bugreport, mock, resilience, ipc-events, main) go through
+// getActiveConsoleTab(); nothing outside this file writes it.
+let activeConsoleTab = 'console';
+
+export function getActiveConsoleTab() { return activeConsoleTab; }
 
 export function switchConsoleTab(tab) {
-  const prevTab = state.activeConsoleTab;
-  state.activeConsoleTab = tab;
+  const prevTab = activeConsoleTab;
+  activeConsoleTab = tab;
   if (prevTab === 'a11y' && tab !== 'a11y') disableA11yHover();
   document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
   document.getElementById('consoleTabNetwork').classList.toggle('active', tab === 'network');
@@ -45,7 +52,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('jiraPanel').style.display            = tab === 'jira'       ? 'flex'  : 'none';
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
   document.getElementById('followPanel').style.display          = tab === 'follow'     ? 'flex'  : 'none';
-  const hasDetailTabs = state.detailTabs.length > 0 && (timelineVisible || tab === 'security');
+  const hasDetailTabs = getDetailTabsCount() > 0 && (timelineVisible || tab === 'security');
   document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? 'block' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();

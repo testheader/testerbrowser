@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId } from './tabs.js';
 
 const PRESETS = [
   { label: 'New York',    timezone: 'America/New_York',      locale: 'en-US', latitude:  40.7128, longitude:  -74.0060 },
@@ -75,7 +75,7 @@ function fillPreset(p) {
 }
 
 async function applySpoof() {
-  if (!state.activeId) { showStatus('No active session.', true); return; }
+  if (!getActiveId()) { showStatus('No active session.', true); return; }
   const timezone  = document.getElementById('spoofTimezone').value.trim() || undefined;
   const locale    = document.getElementById('spoofLocale').value.trim()   || undefined;
   const latRaw    = document.getElementById('spoofLat').value.trim();
@@ -89,7 +89,7 @@ async function applySpoof() {
   const btn = document.getElementById('spoofApply');
   btn.disabled = true;
   try {
-    await testerBrowser.emulation.set(state.activeId, { timezone, locale, latitude, longitude });
+    await testerBrowser.emulation.set(getActiveId(), { timezone, locale, latitude, longitude });
     showStatus('Overrides applied. Reload the page for full effect.', false);
   } catch {
     showStatus('Failed to apply overrides.', true);
@@ -99,11 +99,11 @@ async function applySpoof() {
 }
 
 async function resetSpoof() {
-  if (!state.activeId) { showStatus('No active session.', true); return; }
+  if (!getActiveId()) { showStatus('No active session.', true); return; }
   const btn = document.getElementById('spoofReset');
   btn.disabled = true;
   try {
-    await testerBrowser.emulation.set(state.activeId, { clear: true });
+    await testerBrowser.emulation.set(getActiveId(), { clear: true });
     showStatus('Overrides cleared.', false);
   } finally {
     btn.disabled = false;

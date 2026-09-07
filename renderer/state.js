@@ -1,33 +1,6 @@
-/* Shared mutable state — one object, mutated in place, so all modules see updates. */
-
-export const state = {
-  activeId:           null,
-  lastTs:             0,
-  sessionCounter:     0,
-  mruStack:           [],
-  tabOrder:           [],
-  dragSourceId:       null,
-  tabFavicons:        {},
-  tabTitles:          {},
-  navState:           {},
-  tabLoading:         {},
-  closedTabs:         [],      // [{ name, url, partition, color }] — most recent last
-  timelineEvents:     [],      // ring buffer, max TIMELINE_MAX entries
-  notesSessionId:     null,
-  domainFilterActive: true,
-  consoleHeight:      220,
-  findOpen:           false,
-  bookmarksBarVisible:false,
-  autoScroll:         true,
-  activeConsoleTab:   'console',
-  consoleVisible:     true,
-  consolePanelMinimized: false,
-  bookmarks:          [],
-  bookmarkFolders:    [],
-  urlHistory:         [],
-  detailTabs:         [],
-  activeDetailTabId:  null,
-};
+/* Shared read-only constants. Mutable state lives with the module that owns
+   each domain (tabs.js, timeline.js, detail-panel.js, console-tabs.js,
+   layout.js, bookmarks.js, toolbar.js, storage.js, notes.js) — see #125. */
 
 export const TIMELINE_MAX    = 5000;
 export const TIMELINE_DOM_MAX = 500;

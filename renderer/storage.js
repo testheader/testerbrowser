@@ -1,6 +1,10 @@
 /* global testerBrowser */
-import { state } from './state.js';
 import { cookieMatchesDomain } from './utils.js';
+import { getActiveId } from './tabs.js';
+
+// domainFilterActive (the Storage tab's "only cookies relevant to this page"
+// toggle) is used only within this file.
+let domainFilterActive = true;
 
 function formatCookieExpiry(ts) {
   if (!ts) return '—';
@@ -24,12 +28,12 @@ async function copyToClipboard(text) {
 }
 
 export async function loadStoragePanel() {
-  if (!state.activeId) return;
+  if (!getActiveId()) return;
   const panel = document.getElementById('storagePanelContent');
   panel.innerHTML = '<div class="storage-empty">Loading…</div>';
 
   const filterText = document.getElementById('storageFilter').value.toLowerCase();
-  const sessionId  = state.activeId;
+  const sessionId  = getActiveId();
 
   const urlbarVal = document.getElementById('urlbar').value;
   let currentHostname = '';
@@ -53,7 +57,7 @@ export async function loadStoragePanel() {
         c.value.toLowerCase().includes(filterText))
     : cookies;
 
-  const filteredCookies = state.domainFilterActive
+  const filteredCookies = domainFilterActive
     ? textFiltered.filter(c =>
         cookieMatchesDomain(c, currentHostname) ||
         loadedDomains.some(d => cookieMatchesDomain(c, d)))
@@ -419,8 +423,8 @@ export function initStorage() {
   const domainFilterBtn = document.getElementById('domainFilterBtn');
   domainFilterBtn.classList.add('active'); // matches domainFilterActive = true default
   domainFilterBtn.addEventListener('click', () => {
-    state.domainFilterActive = !state.domainFilterActive;
-    domainFilterBtn.classList.toggle('active', state.domainFilterActive);
+    domainFilterActive = !domainFilterActive;
+    domainFilterBtn.classList.toggle('active', domainFilterActive);
     loadStoragePanel();
   });
 }

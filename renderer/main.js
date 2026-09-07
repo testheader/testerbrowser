@@ -1,6 +1,5 @@
 /* global testerBrowser */
-import { state } from './state.js';
-import { initLayout, updateTopBarHeight, initMinimize } from './layout.js';
+import { initLayout, updateTopBarHeight, initMinimize, getConsoleHeight } from './layout.js';
 import { initToolbar, loadUrlHistory } from './toolbar.js';
 import { initBookmarks, loadBookmarks } from './bookmarks.js';
 import { initFind } from './find.js';
@@ -14,7 +13,7 @@ import { initReplay } from './replay.js';
 import { initNotes } from './notes.js';
 import { initSettings } from './settings.js';
 import { initBugReport } from './bugreport.js';
-import { initConsoleTabs, switchConsoleTab } from './console-tabs.js';
+import { initConsoleTabs, switchConsoleTab, getActiveConsoleTab } from './console-tabs.js';
 import { initA11y } from './a11y.js';
 import './diff.js';
 import './visual-regression.js';
@@ -52,7 +51,7 @@ initBugReport();
 initConsoleTabs();
 // Drive the initial tab state through the same path as a click, so control
 // visibility never depends on static markup defaults.
-switchConsoleTab(state.activeConsoleTab);
+switchConsoleTab(getActiveConsoleTab());
 initA11y();
 initTestdata();
 initViewDropdown();
@@ -62,7 +61,7 @@ initIpcEvents();
 
 // Boot
 updateTopBarHeight();
-testerBrowser.layout.setConsoleHeight(state.consoleHeight);
+testerBrowser.layout.setConsoleHeight(getConsoleHeight());
 refreshTabs();
 loadBookmarks();
 loadUrlHistory();

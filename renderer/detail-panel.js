@@ -1,5 +1,15 @@
-import { state } from './state.js';
 import { escHtml, getEventTabId, getHeader } from './utils.js';
+import { getTimelineEvents } from './timeline.js';
+import { getActiveConsoleTab } from './console-tabs.js';
+
+// detail-panel.js owns the set of open detail tabs and which one is active —
+// nothing outside this file touches them; console-tabs.js and timeline.js
+// only need read access, via getDetailTabsCount()/isDetailTabActive() below.
+const detailTabs      = [];
+let activeDetailTabId = null;
+
+export function getDetailTabsCount() { return detailTabs.length; }
+export function isDetailTabActive(tabId) { return detailTabs.some(t => t.id === tabId); }
 
 function statusClass(code) {
   if (!code) return 'detail-status-err';
@@ -27,23 +37,23 @@ function getEventTabLabel(e) {
 
 export function openDetailTab(e) {
   const tabId = getEventTabId(e);
-  const existing = state.detailTabs.find(t => t.id === tabId);
+  const existing = detailTabs.find(t => t.id === tabId);
   if (existing) {
-    state.activeDetailTabId = tabId;
+    activeDetailTabId = tabId;
   } else {
-    state.detailTabs.push({ id: tabId, event: e, label: getEventTabLabel(e) });
-    state.activeDetailTabId = tabId;
+    detailTabs.push({ id: tabId, event: e, label: getEventTabLabel(e) });
+    activeDetailTabId = tabId;
   }
   renderDetailPanel();
 }
 
 export function closeDetailTab(tabId) {
-  const idx = state.detailTabs.findIndex(t => t.id === tabId);
+  const idx = detailTabs.findIndex(t => t.id === tabId);
   if (idx === -1) return;
-  state.detailTabs.splice(idx, 1);
-  if (state.activeDetailTabId === tabId) {
-    state.activeDetailTabId = state.detailTabs.length > 0
-      ? state.detailTabs[Math.max(0, idx - 1)].id
+  detailTabs.splice(idx, 1);
+  if (activeDetailTabId === tabId) {
+    activeDetailTabId = detailTabs.length > 0
+      ? detailTabs[Math.max(0, idx - 1)].id
       : null;
   }
   renderDetailPanel();
@@ -52,9 +62,9 @@ export function closeDetailTab(tabId) {
 function renderDetailTabs() {
   const bar = document.getElementById('detailPanelTabBar');
   bar.innerHTML = '';
-  for (const tab of state.detailTabs) {
+  for (const tab of detailTabs) {
     const btn = document.createElement('button');
-    btn.className = `detail-tab${tab.id === state.activeDetailTabId ? ' active' : ''}`;
+    btn.className = `detail-tab${tab.id === activeDetailTabId ? ' active' : ''}`;
     btn.title = tab.event.summary;
 
     const lbl = document.createElement('span');
@@ -68,7 +78,7 @@ function renderDetailTabs() {
 
     btn.appendChild(lbl);
     btn.appendChild(cls);
-    btn.onclick = () => { state.activeDetailTabId = tab.id; renderDetailPanel(); };
+    btn.onclick = () => { activeDetailTabId = tab.id; renderDetailPanel(); };
     btn.addEventListener('auxclick', (ev) => { if (ev.button === 1) { ev.preventDefault(); closeDetailTab(tab.id); } });
     bar.appendChild(btn);
   }
@@ -76,8 +86,8 @@ function renderDetailTabs() {
 
 function renderDetailContent() {
   const content = document.getElementById('detailPanelContent');
-  if (!state.activeDetailTabId) { content.innerHTML = ''; return; }
-  const tab = state.detailTabs.find(t => t.id === state.activeDetailTabId);
+  if (!activeDetailTabId) { content.innerHTML = ''; return; }
+  const tab = detailTabs.find(t => t.id === activeDetailTabId);
   if (!tab) { content.innerHTML = ''; return; }
 
   const e = tab.event;
@@ -85,11 +95,12 @@ function renderDetailContent() {
 
   try {
     if (e.kind.startsWith('network-')) {
-      const rid    = state.activeDetailTabId;
-      const reqEvt  = state.timelineEvents.find(ev => ev.kind === 'network-request'  && getEventTabId(ev) === rid);
-      const resEvt  = state.timelineEvents.find(ev => ev.kind === 'network-response' && getEventTabId(ev) === rid);
-      const bodyEvt = state.timelineEvents.find(ev => ev.kind === 'network-body'     && getEventTabId(ev) === rid);
-      const failEvt = state.timelineEvents.find(ev => ev.kind === 'network-failed'   && getEventTabId(ev) === rid);
+      const rid    = activeDetailTabId;
+      const timelineEvents = getTimelineEvents();
+      const reqEvt  = timelineEvents.find(ev => ev.kind === 'network-request'  && getEventTabId(ev) === rid);
+      const resEvt  = timelineEvents.find(ev => ev.kind === 'network-response' && getEventTabId(ev) === rid);
+      const bodyEvt = timelineEvents.find(ev => ev.kind === 'network-body'     && getEventTabId(ev) === rid);
+      const failEvt = timelineEvents.find(ev => ev.kind === 'network-failed'   && getEventTabId(ev) === rid);
 
       if (reqEvt && reqEvt.payload) {
         const req = (JSON.parse(reqEvt.payload).request) || {};
@@ -169,15 +180,16 @@ export function renderDetailPanel() {
   // The timeline is shared by the Console and Network tabs, so rows on either
   // can open a detail tab. Security findings link back to the network event
   // that produced them, so the Security tab shares the same detail panel.
-  const showsDetail  = state.activeConsoleTab === 'console' || state.activeConsoleTab === 'network' || state.activeConsoleTab === 'security';
-  const hasOpen      = state.detailTabs.length > 0 && showsDetail;
+  const activeConsoleTab = getActiveConsoleTab();
+  const showsDetail  = activeConsoleTab === 'console' || activeConsoleTab === 'network' || activeConsoleTab === 'security';
+  const hasOpen      = detailTabs.length > 0 && showsDetail;
   panel.classList.toggle('open', hasOpen);
   resizeHandle.style.display = hasOpen ? 'block' : 'none';
   renderDetailTabs();
   renderDetailContent();
   // Update detail-row-active highlights without a full timeline re-render
   document.querySelectorAll('.evt').forEach(row => {
-    row.classList.toggle('detail-row-active', state.detailTabs.some(t => t.id === row.dataset.tabId));
+    row.classList.toggle('detail-row-active', isDetailTabActive(row.dataset.tabId));
   });
 }
 

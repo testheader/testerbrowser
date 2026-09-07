@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId } from './tabs.js';
 import { escHtml } from './utils.js';
 
 let initialized = false;
@@ -63,15 +63,15 @@ export function initRecordPlayback() {
 // ─── Recording ─────────────────────────────────────────────────────────────
 
 async function startRecording() {
-  if (!state.activeId) { alert('No active session'); return; }
+  if (!getActiveId()) { alert('No active session'); return; }
   isRecording = true;
   currentSteps = [];
   setRecordBtns(true);
   renderLiveSteps();
-  await testerBrowser.tests.startRecording(state.activeId);
+  await testerBrowser.tests.startRecording(getActiveId());
   pollInterval = setInterval(async () => {
     if (!isRecording) return;
-    const steps = await testerBrowser.tests.pollRecordingSteps(state.activeId);
+    const steps = await testerBrowser.tests.pollRecordingSteps(getActiveId());
     currentSteps = steps || [];
     renderLiveSteps();
   }, 600);
@@ -80,7 +80,7 @@ async function startRecording() {
 async function stopRecording() {
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   isRecording = false;
-  const steps = await testerBrowser.tests.stopRecording(state.activeId);
+  const steps = await testerBrowser.tests.stopRecording(getActiveId());
   currentSteps = steps || [];
   setRecordBtns(false);
   renderLiveSteps();
@@ -300,7 +300,7 @@ function promptRepeatRun(testId) {
 async function runTest(testId, runCount) {
   const test = savedTests.find(t => t.id === testId);
   if (!test) return;
-  if (!state.activeId) { alert('No active session'); return; }
+  if (!getActiveId()) { alert('No active session'); return; }
 
   const runView = document.getElementById('rpRunView');
   const placeholder = document.getElementById('rpRunPlaceholder');
@@ -335,7 +335,7 @@ async function runTest(testId, runCount) {
 }
 
 async function executeTest(test, silent) {
-  const sessionId = state.activeId;
+  const sessionId = getActiveId();
   const stepEls = document.getElementById('rpStepsList');
   if (!silent) stepEls.innerHTML = '';
 

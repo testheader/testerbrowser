@@ -1,9 +1,12 @@
 /* global testerBrowser */
-import { state } from './state.js';
-import { updateTopBarHeight } from './layout.js';
+import { toggleBookmarksBarVisible } from './layout.js';
+import { getActiveId, getTabTitle } from './tabs.js';
+
+let bookmarks       = [];
+let bookmarkFolders = [];
 
 export async function loadBookmarks() {
-  [state.bookmarks, state.bookmarkFolders] = await Promise.all([
+  [bookmarks, bookmarkFolders] = await Promise.all([
     testerBrowser.bookmarks.list(),
     testerBrowser.bookmarks.listFolders(),
   ]);
@@ -43,13 +46,13 @@ function openContextMenu(x, y, items) {
 }
 
 async function removeBookmark(url) {
-  state.bookmarks = await testerBrowser.bookmarks.remove(url);
+  bookmarks = await testerBrowser.bookmarks.remove(url);
   renderBookmarksBar();
   updateBookmarkStar();
 }
 
 async function moveBookmark(url, folderId) {
-  state.bookmarks = await testerBrowser.bookmarks.move(url, folderId);
+  bookmarks = await testerBrowser.bookmarks.move(url, folderId);
   renderBookmarksBar();
 }
 
@@ -82,7 +85,7 @@ function bookmarkContextItems(bm) {
     { label: 'Rename…', onClick: () => renameBookmarkInline(bm) },
     { separator: true },
     { label: bm.folderId ? 'Move to top level' : '✓ Top level', onClick: () => moveBookmark(bm.url, null) },
-    ...state.bookmarkFolders.map((f) => ({
+    ...bookmarkFolders.map((f) => ({
       label: (bm.folderId === f.id ? '✓ ' : '') + `Move to “${f.name}”`,
       onClick: () => moveBookmark(bm.url, f.id),
     })),
@@ -95,14 +98,14 @@ function renameBookmarkInline(bm) {
   const btn = document.querySelector(`.bm-btn[data-url="${CSS.escape(bm.url)}"]`);
   const label = btn?.querySelector('.bm-label');
   if (!btn || !label) return;
-  startInlineRename(label, bm.title || bm.url, (title) => testerBrowser.bookmarks.rename(bm.url, title).then((bs) => { state.bookmarks = bs; }));
+  startInlineRename(label, bm.title || bm.url, (title) => testerBrowser.bookmarks.rename(bm.url, title).then((bs) => { bookmarks = bs; }));
 }
 
 function renameFolderInline(folder) {
   const btn = document.querySelector(`.bm-folder-btn[data-folder-id="${CSS.escape(folder.id)}"]`);
   const label = btn?.querySelector('.bm-label');
   if (!btn || !label) return;
-  startInlineRename(label, folder.name, (name) => testerBrowser.bookmarks.renameFolder(folder.id, name).then((fs) => { state.bookmarkFolders = fs; }));
+  startInlineRename(label, folder.name, (name) => testerBrowser.bookmarks.renameFolder(folder.id, name).then((fs) => { bookmarkFolders = fs; }));
 }
 
 function makeBookmarkButton(bm) {
@@ -123,7 +126,7 @@ function makeBookmarkButton(bm) {
   rm.onclick = (e) => { e.stopPropagation(); removeBookmark(bm.url); };
   btn.appendChild(rm);
 
-  btn.onclick = (e) => { if (e.target !== rm) { state.activeId && testerBrowser.sessions.navigate(state.activeId, bm.url); } };
+  btn.onclick = (e) => { if (e.target !== rm) { getActiveId() && testerBrowser.sessions.navigate(getActiveId(), bm.url); } };
   btn.oncontextmenu = (e) => {
     e.preventDefault();
     openContextMenu(e.clientX, e.clientY, bookmarkContextItems(bm));
@@ -153,7 +156,7 @@ function makeFolderButton(folder, bookmarksInFolder) {
     const items = bookmarksInFolder.length
       ? bookmarksInFolder.map((bm) => ({
           label: bm.title || bm.url,
-          onClick: () => state.activeId && testerBrowser.sessions.navigate(state.activeId, bm.url),
+          onClick: () => getActiveId() && testerBrowser.sessions.navigate(getActiveId(), bm.url),
         }))
       : [{ label: '(empty folder)', onClick: () => {} }];
     openContextMenu(rect.left, rect.bottom, items);
@@ -170,7 +173,7 @@ function makeFolderButton(folder, bookmarksInFolder) {
 
 async function removeFolder(id) {
   await testerBrowser.bookmarks.removeFolder(id);
-  [state.bookmarks, state.bookmarkFolders] = await Promise.all([
+  [bookmarks, bookmarkFolders] = await Promise.all([
     testerBrowser.bookmarks.list(),
     testerBrowser.bookmarks.listFolders(),
   ]);
@@ -187,7 +190,7 @@ function startNewFolder(addBtn) {
   const commit = async () => {
     if (done) return; done = true;
     const name = input.value.trim();
-    if (name) state.bookmarkFolders = await testerBrowser.bookmarks.createFolder(name);
+    if (name) bookmarkFolders = await testerBrowser.bookmarks.createFolder(name);
     renderBookmarksBar();
   };
   const cancel = () => { if (done) return; done = true; renderBookmarksBar(); };
@@ -202,13 +205,13 @@ export function renderBookmarksBar() {
   const bar = document.getElementById('bookmarksBar');
   bar.innerHTML = '';
 
-  for (const folder of state.bookmarkFolders) {
-    const inFolder = state.bookmarks.filter((b) => b.folderId === folder.id);
+  for (const folder of bookmarkFolders) {
+    const inFolder = bookmarks.filter((b) => b.folderId === folder.id);
     bar.appendChild(makeFolderButton(folder, inFolder));
   }
 
-  for (const bm of state.bookmarks) {
-    if (bm.folderId && state.bookmarkFolders.some((f) => f.id === bm.folderId)) continue;
+  for (const bm of bookmarks) {
+    if (bm.folderId && bookmarkFolders.some((f) => f.id === bm.folderId)) continue;
     bar.appendChild(makeBookmarkButton(bm));
   }
 
@@ -228,7 +231,7 @@ export function updateBookmarkStar() {
   const starBtn      = document.getElementById('bookmarkBtn');
   const currentUrl   = document.getElementById('urlbar').value;
   const bookmarkable = isBookmarkableUrl(currentUrl);
-  const isBookmarked = bookmarkable && state.bookmarks.some(b => b.url === currentUrl);
+  const isBookmarked = bookmarkable && bookmarks.some(b => b.url === currentUrl);
   starBtn.innerHTML  = isBookmarked ? '&#9733;' : '&#9734;';
   starBtn.title      = bookmarkable
     ? (isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this page (Ctrl+D)')
@@ -240,22 +243,22 @@ export function updateBookmarkStar() {
 export async function toggleBookmark() {
   const url = document.getElementById('urlbar').value;
   if (!isBookmarkableUrl(url)) return;
-  const tabEl    = document.querySelector(`.tab[data-id="${state.activeId}"] .tab-name`);
-  const title    = state.tabTitles[state.activeId] || tabEl?.textContent || url;
-  const isBookmarked = state.bookmarks.some(b => b.url === url);
+  const activeId = getActiveId();
+  const tabEl    = document.querySelector(`.tab[data-id="${activeId}"] .tab-name`);
+  const title    = getTabTitle(activeId) || tabEl?.textContent || url;
+  const isBookmarked = bookmarks.some(b => b.url === url);
   if (isBookmarked) {
-    state.bookmarks = await testerBrowser.bookmarks.remove(url);
+    bookmarks = await testerBrowser.bookmarks.remove(url);
   } else {
-    state.bookmarks = await testerBrowser.bookmarks.add(url, title);
+    bookmarks = await testerBrowser.bookmarks.add(url, title);
   }
   renderBookmarksBar();
   updateBookmarkStar();
 }
 
 export function toggleBookmarksBar() {
-  state.bookmarksBarVisible = !state.bookmarksBarVisible;
-  document.getElementById('bookmarksBar').classList.toggle('open', state.bookmarksBarVisible);
-  updateTopBarHeight();
+  const visible = toggleBookmarksBarVisible();
+  document.getElementById('bookmarksBar').classList.toggle('open', visible);
 }
 
 export function initBookmarks() {

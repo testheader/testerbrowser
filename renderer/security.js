@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId } from './tabs.js';
 import { openDetailTab } from './detail-panel.js';
 
 const REQUIRED_HEADERS = [
@@ -54,13 +54,13 @@ export function clearSecurityFindings() {
 }
 
 async function runScan() {
-  if (!state.activeId) return;
+  if (!getActiveId()) return;
   const btn    = document.getElementById('secScanBtn');
   const status = document.getElementById('secStatus');
   btn.disabled = true;
   status.textContent = 'Scanning…';
 
-  const events   = await testerBrowser.recording.timeline(state.activeId, { limit: 5000 });
+  const events   = await testerBrowser.recording.timeline(getActiveId(), { limit: 5000 });
   lastFindings   = analyze(events);
   renderFilteredFindings();
   status.textContent = `${lastFindings.length} issue${lastFindings.length !== 1 ? 's' : ''} found`;

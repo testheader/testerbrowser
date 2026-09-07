@@ -1,18 +1,30 @@
 /* global testerBrowser */
-import { state, TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
+import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
 import { getEventTabId } from './utils.js';
-import { openDetailTab } from './detail-panel.js';
+import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { openReplay } from './replay.js';
+import { getActiveId } from './tabs.js';
+import { getActiveConsoleTab } from './console-tabs.js';
+
+// timeline.js owns the recording ring buffer (timelineEvents), the polling
+// cursor (lastTs) and the console panel's auto-scroll flag — nothing else
+// reads or writes these directly. detail-panel.js reads the buffer through
+// getTimelineEvents() to render a request/response's detail tab.
+const timelineEvents = []; // ring buffer, max TIMELINE_MAX entries
+let lastTs          = 0;
+let autoScroll       = true;
+
+export function getTimelineEvents() { return timelineEvents; }
 
 export function renderTimeline() {
   const panel = document.getElementById('timelinePanel');
-  const tab   = state.activeConsoleTab;
+  const tab   = getActiveConsoleTab();
 
   let filtered;
   if (tab === 'network') {
     const netFilter  = document.getElementById('networkFilterText').value.toLowerCase();
     const activeTypes = new Set([...document.querySelectorAll('#networkPills .filter-pill.on')].map(el => el.dataset.type));
-    filtered = state.timelineEvents.filter(e => {
+    filtered = timelineEvents.filter(e => {
       const kindVisible = activeTypes.has(e.kind) ||
         (e.kind === 'network-body' && activeTypes.has('network-response'));
       return kindVisible && (!netFilter || e.summary.toLowerCase().includes(netFilter));
@@ -20,13 +32,13 @@ export function renderTimeline() {
   } else {
     const filterText = document.getElementById('filterText').value.toLowerCase();
     const CONSOLE_KINDS = new Set(['console', 'log']);
-    filtered = state.timelineEvents.filter(e =>
+    filtered = timelineEvents.filter(e =>
       CONSOLE_KINDS.has(e.kind) && (!filterText || e.summary.toLowerCase().includes(filterText))
     );
   }
 
   const kindCounts = {};
-  for (const e of state.timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
+  for (const e of timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
   document.querySelectorAll('#networkPills .filter-pill').forEach(btn => {
     const n    = kindCounts[btn.dataset.type] || 0;
     const span = btn.querySelector('.pill-count');
@@ -36,12 +48,12 @@ export function renderTimeline() {
   const visible = filtered.slice(-TIMELINE_DOM_MAX);
   panel.innerHTML = '';
 
-  if (state.activeId && state.timelineEvents.length === 0) {
+  if (getActiveId() && timelineEvents.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'timeline-empty';
     empty.innerHTML = '<span class="timeline-empty-dot"></span><span>Recording — waiting for activity…</span>';
     panel.appendChild(empty);
-    if (state.autoScroll) panel.scrollTop = panel.scrollHeight;
+    if (autoScroll) panel.scrollTop = panel.scrollHeight;
     return;
   }
 
@@ -64,7 +76,7 @@ export function renderTimeline() {
     line.dataset.kind    = e.kind;
     line.dataset.summary = e.summary;
     line.dataset.tabId   = tabId;
-    if (state.detailTabs.some(t => t.id === tabId)) line.classList.add('detail-row-active');
+    if (isDetailTabActive(tabId)) line.classList.add('detail-row-active');
 
     const summary = document.createElement('div');
     summary.className   = 'evt-summary';
@@ -109,18 +121,19 @@ export function renderTimeline() {
     panel.appendChild(line);
   }
 
-  if (state.autoScroll) panel.scrollTop = panel.scrollHeight;
+  if (autoScroll) panel.scrollTop = panel.scrollHeight;
 }
 
 async function fetchTimeline() {
-  if (!state.activeId) return;
-  const events = await testerBrowser.recording.timeline(state.activeId, { since: state.lastTs || undefined, limit: 200 });
+  const activeId = getActiveId();
+  if (!activeId) return;
+  const events = await testerBrowser.recording.timeline(activeId, { since: lastTs || undefined, limit: 200 });
   if (events.length > 0) {
-    state.timelineEvents.push(...events);
-    if (state.timelineEvents.length > TIMELINE_MAX) {
-      state.timelineEvents.splice(0, state.timelineEvents.length - TIMELINE_MAX);
+    timelineEvents.push(...events);
+    if (timelineEvents.length > TIMELINE_MAX) {
+      timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
     }
-    state.lastTs = Math.max(state.lastTs, ...events.map(e => e.ts));
+    lastTs = Math.max(lastTs, ...events.map(e => e.ts));
     renderTimeline();
   }
 }
@@ -137,18 +150,26 @@ export function refreshTimelineNow() {
   fetchTimeline();
 }
 
+// Called by tabs.js on every session switch: the buffer and polling cursor
+// are per-tab, so a switch discards whatever the previous tab had recorded.
+export function resetTimelineForNewSession() {
+  timelineEvents.length = 0;
+  lastTs = 0;
+  document.getElementById('timelinePanel').innerHTML = '';
+}
+
 export function initTimeline() {
   const timelinePanel     = document.getElementById('timelinePanel');
   const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
 
   timelinePanel.addEventListener('scroll', () => {
-    state.autoScroll = timelinePanel.scrollTop + timelinePanel.clientHeight >= timelinePanel.scrollHeight - 30;
-    scrollToBottomBtn.classList.toggle('visible', !state.autoScroll);
+    autoScroll = timelinePanel.scrollTop + timelinePanel.clientHeight >= timelinePanel.scrollHeight - 30;
+    scrollToBottomBtn.classList.toggle('visible', !autoScroll);
   });
 
   scrollToBottomBtn.onclick = () => {
     timelinePanel.scrollTop = timelinePanel.scrollHeight;
-    state.autoScroll = true;
+    autoScroll = true;
     scrollToBottomBtn.classList.remove('visible');
   };
 
@@ -160,11 +181,11 @@ export function initTimeline() {
   );
 
   function clearTimeline() {
-    state.timelineEvents.length = 0;
-    state.lastTs  = 0;
+    timelineEvents.length = 0;
+    lastTs  = 0;
     timelinePanel.innerHTML = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
-    state.autoScroll = true;
+    autoScroll = true;
     scrollToBottomBtn.classList.remove('visible');
   }
 
@@ -172,14 +193,14 @@ export function initTimeline() {
   document.getElementById('clearNetworkBtn').onclick  = clearTimeline;
 
   testerBrowser.sessions.onLoadFailed(({ id, errorCode, errorDescription, url }) => {
-    if (id !== state.activeId) return;
-    state.timelineEvents.push({
+    if (id !== getActiveId()) return;
+    timelineEvents.push({
       kind:    'network-failed',
       summary: `LOAD FAILED (${errorCode}) ${errorDescription} — ${url}`,
       ts:      Date.now(),
     });
-    if (state.timelineEvents.length > TIMELINE_MAX) {
-      state.timelineEvents.splice(0, state.timelineEvents.length - TIMELINE_MAX);
+    if (timelineEvents.length > TIMELINE_MAX) {
+      timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
     }
     renderTimeline();
   });

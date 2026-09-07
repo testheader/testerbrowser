@@ -1,11 +1,10 @@
 /* global testerBrowser */
-import { state } from './state.js';
 import { toggleBookmarksBar } from './bookmarks.js';
-import { syncConsoleViewHeight, currentTopBarHeight } from './layout.js';
+import { isConsoleVisible, toggleConsoleVisible, isBookmarksBarVisible, currentTopBarHeight } from './layout.js';
 
 function updateViewDropdown() {
-  document.getElementById('viewConsoleCheck').textContent   = state.consoleVisible      ? '✓' : '';
-  document.getElementById('viewBookmarksCheck').textContent = state.bookmarksBarVisible ? '✓' : '';
+  document.getElementById('viewConsoleCheck').textContent   = isConsoleVisible()      ? '✓' : '';
+  document.getElementById('viewBookmarksCheck').textContent = isBookmarksBarVisible() ? '✓' : '';
 }
 
 function openViewDropdown() {
@@ -42,9 +41,7 @@ export function initViewDropdown() {
   });
 
   document.getElementById('viewToggleConsole').addEventListener('click', () => {
-    state.consoleVisible = !state.consoleVisible;
-    document.getElementById('consolePanel').style.display = state.consoleVisible ? 'flex' : 'none';
-    syncConsoleViewHeight();
+    toggleConsoleVisible();
     updateViewDropdown();
     closeViewDropdown();
   });

@@ -1,5 +1,6 @@
 /* global testerBrowser */
-import { state } from './state.js';
+import { getActiveId } from './tabs.js';
+import { getActiveConsoleTab } from './console-tabs.js';
 
 export function initMock() {
   const panel = document.getElementById('mockPanel');
@@ -33,7 +34,7 @@ export function initMock() {
 
   document.getElementById('mockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!state.activeId) return;
+    if (!getActiveId()) return;
     const rule = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       urlPattern: document.getElementById('mockUrl').value.trim(),
@@ -42,7 +43,7 @@ export function initMock() {
       body: document.getElementById('mockBody').value,
       enabled: true,
     };
-    await testerBrowser.mock.addRule(state.activeId, rule);
+    await testerBrowser.mock.addRule(getActiveId(), rule);
     document.getElementById('mockUrl').value = '';
     document.getElementById('mockBody').value = '';
     await loadRules();
@@ -51,12 +52,12 @@ export function initMock() {
   loadRules();
   // Hit counts change as traffic flows without the user re-opening this tab;
   // keep them fresh while the Mock tab is the one being looked at.
-  setInterval(() => { if (state.activeConsoleTab === 'mock') loadRules(); }, 1500);
+  setInterval(() => { if (getActiveConsoleTab() === 'mock') loadRules(); }, 1500);
 }
 
 async function loadRules() {
-  if (!state.activeId) return;
-  const rules = await testerBrowser.mock.getRules(state.activeId);
+  if (!getActiveId()) return;
+  const rules = await testerBrowser.mock.getRules(getActiveId());
   renderRules(rules);
 }
 
@@ -91,10 +92,10 @@ function renderRules(rules) {
       <button class="mock-btn mock-del-btn" title="Remove">✕</button>`;
 
     row.querySelector('.mock-enable').addEventListener('change', async (e) => {
-      await testerBrowser.mock.toggleRule(state.activeId, rule.id, e.target.checked);
+      await testerBrowser.mock.toggleRule(getActiveId(), rule.id, e.target.checked);
     });
     row.querySelector('.mock-del-btn').addEventListener('click', async () => {
-      await testerBrowser.mock.removeRule(state.activeId, rule.id);
+      await testerBrowser.mock.removeRule(getActiveId(), rule.id);
       await loadRules();
     });
     container.appendChild(row);
