@@ -38,8 +38,11 @@ async function searchAndGetLastHistoryUrl(query: string): Promise<string | undef
   // returns — poll for the top entry to change rather than reading it
   // immediately, and rather than waiting for the tab to finish loading a
   // real, possibly-unreachable external URL (this is what the "URL history
-  // records the actual navigated URL" acceptance criterion is about).
-  await expect.poll(topHistoryUrl).not.toBe(before);
+  // records the actual navigated URL" acceptance criterion is about). Extra
+  // headroom over the config default: this round-trips two IPC calls plus a
+  // real (if fire-and-forget) webContents.loadURL() to an external host,
+  // which can be slow on a loaded CI runner.
+  await expect.poll(topHistoryUrl, { timeout: 20_000 }).not.toBe(before);
   return topHistoryUrl();
 }
 
