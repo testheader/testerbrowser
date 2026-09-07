@@ -388,6 +388,11 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .filter-pill[data-type="network-failed"].on   { color: var(--error-strong); border-color: var(--error-border); background: rgba(255,128,128,0.07); }
 .filter-pill[data-type="console"].on          { color: var(--warn-strong); border-color: var(--warn-border); background: rgba(224,192,96,0.07); }
 .filter-pill[data-type="log"].on              { color: var(--text-secondary); border-color: var(--border-color); background: rgba(176,176,176,0.07); }
+.filter-pill[data-level="error"].on { color: var(--error-strong); border-color: var(--error-border); background: rgba(255,128,128,0.07); }
+.filter-pill[data-level="warn"].on  { color: var(--warn-strong);  border-color: var(--warn-border);  background: rgba(224,192,96,0.07); }
+.filter-pill[data-level="info"].on  { color: var(--accent-text);  border-color: var(--info-border);  background: rgba(127,200,255,0.07); }
+.filter-pill[data-level="log"].on   { color: var(--text-muted);   border-color: var(--border-color);  background: rgba(176,176,176,0.07); }
+.filter-pill[data-level="debug"].on { color: var(--text-faint);   border-color: var(--border-color);  background: rgba(176,176,176,0.05); }
 #exportHarBtn { background: none; border: 1px solid var(--border-color); color: var(--text-faint); cursor: pointer;
                 font-size: 11px; padding: 2px 7px; border-radius: 3px; font-family: inherit; flex-shrink: 0; }
 #exportHarBtn:hover { border-color: var(--accent); color: var(--accent); }
@@ -431,6 +436,12 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .evt.console-log   .evt-summary { color: var(--text-muted); }
 .evt.console-debug .evt-summary { color: var(--text-faint); }
 .evt.network-body  .evt-summary { color: var(--text-faint); font-style: italic; }
+
+/* Uncaught JS exceptions (Runtime.exceptionThrown) — counted as errors for
+   filtering, but visually distinct from a plain console.error() call. */
+.evt.exception { border-left: 3px solid var(--error-strong); }
+.evt.exception .evt-summary { color: var(--error-strong); font-weight: 600; }
+.evt.exception .evt-summary::before { content: '⚠ '; }
 
 /* Pill count badges */
 .pill-count { font-size: 10px; color: inherit; opacity: 0.7; margin-left: 2px; }
@@ -495,6 +506,10 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
              border-radius: 2px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; font-family: inherit; }
 .evt-badge-mock       { background: var(--info-surface);  color: var(--info-strong); }
 .evt-badge-resilience { background: var(--warn-surface);  color: var(--warn-strong); }
+/* Badge on a log-kind row naming its CDP Log.entryAdded source, for the
+   sources worth calling out (security/network/deprecation/intervention) —
+   the common javascript/other sources get no badge. */
+.evt-badge-log-source { background: var(--bg-tertiary); color: var(--text-secondary); }
 
 /* Replay modal */
 #replayOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72);

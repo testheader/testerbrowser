@@ -23,6 +23,22 @@ export function getHeader(headers, name) {
   return key ? String(headers[key]) : '';
 }
 
+// Normalizes the level out of a console/log/exception event's own summary
+// text (rather than re-parsing its JSON payload) — console rows are tagged
+// `[type]` from Runtime.consoleAPICalled's own `type` field, log rows
+// `[level]` from Log.entryAdded's `entry.level` (CDP spells it "warning",
+// normalized here to "warn" to match the console side). An uncaught
+// exception always counts as an error for filtering purposes, even though
+// it renders with its own distinct styling instead of console-error's.
+export function getConsoleLevel(e) {
+  if (e.kind === 'exception') return 'error';
+  if (e.kind !== 'console' && e.kind !== 'log') return null;
+  const m = e.summary.match(/^\[(\w+)\]/);
+  if (!m) return null;
+  const raw = m[1].toLowerCase();
+  return raw === 'warning' ? 'warn' : raw;
+}
+
 export function wirePillGroup(containerEl, onChange) {
   containerEl.querySelectorAll('.filter-pill').forEach(btn =>
     btn.addEventListener('click', () => { btn.classList.toggle('on'); onChange(); }));

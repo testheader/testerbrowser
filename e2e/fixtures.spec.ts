@@ -47,7 +47,54 @@ test('console/logs.html produces console events at every level', async () => {
     els => els.map(el => (el as HTMLElement).className)
   );
   expect(kinds.some(c => c.includes('console-error'))).toBe(true);
-  expect(kinds.some(c => c.includes('console-warning'))).toBe(true);
+  // CDP reports console.warn() as type "warning", not "warn" — getConsoleLevel
+  // normalizes that, so the row's class is console-warn, matching the Warn
+  // filter pill's data-level and the CSS rule that actually colors it.
+  expect(kinds.some(c => c.includes('console-warn') && !c.includes('console-warning'))).toBe(true);
+});
+
+test('console/logs.html: level pills filter the timeline, and Log-domain rows get level color-coding', async () => {
+  await navigate('/console/logs.html');
+  await window.click('#clearConsoleBtn');
+  await window.waitForTimeout(200);
+  await navigate('/console/logs.html');
+  await window.waitForTimeout(1_500);
+
+  // The missing <img> load is reported via Log.entryAdded (kind "log"), not
+  // a console.* call — before this ticket, log-kind rows never got a level
+  // class at all, so this specifically checks the fix, not just filtering.
+  // (Chromium's Log entry text for a failed resource load doesn't include
+  // the request URL, only the status — so match on the row's kind, not text.)
+  const missingImgRow = window.locator('.evt.log').first();
+  await expect(missingImgRow).toBeVisible();
+  await expect(missingImgRow).toHaveClass(/console-error/);
+
+  const errorCountBefore = await window.locator('.evt.console-error').count();
+  expect(errorCountBefore).toBeGreaterThan(0);
+
+  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  await expect(window.locator('.evt.console-error')).toHaveCount(0);
+  // A non-error row (e.g. plain console.log on load) stays visible.
+  await expect(window.locator('.evt.console-log', { hasText: 'page loaded' }).first()).toBeVisible();
+
+  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  await expect(window.locator('.evt.console-error').first()).toBeVisible();
+});
+
+test('console/logs.html: an uncaught exception renders as a visually distinct row from console.error()', async () => {
+  const tab = await navigate('/console/logs.html');
+  await window.click('#clearConsoleBtn');
+  await tab.click('button:text("throw uncaught exception")');
+  await window.waitForTimeout(1_500);
+
+  const exceptionRow = window.locator('.evt.exception', { hasText: 'uncaught exception test' });
+  await expect(exceptionRow).toBeVisible();
+  // Counted as an error for filtering purposes...
+  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  await expect(exceptionRow).toHaveCount(0);
+  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  // ...but rendered with its own class, not console-error's.
+  await expect(exceptionRow).not.toHaveClass(/console-error/);
 });
 
 // ── Network ──────────────────────────────────────────────────────────────────

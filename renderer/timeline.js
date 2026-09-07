@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
-import { getEventTabId, wirePillGroup, activePillValues } from './utils.js';
+import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel } from './utils.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { openReplay } from './replay.js';
 import { getActiveId } from './tabs.js';
@@ -20,6 +20,14 @@ let autoScroll       = true;
 // group, not just the request line.
 const requestIdToMethod = new Map();
 const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
+
+// Rows whose level falls outside these five pills (e.g. CDP Log's 'verbose',
+// or console types like 'trace'/'table') stay visible regardless of pill
+// state, same policy as the network method filter's "unresolvable stays
+// visible" rule — nothing should silently vanish just because it doesn't
+// fit one of the named buckets.
+const KNOWN_LEVELS = new Set(['error', 'warn', 'info', 'log', 'debug']);
+const INTERESTING_LOG_SOURCES = new Set(['security', 'network', 'deprecation', 'intervention']);
 
 function getEventMethod(e) {
   if (!e.payload) return null;
@@ -77,17 +85,33 @@ export function renderTimeline() {
       return !!e.payload && e.payload.toLowerCase().includes(netFilter);
     });
   } else {
-    const filterText = document.getElementById('filterText').value.toLowerCase();
-    const CONSOLE_KINDS = new Set(['console', 'log']);
-    filtered = timelineEvents.filter(e =>
-      CONSOLE_KINDS.has(e.kind) && (!filterText || e.summary.toLowerCase().includes(filterText))
-    );
+    const filterText   = document.getElementById('filterText').value.toLowerCase();
+    const activeLevels = activePillValues(document.getElementById('consoleLevelPills'), 'level');
+    const CONSOLE_KINDS = new Set(['console', 'log', 'exception']);
+    filtered = timelineEvents.filter(e => {
+      if (!CONSOLE_KINDS.has(e.kind)) return false;
+      const level = getConsoleLevel(e);
+      const levelVisible = !level || !KNOWN_LEVELS.has(level) || activeLevels.has(level);
+      if (!levelVisible) return false;
+      return !filterText || e.summary.toLowerCase().includes(filterText);
+    });
   }
 
   const kindCounts = {};
   for (const e of timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
   document.querySelectorAll('#networkPills .filter-pill').forEach(btn => {
     const n    = kindCounts[btn.dataset.type] || 0;
+    const span = btn.querySelector('.pill-count');
+    if (span) span.textContent = n > 0 ? n : '';
+  });
+
+  const levelCounts = {};
+  for (const e of timelineEvents) {
+    const level = getConsoleLevel(e);
+    if (level) levelCounts[level] = (levelCounts[level] || 0) + 1;
+  }
+  document.querySelectorAll('#consoleLevelPills .filter-pill').forEach(btn => {
+    const n    = levelCounts[btn.dataset.level] || 0;
     const span = btn.querySelector('.pill-count');
     if (span) span.textContent = n > 0 ? n : '';
   });
@@ -113,9 +137,9 @@ export function renderTimeline() {
 
   for (const e of visible) {
     let subtypeClass = '';
-    if (e.kind === 'console') {
-      const m = e.summary.match(/^\[(\w+)\]/);
-      if (m) subtypeClass = ' console-' + m[1].toLowerCase();
+    if (e.kind === 'console' || e.kind === 'log') {
+      const level = getConsoleLevel(e);
+      if (level) subtypeClass = ' console-' + level;
     }
     const tabId = getEventTabId(e);
     const line  = document.createElement('div');
@@ -153,6 +177,19 @@ export function renderTimeline() {
           badge.className = 'evt-badge evt-badge-resilience';
           badge.textContent = 'RESILIENCE';
           badge.title = `Altered by a Resilience rule (${p.resilienceType || 'unknown'})`;
+          summary.appendChild(badge);
+        }
+      } catch {}
+    }
+
+    if (e.kind === 'log' && e.payload) {
+      try {
+        const source = JSON.parse(e.payload).entry?.source;
+        if (INTERESTING_LOG_SOURCES.has(source)) {
+          const badge = document.createElement('span');
+          badge.className = 'evt-badge evt-badge-log-source';
+          badge.textContent = source.toUpperCase();
+          badge.title = `Log source: ${source}`;
           summary.appendChild(badge);
         }
       } catch {}
@@ -236,6 +273,7 @@ export function initTimeline() {
 
   wirePillGroup(document.getElementById('networkPills'), renderTimeline);
   wirePillGroup(document.getElementById('networkMethodPills'), renderTimeline);
+  wirePillGroup(document.getElementById('consoleLevelPills'), renderTimeline);
 
   function clearTimeline() {
     timelineEvents.length = 0;

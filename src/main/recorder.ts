@@ -40,7 +40,7 @@ type EventRow = {
   id?: number;
   session_id: string;
   ts: number;
-  kind: 'network-request' | 'network-response' | 'network-failed' | 'network-body' | 'console' | 'log';
+  kind: 'network-request' | 'network-response' | 'network-failed' | 'network-body' | 'console' | 'log' | 'exception';
   summary: string;
   payload: string; // JSON blob
 };
@@ -110,7 +110,7 @@ export class SessionRecorder {
 
     dbg.sendCommand('Network.enable').catch(() => {});
     dbg.sendCommand('Log.enable').catch(() => {});
-    dbg.sendCommand('Runtime.enable').catch(() => {});
+    dbg.sendCommand('Runtime.enable').catch(() => {}); // also needed for exceptionThrown
 
     dbg.on('message', (_event, method, params) => {
       const ts = Date.now();
@@ -205,6 +205,17 @@ export class SessionRecorder {
             kind: 'console',
             ts,
             summary: `[${params.type}] ${args}`,
+            payload: JSON.stringify(params),
+          });
+          break;
+        }
+        case 'Runtime.exceptionThrown': {
+          const details = params.exceptionDetails;
+          const stack = details?.exception?.description;
+          this.record({
+            kind: 'exception',
+            ts,
+            summary: stack ? `${details.text}: ${stack}` : (details?.text ?? 'Uncaught exception'),
             payload: JSON.stringify(params),
           });
           break;

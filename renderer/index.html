@@ -123,6 +123,13 @@
         <div id="consoleControls">
           <span class="filter-label">Filter</span>
           <input id="filterText" placeholder="Filter console…" />
+          <div class="filter-pills" id="consoleLevelPills">
+            <button class="filter-pill on" data-level="error" title="Errors">Error<span class="pill-count"></span></button>
+            <button class="filter-pill on" data-level="warn"  title="Warnings">Warn<span class="pill-count"></span></button>
+            <button class="filter-pill on" data-level="info"  title="Info">Info<span class="pill-count"></span></button>
+            <button class="filter-pill on" data-level="log"   title="Log">Log<span class="pill-count"></span></button>
+            <button class="filter-pill on" data-level="debug" title="Debug">Debug<span class="pill-count"></span></button>
+          </div>
           <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console">&#10005;</button>
         </div>
         <div id="networkControls">

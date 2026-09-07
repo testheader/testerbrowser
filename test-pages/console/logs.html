@@ -22,10 +22,16 @@
   <button onclick="console.assert(false, 'assertion failed on purpose')">console.assert(false)</button>
   <button onclick="console.trace('trace me')">console.trace</button>
   <button onclick="for (let i = 0; i < 20; i++) console.log('burst log #' + i)">20x console.log burst</button>
+  <button onclick="throw new Error('uncaught exception test')">throw uncaught exception</button>
 </div>
 
 <p>On load this page already emitted one of each level once, so opening it fresh
-always produces a baseline set of events.</p>
+always produces a baseline set of events. It also requests a missing image,
+which Chromium reports as a Log.entryAdded entry (level error, source
+network) rather than a console.* call — exercising level color-coding and
+the source badge for a case the Console tab never actually generates itself.</p>
+
+<img src="/console/definitely-missing-404.png" alt="" style="display:none">
 
 <script>
   console.log('page loaded: logs.html');

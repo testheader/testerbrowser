@@ -264,6 +264,25 @@ describe('SessionRecorder', () => {
 
       expect(recorder.getTimeline()[0].summary).toBe('[log] HTMLElement');
     });
+
+    it('records Runtime.exceptionThrown with the exception text and stack description', () => {
+      emit('Runtime.exceptionThrown', {
+        exceptionDetails: {
+          text: 'Uncaught',
+          exception: { description: 'Error: boom\n    at foo (page.html:1:1)' },
+        },
+      });
+
+      const [event] = recorder.getTimeline();
+      expect(event.kind).toBe('exception');
+      expect(event.summary).toBe('Uncaught: Error: boom\n    at foo (page.html:1:1)');
+    });
+
+    it('falls back to just the exception text when there is no stack description', () => {
+      emit('Runtime.exceptionThrown', { exceptionDetails: { text: 'Uncaught ReferenceError' } });
+
+      expect(recorder.getTimeline()[0].summary).toBe('Uncaught ReferenceError');
+    });
   });
 
   describe('unknown CDP events', () => {
