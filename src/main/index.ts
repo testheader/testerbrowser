@@ -148,6 +148,9 @@ function createWindow() {
   win.on('maximize',   () => win?.webContents.send('window:maximizedChanged', true));
   win.on('unmaximize', () => win?.webContents.send('window:maximizedChanged', false));
 
+  win.webContents.on('render-process-gone', (_e, details) => recordAppError(`Chrome UI render process gone: ${details.reason}`));
+  win.webContents.on('unresponsive', () => recordAppError('Chrome UI became unresponsive'));
+
   // Prevent the privileged renderer from being navigated away from index.html
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -686,6 +689,7 @@ ipcMain.handle('app:restartAndInstall', () => autoUpdater.quitAndInstall());
 ipcMain.handle('app:openExternal', (_e, url: string) => {
   if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
 });
+ipcMain.handle('app:reportError', (_e, message: string) => recordAppError(String(message)));
 
 // Tests (record-playback) IPC
 ipcMain.handle('tests:list', () => testsStore.get());

@@ -254,6 +254,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     checkForUpdates:    () => ipcRenderer.invoke('app:checkForUpdates'),
     restartAndInstall:  () => ipcRenderer.invoke('app:restartAndInstall'),
     openExternal:       (url: string) => ipcRenderer.invoke('app:openExternal', url),
+    reportError:        (message: string) => ipcRenderer.invoke('app:reportError', message),
     getUpdateLog:       () => ipcRenderer.invoke('app:getUpdateLog'),
     onUpdateStatus: (cb: (d: { status: string; current: string; latest: string | null }) => void) => {
       ipcRenderer.removeAllListeners('update:status');

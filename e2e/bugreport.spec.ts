@@ -59,3 +59,17 @@ test('Ctrl+Enter does nothing when the description is empty', async () => {
   await expect(window.locator('#bugReportMsg')).toContainText('Please describe what happened', { timeout: 5_000 });
   await expect(window.locator('#bugReportOverlay')).toHaveClass(/open/);
 });
+
+test('a renderer-side error shows up in the next bug report diagnostics preview', async () => {
+  await window.keyboard.press('Escape'); // close the modal left open by the previous test
+
+  // A real uncaught error, not one swallowed by whatever called evaluate() —
+  // setTimeout escapes to a fresh task so it reaches the window 'error'
+  // listener same as an actual bug in the chrome UI would.
+  await window.evaluate(() => {
+    setTimeout(() => { throw new Error('e2e-injected renderer error'); }, 0);
+  });
+
+  await openBugReportModal();
+  await expect(window.locator('#bugReportDiagPreview')).toHaveValue(/e2e-injected renderer error/, { timeout: 5_000 });
+});

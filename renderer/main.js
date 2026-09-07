@@ -31,6 +31,16 @@ import { initShortcuts } from './shortcuts.js';
 import { initIpcEvents } from './ipc-events.js';
 import { initTheme } from './theme.js';
 
+// Feeds the bug report's diagnostics preview — main-process errors were
+// already recorded, but nothing captured errors from this chrome UI's own
+// renderer, so the log was almost always empty for the actual UI bugs a
+// tester would report. Registered before any other init so an error thrown
+// during startup itself still gets reported.
+window.addEventListener('error', (e) =>
+  testerBrowser.app.reportError(`Renderer error: ${e.message} (${e.filename}:${e.lineno}:${e.colno})\n${e.error?.stack || ''}`));
+window.addEventListener('unhandledrejection', (e) =>
+  testerBrowser.app.reportError(`Renderer unhandled rejection: ${e.reason?.stack || e.reason}`));
+
 initTheme();
 initLayout();
 initMinimize();
