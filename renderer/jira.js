@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { state } from './state.js';
+import { escHtml } from './utils.js';
 
 let initialized = false;
 
@@ -201,13 +202,6 @@ async function submitBug() {
   setTimeout(closeBugForm, 1500);
 }
 
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function extractText(node) {
   if (!node) return '';

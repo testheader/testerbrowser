@@ -1,4 +1,5 @@
 /* global testerBrowser */
+import { escHtml } from './utils.js';
 
 let cachedSessions = [];
 
@@ -155,10 +156,3 @@ function logStepResult(step, result) {
   while (log.children.length > 50) log.removeChild(log.lastChild);
 }
 
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}

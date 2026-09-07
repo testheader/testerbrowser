@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { state } from './state.js';
+import { escHtml } from './utils.js';
 
 let initialized = false;
 let isRecording = false;
@@ -448,6 +449,3 @@ function showRepeatResults(test, allRunResults, passed, failed, total) {
 
 // ─── Utility ────────────────────────────────────────────────────────────────
 
-function escHtml(str) {
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}

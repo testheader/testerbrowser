@@ -1,4 +1,5 @@
 /* global testerBrowser */
+import { escHtml } from './utils.js';
 
 let lastDiffRows = [];
 let cachedSessions = [];
@@ -217,10 +218,3 @@ function exportDiffHar() {
   URL.revokeObjectURL(url);
 }
 
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
