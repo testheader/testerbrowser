@@ -3,6 +3,9 @@ import { escHtml } from './utils.js';
 
 let lastDiffRows = [];
 let cachedSessions = [];
+let rawMapA = new Map();
+let rawMapB = new Map();
+let groupDuplicates = true;
 
 export function initDiff() {
   const panel = document.getElementById('diffPanel');
@@ -18,6 +21,9 @@ export function initDiff() {
         <select class="diff-pick" id="diffPickB"></select>
       </label>
       <button class="diff-run-btn" id="diffRunBtn">Compare</button>
+      <label class="diff-label diff-group-toggle">
+        <input type="checkbox" id="diffGroupToggle" checked /> Group duplicates
+      </label>
       <button class="diff-har-btn" id="diffHarBtn" disabled>Export HAR</button>
     </div>
     <div class="diff-body" id="diffBody">
@@ -28,6 +34,14 @@ export function initDiff() {
 
   document.getElementById('diffRunBtn').addEventListener('click', runDiff);
   document.getElementById('diffHarBtn').addEventListener('click', exportDiffHar);
+  document.getElementById('diffGroupToggle').addEventListener('change', onGroupToggleChanged);
+}
+
+function onGroupToggleChanged(e) {
+  groupDuplicates = e.target.checked;
+  if (rawMapA.size === 0 && rawMapB.size === 0) return;
+  computeDiffRows();
+  renderDiffTable(document.getElementById('diffBody'));
 }
 
 export async function refreshDiffPickers() {
@@ -98,35 +112,29 @@ async function runDiff() {
     testerBrowser.recording.timeline(idB, { limit: 5000 }),
   ]);
 
-  const mapA = buildRequestMap(evA);
-  const mapB = buildRequestMap(evB);
+  rawMapA = buildRequestMap(evA);
+  rawMapB = buildRequestMap(evB);
 
-  const allKeys = new Set([...mapA.keys(), ...mapB.keys()]);
-  lastDiffRows = [];
-
-  for (const key of allKeys) {
-    const a = mapA.get(key);
-    const b = mapB.get(key);
-    let category;
-    if (a && !b)      category = 'only-a';
-    else if (!a && b) category = 'only-b';
-    else if (a.status === b.status) category = 'same';
-    else              category = 'diff';
-    lastDiffRows.push({ key, a, b, category });
-  }
-
-  lastDiffRows.sort((x, y) => {
-    const order = { diff: 0, 'only-a': 1, 'only-b': 2, same: 3 };
-    return (order[x.category] ?? 9) - (order[y.category] ?? 9) || x.key.localeCompare(y.key);
-  });
-
+  computeDiffRows();
   renderDiffTable(body);
   harBtn.disabled = lastDiffRows.length === 0;
 }
 
+// Groups every call to the same "METHOD url" within one session, so a page
+// that fires the same request more than once (analytics beacons, polling,
+// cache revalidation) doesn't drown out genuine differences between sessions.
 function buildRequestMap(events) {
   const reqMeta = new Map();
   const result  = new Map();
+
+  const pushCall = (key, method, url, status, fromCache) => {
+    let entry = result.get(key);
+    if (!entry) {
+      entry = { method, url, calls: [] };
+      result.set(key, entry);
+    }
+    entry.calls.push({ status, fromCache });
+  };
 
   for (const ev of events) {
     if (ev.kind === 'network-request') {
@@ -141,7 +149,8 @@ function buildRequestMap(events) {
         const meta = reqMeta.get(p.requestId);
         if (!meta) continue;
         const key = `${meta.method} ${meta.url}`;
-        result.set(key, { method: meta.method, url: meta.url, status: p.response.status });
+        const fromCache = !!(p.response.fromDiskCache || p.response.fromServiceWorker);
+        pushCall(key, meta.method, meta.url, p.response.status, fromCache);
       } catch {}
     }
     if (ev.kind === 'network-failed') {
@@ -150,12 +159,84 @@ function buildRequestMap(events) {
         const meta = reqMeta.get(p.requestId);
         if (!meta) continue;
         const key = `${meta.method} ${meta.url}`;
-        if (!result.has(key)) result.set(key, { method: meta.method, url: meta.url, status: 'FAILED' });
+        pushCall(key, meta.method, meta.url, 'FAILED', false);
       } catch {}
     }
   }
 
   return result;
+}
+
+// Builds lastDiffRows from rawMapA/rawMapB according to the current
+// groupDuplicates mode, without re-fetching the timelines.
+function computeDiffRows() {
+  const allKeys = new Set([...rawMapA.keys(), ...rawMapB.keys()]);
+  lastDiffRows = [];
+
+  for (const key of allKeys) {
+    const a = rawMapA.get(key);
+    const b = rawMapB.get(key);
+
+    if (groupDuplicates) {
+      lastDiffRows.push(makeGroupedRow(key, a, b));
+    } else {
+      const maxLen = Math.max(a?.calls.length ?? 0, b?.calls.length ?? 0);
+      for (let i = 0; i < maxLen; i++) {
+        lastDiffRows.push(makeCallRow(key, a, b, i));
+      }
+    }
+  }
+
+  lastDiffRows.sort((x, y) => {
+    const order = { diff: 0, 'only-a': 1, 'only-b': 2, same: 3 };
+    return (order[x.category] ?? 9) - (order[y.category] ?? 9) || x.key.localeCompare(y.key);
+  });
+}
+
+function summarizeCalls(entry) {
+  if (!entry || entry.calls.length === 0) return null;
+  const statuses = [...new Set(entry.calls.map(c => c.status))];
+  const cacheCount = entry.calls.filter(c => c.fromCache).length;
+  const cache = cacheCount === 0 ? 'none' : cacheCount === entry.calls.length ? 'all' : 'mixed';
+  return { label: statuses.join('/'), count: entry.calls.length, cache };
+}
+
+function makeGroupedRow(key, a, b) {
+  const sa = summarizeCalls(a);
+  const sb = summarizeCalls(b);
+  let category;
+  if (sa && !sb)          category = 'only-a';
+  else if (!sa && sb)     category = 'only-b';
+  else if (sa.label === sb.label) category = 'same';
+  else                    category = 'diff';
+  return {
+    key,
+    method: (a ?? b).method,
+    url: (a ?? b).url,
+    a: sa,
+    b: sb,
+    category,
+  };
+}
+
+function makeCallRow(key, a, b, index) {
+  const callA = a?.calls[index];
+  const callB = b?.calls[index];
+  const cellA = callA ? { label: String(callA.status), count: 1, cache: callA.fromCache ? 'all' : 'none' } : null;
+  const cellB = callB ? { label: String(callB.status), count: 1, cache: callB.fromCache ? 'all' : 'none' } : null;
+  let category;
+  if (cellA && !cellB)          category = 'only-a';
+  else if (!cellA && cellB)     category = 'only-b';
+  else if (cellA.label === cellB.label) category = 'same';
+  else                          category = 'diff';
+  return {
+    key: `${key}#${index}`,
+    method: (a ?? b).method,
+    url: (a ?? b).url,
+    a: cellA,
+    b: cellB,
+    category,
+  };
 }
 
 function renderDiffTable(body) {
@@ -175,15 +256,13 @@ function renderDiffTable(body) {
   </div>`;
 
   const rows = lastDiffRows.map(r => {
-    const url = escHtml(r.url ?? r.key.replace(/^\S+ /, ''));
-    const method = escHtml(r.method ?? r.key.split(' ')[0]);
-    const stA = r.a ? `<span class="diff-status">${r.a.status}</span>` : '<span class="diff-status diff-absent">—</span>';
-    const stB = r.b ? `<span class="diff-status">${r.b.status}</span>` : '<span class="diff-status diff-absent">—</span>';
+    const url = escHtml(r.url);
+    const method = escHtml(r.method);
     return `<tr class="diff-row ${r.category}">
       <td class="diff-method">${method}</td>
       <td class="diff-url" title="${url}">${url}</td>
-      <td class="diff-st">${stA}</td>
-      <td class="diff-st">${stB}</td>
+      <td class="diff-st">${renderCell(r.a)}</td>
+      <td class="diff-st">${renderCell(r.b)}</td>
     </tr>`;
   }).join('');
 
@@ -193,13 +272,26 @@ function renderDiffTable(body) {
   </table></div>`;
 }
 
+function renderCell(cell) {
+  if (!cell) return '<span class="diff-status diff-absent">—</span>';
+  const count = cell.count > 1 ? `<span class="diff-count" title="${cell.count} calls">×${cell.count}</span>` : '';
+  const cache = cell.cache !== 'none'
+    ? `<span class="diff-cache ${cell.cache}" title="${cell.cache === 'all' ? 'served from cache' : 'some calls served from cache'}">cache${cell.cache === 'mixed' ? '*' : ''}</span>`
+    : '';
+  return `<span class="diff-status">${escHtml(cell.label)}</span>${count}${cache}`;
+}
+
 function exportDiffHar() {
   const entries = lastDiffRows.map(r => ({
     category: r.category,
-    method:   r.method ?? r.key.split(' ')[0],
-    url:      r.url ?? r.key.replace(/^\S+ /, ''),
-    statusA:  r.a?.status ?? null,
-    statusB:  r.b?.status ?? null,
+    method:   r.method,
+    url:      r.url,
+    statusA:  r.a?.label ?? null,
+    countA:   r.a?.count ?? 0,
+    cacheA:   r.a?.cache ?? 'none',
+    statusB:  r.b?.label ?? null,
+    countB:   r.b?.count ?? 0,
+    cacheB:   r.b?.cache ?? 'none',
   }));
   const har = {
     log: {

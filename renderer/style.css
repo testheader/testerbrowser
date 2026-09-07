@@ -799,9 +799,15 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .diff-row.only-b  td:first-child { border-left: 3px solid var(--warn-border); }
 .diff-method { color: #c678dd; width: 60px; }
 .diff-url { color: var(--text-primary); max-width: 0; overflow: hidden; text-overflow: ellipsis; width: 100%; }
-.diff-st { width: 80px; text-align: center; }
+.diff-st { width: 130px; text-align: center; }
 .diff-status { color: var(--success-strong); }
 .diff-absent { color: var(--text-faint); }
+.diff-count { margin-left: 4px; color: var(--text-muted); font-size: 10px; }
+.diff-cache { margin-left: 4px; border-radius: 3px; padding: 0 4px; font-size: 10px; font-weight: 600;
+              background: var(--info-surface); color: var(--info-strong); }
+.diff-cache.mixed { background: var(--warn-surface); color: var(--warn-strong); }
+.diff-group-toggle { cursor: pointer; user-select: none; }
+.diff-group-toggle input { cursor: pointer; }
 
 /* ── Follow Along panel ── */
 #followPanel { flex: 1; overflow: hidden; display: none; flex-direction: column; }
