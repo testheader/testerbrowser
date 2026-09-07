@@ -55,6 +55,7 @@ export function initSpoof() {
       <div class="spoof-actions">
         <button class="spoof-btn spoof-apply" id="spoofApply">Apply to session</button>
         <button class="spoof-btn spoof-reset" id="spoofReset">Reset overrides</button>
+        <button class="spoof-btn spoof-current-btn" id="spoofUseCurrent" title="Fill the fields with this machine's real timezone, locale and location">Use current values</button>
         <span class="spoof-dirty" id="spoofDirty" hidden>Unapplied changes</span>
         <span class="spoof-status" id="spoofStatus"></span>
       </div>
@@ -71,6 +72,7 @@ export function initSpoof() {
 
   document.getElementById('spoofApply').addEventListener('click', applySpoof);
   document.getElementById('spoofReset').addEventListener('click', resetSpoof);
+  document.getElementById('spoofUseCurrent').addEventListener('click', useCurrentValues);
   for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon']) {
     document.getElementById(id).addEventListener('input', updateDirtyState);
   }
@@ -84,6 +86,34 @@ function fillPreset(p) {
   document.getElementById('spoofLat').value      = p.latitude;
   document.getElementById('spoofLon').value      = p.longitude;
   updateDirtyState();
+}
+
+// Only fills the input fields, same as fillPreset() — "Apply to session" is
+// still a separate, explicit step. Timezone/locale are synchronous and need
+// no permission; geolocation can fail or hang (this window's session has no
+// permission handler attached), so it's handled independently and never
+// blocks the timezone/locale fill.
+function useCurrentValues() {
+  document.getElementById('spoofTimezone').value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  document.getElementById('spoofLocale').value   = navigator.language;
+  updateDirtyState();
+
+  if (!navigator.geolocation) {
+    showStatus('Filled timezone and locale. Geolocation is unavailable here.', true);
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      document.getElementById('spoofLat').value = pos.coords.latitude;
+      document.getElementById('spoofLon').value = pos.coords.longitude;
+      updateDirtyState();
+      showStatus('Filled timezone, locale and location from this machine.', false);
+    },
+    () => {
+      showStatus('Filled timezone and locale. Location was unavailable.', true);
+    },
+    { timeout: 8000 }
+  );
 }
 
 // Re-fetches what's actually applied to the active session's page (not just

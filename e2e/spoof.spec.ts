@@ -78,3 +78,25 @@ test('the "currently applied" indicator reflects apply/reset, and unapplied edit
   await window.click('#spoofReset');
   await expect(window.locator('#spoofCurrent')).toContainText('No overrides applied', { timeout: 5_000 });
 });
+
+test('"Use current values" fills timezone and locale from this machine, and reports the geolocation outcome', async () => {
+  await window.click('#consoleTabSpoof');
+  for (const id of ['#spoofTimezone', '#spoofLocale', '#spoofLat', '#spoofLon']) {
+    await window.fill(id, '');
+  }
+
+  const expected = await window.evaluate(() => ({
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    locale: navigator.language,
+  }));
+
+  await window.click('#spoofUseCurrent');
+  await expect(window.locator('#spoofTimezone')).toHaveValue(expected.timezone);
+  await expect(window.locator('#spoofLocale')).toHaveValue(expected.locale);
+
+  // This chrome window's session has no permission handler attached, so
+  // geolocation may succeed or fail depending on the OS/CI environment —
+  // either is fine, but the action must always report an outcome, and never
+  // block the timezone/locale fill above on it.
+  await expect(window.locator('#spoofStatus')).toContainText(/location/i, { timeout: 9_000 });
+});

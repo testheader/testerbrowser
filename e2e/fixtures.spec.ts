@@ -183,10 +183,23 @@ test('network/slow.html: date-range "from" filter hides events before the chosen
   const pad = (n: number) => String(n).padStart(2, '0');
   const futureLocal = `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}` +
     `T${pad(future.getHours())}:${pad(future.getMinutes())}:${pad(future.getSeconds())}`;
-  await window.fill('#networkFromTs', futureLocal);
+  // Playwright's fill() reads the value back after setting it and throws
+  // "Malformed value" if it doesn't match exactly — flaky for this specific
+  // control (datetime-local with a seconds step), even though setting
+  // .value directly and dispatching input (what a real picker interaction
+  // ultimately does) always lands correctly. Drive it that way instead.
+  await window.evaluate((v) => {
+    const el = document.getElementById('networkFromTs') as HTMLInputElement;
+    el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, futureLocal);
   await expect(row).toHaveCount(0);
 
-  await window.fill('#networkFromTs', '');
+  await window.evaluate(() => {
+    const el = document.getElementById('networkFromTs') as HTMLInputElement;
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   await expect(row).toBeVisible();
 });
 
