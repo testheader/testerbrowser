@@ -381,7 +381,9 @@ export async function newSession({ persistent = true } = {}) {
 export function initTabs() {
   // Persistent by default: an ephemeral tab and everything opened from it is
   // discarded on quit, which is not what a "+" button implies.
-  document.getElementById('newSessionBtn').onclick = (e) => newSession({ persistent: !e.shiftKey });
+  // e is undefined when triggered programmatically (e.g. the Ctrl+T shortcut
+  // calls this with no event) — treat that the same as an unmodified click.
+  document.getElementById('newSessionBtn').onclick = (e) => newSession({ persistent: !e?.shiftKey });
 
   testerBrowser.sessions.onTitleUpdated(({ id, title }) => {
     tabTitles[id] = title;
