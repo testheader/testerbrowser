@@ -70,9 +70,14 @@ class JsonStore<T> {
 interface Bookmark { url: string; title: string; addedAt: number; folderId: string | null; }
 interface BookmarkFolder { id: string; name: string; createdAt: number; }
 interface SpeedDialTile { id: string; url: string; title: string; }
-interface AppSettings { redactSensitiveHeaders: boolean; }
+interface AppSettings {
+  redactSensitiveHeaders: boolean;
+  // A rule id absent from the map means "enabled" — new rules added later
+  // need no migration, they just aren't in anyone's map yet.
+  securityRuleOverrides: Record<string, boolean>;
+}
 
-const DEFAULT_SETTINGS: AppSettings = { redactSensitiveHeaders: false };
+const DEFAULT_SETTINGS: AppSettings = { redactSensitiveHeaders: false, securityRuleOverrides: {} };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
   { id: '2', url: 'https://github.com',            title: 'GitHub' },

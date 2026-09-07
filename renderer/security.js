@@ -2,15 +2,193 @@
 import { getActiveId } from './tabs.js';
 import { openDetailTab } from './detail-panel.js';
 
-const REQUIRED_HEADERS = [
-  'content-security-policy',
-  'x-frame-options',
-  'x-content-type-options',
-  'strict-transport-security',
-  'referrer-policy',
+const SEVERITIES = ['high', 'medium', 'low'];
+
+// Rules whose absence, not presence, is the finding. Only checked once per
+// unique HTTPS URL per scan (see analyze()) — repeated calls to the same
+// endpoint would otherwise report the same missing header over and over.
+const HEADER_PRESENCE_RULES = [
+  { id: 'missing-content-security-policy',      header: 'content-security-policy',      severity: 'medium' },
+  { id: 'missing-x-frame-options',               header: 'x-frame-options',              severity: 'medium' },
+  { id: 'missing-x-content-type-options',        header: 'x-content-type-options',       severity: 'medium' },
+  { id: 'missing-strict-transport-security',     header: 'strict-transport-security',    severity: 'medium' },
+  { id: 'missing-referrer-policy',                header: 'referrer-policy',              severity: 'medium' },
+  { id: 'missing-permissions-policy',            header: 'permissions-policy',           severity: 'low' },
+  { id: 'missing-cross-origin-opener-policy',    header: 'cross-origin-opener-policy',   severity: 'low' },
+  { id: 'missing-cross-origin-embedder-policy',  header: 'cross-origin-embedder-policy', severity: 'low' },
+  { id: 'missing-cross-origin-resource-policy',  header: 'cross-origin-resource-policy', severity: 'low' },
+  { id: 'missing-x-xss-protection',              header: 'x-xss-protection',             severity: 'low' },
+].map(r => ({
+  ...r,
+  label: `Missing ${r.header}`,
+  issue: `Missing ${r.header}`,
+  detail: `Response missing the ${r.header} header`,
+  check: norm => !norm[r.header],
+}));
+
+// Header value-quality checks: the header is present, but its value is weak
+// or dangerous. Also scoped to once per unique HTTPS URL, same as above.
+const HEADER_VALUE_RULES = [
+  {
+    id: 'csp-unsafe-inline', severity: 'high', label: "CSP allows 'unsafe-inline'",
+    issue: "CSP allows unsafe-inline", detail: "content-security-policy includes 'unsafe-inline'",
+    check: norm => (norm['content-security-policy'] ?? '').includes('unsafe-inline'),
+  },
+  {
+    id: 'csp-unsafe-eval', severity: 'high', label: "CSP allows 'unsafe-eval'",
+    issue: 'CSP allows unsafe-eval', detail: "content-security-policy includes 'unsafe-eval'",
+    check: norm => (norm['content-security-policy'] ?? '').includes('unsafe-eval'),
+  },
+  {
+    id: 'csp-wildcard-source', severity: 'medium', label: 'CSP has a wildcard source',
+    issue: 'CSP has a wildcard source', detail: "content-security-policy includes a '*' source",
+    check: norm => /(^|[\s;])\*($|[\s;])/.test(norm['content-security-policy'] ?? ''),
+  },
+  {
+    id: 'xfo-not-deny-or-sameorigin', severity: 'medium', label: 'X-Frame-Options not DENY/SAMEORIGIN',
+    issue: 'X-Frame-Options is not DENY/SAMEORIGIN', detail: 'x-frame-options is set but not DENY or SAMEORIGIN',
+    check: norm => {
+      const v = (norm['x-frame-options'] ?? '').toUpperCase().trim();
+      return !!v && v !== 'DENY' && v !== 'SAMEORIGIN';
+    },
+  },
+  {
+    id: 'hsts-short-max-age', severity: 'medium', label: 'HSTS max-age too short',
+    issue: 'HSTS max-age is too short', detail: 'strict-transport-security max-age is under ~180 days',
+    check: norm => {
+      const v = norm['strict-transport-security'];
+      if (!v) return false;
+      const m = /max-age=(\d+)/i.exec(v);
+      return !!m && Number(m[1]) < 15552000; // 180 days
+    },
+  },
+  {
+    id: 'hsts-no-include-subdomains', severity: 'medium', label: 'HSTS missing includeSubDomains',
+    issue: 'HSTS missing includeSubDomains', detail: 'strict-transport-security is missing includeSubDomains',
+    check: norm => {
+      const v = norm['strict-transport-security'];
+      return !!v && !/includesubdomains/i.test(v);
+    },
+  },
+  {
+    id: 'referrer-policy-unsafe-url', severity: 'medium', label: 'Referrer-Policy is unsafe-url',
+    issue: 'Referrer-Policy is unsafe-url', detail: 'referrer-policy is set to unsafe-url, leaking full URLs cross-origin',
+    check: norm => (norm['referrer-policy'] ?? '').toLowerCase().trim() === 'unsafe-url',
+  },
+  {
+    id: 'server-header-discloses-version', severity: 'low', label: 'Server header discloses version',
+    issue: 'Server header discloses version info', detail: ctx => `Server: ${ctx.norm['server']}`,
+    check: norm => /\d/.test(norm['server'] ?? ''),
+  },
+  {
+    id: 'x-powered-by-present', severity: 'low', label: 'X-Powered-By header present',
+    issue: 'X-Powered-By header present', detail: ctx => `X-Powered-By: ${ctx.norm['x-powered-by']}`,
+    check: norm => !!norm['x-powered-by'],
+  },
 ];
 
-const SEVERITIES = ['high', 'medium', 'low'];
+// Cookie checks run against the raw Set-Cookie value (lowercased), once per
+// response that actually sets one. The recorder replaces sensitive header
+// values with [REDACTED] when that setting is on — flag-checking the
+// placeholder would report every cookie, so callers must skip it first.
+const COOKIE_RULES = [
+  {
+    id: 'cookie-insecure', severity: 'medium', label: 'Cookie missing Secure',
+    issue: 'Insecure cookie', detail: 'Cookie set without Secure flag',
+    check: lc => !lc.includes('secure'),
+  },
+  {
+    id: 'cookie-missing-httponly', severity: 'low', label: 'Cookie missing HttpOnly',
+    issue: 'Cookie missing HttpOnly', detail: 'Cookie set without HttpOnly flag',
+    check: lc => !lc.includes('httponly'),
+  },
+  {
+    id: 'cookie-missing-samesite', severity: 'medium', label: 'Cookie missing SameSite',
+    issue: 'Cookie missing SameSite', detail: 'Cookie set without a SameSite attribute',
+    check: lc => !lc.includes('samesite'),
+  },
+  {
+    id: 'cookie-samesite-none-without-secure', severity: 'high', label: 'SameSite=None without Secure',
+    issue: 'SameSite=None without Secure', detail: 'SameSite=None cookies without Secure are invalid and rejected by browsers',
+    check: lc => lc.includes('samesite=none') && !lc.includes('secure'),
+  },
+];
+
+// Transport-level checks against the response as a whole (status, url,
+// headers) — evaluated on every response, no per-URL dedup.
+const TRANSPORT_RULES = [
+  {
+    id: 'http-unencrypted', severity: 'high', label: 'HTTP (unencrypted)',
+    issue: 'HTTP (unencrypted)', detail: 'Request sent over HTTP, not HTTPS',
+    check: ctx => ctx.url.startsWith('http://'),
+  },
+  {
+    id: 'insecure-redirect', severity: 'high', label: 'Insecure redirect (HTTPS → HTTP)',
+    issue: 'Insecure redirect (HTTPS → HTTP)', detail: ctx => `Redirects to ${ctx.norm['location']}`,
+    check: ctx => ctx.status >= 300 && ctx.status < 400 && (ctx.norm['location'] ?? '').startsWith('http://'),
+  },
+  {
+    id: 'cookie-set-without-cache-control', severity: 'medium', label: 'Cookie set without no-store/private',
+    issue: 'Cookie set without no-store/private caching', detail: 'Response sets a cookie but Cache-Control is missing no-store/private',
+    check: ctx => !!ctx.setCookie && ctx.setCookie !== '[REDACTED]' && !/no-store|private/i.test(ctx.norm['cache-control'] ?? ''),
+  },
+];
+
+const CORS_RULES = [
+  {
+    id: 'cors-acao-wildcard', severity: 'low', label: 'CORS allows any origin',
+    issue: 'CORS allows any origin', detail: 'Access-Control-Allow-Origin is *',
+    check: norm => norm['access-control-allow-origin'] === '*',
+  },
+  {
+    id: 'cors-acao-wildcard-with-credentials', severity: 'high', label: 'CORS wildcard with credentials',
+    issue: 'CORS wildcard combined with credentials', detail: 'Access-Control-Allow-Origin: * with Access-Control-Allow-Credentials: true is invalid and dangerous',
+    check: norm => norm['access-control-allow-origin'] === '*' && (norm['access-control-allow-credentials'] ?? '').toLowerCase() === 'true',
+  },
+];
+
+const STATUS_RULES = [
+  {
+    id: 'auth-failure', severity: 'low', label: 'Auth failure (401/403)',
+    issue: ctx => `Auth failure (${ctx.status})`, detail: ctx => `API responded with ${ctx.status}`,
+    check: ctx => ctx.status === 401 || ctx.status === 403,
+  },
+];
+
+// Full rule set, in the order the "Configure checks" panel lists them.
+const ALL_RULES = [
+  ...TRANSPORT_RULES,
+  ...HEADER_PRESENCE_RULES,
+  ...HEADER_VALUE_RULES,
+  ...COOKIE_RULES,
+  ...CORS_RULES,
+  ...STATUS_RULES,
+];
+const ALL_RULE_IDS = new Set(ALL_RULES.map(r => r.id));
+
+function resolve(val, ctx) { return typeof val === 'function' ? val(ctx) : val; }
+
+function pushFinding(findings, rule, ctx, ev) {
+  findings.push({
+    severity: rule.severity,
+    url: ctx.url,
+    issue: resolve(rule.issue, ctx),
+    detail: resolve(rule.detail, ctx),
+    sourceEvent: ev,
+    ruleId: rule.id,
+  });
+}
+
+// Maps { id: false } overrides onto the full rule set — an id absent from
+// overrides (or explicitly true) means the rule is enabled. New rules added
+// later are enabled by default without needing any migration.
+export function computeEnabledRuleIds(overrides) {
+  const enabled = new Set();
+  for (const rule of ALL_RULES) {
+    if ((overrides ?? {})[rule.id] !== false) enabled.add(rule.id);
+  }
+  return enabled;
+}
 
 let lastFindings = [];
 
@@ -21,8 +199,10 @@ export function initSecurity() {
   panel.innerHTML = `
     <div class="sec-toolbar">
       <button class="sec-btn" id="secScanBtn">Scan session</button>
+      <button class="sec-btn sec-config-btn" id="secConfigBtn">Configure checks</button>
       <span class="sec-status" id="secStatus"></span>
     </div>
+    <div class="sec-config" id="secConfig" hidden></div>
     <div class="sec-filterbar">
       <input id="secFilterText" placeholder="Filter by issue or URL…" />
       <div class="filter-pills" id="secPills">
@@ -35,10 +215,60 @@ export function initSecurity() {
       <div class="sec-hint">Click Scan to analyse headers and cookies for the current page.</div>
     </div>`;
   document.getElementById('secScanBtn').addEventListener('click', runScan);
+  document.getElementById('secConfigBtn').addEventListener('click', toggleConfigPanel);
   document.getElementById('secFilterText').addEventListener('input', renderFilteredFindings);
   document.querySelectorAll('#secPills .filter-pill').forEach(btn =>
     btn.addEventListener('click', () => { btn.classList.toggle('on'); renderFilteredFindings(); })
   );
+}
+
+async function toggleConfigPanel() {
+  const configEl = document.getElementById('secConfig');
+  const opening = configEl.hidden;
+  configEl.hidden = !opening;
+  if (!opening) return;
+  const settings = await testerBrowser.settings.get();
+  renderConfigPanel(settings.securityRuleOverrides ?? {});
+}
+
+function renderConfigPanel(overrides) {
+  const configEl = document.getElementById('secConfig');
+  configEl.innerHTML = '';
+
+  for (const sev of SEVERITIES) {
+    const rules = ALL_RULES.filter(r => r.severity === sev);
+    if (!rules.length) continue;
+
+    const group = document.createElement('div');
+    group.className = 'sec-config-group';
+
+    const label = document.createElement('div');
+    label.className = `sec-config-group-label sec-${sev}`;
+    label.textContent = sev.toUpperCase();
+    group.appendChild(label);
+
+    for (const rule of rules) {
+      const row = document.createElement('label');
+      row.className = 'sec-config-row';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = overrides[rule.id] !== false;
+      checkbox.addEventListener('change', async () => {
+        const settings = await testerBrowser.settings.get();
+        const nextOverrides = { ...(settings.securityRuleOverrides ?? {}), [rule.id]: checkbox.checked };
+        await testerBrowser.settings.set({ securityRuleOverrides: nextOverrides });
+      });
+      row.appendChild(checkbox);
+
+      const span = document.createElement('span');
+      span.textContent = rule.label;
+      row.appendChild(span);
+
+      group.appendChild(row);
+    }
+    configEl.appendChild(group);
+  }
 }
 
 // Findings are page-scoped — clear them whenever the active session changes
@@ -60,14 +290,18 @@ async function runScan() {
   btn.disabled = true;
   status.textContent = 'Scanning…';
 
-  const events   = await testerBrowser.recording.timeline(getActiveId(), { limit: 5000 });
-  lastFindings   = analyze(events);
+  const [events, settings] = await Promise.all([
+    testerBrowser.recording.timeline(getActiveId(), { limit: 5000 }),
+    testerBrowser.settings.get(),
+  ]);
+  const enabledRuleIds = computeEnabledRuleIds(settings.securityRuleOverrides);
+  lastFindings = analyze(events, enabledRuleIds);
   renderFilteredFindings();
   status.textContent = `${lastFindings.length} issue${lastFindings.length !== 1 ? 's' : ''} found`;
   btn.disabled = false;
 }
 
-export function analyze(events) {
+export function analyze(events, enabledRuleIds = ALL_RULE_IDS) {
   const findings = [];
   const seenUrls = new Set();
 
@@ -81,36 +315,37 @@ export function analyze(events) {
     const norm    = Object.fromEntries(
       Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])
     );
+    const status    = payload.status ?? payload.response?.status ?? 0;
+    const setCookie = norm['set-cookie'] ?? '';
+    const ctx = { url, norm, status, setCookie };
 
-    if (url.startsWith('http://')) {
-      findings.push({ severity: 'high', url, issue: 'HTTP (unencrypted)', detail: 'Request sent over HTTP, not HTTPS', sourceEvent: ev });
+    for (const rule of TRANSPORT_RULES) {
+      if (enabledRuleIds.has(rule.id) && rule.check(ctx)) pushFinding(findings, rule, ctx, ev);
     }
 
     if (!seenUrls.has(url) && url.startsWith('https://')) {
       seenUrls.add(url);
-      for (const h of REQUIRED_HEADERS) {
-        if (!norm[h]) {
-          findings.push({ severity: 'medium', url, issue: `Missing ${h}`, detail: `Response missing the ${h} header`, sourceEvent: ev });
-        }
+      for (const rule of HEADER_PRESENCE_RULES) {
+        if (enabledRuleIds.has(rule.id) && rule.check(norm)) pushFinding(findings, rule, ctx, ev);
+      }
+      for (const rule of HEADER_VALUE_RULES) {
+        if (enabledRuleIds.has(rule.id) && rule.check(norm)) pushFinding(findings, rule, ctx, ev);
       }
     }
 
-    const setCookie = norm['set-cookie'] ?? '';
-    // The recorder replaces sensitive header values with [REDACTED] when that
-    // setting is on; flag-checking the placeholder would report every cookie.
     if (setCookie && setCookie !== '[REDACTED]') {
       const lc = setCookie.toLowerCase();
-      if (!lc.includes('secure')) {
-        findings.push({ severity: 'medium', url, issue: 'Insecure cookie', detail: 'Cookie set without Secure flag', sourceEvent: ev });
-      }
-      if (!lc.includes('httponly')) {
-        findings.push({ severity: 'low', url, issue: 'Cookie missing HttpOnly', detail: 'Cookie set without HttpOnly flag', sourceEvent: ev });
+      for (const rule of COOKIE_RULES) {
+        if (enabledRuleIds.has(rule.id) && rule.check(lc)) pushFinding(findings, rule, ctx, ev);
       }
     }
 
-    const respStatus = payload.status ?? payload.response?.status ?? 0;
-    if (respStatus === 401 || respStatus === 403) {
-      findings.push({ severity: 'low', url, issue: `Auth failure (${respStatus})`, detail: `API responded with ${respStatus}`, sourceEvent: ev });
+    for (const rule of CORS_RULES) {
+      if (enabledRuleIds.has(rule.id) && rule.check(norm)) pushFinding(findings, rule, ctx, ev);
+    }
+
+    for (const rule of STATUS_RULES) {
+      if (enabledRuleIds.has(rule.id) && rule.check(ctx)) pushFinding(findings, rule, ctx, ev);
     }
   }
   return findings;
@@ -130,7 +365,10 @@ function renderFilteredFindings() {
 
   const filtered = lastFindings.filter(f =>
     activeSevs.has(f.severity) &&
-    (!filterText || f.issue.toLowerCase().includes(filterText) || f.url.toLowerCase().includes(filterText))
+    (!filterText ||
+      f.issue.toLowerCase().includes(filterText) ||
+      f.url.toLowerCase().includes(filterText) ||
+      (f.ruleId ?? '').toLowerCase().includes(filterText))
   );
   renderFindings(filtered);
 }

@@ -62,8 +62,44 @@ test('scan reports a real HTTP finding, and a row opens the detail panel', async
   await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
 
   // Fixture server is plain HTTP — this finding always fires for any page load.
-  await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' })).toBeVisible();
+  await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first()).toBeVisible();
 
   await page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first().click();
   await expect(page.locator('#detailPanelTabBar .detail-tab')).toHaveCount(1);
+});
+
+test('"Configure checks" lets a rule be disabled, and the override persists across settings reads', async () => {
+  const urlPath = '/network/status-codes.html';
+  await page.click('#urlbar');
+  await page.fill('#urlbar', fixtures.url(urlPath));
+  await page.press('#urlbar', 'Enter');
+  await page.waitForTimeout(1_000);
+
+  await page.click('#consoleTabSecurity');
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+  await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first()).toBeVisible();
+
+  await page.click('#secConfigBtn');
+  const httpRuleCheckbox = page.locator('.sec-config-row', { hasText: 'HTTP (unencrypted)' }).locator('input');
+  await expect(httpRuleCheckbox).toBeChecked();
+  await httpRuleCheckbox.uncheck();
+
+  // Persisted immediately via settings:set — a fresh read sees the override
+  // without needing the panel to still be open.
+  const overrides = await page.evaluate(() => (window as any).testerBrowser.settings.get());
+  expect(overrides.securityRuleOverrides['http-unencrypted']).toBe(false);
+
+  await page.click('#secConfigBtn'); // close the config panel
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+  await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' })).toHaveCount(0);
+
+  // Re-enable it so later tests in this file aren't affected by this one.
+  await page.click('#secConfigBtn');
+  await page.locator('.sec-config-row', { hasText: 'HTTP (unencrypted)' }).locator('input').check();
+  await page.click('#secConfigBtn');
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+  await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first()).toBeVisible();
 });

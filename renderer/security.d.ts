@@ -3,6 +3,7 @@ export interface SecurityFinding {
   url: string;
   issue: string;
   detail: string;
+  ruleId: string;
 }
 
 export interface TimelineEvent {
@@ -13,4 +14,5 @@ export interface TimelineEvent {
 }
 
 export function initSecurity(): void;
-export function analyze(events: TimelineEvent[]): SecurityFinding[];
+export function analyze(events: TimelineEvent[], enabledRuleIds?: Set<string>): SecurityFinding[];
+export function computeEnabledRuleIds(overrides: Record<string, boolean> | undefined): Set<string>;
