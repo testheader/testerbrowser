@@ -4,16 +4,21 @@ import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 
 const MOCK_METHODS = ['*', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
-// Entry point for the "→ Mock" button on a network-request timeline row:
-// switches to the Mock tab and prefills the add-rule form with that call's
-// method and URL, so the user doesn't have to retype them.
-export function openMockFromRequest(method, url) {
+// Entry point for the "⇒ Mock" button on a network request's detail panel:
+// switches to the Mock tab and prefills the add-rule form with everything
+// needed to reproduce that call's response — method, URL, status and body —
+// so the user doesn't have to retype them.
+export function openMockFromRequest(method, url, statusCode, body) {
   switchConsoleTab('mock'); // also runs initMock() if this is the first visit
-  const urlInput  = document.getElementById('mockUrl');
-  const methodSel = document.getElementById('mockMethod');
+  const urlInput    = document.getElementById('mockUrl');
+  const methodSel   = document.getElementById('mockMethod');
+  const statusInput = document.getElementById('mockStatus');
+  const bodyInput   = document.getElementById('mockBody');
   if (!urlInput || !methodSel) return;
   urlInput.value  = url || '';
   methodSel.value = MOCK_METHODS.includes(method) ? method : '*';
+  if (statusInput && statusCode) statusInput.value = statusCode;
+  if (bodyInput && body != null) bodyInput.value = body;
   urlInput.focus();
 }
 

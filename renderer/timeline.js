@@ -3,7 +3,6 @@ import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
 import { getEventTabId } from './utils.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { openReplay } from './replay.js';
-import { openMockFromRequest } from './mock.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 
@@ -91,22 +90,6 @@ export function renderTimeline() {
       replayBtn.title       = 'Edit and replay this request';
       replayBtn.onclick     = (ev) => { ev.stopPropagation(); openReplay(e); };
       summary.appendChild(replayBtn);
-
-      const mockBtn = document.createElement('button');
-      mockBtn.className   = 'evt-mock-btn';
-      mockBtn.textContent = '⇒ Mock';
-      mockBtn.title       = 'Send this call to the Mock panel';
-      mockBtn.onclick     = (ev) => {
-        ev.stopPropagation();
-        let method = '', url = '';
-        try {
-          const p = JSON.parse(e.payload);
-          method = p.request?.method ?? '';
-          url    = p.request?.url ?? '';
-        } catch {}
-        openMockFromRequest(method, url);
-      };
-      summary.appendChild(mockBtn);
     }
 
     if ((e.kind === 'network-request' || e.kind === 'network-response' || e.kind === 'network-failed') && e.payload) {

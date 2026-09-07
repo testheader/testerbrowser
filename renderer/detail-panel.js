@@ -1,6 +1,7 @@
 import { escHtml, getEventTabId, getHeader } from './utils.js';
 import { getTimelineEvents } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
+import { openMockFromRequest } from './mock.js';
 
 // detail-panel.js owns the set of open detail tabs and which one is active —
 // nothing outside this file touches them; console-tabs.js and timeline.js
@@ -92,6 +93,11 @@ function renderDetailContent() {
 
   const e = tab.event;
   let html = '';
+  // Filled in as the request/response/body events are parsed below, then used
+  // after the detail HTML is rendered to wire up the "⇒ Mock" button — it
+  // needs everything captured here (method, url, status, body) to prefill a
+  // rule that reproduces this exact response.
+  let mockData = null;
 
   try {
     if (e.kind.startsWith('network-')) {
@@ -104,9 +110,11 @@ function renderDetailContent() {
 
       if (reqEvt && reqEvt.payload) {
         const req = (JSON.parse(reqEvt.payload).request) || {};
+        mockData = { method: req.method, url: req.url };
         html += `<div class="detail-section">
           <span class="detail-method ${methodClass(req.method)}">${escHtml(req.method || '?')}</span>
           <span class="detail-url">${escHtml(req.url || '')}</span>
+          <button class="detail-mock-btn" id="detailMockBtn" title="Send this call's method, URL, status and body to the Mock panel">⇒ Mock</button>
         </div>`;
         if (req.headers && Object.keys(req.headers).length) {
           html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
@@ -124,6 +132,7 @@ function renderDetailContent() {
       if (resEvt && resEvt.payload) {
         const resPayload = JSON.parse(resEvt.payload);
         res = resPayload.response || {};
+        if (mockData) mockData.statusCode = res.status;
         html += `<div class="detail-section">
           <h3>Response</h3>
           <span class="${statusClass(res.status)}">${escHtml(String(res.status || ''))}</span>
@@ -152,6 +161,7 @@ function renderDetailContent() {
           html += `<pre class="detail-body-pre">${escHtml(String(bp.body || ''))}</pre>`;
         }
         html += `</div>`;
+        if (mockData && !bp.base64Encoded) mockData.body = String(bp.body || '');
       }
 
       if (failEvt && failEvt.payload) {
@@ -172,6 +182,13 @@ function renderDetailContent() {
     html += `<pre class="detail-body-pre">${escHtml(e.payload || e.summary)}</pre>`;
   }
   content.innerHTML = html;
+
+  if (mockData) {
+    const mockBtn = document.getElementById('detailMockBtn');
+    if (mockBtn) {
+      mockBtn.onclick = () => openMockFromRequest(mockData.method, mockData.url, mockData.statusCode, mockData.body);
+    }
+  }
 }
 
 export function renderDetailPanel() {

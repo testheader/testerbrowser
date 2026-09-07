@@ -64,7 +64,7 @@ test('a rule actually intercepts a matching fetch and its hit count increments',
   await expect(window.locator('.mock-hits-badge')).toHaveText('Hits: 1', { timeout: 3_000 });
 });
 
-test('the "Send to Mock" button on a request row prefills the add-rule form', async () => {
+test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, status and body', async () => {
   const urlPath = '/network/status-codes.html';
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(urlPath));
@@ -73,9 +73,14 @@ test('the "Send to Mock" button on a request row prefills the add-rule form', as
 
   await window.click('#consoleTabNetwork');
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
-  await requestRow.first().locator('.evt-mock-btn').click();
+  await requestRow.first().locator('.evt-summary').click();
+
+  const detailMockBtn = window.locator('#detailMockBtn');
+  await expect(detailMockBtn).toBeVisible();
+  await detailMockBtn.click();
 
   await expect(window.locator('#mockPanel')).toBeVisible();
   await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
   await expect(window.locator('#mockMethod')).toHaveValue('GET');
+  await expect(window.locator('#mockStatus')).toHaveValue('200');
 });
