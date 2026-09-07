@@ -134,7 +134,26 @@ async function submitBugReport() {
   document.getElementById('bugReportDoneBtn').hidden = false;
 }
 
+// Registered before shortcuts.js's own document-level keydown listener (see
+// main.js init order), so stopImmediatePropagation() here reliably pre-empts
+// the global Escape handler (stop loading / close find) while the modal is open.
+function handleBugReportKeydown(e) {
+  if (!document.getElementById('bugReportOverlay').classList.contains('open')) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    closeBugReport();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!document.getElementById('bugReportSubmitBtn').hidden) submitBugReport();
+  }
+}
+
 export function initBugReport() {
+  document.addEventListener('keydown', handleBugReportKeydown);
   document.getElementById('bugReportCancelBtn').onclick = closeBugReport;
   document.getElementById('bugReportDoneBtn').onclick = closeBugReport;
   document.getElementById('bugReportOverlay').onclick = (e) => {
