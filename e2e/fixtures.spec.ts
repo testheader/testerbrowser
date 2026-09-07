@@ -107,4 +107,34 @@ test('permissions page triggers a permission notification', async () => {
   const tab = await navigate('/permissions/index.html');
   await tab.click('#notif');
   await expect(window.locator('#permissionNotifications')).not.toBeEmpty();
+  // Dismiss it — window is shared across tests in this file, and a
+  // lingering notification would throw off the next test's assumptions.
+  await window.locator('.perm-notif .perm-block').first().click();
+  await expect(window.locator('.perm-notif')).toHaveCount(0);
+});
+
+test('permission notification reserves BrowserView space instead of sitting under it, and Allow works', async () => {
+  const tab = await navigate('/permissions/index.html');
+
+  const barBefore = await window.evaluate(() =>
+    document.getElementById('permissionNotifications').getBoundingClientRect().height);
+  expect(barBefore).toBe(0);
+
+  await tab.click('#geo');
+  const notif = window.locator('.perm-notif').first();
+  await expect(notif).toBeVisible();
+
+  // The notification only avoids the BrowserView if the topbar/BrowserView
+  // split actually grew to make room for it — a plain CSS z-index bump
+  // wouldn't do that, since the BrowserView is a separate native layer.
+  const barAfter = await window.evaluate(() =>
+    document.getElementById('permissionNotifications').getBoundingClientRect().height);
+  expect(barAfter).toBeGreaterThan(0);
+
+  await notif.locator('.perm-allow').click();
+  await expect(window.locator('.perm-notif')).toHaveCount(0);
+
+  const barCleared = await window.evaluate(() =>
+    document.getElementById('permissionNotifications').getBoundingClientRect().height);
+  expect(barCleared).toBe(0);
 });

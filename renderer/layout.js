@@ -15,6 +15,7 @@ let consolePanelMinimized = false;
 let consoleVisible        = true;
 let findOpen               = false;
 let bookmarksBarVisible    = false;
+let permissionBarHeight    = 0;
 
 export function getConsoleHeight() { return consoleHeight; }
 
@@ -71,11 +72,22 @@ export function initMinimize() {
   });
 }
 
+// Reserves real BrowserView-bounds space above the tab content for pending
+// permission notifications. They're rendered as normal DOM (position: fixed)
+// in the renderer window, but the BrowserView is a separate native layer
+// always painted on top of that DOM — z-index can't lift them above it, so
+// the only way to make them visible is to push the BrowserView's top edge
+// down past them.
+export function setPermissionBarHeight(h) {
+  permissionBarHeight = h;
+  updateTopBarHeight();
+}
+
 export function updateTopBarHeight() {
   let h = TOPBAR_BASE;
   if (bookmarksBarVisible) h += BOOKMARKS_BAR_H;
   if (findOpen) h += FIND_BAR_H;
-  testerBrowser.layout.setTopBarHeight(h);
+  testerBrowser.layout.setTopBarHeight(h + permissionBarHeight);
   document.getElementById('downloadsPanel').style.top          = h + 'px';
   document.getElementById('permissionNotifications').style.top = h + 'px';
 }
@@ -84,7 +96,7 @@ export function currentTopBarHeight() {
   let h = TOPBAR_BASE;
   if (bookmarksBarVisible) h += BOOKMARKS_BAR_H;
   if (findOpen) h += FIND_BAR_H;
-  return h;
+  return h + permissionBarHeight;
 }
 
 export function setConsoleHeight(h) {

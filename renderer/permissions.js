@@ -1,4 +1,5 @@
 /* global testerBrowser */
+import { setPermissionBarHeight } from './layout.js';
 
 const PERM_LABELS = {
   geolocation:       'access your location',
@@ -24,15 +25,21 @@ export function initPermissions() {
     const allow = document.createElement('button');
     allow.className   = 'perm-btn perm-allow';
     allow.textContent = 'Allow';
-    allow.onclick = () => { testerBrowser.permission.respond(reqId, true);  notif.remove(); };
+    allow.onclick = () => { testerBrowser.permission.respond(reqId, true);  notif.remove(); syncPermissionBarHeight(); };
     notif.appendChild(allow);
 
     const block = document.createElement('button');
     block.className   = 'perm-btn perm-block';
     block.textContent = 'Block';
-    block.onclick = () => { testerBrowser.permission.respond(reqId, false); notif.remove(); };
+    block.onclick = () => { testerBrowser.permission.respond(reqId, false); notif.remove(); syncPermissionBarHeight(); };
     notif.appendChild(block);
 
     document.getElementById('permissionNotifications').appendChild(notif);
+    syncPermissionBarHeight();
   });
+}
+
+function syncPermissionBarHeight() {
+  const container = document.getElementById('permissionNotifications');
+  setPermissionBarHeight(container.children.length > 0 ? container.offsetHeight + 8 : 0);
 }
