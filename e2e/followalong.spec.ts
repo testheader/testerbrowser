@@ -92,4 +92,12 @@ test('leader interactions are mirrored onto the follower in near real time', asy
   await leaderInput.fill('');
   await leaderInput.pressSequentially('Grace', { delay: 50 });
   await expect(followerTab.locator('[data-testid="rp-input"]')).toHaveValue('Grace', { timeout: 20_000 });
+
+  // "Clear log" empties the mirrored-action log, and mirroring keeps working afterward.
+  await expect(window.locator('#followLog .follow-log-line').first()).toBeVisible();
+  await window.click('#followClearLogBtn');
+  await expect(window.locator('#followLog .follow-log-line')).toHaveCount(0);
+
+  await leaderTab.evaluate(() => (document.querySelector('[data-testid="rp-btn"]') as HTMLElement).click());
+  await expect(window.locator('#followLog')).toContainText('mirrored', { timeout: 20_000 });
 });

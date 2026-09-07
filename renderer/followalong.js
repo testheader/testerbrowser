@@ -21,6 +21,7 @@ export function initFollow() {
         Mirror navigation
       </label>
       <button class="diff-run-btn" id="followStartBtn">Start Follow Along</button>
+      <button class="diff-har-btn" id="followClearLogBtn">Clear log</button>
     </div>
     <div class="follow-hint">Pick a leader and a follower session, then Start. Clicks and field input on the leader are mirrored live onto the follower via its equivalent element — not raw coordinates. "Mirror navigation" also sends the follower to whatever page the leader navigates to (link clicks, redirecting form submits, address-bar changes); leave it off to mirror only in-page interactions.</div>
     <div class="follow-pairs" id="followPairs"></div>
@@ -28,6 +29,9 @@ export function initFollow() {
 
   populatePickers();
   document.getElementById('followStartBtn').addEventListener('click', startFollow);
+  document.getElementById('followClearLogBtn').addEventListener('click', () => {
+    document.getElementById('followLog').innerHTML = '';
+  });
 
   testerBrowser.followAlong.onStepResult(({ step, result }) => logStepResult(step, result));
 
