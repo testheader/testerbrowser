@@ -31,21 +31,27 @@ export function initVR() {
 
   panel.innerHTML = `
     <div class="vr-toolbar">
-      <button class="vr-btn" id="vrCaptureBtn">Capture baseline</button>
-      <button class="vr-btn" id="vrCompareBtn" disabled>Compare</button>
-      <label class="vr-toggle" title="Capture the whole scrollable page instead of just the viewport">
-        <input type="checkbox" id="vrFullPage" /> Full page
-      </label>
-      <label class="diff-label" title="Session to capture the 'current' screenshot from when comparing">Compare against
-        <select class="diff-pick" id="vrComparePick"></select>
-      </label>
-      <div class="vr-views" id="vrViews">
-        <button class="vr-btn vr-view-btn active" data-view="baseline">Baseline</button>
-        <button class="vr-btn vr-view-btn" data-view="current" disabled>Current</button>
-        <button class="vr-btn vr-view-btn" data-view="diff"    disabled>Diff</button>
-        <button class="vr-btn vr-view-btn" data-view="compare" disabled>Compare view</button>
+      <div class="vr-toolbar-row">
+        <span class="vr-toolbar-label">Capture</span>
+        <button class="vr-btn" id="vrCaptureBtn">Capture baseline</button>
+        <label class="diff-label" title="Session to capture the 'current' screenshot from when comparing">Compare against
+          <select class="diff-pick" id="vrComparePick"></select>
+        </label>
+        <button class="vr-btn" id="vrCompareBtn" disabled>Compare</button>
+        <label class="vr-toggle" title="Capture the whole scrollable page instead of just the viewport">
+          <input type="checkbox" id="vrFullPage" /> Full page
+        </label>
+        <span class="vr-stats" id="vrStats"></span>
       </div>
-      <span class="vr-stats" id="vrStats"></span>
+      <div class="vr-toolbar-row">
+        <span class="vr-toolbar-label">View</span>
+        <div class="vr-views" id="vrViews">
+          <button class="vr-btn vr-view-btn active" data-view="baseline">Baseline</button>
+          <button class="vr-btn vr-view-btn" data-view="current" disabled>Current</button>
+          <button class="vr-btn vr-view-btn" data-view="diff"    disabled>Diff</button>
+          <button class="vr-btn vr-view-btn" data-view="compare" disabled>Compare view</button>
+        </div>
+      </div>
     </div>
     <div class="vr-images" id="vrImages">
       <div class="vr-hint">Capture a baseline screenshot, interact with the page, then click Compare.</div>

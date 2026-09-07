@@ -44,6 +44,25 @@ test('Compare button is disabled before baseline is captured', async () => {
   await expect(window.locator('#vrCompareBtn')).toBeDisabled();
 });
 
+test('the "Compare against" picker sits between Capture baseline and Compare, and view buttons are on their own row', async () => {
+  await window.click('#consoleTabVR');
+  const rows = window.locator('.vr-toolbar-row');
+  await expect(rows).toHaveCount(2);
+
+  const captureRow = rows.nth(0);
+  await expect(captureRow).toContainText('Capture');
+  const captureRowElements = captureRow.locator('#vrCaptureBtn, #vrComparePick, #vrCompareBtn');
+  await expect(captureRowElements).toHaveCount(3);
+  // Order within the row: capture button, then the compare-against picker, then Compare.
+  const ids = await captureRow.locator('button, select').evaluateAll(els => els.map(el => el.id));
+  expect(ids.indexOf('vrCaptureBtn')).toBeLessThan(ids.indexOf('vrComparePick'));
+  expect(ids.indexOf('vrComparePick')).toBeLessThan(ids.indexOf('vrCompareBtn'));
+
+  const viewRow = rows.nth(1);
+  await expect(viewRow).toContainText('View');
+  await expect(viewRow.locator('#vrViews')).toBeVisible();
+});
+
 test('capturing a baseline, mutating the page, and comparing reports a nonzero diff', async () => {
   const urlPath = '/performance/heavy-dom.html?count=50';
   await window.click('#urlbar');
