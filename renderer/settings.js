@@ -27,6 +27,7 @@ export async function openSettings() {
   applyUpdateStatus(await testerBrowser.app.getVersionInfo());
   const settings = await testerBrowser.settings.get();
   document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
+  document.getElementById('searchEngineSelect').value = settings.searchEngine || 'google';
 
   document.getElementById('themeSelect').value = getStoredScheme();
 
@@ -87,6 +88,10 @@ export function initSettings() {
 
   document.getElementById('redactHeadersToggle').addEventListener('change', (e) => {
     testerBrowser.settings.set({ redactSensitiveHeaders: e.target.checked });
+  });
+
+  document.getElementById('searchEngineSelect').addEventListener('change', (e) => {
+    testerBrowser.settings.set({ searchEngine: e.target.value });
   });
 
   document.getElementById('themeSelect').addEventListener('change', (e) => {

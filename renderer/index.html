@@ -218,6 +218,17 @@
 
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
+                <div class="setting-label">Default search engine</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">Used when the URL bar is given a plain search term instead of a URL.</div>
+              </div>
+              <select id="searchEngineSelect" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
+                <option value="google">Google</option>
+                <option value="duckduckgo">DuckDuckGo</option>
+              </select>
+            </div>
+
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
                 <div class="setting-label">Redact sensitive headers</div>
                 <div style="font-size:11px;color:#555;margin-top:3px">Replaces Authorization, Cookie, Set-Cookie, and similar values with [REDACTED] in the timeline. Applies to new sessions only.</div>
               </div>

@@ -48,6 +48,25 @@ export function activePillValues(containerEl, dataAttr) {
   return new Set([...containerEl.querySelectorAll('.filter-pill.on')].map(el => el.dataset[dataAttr]));
 }
 
+// True for an explicit scheme, or (no whitespace, so not a search phrase)
+// a host that looks like a real domain, localhost, or an IPv4 address —
+// anything else is treated as a search query rather than a doomed
+// navigation to e.g. https://weather%20today.
+export function looksLikeUrl(v) {
+  const trimmed = v.trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return true;
+  if (/\s/.test(trimmed)) return false;
+  const host = trimmed.split(/[/?#]/)[0].split(':')[0];
+  if (host === 'localhost') return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+  return /\.[a-z]{2,}$/i.test(host);
+}
+
+export function buildSearchUrl(engine, query) {
+  const q = encodeURIComponent(query.trim());
+  return engine === 'duckduckgo' ? `https://duckduckgo.com/?q=${q}` : `https://www.google.com/search?q=${q}`;
+}
+
 export function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');

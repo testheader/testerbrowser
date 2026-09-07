@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { getActiveId, isTabLoading } from './tabs.js';
+import { looksLikeUrl, buildSearchUrl } from './utils.js';
 
 // navState (per-tab back/forward availability) and urlHistory (the URL bar's
 // autocomplete list) are both toolbar-only concerns — nothing outside this
@@ -49,10 +50,16 @@ export function initToolbar() {
 
   document.getElementById('urlbar').addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && getActiveId()) {
-      const url = e.target.value;
-      await testerBrowser.sessions.navigate(getActiveId(), url);
-      const fullUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-      urlHistory = await testerBrowser.urlHistory.add(fullUrl);
+      const input = e.target.value;
+      let navigatedUrl;
+      if (looksLikeUrl(input)) {
+        navigatedUrl = /^https?:\/\//i.test(input) ? input : `https://${input}`;
+      } else {
+        const settings = await testerBrowser.settings.get();
+        navigatedUrl = buildSearchUrl(settings.searchEngine, input);
+      }
+      await testerBrowser.sessions.navigate(getActiveId(), navigatedUrl);
+      urlHistory = await testerBrowser.urlHistory.add(navigatedUrl);
       refreshUrlDatalist();
       e.target.blur();
     }
