@@ -80,4 +80,16 @@ test('leader interactions are mirrored onto the follower in near real time', asy
   await leaderTab.evaluate(() => (document.querySelector('[data-testid="rp-btn"]') as HTMLElement).click());
   await expect(followerTab.locator('#rp-result')).toHaveText('Clicked: Ada', { timeout: 20_000 });
   await expect(window.locator('#followLog')).toContainText('mirrored', { timeout: 5_000 });
+
+  // Regression test for #126: upsertFill (the leader-side recording script)
+  // mutates the same buffered 'fill' step in place as each keystroke lands,
+  // rather than creating a new step per character. The relay used to track
+  // "already relayed" purely by step id, so it mirrored only the very first
+  // keystroke and then ignored every further mutation of that same step —
+  // real character-by-character typing (as opposed to the single scripted
+  // `input` event above) is what exposes it.
+  const leaderInput = leaderTab.locator('[data-testid="rp-input"]');
+  await leaderInput.fill('');
+  await leaderInput.pressSequentially('Grace', { delay: 50 });
+  await expect(followerTab.locator('[data-testid="rp-input"]')).toHaveValue('Grace', { timeout: 20_000 });
 });

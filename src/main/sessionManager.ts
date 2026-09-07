@@ -150,7 +150,10 @@ interface FollowPairing {
   leaderId: string;
   followerId: string;
   mirrorNavigation: boolean;
-  relayedStepIds: Set<string>;
+  // Maps step id → the value last relayed to the follower. 'fill' steps are
+  // mutated in place as the user types (see upsertFill), so the same step id
+  // must be re-relayed each time its value grows, not just once.
+  relayedSteps: Map<string, string>;
   pollTimer: ReturnType<typeof setInterval>;
   navHandler: (_e: unknown, url: string) => void;
 }
@@ -1300,7 +1303,7 @@ export class SessionManager {
     const pollTimer = setInterval(() => { this.relayFollowSteps(leaderId).catch(() => {}); }, 300);
 
     this.followPairings.set(leaderId, {
-      leaderId, followerId, mirrorNavigation, relayedStepIds: new Set(), pollTimer, navHandler,
+      leaderId, followerId, mirrorNavigation, relayedSteps: new Map(), pollTimer, navHandler,
     });
     return { ok: true };
   }
@@ -1338,11 +1341,16 @@ export class SessionManager {
     await this.harvestRecordingSteps(leaderId);
     const steps = this.getBufferedSteps(leaderId);
     for (const step of steps) {
-      if (pairing.relayedStepIds.has(step.id)) continue;
-      pairing.relayedStepIds.add(step.id);
       // Full navigations are mirrored separately (see navHandler above) — the
       // recorded 'navigate' step type only covers in-page history API calls.
       if (step.type !== 'click' && step.type !== 'fill') continue;
+      const lastRelayedValue = pairing.relayedSteps.get(step.id);
+      if (step.type === 'click') {
+        if (lastRelayedValue !== undefined) continue;
+      } else if (lastRelayedValue === (step.value ?? '')) {
+        continue;
+      }
+      pairing.relayedSteps.set(step.id, step.value ?? '');
       const result = await this.playbackStep(pairing.followerId, step);
       this.win.webContents.send('followAlong:stepResult', {
         leaderId, followerId: pairing.followerId, step, result,
