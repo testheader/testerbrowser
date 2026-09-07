@@ -332,6 +332,10 @@ export async function closeTab(id) {
     activeId = null;
     const next = mruStack[0] ?? null;
     if (next) { await switchToSession(next); return; }
+    // No other tabs left to fall back to — open a fresh one (the New Tab
+    // page) instead of leaving the window with nothing to show.
+    await newSession();
+    return;
   }
   refreshTabs();
 }

@@ -67,6 +67,20 @@ test('new tab button creates a second tab', async () => {
   await expect(window.locator('.tab')).toHaveCount(2);
 });
 
+test('closing the last remaining tab opens a fresh one instead of leaving the window empty', async () => {
+  // Close down to exactly one tab first, in case an earlier test left more than one open.
+  while ((await window.locator('.tab').count()) > 1) {
+    await window.locator('.tab .tab-close').first().click();
+  }
+  await expect(window.locator('.tab')).toHaveCount(1);
+
+  await window.locator('.tab .tab-close').first().click();
+
+  // Never zero — a fresh tab (the New Tab page) takes its place.
+  await expect(window.locator('.tab')).toHaveCount(1);
+  await expect(window.locator('.tab.active')).toBeVisible();
+});
+
 // ── URL bar ──────────────────────────────────────────────────────────────────
 
 test('URL bar is visible and accepts input', async () => {
