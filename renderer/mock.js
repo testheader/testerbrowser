@@ -1,6 +1,21 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
-import { getActiveConsoleTab } from './console-tabs.js';
+import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
+
+const MOCK_METHODS = ['*', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+// Entry point for the "→ Mock" button on a network-request timeline row:
+// switches to the Mock tab and prefills the add-rule form with that call's
+// method and URL, so the user doesn't have to retype them.
+export function openMockFromRequest(method, url) {
+  switchConsoleTab('mock'); // also runs initMock() if this is the first visit
+  const urlInput  = document.getElementById('mockUrl');
+  const methodSel = document.getElementById('mockMethod');
+  if (!urlInput || !methodSel) return;
+  urlInput.value  = url || '';
+  methodSel.value = MOCK_METHODS.includes(method) ? method : '*';
+  urlInput.focus();
+}
 
 export function initMock() {
   const panel = document.getElementById('mockPanel');

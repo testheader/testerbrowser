@@ -472,6 +472,12 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
                   margin-left: 6px; line-height: 1.5; vertical-align: middle; flex-shrink: 0; }
 .evt-replay-btn:hover { background: rgba(127,200,255,0.12); }
 
+/* "Send to Mock" button on request events */
+.evt-mock-btn { background: none; border: 1px solid var(--border-strong); color: var(--text-muted);
+                border-radius: 3px; font-size: 11px; padding: 0 6px; cursor: pointer;
+                margin-left: 6px; line-height: 1.5; vertical-align: middle; flex-shrink: 0; }
+.evt-mock-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
 /* Badge marking a network row as synthesized by a Mock/Resilience rule rather than real traffic */
 .evt-badge { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .04em;
              border-radius: 2px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; font-family: inherit; }
