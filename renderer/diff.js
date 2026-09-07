@@ -1,11 +1,15 @@
 /* global testerBrowser */
-import { escHtml } from './utils.js';
+import { escHtml, wirePillGroup, activePillValues } from './utils.js';
 
 let lastDiffRows = [];
 let cachedSessions = [];
 let rawMapA = new Map();
 let rawMapB = new Map();
 let groupDuplicates = true;
+// Session names must be captured at compare time, not looked up later by id:
+// destroySession removes a closed session from sessions.list() entirely, so
+// a later re-lookup would silently fail once a compared session is closed.
+let diffMeta = null;
 
 export function initDiff() {
   const panel = document.getElementById('diffPanel');
@@ -24,7 +28,14 @@ export function initDiff() {
       <label class="diff-label diff-group-toggle">
         <input type="checkbox" id="diffGroupToggle" checked /> Group duplicates
       </label>
+      <div class="filter-pills" id="diffCatPills">
+        <button class="filter-pill on" data-cat="diff"    title="Different">Different</button>
+        <button class="filter-pill on" data-cat="only-a"  title="Only in A">Only A</button>
+        <button class="filter-pill on" data-cat="only-b"  title="Only in B">Only B</button>
+        <button class="filter-pill on" data-cat="same"    title="Identical">Same</button>
+      </div>
       <button class="diff-har-btn" id="diffHarBtn" disabled>Export HAR</button>
+      <button class="console-icon-btn" id="diffResetBtn" title="Reset comparison">&#10005;</button>
     </div>
     <div class="diff-body" id="diffBody">
       <div class="diff-hint">Select two sessions above and click Compare.</div>
@@ -35,6 +46,19 @@ export function initDiff() {
   document.getElementById('diffRunBtn').addEventListener('click', runDiff);
   document.getElementById('diffHarBtn').addEventListener('click', exportDiffHar);
   document.getElementById('diffGroupToggle').addEventListener('change', onGroupToggleChanged);
+  document.getElementById('diffResetBtn').addEventListener('click', resetDiff);
+  wirePillGroup(document.getElementById('diffCatPills'), () => {
+    if (lastDiffRows.length > 0) renderDiffTable(document.getElementById('diffBody'));
+  });
+}
+
+function resetDiff() {
+  rawMapA = new Map();
+  rawMapB = new Map();
+  lastDiffRows = [];
+  diffMeta = null;
+  document.getElementById('diffBody').innerHTML = '<div class="diff-hint">Select two sessions above and click Compare.</div>';
+  document.getElementById('diffHarBtn').disabled = true;
 }
 
 function onGroupToggleChanged(e) {
@@ -106,6 +130,10 @@ async function runDiff() {
 
   body.innerHTML = '<div class="diff-hint">Loading…</div>';
   harBtn.disabled = true;
+
+  const nameA = cachedSessions.find(s => s.id === idA)?.name ?? idA;
+  const nameB = cachedSessions.find(s => s.id === idB)?.name ?? idB;
+  diffMeta = { nameA, nameB, comparedAt: Date.now() };
 
   const [evA, evB] = await Promise.all([
     testerBrowser.recording.timeline(idA, { limit: 5000 }),
@@ -245,6 +273,11 @@ function renderDiffTable(body) {
     return;
   }
 
+  const meta = diffMeta ? `<div class="diff-meta">Compared <b>${escHtml(diffMeta.nameA)}</b> vs ` +
+    `<b>${escHtml(diffMeta.nameB)}</b> at ${new Date(diffMeta.comparedAt).toLocaleTimeString()}</div>` : '';
+
+  // Legend counts always reflect the full comparison, independent of the
+  // category pills below — those only control which rows the table shows.
   const counts = { same: 0, 'only-a': 0, 'only-b': 0, diff: 0 };
   for (const r of lastDiffRows) counts[r.category] = (counts[r.category] || 0) + 1;
 
@@ -255,7 +288,8 @@ function renderDiffTable(body) {
     <span class="diff-badge only-b">only B ${counts['only-b']}</span>
   </div>`;
 
-  const rows = lastDiffRows.map(r => {
+  const activeCats = activePillValues(document.getElementById('diffCatPills'), 'cat');
+  const rows = lastDiffRows.filter(r => activeCats.has(r.category)).map(r => {
     const url = escHtml(r.url);
     const method = escHtml(r.method);
     return `<tr class="diff-row ${r.category}">
@@ -266,7 +300,7 @@ function renderDiffTable(body) {
     </tr>`;
   }).join('');
 
-  body.innerHTML = legend + `<div class="diff-table-wrap"><table class="diff-table">
+  body.innerHTML = meta + legend + `<div class="diff-table-wrap"><table class="diff-table">
     <thead><tr><th>Method</th><th>URL</th><th>Status A</th><th>Status B</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;

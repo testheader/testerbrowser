@@ -799,6 +799,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .diff-har-btn[disabled] { opacity: 0.4; cursor: default; }
 .diff-body { flex: 1; overflow: auto; }
 .diff-hint { color: var(--text-muted); font-size: 12px; padding: 12px; }
+.diff-meta { padding: 6px 10px 0; font-size: 11px; color: var(--text-muted); }
+.diff-meta b { color: var(--text-primary); }
 .diff-legend { display: flex; gap: 8px; padding: 6px 10px; font-size: 11px; flex-wrap: wrap; }
 .diff-badge { border-radius: 3px; padding: 1px 7px; font-weight: 600; }
 .diff-badge.same    { background: var(--success-surface); color: var(--success-strong); }

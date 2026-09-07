@@ -89,3 +89,41 @@ test('comparing two sessions categorizes matching and unique requests correctly'
   await expect(window.locator('.diff-row.same', { hasText: '/network/status-codes.html' })).toBeVisible();
   await expect(window.locator('.diff-row.only-a', { hasText: '/downloads/sample.txt' })).toBeVisible();
 });
+
+test('diff shows which sessions (by name) were compared and when', async () => {
+  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  await window.selectOption('#diffPickA', sessions[0].id);
+  await window.selectOption('#diffPickB', sessions[1].id);
+  await window.click('#diffRunBtn');
+
+  const meta = window.locator('.diff-meta');
+  await expect(meta).toBeVisible();
+  await expect(meta).toContainText(sessions[0].name);
+  await expect(meta).toContainText(sessions[1].name);
+});
+
+test('category pills filter the table while the legend keeps showing totals', async () => {
+  await expect(window.locator('.diff-row')).not.toHaveCount(0);
+  const sameCountBefore = await window.locator('.diff-row.same').count();
+  expect(sameCountBefore).toBeGreaterThan(0);
+
+  await window.locator('#diffCatPills .filter-pill[data-cat="same"]').click();
+  await expect(window.locator('.diff-row.same')).toHaveCount(0);
+  // Legend badge count is unaffected by the pill filter.
+  await expect(window.locator('.diff-badge.same')).toContainText(String(sameCountBefore));
+
+  await window.locator('#diffCatPills .filter-pill[data-cat="same"]').click();
+  await expect(window.locator('.diff-row.same')).toHaveCount(sameCountBefore);
+});
+
+test('Reset clears the comparison back to its initial state and disables HAR export', async () => {
+  await expect(window.locator('.diff-row')).not.toHaveCount(0);
+  await expect(window.locator('#diffHarBtn')).not.toBeDisabled();
+
+  await window.click('#diffResetBtn');
+
+  await expect(window.locator('.diff-hint')).toHaveText('Select two sessions above and click Compare.');
+  await expect(window.locator('.diff-row')).toHaveCount(0);
+  await expect(window.locator('.diff-meta')).toHaveCount(0);
+  await expect(window.locator('#diffHarBtn')).toBeDisabled();
+});
