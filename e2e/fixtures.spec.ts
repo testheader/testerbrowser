@@ -83,6 +83,95 @@ test('network/status-codes.html: Clear button empties the log and it stays empty
   await expect(resPill).toHaveText('');
 });
 
+test('network/slow.html: free-text filter also matches payload content not present in the summary line', async () => {
+  const tab = await navigate('/network/slow.html');
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await tab.click('button[data-ms="500"]');
+  await window.waitForTimeout(700);
+
+  const row = window.locator('.evt.network-response', { hasText: 'ms=500' });
+  await expect(row).toBeVisible();
+
+  // "text/plain" is the response's content-type header — present in the
+  // recorded payload JSON, but not in the row's rendered summary text.
+  await window.fill('#networkFilterText', 'text/plain');
+  await expect(row).toBeVisible();
+
+  await window.fill('#networkFilterText', 'no-such-substring-anywhere');
+  await expect(row).toHaveCount(0);
+
+  await window.fill('#networkFilterText', '');
+});
+
+test('network/slow.html: min-duration filter hides fast responses but keeps slow ones', async () => {
+  const tab = await navigate('/network/slow.html');
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await tab.click('button[data-ms="500"]');
+  await window.waitForTimeout(700);
+  await tab.click('button[data-ms="2000"]');
+  await window.waitForTimeout(2500);
+
+  const row500  = window.locator('.evt.network-response', { hasText: 'ms=500'  });
+  const row2000 = window.locator('.evt.network-response', { hasText: 'ms=2000' });
+  await expect(row500).toBeVisible();
+  await expect(row2000).toBeVisible();
+
+  // Only network-response rows carry a duration — the request row for the
+  // 500ms call must stay visible even while its response is filtered out.
+  await window.fill('#networkMinDuration', '1000');
+  await expect(row500).toHaveCount(0);
+  await expect(row2000).toBeVisible();
+  await expect(window.locator('.evt.network-request', { hasText: 'ms=500' })).toBeVisible();
+
+  await window.fill('#networkMinDuration', '');
+  await expect(row500).toBeVisible();
+});
+
+test('network/slow.html: method filter hides both the request and response rows for that method', async () => {
+  const tab = await navigate('/network/slow.html');
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await tab.click('button[data-ms="500"]');
+  await window.waitForTimeout(700);
+
+  const reqRow = window.locator('.evt.network-request',  { hasText: 'ms=500' });
+  const resRow = window.locator('.evt.network-response', { hasText: 'ms=500' });
+  await expect(reqRow).toBeVisible();
+  await expect(resRow).toBeVisible();
+
+  const getPill = window.locator('#networkMethodPills .filter-pill[data-method="GET"]');
+  await getPill.click(); // turn GET off — the fixture only issues GET requests
+  await expect(reqRow).toHaveCount(0);
+  await expect(resRow).toHaveCount(0);
+
+  await getPill.click(); // back on
+  await expect(reqRow).toBeVisible();
+  await expect(resRow).toBeVisible();
+});
+
+test('network/slow.html: date-range "from" filter hides events before the chosen time', async () => {
+  const tab = await navigate('/network/slow.html');
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await tab.click('button[data-ms="500"]');
+  await window.waitForTimeout(700);
+
+  const row = window.locator('.evt.network-response', { hasText: 'ms=500' });
+  await expect(row).toBeVisible();
+
+  const future = new Date(Date.now() + 5 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const futureLocal = `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}` +
+    `T${pad(future.getHours())}:${pad(future.getMinutes())}:${pad(future.getSeconds())}`;
+  await window.fill('#networkFromTs', futureLocal);
+  await expect(row).toHaveCount(0);
+
+  await window.fill('#networkFromTs', '');
+  await expect(row).toBeVisible();
+});
+
 test('performance/network-flood.html: burst of 50 requests all get recorded', async () => {
   const tab = await navigate('/performance/network-flood.html');
   await window.click('#consoleTabNetwork');

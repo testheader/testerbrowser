@@ -39,6 +39,7 @@ export function switchConsoleTab(tab) {
   const timelineVisible = tab === 'console' || tab === 'network';
   document.getElementById('consoleControls').style.display      = tab === 'console'  ? ''      : 'none';
   document.getElementById('networkControls').style.display      = tab === 'network'  ? 'flex'  : 'none';
+  document.getElementById('networkControlsRow2').style.display  = tab === 'network'  ? 'flex'  : 'none';
   document.getElementById('storageControls').style.display      = tab === 'storage'  ? 'flex'  : 'none';
   document.getElementById('timelinePanelWrapper').style.display = timelineVisible    ? 'flex'  : 'none';
   document.getElementById('storagePanel').style.display         = tab === 'storage'  ? 'flex'  : 'none';

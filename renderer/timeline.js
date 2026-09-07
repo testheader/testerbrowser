@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
-import { getEventTabId } from './utils.js';
+import { getEventTabId, wirePillGroup, activePillValues } from './utils.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { openReplay } from './replay.js';
 import { getActiveId } from './tabs.js';
@@ -14,6 +14,31 @@ const timelineEvents = []; // ring buffer, max TIMELINE_MAX entries
 let lastTs          = 0;
 let autoScroll       = true;
 
+// Only network-request payloads carry `request.method` directly; response/
+// failed/body payloads only share the request's `requestId`. This maps one
+// to the other so the method filter can hide a whole request+response(+body)
+// group, not just the request line.
+const requestIdToMethod = new Map();
+const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
+
+function getEventMethod(e) {
+  if (!e.payload) return null;
+  try {
+    const p = JSON.parse(e.payload);
+    const method = e.kind === 'network-request' ? p.request?.method : requestIdToMethod.get(p.requestId);
+    return method || null;
+  } catch { return null; }
+}
+
+// <input type="datetime-local"> values (no timezone) are parsed by Date()
+// as local time, matching how `new Date(e.ts).toLocaleTimeString()` already
+// displays event timestamps in the timeline.
+function parseLocalDatetime(value) {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
 export function getTimelineEvents() { return timelineEvents; }
 
 export function renderTimeline() {
@@ -22,12 +47,34 @@ export function renderTimeline() {
 
   let filtered;
   if (tab === 'network') {
-    const netFilter  = document.getElementById('networkFilterText').value.toLowerCase();
-    const activeTypes = new Set([...document.querySelectorAll('#networkPills .filter-pill.on')].map(el => el.dataset.type));
+    const netFilter    = document.getElementById('networkFilterText').value.toLowerCase();
+    const activeTypes  = activePillValues(document.getElementById('networkPills'), 'type');
+    const activeMethods = activePillValues(document.getElementById('networkMethodPills'), 'method');
+    const minDuration  = parseFloat(document.getElementById('networkMinDuration').value) || 0;
+    const fromTs       = parseLocalDatetime(document.getElementById('networkFromTs').value);
+    const toTs         = parseLocalDatetime(document.getElementById('networkToTs').value);
+
     filtered = timelineEvents.filter(e => {
       const kindVisible = activeTypes.has(e.kind) ||
         (e.kind === 'network-body' && activeTypes.has('network-response'));
-      return kindVisible && (!netFilter || e.summary.toLowerCase().includes(netFilter));
+      if (!kindVisible) return false;
+
+      const method = getEventMethod(e);
+      const methodVisible = !method || activeMethods.has(KNOWN_METHODS.has(method) ? method : 'Other');
+      if (!methodVisible) return false;
+
+      if (minDuration > 0 && e.kind === 'network-response') {
+        let durationMs = null;
+        try { durationMs = JSON.parse(e.payload).durationMs; } catch {}
+        if (typeof durationMs !== 'number' || durationMs < minDuration) return false;
+      }
+
+      if (fromTs !== null && e.ts < fromTs) return false;
+      if (toTs !== null && e.ts > toTs) return false;
+
+      if (!netFilter) return true;
+      if (e.summary.toLowerCase().includes(netFilter)) return true;
+      return !!e.payload && e.payload.toLowerCase().includes(netFilter);
     });
   } else {
     const filterText = document.getElementById('filterText').value.toLowerCase();
@@ -129,6 +176,13 @@ async function fetchTimeline() {
   if (!activeId) return;
   const events = await testerBrowser.recording.timeline(activeId, { since: lastTs || undefined, limit: 200 });
   if (events.length > 0) {
+    for (const e of events) {
+      if (e.kind !== 'network-request' || !e.payload) continue;
+      try {
+        const p = JSON.parse(e.payload);
+        if (p.requestId && p.request?.method) requestIdToMethod.set(p.requestId, p.request.method);
+      } catch {}
+    }
     timelineEvents.push(...events);
     if (timelineEvents.length > TIMELINE_MAX) {
       timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
@@ -155,6 +209,7 @@ export function refreshTimelineNow() {
 export function resetTimelineForNewSession() {
   timelineEvents.length = 0;
   lastTs = 0;
+  requestIdToMethod.clear();
   document.getElementById('timelinePanel').innerHTML = '';
 }
 
@@ -175,10 +230,12 @@ export function initTimeline() {
 
   document.getElementById('filterText').addEventListener('input', renderTimeline);
   document.getElementById('networkFilterText').addEventListener('input', renderTimeline);
+  document.getElementById('networkMinDuration').addEventListener('input', renderTimeline);
+  document.getElementById('networkFromTs').addEventListener('input', renderTimeline);
+  document.getElementById('networkToTs').addEventListener('input', renderTimeline);
 
-  document.querySelectorAll('#networkPills .filter-pill').forEach((btn) =>
-    btn.addEventListener('click', () => { btn.classList.toggle('on'); renderTimeline(); })
-  );
+  wirePillGroup(document.getElementById('networkPills'), renderTimeline);
+  wirePillGroup(document.getElementById('networkMethodPills'), renderTimeline);
 
   function clearTimeline() {
     timelineEvents.length = 0;
@@ -186,6 +243,7 @@ export function initTimeline() {
     // against the backend's SQLite ring buffer, which Clear doesn't touch.
     // Resetting it to 0 makes `since: lastTs || undefined` drop the filter
     // entirely, so the next poll re-fetches everything Clear just wiped.
+    requestIdToMethod.clear();
     timelinePanel.innerHTML = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     autoScroll = true;

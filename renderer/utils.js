@@ -23,6 +23,15 @@ export function getHeader(headers, name) {
   return key ? String(headers[key]) : '';
 }
 
+export function wirePillGroup(containerEl, onChange) {
+  containerEl.querySelectorAll('.filter-pill').forEach(btn =>
+    btn.addEventListener('click', () => { btn.classList.toggle('on'); onChange(); }));
+}
+
+export function activePillValues(containerEl, dataAttr) {
+  return new Set([...containerEl.querySelectorAll('.filter-pill.on')].map(el => el.dataset[dataAttr]));
+}
+
 export function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');

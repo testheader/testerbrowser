@@ -136,6 +136,22 @@
           <button id="exportHarBtn" title="Export HAR">HAR</button>
           <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log">&#10005;</button>
         </div>
+        <div id="networkControlsRow2">
+          <div class="filter-pills" id="networkMethodPills">
+            <button class="filter-pill on" data-method="GET"    title="GET requests">GET</button>
+            <button class="filter-pill on" data-method="POST"   title="POST requests">POST</button>
+            <button class="filter-pill on" data-method="PUT"    title="PUT requests">PUT</button>
+            <button class="filter-pill on" data-method="DELETE" title="DELETE requests">DELETE</button>
+            <button class="filter-pill on" data-method="PATCH"  title="PATCH requests">PATCH</button>
+            <button class="filter-pill on" data-method="Other"  title="Any other method">Other</button>
+          </div>
+          <span class="filter-label">Min ms</span>
+          <input id="networkMinDuration" type="number" min="0" placeholder="0" />
+          <span class="filter-label">From</span>
+          <input id="networkFromTs" type="datetime-local" step="1" />
+          <span class="filter-label">To</span>
+          <input id="networkToTs" type="datetime-local" step="1" />
+        </div>
         <div id="timelinePanel"></div>
         <button id="scrollToBottomBtn" title="Scroll to bottom">&#8595; Latest</button>
       </div>
