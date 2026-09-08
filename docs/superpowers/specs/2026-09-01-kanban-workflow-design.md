@@ -36,8 +36,9 @@ User selects a ticket
   → labels it status-ready (or asks agent to pick next)
 
 Implementing agent (implement-ticket)
-  → reads oldest open issue labelled status-ready
-  → moves ticket: status-ready → status-in-progress
+  → picks oldest open issue: status-needs-fix queue first,
+    then status-ready
+  → moves ticket: that label → status-in-progress
   → reads title + body for spec
   → implements code + tests (TDD)
   → typecheck + lint + unit tests must pass
@@ -69,8 +70,10 @@ them.
 **Trigger:** User says "implement next ticket" or "implement #N"
 
 **Steps:**
-1. Find the oldest open issue labelled `status-ready` (or the named issue)
-2. Swap `status-ready` → `status-in-progress`, read title + body + comments as the spec
+1. Pick the ticket (or use the named issue). Queue priority: **`status-needs-fix`
+   first**, then `status-ready`; oldest open issue in the first non-empty queue
+2. Swap that label → `status-in-progress`, read title + body + comments as the spec
+   (for a needs-fix ticket the `watch-ci` failure comment is part of the spec)
 3. Implement with tests (Jest for main-process logic, Playwright e2e for UI flows)
 4. `npm run typecheck`, `npm run lint`, `npm test` → all must pass before commit
 5. `git commit -m "feat/fix: <title> (refs #N)"`
@@ -80,7 +83,10 @@ them.
 
 **Constraints:**
 - One ticket at a time
+- Finish broken work before starting new work — `status-needs-fix` outranks `status-ready`
 - Must not push if typecheck, lint or tests fail
+- Must reproduce a CI failure locally before fixing it; fix forward, never delete
+  or weaken a failing test
 - Must not use `closes #N`, must not close the issue, must not set `status-done`
 - Must not bump `package.json` — CI owns versioning
 

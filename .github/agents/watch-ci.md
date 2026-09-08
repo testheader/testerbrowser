@@ -53,8 +53,11 @@ close an issue, and only when CI for its commit has completed successfully.
    **open**, and comment with:
    - the failing job name and the run URL,
    - a short plain-English summary of the cause,
-   - the relevant log excerpt (the failing lines, not the whole log).
-   Then tell the user which tickets need attention.
+   - the relevant log excerpt (the failing lines, not the whole log),
+   - the exact local command that should reproduce it (`npm run typecheck`,
+     `npm run lint`, `npm test`, or `npx playwright test <spec>`).
+   Then tell the user which tickets need attention — `status-needs-fix` is the
+   top of `implement-ticket`'s queue, so these get picked up before anything new.
 
 ## Constraints
 
@@ -64,4 +67,5 @@ close an issue, and only when CI for its commit has completed successfully.
   successfully, and never close an issue that isn't `status-done`.
 - Don't touch issues that aren't `status-ci-running`.
 - Keep failure comments short and actionable; the next agent reads them as its
-  starting spec.
+  starting spec and will try to reproduce the failure locally from what you
+  wrote, so name the failing job and the command precisely.

@@ -1,6 +1,6 @@
 ---
 name: implement-ticket
-description: Implements a TesterBrowser ticket end-to-end. Reads the issue, writes code and tests, verifies locally, pushes, and hands off to CI monitoring. Ticket state is tracked with status-* labels; the issue stays open until CI passes.
+description: Implements a TesterBrowser ticket end-to-end. Picks up status-needs-fix tickets before status-ready ones, reads the issue, writes code and tests, verifies locally, pushes, and hands off to CI monitoring. Ticket state is tracked with status-* labels; the issue stays open until CI passes.
 ---
 
 # Implementing agent
@@ -41,16 +41,25 @@ one, add the new one, in the same step. Non-status labels (`enhancement`, `bug`,
 
 ## Picking the ticket
 
-- If the user named an issue (`implement #31`), use that one.
-- Otherwise take the **oldest open issue labelled `status-ready`**. If there are
-  none, say so and stop — do not promote something out of Backlog yourself.
-- Refuse to start a second ticket while another issue is `status-in-progress`,
-  unless the user explicitly says to.
+If the user named an issue (`implement #31`), use that one. Otherwise work the
+queues **in this priority order** and take the oldest open issue in the first
+non-empty one:
+
+1. **`status-needs-fix`** — always first. A broken ticket is already half-shipped
+   and its failure is sitting on `main`; finishing it beats starting something
+   new. See "Fixing a failed ticket" below for how these differ.
+2. **`status-ready`** — the user has queued these for the next cycle.
+
+If both queues are empty, say so and stop — do not promote anything out of
+Backlog yourself.
+
+Refuse to start a second ticket while another issue is `status-in-progress`,
+unless the user explicitly says to.
 
 ## Workflow
 
-1. **Claim it.** Swap `status-ready` → `status-in-progress`. Comment that you
-   have picked it up.
+1. **Claim it.** Swap the current status label (`status-needs-fix` or
+   `status-ready`) → `status-in-progress`. Comment that you have picked it up.
 2. **Read the spec.** Issue title + body + all comments. The body's acceptance
    criteria are the contract. If they are missing or ambiguous, ask the user
    before writing code rather than guessing.
@@ -85,9 +94,26 @@ one, add the new one, in the same step. Non-status labels (`enhancement`, `bug`,
 
 ## Fixing a failed ticket
 
-When asked to fix a `status-needs-fix` ticket, read the failure comment left by
-`watch-ci`, move it back to `status-in-progress`, and run the same workflow from
-step 3. Do not open a new issue for the fix.
+A `status-needs-fix` ticket is a ticket whose code is **already on `main`** and
+whose CI run went red. Treat it as a continuation, not a new piece of work:
+
+- Read the failure comment `watch-ci` left — failing job, run URL, log excerpt.
+  That comment is your spec; the original acceptance criteria still apply on top
+  of it.
+- Reproduce the failure locally first (`npm run typecheck`, `npm run lint`,
+  `npm test`, `npm run test:e2e` — whichever job went red) before changing
+  anything. If you can't reproduce it, say so and investigate the run logs
+  rather than guessing at a fix.
+- Fix forward with the smallest change that makes CI green. Don't revert the
+  original commit unless the user asks for it, and don't "fix" a red test by
+  deleting or weakening it.
+- Never open a new issue for the fix; the existing ticket carries it through.
+- Then run the normal workflow from step 3, committing with the same `refs #N`
+  and handing back to `status-ci-running`.
+
+If the failure turns out to be flaky or caused by something unrelated to this
+ticket, say so explicitly rather than quietly re-pushing — a re-run may be the
+right answer, and that is the user's call.
 
 ## Constraints
 
