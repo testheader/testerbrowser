@@ -1,11 +1,14 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
 let window: Page;
+let fixtures: FixtureServer;
 
 test.beforeAll(async () => {
+  fixtures = await startFixtureServer();
   app = await launchApp(MAIN_PATH);
   window = await getMainWindow(app);
   await window.waitForLoadState('load');
@@ -13,6 +16,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await app.close();
+  await fixtures.close();
 });
 
 async function setSearchEngine(engine: 'google' | 'duckduckgo') {
@@ -36,13 +40,10 @@ async function searchAndGetLastHistoryUrl(query: string): Promise<string | undef
   // The urlbar's Enter handler resolves testerBrowser.sessions.navigate()
   // and urlHistory.add() asynchronously, after Playwright's press() already
   // returns — poll for the top entry to change rather than reading it
-  // immediately, and rather than waiting for the tab to finish loading a
-  // real, possibly-unreachable external URL (this is what the "URL history
-  // records the actual navigated URL" acceptance criterion is about). Extra
-  // headroom over the config default: this round-trips two IPC calls plus a
-  // real (if fire-and-forget) webContents.loadURL() to an external host,
-  // which can be slow on a loaded CI runner.
-  await expect.poll(topHistoryUrl, { timeout: 20_000 }).not.toBe(before);
+  // immediately. sessions.navigate() itself doesn't await the page actually
+  // loading (a fire-and-forget webContents.loadURL()), so this is normally
+  // fast regardless of target reachability.
+  await expect.poll(topHistoryUrl, { timeout: 10_000 }).not.toBe(before);
   return topHistoryUrl();
 }
 
@@ -66,11 +67,16 @@ test('switching the default engine to DuckDuckGo changes what a search term navi
 });
 
 test('an actual URL still navigates directly, with or without a scheme', async () => {
-  const withScheme = await searchAndGetLastHistoryUrl('https://example.org/path');
-  expect(withScheme).toBe('https://example.org/path');
+  // sessions.navigate() is fire-and-forget (searchAndGetLastHistoryUrl's own
+  // comment above), so the target doesn't need to actually load — but it
+  // used to be a real external site (https://example.org), which repeatedly
+  // flaked on the Windows CI runner (#150's needs-fix history). The local
+  // fixture server exercises the same "URL vs. search term" logic while
+  // keeping this test hermetic, like the rest of the e2e suite.
+  const target = fixtures.url('/network/status-codes.html');
+  const withScheme = await searchAndGetLastHistoryUrl(target);
+  expect(withScheme).toBe(target);
 
-  // Not example.com: urlHistory:add special-cases that exact URL to avoid
-  // polluting history with a value other tests use as a dummy placeholder.
-  const withoutScheme = await searchAndGetLastHistoryUrl('example.org');
-  expect(withoutScheme).toBe('https://example.org');
+  const withoutScheme = await searchAndGetLastHistoryUrl(`127.0.0.1:${fixtures.port}/network/status-codes.html`);
+  expect(withoutScheme).toBe(`https://127.0.0.1:${fixtures.port}/network/status-codes.html`);
 });
