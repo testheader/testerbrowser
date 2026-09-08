@@ -1,6 +1,6 @@
 ---
 name: implement-ticket
-description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main, and hands off to CI monitoring. Loops one ticket at a time until the queues are empty or the token budget runs low.
+description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main after asking your approval, and hands off to CI monitoring. Loops one ticket at a time until the queues are empty or the token budget runs low.
 ---
 
 # Implement a ticket — TesterBrowser
@@ -205,10 +205,43 @@ git commit -m "<type>: <ticket title> (refs #<N>)"
 
 `refs #N`, never `closes #N` — see Definition of Done.
 
-## Step 8 — Push to main
+## Step 8 — Ask for consent, then push to main
 
-`bump-version` pushes a `chore: bump version …` commit back after every
-successful run, so your local `main` is probably stale:
+This project is **trunk-based**: work goes straight onto `main`. No feature
+branches, no forks, no pull requests — a ticket's code lands as one commit on
+`main` and CI validates it there. That is also why `main` must never go red, and
+why Step 6 is non-negotiable.
+
+**Pushing to `main` requires the user's explicit consent, every time.** Show
+them what they are approving and wait for an answer:
+
+```bash
+git log --oneline -1
+git show --stat HEAD
+```
+
+Then ask, plainly: *"Ready to push `<SHA-or-subject>` to main — <one-line
+summary>. Verified: typecheck ✅ lint ✅ unit ✅ e2e ✅ (or why not). Push?"*
+
+Rules for the gate:
+
+- **Wait for a real answer.** Silence is not consent, and neither is the user
+  having asked you to "implement the next ticket" — that authorised the work,
+  not the push.
+- **One approval covers one push.** In a looping session, ask again for each
+  ticket, unless the user explicitly pre-authorises the run ("push everything
+  this session"). If they do, say so in your report for each subsequent push and
+  still show the diffstat before pushing.
+- **If consent is withheld or you cannot ask** (non-interactive run), stop:
+  leave the commit local, keep the ticket on `status-in-progress`, and report
+  that it is committed but unpushed and awaiting approval. Do not loop on to
+  another ticket — an unpushed commit on `main` would end up under the next
+  ticket's push.
+- Never work around the gate: no pushing to another branch, no opening a PR
+  instead, no "I'll just push and mention it".
+
+Once approved, `bump-version` pushes a `chore: bump version …` commit back after
+every successful run, so your local `main` is probably stale:
 
 ```bash
 git stash -u && git pull --rebase origin main && git stash pop && git push origin main
@@ -242,7 +275,8 @@ If the run isn't listed yet, wait 5–10 s and retry.
 Report on the ticket you just finished: what changed, which checks you ran (and
 any you could not), the SHA, the run URL, and that it is now waiting on CI.
 
-Then **go back to Step 0** and take the next ticket. Keep looping until either:
+Then **go back to Step 0** and take the next ticket — each one needs its own
+push consent at Step 8 unless the user pre-authorised the whole run. Keep looping until either:
 
 - **the queues are empty** — no open `status-needs-fix` and no `status-ready`
   tickets left. Report that the board is clear and stop. This is the good exit.
@@ -330,6 +364,9 @@ change nobody asked for.
 - Check the token budget before every ticket; never start one you cannot finish
   through Step 9.
 - Never push if typecheck, lint, unit tests or e2e fail.
+- Never push to `main` without the user's explicit consent for that push.
+- Trunk-based only: commit onto `main`. Never create a branch or a PR as a way
+  around the consent gate.
 - Never close an issue and never set `status-done` — that is `watch-ci`'s call.
 - Never add to `renderer/renderer.js`.
 - Always update **both** the label and the board column on every transition.

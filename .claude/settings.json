@@ -12,9 +12,9 @@
       "Bash(git status)",
       "Bash(git diff*)",
       "Bash(git log*)",
+      "Bash(git show*)",
       "Bash(git add*)",
       "Bash(git commit*)",
-      "Bash(git push*)",
       "Bash(git pull*)",
       "Bash(git stash*)",
       "Bash(git rev-parse*)",
@@ -24,6 +24,9 @@
       "Bash(gh project*)",
       "Bash(gh api graphql*)",
       "Bash(gh label list*)"
+    ],
+    "ask": [
+      "Bash(git push*)"
     ]
   }
 }

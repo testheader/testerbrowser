@@ -191,14 +191,22 @@ Scan the issue comments for prior `watch-ci` failure logs to pick a path.
 Only when there is **no prior `watch-ci` failure comment** on this issue *and*
 the cause is genuinely small (typo, missing import, config line):
 
-1. Apply the fix.
+1. Apply the fix and commit it: `fix: <what> (refs #N)` — `refs`, never
+   `closes`.
 2. Verify it: `npm run typecheck`, `npm run lint`, `npm test`, and
    `npm run test:e2e` if the failing job was `e2e`. Never push a red tree.
-3. Push safely:
+3. **Ask the user for consent before pushing.** This project is trunk-based —
+   the fix goes straight onto `main` — and every push to `main` needs explicit
+   approval. Show `git show --stat HEAD` and ask; wait for a real answer. If
+   consent is withheld or you cannot ask, leave the fix committed locally,
+   treat the ticket as **Case B** (move it to Needs Fix with the failure notes
+   and mention the local fix is ready for review), and move on. Never push to a
+   branch or open a PR to get around the gate.
+4. Once approved, push safely:
    ```bash
    git stash -u && git pull --rebase origin main && git stash pop && git push origin main
    ```
-4. **Leave the status as CI running** — board and label unchanged — and comment,
+5. **Leave the status as CI running** — board and label unchanged — and comment,
    then loop back to Step 3 to monitor the new commit:
    ```
    CI failed — root cause fixed inline: <NEW_SHA>. Re-monitoring new pipeline run.
@@ -265,6 +273,8 @@ park there gets picked up before new work.
 - Always update **both** the label and the board column.
 - Check the budget before each round; never begin a Case A inline fix you cannot
   monitor through to its next verdict.
+- Never push to `main` without the user's explicit consent for that push, and
+  never route around the gate with a branch or a PR.
 - Keep failure comments short and actionable — the next agent reads them as its
   spec and will try to reproduce from what you wrote, so name the failing job
   and the command precisely.

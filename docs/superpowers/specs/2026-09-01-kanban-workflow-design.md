@@ -158,6 +158,35 @@ default — everything merely *unknown* it resolves by reading the code.
    summary + log excerpt + repro command + attempt count
 8. Still in progress → leave labels alone, poll again
 
+## Trunk-based development and the push gate
+
+Work goes **straight onto `main`** — no feature branches, no forks, no pull
+requests. One ticket lands as one commit, CI validates it on `main`, and
+`watch-ci` reads the verdict. This is what makes the label workflow simple: there
+is only ever one line of history to reason about, so "is this ticket shipped?"
+reduces to "did its commit's run go green?".
+
+The cost of trunk-based is that a bad push breaks everyone immediately. Two
+things contain that:
+
+1. **Local verification is mandatory** — typecheck, lint, unit tests and e2e all
+   pass before a push is even proposed.
+2. **Every push to `main` needs the user's explicit consent.** The agent shows
+   the commit and its diffstat, states which checks passed, and waits for a real
+   answer. Being asked to implement a ticket authorises the *work*, not the
+   *push*.
+
+If consent is withheld, or the agent is running non-interactively and cannot
+ask, the commit stays local and the ticket stays where it is —
+`status-in-progress` for `implement-ticket`, Needs Fix for a `watch-ci` Case A
+fix. The agent reports the commit as ready-but-unpushed and does not move on to
+another ticket, because a second push would carry the unapproved commit with it.
+
+Routing around the gate is forbidden: no pushing to a side branch, no opening a
+PR instead, no pushing first and mentioning it afterwards.
+
+---
+
 ## Token Budget
 
 Each agent works **one ticket at a time and loops** until its queue is empty or
