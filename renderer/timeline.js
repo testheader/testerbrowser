@@ -160,6 +160,20 @@ export function renderTimeline() {
     summary.appendChild(document.createTextNode(` ${e.summary}`));
     line.appendChild(summary);
 
+    // Duration is only known once the response arrives (ts - matching
+    // request's ts, computed in the recorder) — every other row kind,
+    // including network-request/failed, leaves this column empty.
+    if (e.kind === 'network-response' && e.payload) {
+      let durationMs;
+      try { durationMs = JSON.parse(e.payload).durationMs; } catch {}
+      if (typeof durationMs === 'number' && Number.isFinite(durationMs)) {
+        const durationEl = document.createElement('span');
+        durationEl.className = 'evt-duration';
+        durationEl.textContent = `${Math.round(durationMs)}ms`;
+        line.appendChild(durationEl);
+      }
+    }
+
     if (e.kind === 'network-request' && e.payload) {
       const replayBtn = document.createElement('button');
       replayBtn.className   = 'evt-replay-btn';

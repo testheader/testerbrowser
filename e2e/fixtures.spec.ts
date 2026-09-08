@@ -109,12 +109,18 @@ test('a request with a very long URL stays a single line and scrolls horizontall
   await expect(row).toBeVisible();
 
   const box = await row.evaluate(el => ({
-    height:      el.getBoundingClientRect().height,
+    height: el.getBoundingClientRect().height,
+  }));
+  expect(box.height).toBeLessThan(40);
+
+  // The row itself is a flex container (timestamp/text + duration column);
+  // the long text scrolls within its own .evt-summary cell instead of
+  // pushing the whole row wider, so the overflow is measured there.
+  const summaryBox = await row.locator('.evt-summary').evaluate(el => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
-  expect(box.height).toBeLessThan(40);
-  expect(box.scrollWidth).toBeGreaterThan(box.clientWidth + 100);
+  expect(summaryBox.scrollWidth).toBeGreaterThan(summaryBox.clientWidth + 100);
 });
 
 test('network/status-codes.html: a 404 shows up as a network event', async () => {
@@ -192,6 +198,31 @@ test('network/slow.html: min-duration filter hides fast responses but keeps slow
 
   await window.fill('#networkMinDuration', '');
   await expect(row500).toBeVisible();
+});
+
+test('network/slow.html: response rows show a duration column that stays visible without scrolling', async () => {
+  const tab = await navigate('/network/slow.html');
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await tab.click('button[data-ms="500"]');
+  await window.waitForTimeout(700);
+
+  const resRow = window.locator('.evt.network-response', { hasText: 'ms=500' });
+  await expect(resRow).toBeVisible();
+  await expect(resRow.locator('.evt-duration')).toHaveText(/^\d+ms$/);
+
+  // The duration cell sits outside the row's scrollable text region, so its
+  // right edge stays within the panel's own visible width — no scrolling
+  // needed to see it, even though the row's text can overflow further left.
+  const panelWidth = await window.locator('#timelinePanel').evaluate(el => el.clientWidth);
+  const durationRight = await resRow.locator('.evt-duration').evaluate(el => el.getBoundingClientRect().right);
+  const panelLeft = await window.locator('#timelinePanel').evaluate(el => el.getBoundingClientRect().left);
+  expect(durationRight - panelLeft).toBeLessThanOrEqual(panelWidth);
+
+  // Non-network rows (and network-request rows, which don't know their own
+  // duration until the response arrives) show nothing in that column.
+  const reqRow = window.locator('.evt.network-request', { hasText: 'ms=500' });
+  await expect(reqRow.locator('.evt-duration')).toHaveCount(0);
 });
 
 test('network/slow.html: method filter hides both the request and response rows for that method', async () => {

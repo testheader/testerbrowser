@@ -608,11 +608,12 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .feature-item p code { font-family: monospace; font-size: 11px; background: var(--bg-hover); border-radius: 3px; padding: 1px 4px; }
 
 /* Timeline events */
-.evt { padding: 1px 10px; cursor: pointer; white-space: nowrap; overflow-x: auto; }
+.evt { padding: 1px 10px; cursor: pointer; display: flex; align-items: baseline; gap: 8px; }
 .evt:hover { background: var(--bg-primary); }
-.evt-summary { }
+.evt-summary { white-space: nowrap; overflow-x: auto; min-width: 0; flex: 1 1 auto; }
 .evt-ts { color: var(--text-faint); vertical-align: top; font-variant-numeric: tabular-nums; }
 .evt-ts-date { opacity: 0.65; }
+.evt-duration { flex-shrink: 0; color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 .evt-detail { background: var(--bg-deep); border-left: 2px solid var(--border-strong); margin: 4px 10px 4px 0;
               padding: 6px 8px; font-size: 11px; overflow-x: auto; white-space: pre; display: none; }
 .evt-detail.open { display: block; }
