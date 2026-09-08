@@ -1020,6 +1020,19 @@ function renderDetailPanel() {
   });
 })();
 
+function matchesFilterText(summaryLower, filterText) {
+  const terms = filterText.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  for (const term of terms) {
+    if (term.length > 1 && term.startsWith('-')) {
+      if (summaryLower.includes(term.slice(1))) return false;
+    } else if (!summaryLower.includes(term)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function renderTimeline() {
   const panel      = timelinePanel;
   const filterText = document.getElementById('filterText').value.toLowerCase();
@@ -1028,7 +1041,7 @@ function renderTimeline() {
   const filtered = timelineEvents.filter(e => {
     const kindVisible = activeTypes.has(e.kind) ||
       (e.kind === 'network-body' && activeTypes.has('network-response'));
-    return kindVisible && (!filterText || e.summary.toLowerCase().includes(filterText));
+    return kindVisible && matchesFilterText(e.summary.toLowerCase(), filterText);
   });
 
   // Update pill count badges from raw (unfiltered) totals
