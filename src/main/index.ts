@@ -165,6 +165,12 @@ function createWindow() {
 
   const menu = Menu.buildFromTemplate([
     {
+      label: 'File',
+      submenu: [
+        { label: 'Import session…', click: () => sessionManager?.importSessionAsNewDialog() },
+      ],
+    },
+    {
       label: 'Help',
       submenu: [
         { label: 'About / Settings', click: () => win?.webContents.send('show:settings') },

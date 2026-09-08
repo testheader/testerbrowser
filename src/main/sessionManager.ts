@@ -903,13 +903,57 @@ export class SessionManager {
       filters: [{ name: 'JSON', extensions: ['json'] }],
       properties: ['openFile'],
     });
-    if (!result.canceled && result.filePaths[0]) {
-      try {
-        const snap = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf-8')) as Record<string, unknown>;
-        await this.restoreSnapshot(id, snap);
-        this.win.webContents.send('tab:action', { action: 'refresh' });
-      } catch {}
+    if (result.canceled || !result.filePaths[0]) return;
+    const snap = this.readSnapshotFile(result.filePaths[0]);
+    if (!snap) return;
+    try {
+      await this.restoreSnapshot(id, snap);
+      this.win.webContents.send('tab:action', { action: 'refresh' });
+    } catch {
+      dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
     }
+  }
+
+  // Creates a brand-new session from an exported snapshot file, rather than
+  // overwriting an existing tab — the entry point for File → Import session.
+  async importSessionAsNewDialog(): Promise<void> {
+    const result = await dialog.showOpenDialog(this.win, {
+      title: 'Import session',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || !result.filePaths[0]) return;
+    const snap = this.readSnapshotFile(result.filePaths[0]);
+    if (!snap) return;
+    const sessionName = typeof snap.sessionName === 'string' && snap.sessionName ? snap.sessionName : 'Imported session';
+    const ns = this.createSession(sessionName);
+    try {
+      await this.restoreSnapshot(ns.id, snap);
+    } catch {
+      dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
+      this.destroySession(ns.id);
+      return;
+    }
+    this.switchTo(ns.id);
+    this.win.webContents.send('session:newTab', { id: ns.id });
+  }
+
+  // Reads and validates a snapshot file, showing an error dialog and
+  // returning null if it's missing, malformed, or not shaped like a snapshot.
+  private readSnapshotFile(filePath: string): Record<string, unknown> | null {
+    let snap: unknown;
+    try {
+      snap = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch {
+      dialog.showErrorBox('Import failed', 'The selected file is not valid JSON.');
+      return null;
+    }
+    if (!snap || typeof snap !== 'object' || Array.isArray(snap) ||
+        (!Array.isArray((snap as Record<string, unknown>).cookies) && typeof (snap as Record<string, unknown>).url !== 'string')) {
+      dialog.showErrorBox('Import failed', 'The selected file is not a valid session snapshot.');
+      return null;
+    }
+    return snap as Record<string, unknown>;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
