@@ -246,3 +246,67 @@ test('the assertion dialog shows inline validation instead of alert() for a miss
   await window.click('#rpStopBtn');
   await window.click('#rpDiscardBtn');
 });
+
+// ── Step-by-step playback mode (#158) ────────────────────────────────────────
+
+test('step-by-step mode pauses after each step, highlights it, and Next advances', async () => {
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
+  await expect(testItem).toBeVisible();
+  await expect(testItem.locator('.rp-test-meta')).toHaveText('2 steps');
+
+  await window.check('#rpStepModeToggle');
+  await testItem.locator('.rp-run-once').click();
+
+  // First step runs immediately on Run, then pauses — Next/Stop appear and
+  // the just-run step is highlighted as current.
+  await expect(window.locator('#rpRunStatus')).toHaveText('Paused after step 1/2 — click Next to continue', { timeout: 10_000 });
+  await expect(window.locator('#rpStepControls')).toBeVisible();
+  const firstRow = window.locator('.rp-step-row').nth(0);
+  await expect(firstRow).toHaveClass(/rp-step-current/);
+  await expect(firstRow).toHaveClass(/rp-step-pass/);
+  // The second (final) step hasn't run yet.
+  await expect(window.locator('.rp-step-row')).toHaveCount(1);
+
+  await window.click('#rpNextStepBtn');
+
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+  await expect(window.locator('#rpStepControls')).toBeHidden();
+  await expect(window.locator('.rp-step-row')).toHaveCount(2);
+  const secondRow = window.locator('.rp-step-row').nth(1);
+  await expect(secondRow).toHaveClass(/rp-step-current/);
+
+  await window.uncheck('#rpStepModeToggle');
+});
+
+test('Stop ends step-by-step playback cleanly without running the remaining steps', async () => {
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
+
+  await window.check('#rpStepModeToggle');
+  await testItem.locator('.rp-run-once').click();
+
+  await expect(window.locator('#rpRunStatus')).toHaveText('Paused after step 1/2 — click Next to continue', { timeout: 10_000 });
+  await window.click('#rpStopStepBtn');
+
+  await expect(window.locator('#rpRunStatus')).toHaveText('Stopped after step 1/2');
+  await expect(window.locator('#rpStepControls')).toBeHidden();
+  // The second step never ran.
+  await expect(window.locator('.rp-step-row')).toHaveCount(1);
+
+  await window.uncheck('#rpStepModeToggle');
+});
+
+test('step-by-step toggle has no effect on "Run N×" — repeat runs stay continuous', async () => {
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
+
+  await window.check('#rpStepModeToggle');
+  await testItem.locator('.rp-repeat-input').fill('2');
+  await testItem.locator('.rp-run-many').click();
+
+  await expect(window.locator('.rp-repeat-header')).toContainText('STABLE', { timeout: 15_000 });
+  await expect(window.locator('#rpStepControls')).toBeHidden();
+
+  await window.uncheck('#rpStepModeToggle');
+});

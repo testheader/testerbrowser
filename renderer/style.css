@@ -1187,6 +1187,11 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .rp-step-status { margin-left: auto; font-size: 11px; color: var(--text-muted); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .rp-step-pass .rp-step-status { color: var(--success-strong); }
 .rp-step-fail .rp-step-status { color: var(--error-strong); }
+.rp-step-current { outline: 2px solid var(--accent); outline-offset: -1px; }
+.rp-step-mode-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary);
+                        margin: 6px 0; cursor: pointer; }
+.rp-step-controls { gap: 4px; }
+.rp-step-controls:not([hidden]) { display: flex; }
 .rp-failure-shot { max-width: 100%; border: 1px solid var(--error-border); border-radius: 4px; margin-top: 6px; }
 .rp-placeholder { color: var(--text-faint); font-size: 12px; text-align: center; padding: 20px; }
 .rp-repeat-results { margin-top: 8px; }

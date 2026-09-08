@@ -8,6 +8,11 @@ let pollInterval = null;
 let currentSteps = [];
 let savedTests = [];
 
+// Step-by-step playback: when a run is paused after a step, stepAdvance
+// resolves to 'next' or 'stop' via the Next/Stop buttons below.
+let stepAdvance = null;
+let stepStopped = false;
+
 export function initRecordPlayback() {
   const panel = document.getElementById('testsPanel');
   if (initialized) { refreshTestList(); return; }
@@ -30,6 +35,9 @@ export function initRecordPlayback() {
         <div id="rpLiveSteps" class="rp-live-steps"></div>
 
         <div class="rp-section-title" style="margin-top:12px">Saved Tests</div>
+        <label class="rp-step-mode-toggle" title="Pause after each step instead of running the test straight through — useful for debugging where a script fails. Applies to the single Run button only, not Run N×.">
+          <input type="checkbox" id="rpStepModeToggle" /> Step-by-step playback
+        </label>
         <div id="rpTestList" class="rp-test-list"></div>
       </div>
 
@@ -37,6 +45,10 @@ export function initRecordPlayback() {
         <div id="rpRunView" class="rp-run-view" hidden>
           <div class="rp-run-header">
             <span id="rpRunTitle" class="rp-run-title"></span>
+            <div id="rpStepControls" class="rp-step-controls" hidden>
+              <button class="rp-btn rp-btn-sm" id="rpNextStepBtn">Next</button>
+              <button class="rp-btn rp-btn-sm rp-btn-stop" id="rpStopStepBtn">Stop</button>
+            </div>
             <button class="rp-btn rp-btn-sm" id="rpRunClose">&#10005;</button>
           </div>
           <div class="rp-progress-bar"><div class="rp-progress-fill" id="rpProgressFill"></div></div>
@@ -57,6 +69,8 @@ export function initRecordPlayback() {
     document.getElementById('rpRunView').hidden = true;
     document.getElementById('rpRunPlaceholder').hidden = false;
   });
+  document.getElementById('rpNextStepBtn').addEventListener('click', () => resolveStepAdvance('next'));
+  document.getElementById('rpStopStepBtn').addEventListener('click', () => resolveStepAdvance('stop'));
 
   refreshTestList();
 }
@@ -316,6 +330,20 @@ async function refreshTestList() {
 
 // ─── Playback ───────────────────────────────────────────────────────────────
 
+function waitForStepAdvance() {
+  document.getElementById('rpStepControls').hidden = false;
+  return new Promise((resolve) => { stepAdvance = resolve; });
+}
+
+function resolveStepAdvance(action) {
+  if (!stepAdvance) return;
+  document.getElementById('rpStepControls').hidden = true;
+  const resolve = stepAdvance;
+  stepAdvance = null;
+  if (action === 'stop') stepStopped = true;
+  resolve(action);
+}
+
 async function runTest(testId, runCount) {
   const test = savedTests.find(t => t.id === testId);
   if (!test) return;
@@ -331,6 +359,12 @@ async function runTest(testId, runCount) {
   document.getElementById('rpProgressFill').style.width = '0%';
   document.getElementById('rpStepsList').innerHTML = '';
   document.getElementById('rpRepeatResults').hidden = true;
+  document.getElementById('rpStepControls').hidden = true;
+
+  // Step-by-step only makes sense for a single run — Run N× is for flake
+  // detection and always executes straight through regardless of the toggle.
+  const stepByStep = runCount === 1 && document.getElementById('rpStepModeToggle').checked;
+  stepStopped = false;
 
   const allRunResults = [];
   let passed = 0;
@@ -350,7 +384,7 @@ async function runTest(testId, runCount) {
     if (run > 0 && test.steps[0]?.type !== 'navigate') {
       await testerBrowser.sessions.reload(getActiveId());
     }
-    const result = await executeTest(test, runCount > 1);
+    const result = await executeTest(test, runCount > 1, stepByStep);
     allRunResults.push(result);
     if (result.passed) passed++; else failed++;
     if (runCount > 1) {
@@ -363,13 +397,15 @@ async function runTest(testId, runCount) {
   }
 }
 
-async function executeTest(test, silent) {
+async function executeTest(test, silent, stepByStep = false) {
   const sessionId = getActiveId();
   const stepEls = document.getElementById('rpStepsList');
   if (!silent) stepEls.innerHTML = '';
 
   const stepResults = [];
   let failed = false;
+  let stopped = false;
+  let currentRow = null;
 
   for (let i = 0; i < test.steps.length; i++) {
     const step = test.steps[i];
@@ -389,6 +425,10 @@ async function executeTest(test, silent) {
       row.classList.add(result.success ? 'rp-step-pass' : 'rp-step-fail');
       row.querySelector('.rp-step-status').textContent = result.success ? '✓' : ('✗ ' + (result.error || ''));
 
+      currentRow?.classList.remove('rp-step-current');
+      row.classList.add('rp-step-current');
+      currentRow = row;
+
       stepResults.push({ step: i + 1, type: step.type, selector: step.selector, success: result.success, error: result.error });
       if (!result.success) {
         failed = true;
@@ -404,6 +444,15 @@ async function executeTest(test, silent) {
         }
         break;
       }
+
+      // Pause after every step but the last — nothing left to advance to
+      // once the final step has already run.
+      if (stepByStep && i < test.steps.length - 1) {
+        document.getElementById('rpRunStatus').textContent =
+          `Paused after step ${i + 1}/${test.steps.length} — click Next to continue`;
+        const action = await waitForStepAdvance();
+        if (action === 'stop' || stepStopped) { stopped = true; break; }
+      }
     } else {
       const result = await testerBrowser.tests.playbackStep(sessionId, step);
       stepResults.push({ step: i + 1, type: step.type, selector: step.selector, success: result.success, error: result.error });
@@ -411,12 +460,14 @@ async function executeTest(test, silent) {
     }
   }
 
-  if (!failed && !silent) {
+  if (stopped) {
+    document.getElementById('rpRunStatus').textContent = `Stopped after step ${stepResults.length}/${test.steps.length}`;
+  } else if (!failed && !silent) {
     document.getElementById('rpProgressFill').style.width = '100%';
     document.getElementById('rpRunStatus').textContent = 'All steps passed ✓';
   }
 
-  return { passed: !failed, stepResults };
+  return { passed: !failed && !stopped, stepResults, stopped };
 }
 
 function showRepeatResults(test, allRunResults, passed, failed, total) {
