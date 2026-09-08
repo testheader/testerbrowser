@@ -51,9 +51,17 @@ export function initSpoof() {
           <label class="spoof-label">Longitude</label>
           <input class="spoof-input" id="spoofLon" type="number" step="any" placeholder="e.g. -74.006" />
         </div>
-        <div class="spoof-field">
-          <label class="spoof-label">Date &amp; time</label>
-          <input class="spoof-input" id="spoofDateTime" type="datetime-local" step="1" />
+        <div class="spoof-field spoof-field-offset">
+          <label class="spoof-label">Clock offset</label>
+          <div class="spoof-offset-row">
+            <input class="spoof-input" id="spoofOffsetValue" type="number" step="any" placeholder="e.g. 7 or -1" />
+            <select class="spoof-input spoof-offset-unit" id="spoofOffsetUnit">
+              <option value="1000">seconds</option>
+              <option value="60000">minutes</option>
+              <option value="3600000">hours</option>
+              <option value="86400000" selected>days</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="spoof-actions">
@@ -77,19 +85,25 @@ export function initSpoof() {
   document.getElementById('spoofApply').addEventListener('click', applySpoof);
   document.getElementById('spoofReset').addEventListener('click', resetSpoof);
   document.getElementById('spoofUseCurrent').addEventListener('click', useCurrentValues);
-  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon', 'spoofDateTime']) {
+  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon', 'spoofOffsetValue']) {
     document.getElementById(id).addEventListener('input', updateDirtyState);
   }
+  document.getElementById('spoofOffsetUnit').addEventListener('change', updateDirtyState);
 
   refreshSpoofStatus();
 }
 
-// Formats an epoch ms timestamp as a local "YYYY-MM-DDTHH:mm:ss" string, the
-// value format <input type="datetime-local"> expects/produces.
-function toDatetimeLocalValue(ms) {
-  const d = new Date(ms);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+// Formats a signed offset in ms as the largest whole unit that evenly
+// divides it (e.g. 604800000 -> "+7d"), matching the "clock +7d" style the
+// panel's "currently applied" summary uses.
+function formatOffsetMs(ms) {
+  const sign = ms < 0 ? '-' : '+';
+  const abs = Math.abs(ms);
+  const units = [['d', 86400000], ['h', 3600000], ['m', 60000], ['s', 1000]];
+  for (const [label, unitMs] of units) {
+    if (abs % unitMs === 0) return `${sign}${abs / unitMs}${label}`;
+  }
+  return `${sign}${abs}ms`;
 }
 
 function fillPreset(p) {
@@ -108,7 +122,7 @@ function fillPreset(p) {
 function useCurrentValues() {
   document.getElementById('spoofTimezone').value = Intl.DateTimeFormat().resolvedOptions().timeZone;
   document.getElementById('spoofLocale').value   = navigator.language;
-  document.getElementById('spoofDateTime').value = toDatetimeLocalValue(Date.now());
+  document.getElementById('spoofOffsetValue').value = '0';
   updateDirtyState();
 
   if (!navigator.geolocation) {
@@ -148,7 +162,7 @@ function renderCurrent() {
   const current = document.getElementById('spoofCurrent');
   if (!current) return;
   const a = appliedForActiveSession;
-  if (!a || (a.timezone === undefined && a.locale === undefined && a.latitude === undefined && a.spoofedTimeMs === undefined)) {
+  if (!a || (a.timezone === undefined && a.locale === undefined && a.latitude === undefined && a.timeOffsetMs === undefined)) {
     current.textContent = 'No overrides applied to this session.';
     current.classList.remove('spoof-current-active');
     return;
@@ -157,7 +171,10 @@ function renderCurrent() {
   if (a.timezone !== undefined) parts.push(`timezone ${a.timezone}`);
   if (a.locale !== undefined) parts.push(`locale ${a.locale}`);
   if (a.latitude !== undefined && a.longitude !== undefined) parts.push(`location ${a.latitude}, ${a.longitude}`);
-  if (a.spoofedTimeMs !== undefined) parts.push(`date/time ${new Date(a.spoofedTimeMs).toLocaleString()}`);
+  if (a.timeOffsetMs !== undefined) {
+    const spoofedNow = new Date(Date.now() + a.timeOffsetMs).toLocaleString();
+    parts.push(`clock ${formatOffsetMs(a.timeOffsetMs)} (${spoofedNow})`);
+  }
   current.textContent = `Applied to this session: ${parts.join(' · ')}`;
   current.classList.add('spoof-current-active');
 }
@@ -170,15 +187,17 @@ function updateDirtyState() {
   const locale   = document.getElementById('spoofLocale').value.trim();
   const latRaw   = document.getElementById('spoofLat').value.trim();
   const lonRaw   = document.getElementById('spoofLon').value.trim();
-  const dateRaw  = document.getElementById('spoofDateTime').value.trim();
-  const dateMs   = dateRaw ? new Date(dateRaw).getTime() : undefined;
+  const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
+  const unitMs   = Number(document.getElementById('spoofOffsetUnit').value);
+  const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
+  const offsetMs = offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : undefined;
 
   const changed =
     timezone !== (a.timezone ?? '') ||
     locale !== (a.locale ?? '') ||
     latRaw !== (a.latitude !== undefined ? String(a.latitude) : '') ||
     lonRaw !== (a.longitude !== undefined ? String(a.longitude) : '') ||
-    dateMs !== a.spoofedTimeMs;
+    offsetMs !== a.timeOffsetMs;
 
   dirty.hidden = !changed;
 }
@@ -191,17 +210,19 @@ async function applySpoof() {
   const lonRaw    = document.getElementById('spoofLon').value.trim();
   const latitude  = latRaw !== '' ? parseFloat(latRaw)  : undefined;
   const longitude = lonRaw !== '' ? parseFloat(lonRaw) : undefined;
-  const dateRaw   = document.getElementById('spoofDateTime').value.trim();
-  const spoofedTimeMs = dateRaw ? new Date(dateRaw).getTime() : undefined;
+  const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
+  const unitMs    = Number(document.getElementById('spoofOffsetUnit').value);
+  const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
+  const timeOffsetMs = offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : undefined;
 
   if (latitude !== undefined && isNaN(latitude))  { showStatus('Invalid latitude.',  true); return; }
   if (longitude !== undefined && isNaN(longitude)) { showStatus('Invalid longitude.', true); return; }
-  if (spoofedTimeMs !== undefined && isNaN(spoofedTimeMs)) { showStatus('Invalid date/time.', true); return; }
+  if (offsetRaw !== '' && isNaN(offsetNum)) { showStatus('Invalid clock offset.', true); return; }
 
   const btn = document.getElementById('spoofApply');
   btn.disabled = true;
   try {
-    await testerBrowser.emulation.set(getActiveId(), { timezone, locale, latitude, longitude, spoofedTimeMs });
+    await testerBrowser.emulation.set(getActiveId(), { timezone, locale, latitude, longitude, timeOffsetMs });
     await refreshSpoofStatus();
     showStatus('Overrides applied. Reload the page for full effect.', false);
   } catch {

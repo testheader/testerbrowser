@@ -940,6 +940,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .spoof-input { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);
                border-radius: 3px; padding: 4px 8px; font-size: 12px; width: 100%; box-sizing: border-box; }
 .spoof-input:focus { outline: none; border-color: var(--accent); }
+.spoof-field-offset { grid-column: 1 / -1; }
+.spoof-offset-row { display: flex; gap: 6px; }
+.spoof-offset-row .spoof-input { width: auto; flex: 1; }
+.spoof-offset-unit { flex: 0 0 auto; cursor: pointer; }
 .spoof-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .spoof-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px;
              padding: 4px 12px; font-size: 12px; cursor: pointer; }

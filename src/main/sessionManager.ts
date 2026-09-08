@@ -70,7 +70,7 @@ export interface EmulationOverrides {
   locale?: string;
   latitude?: number;
   longitude?: number;
-  spoofedTimeMs?: number;
+  timeOffsetMs?: number;
 }
 
 // Overrides window.Date/Date.now() on every new document with a fixed
@@ -989,7 +989,7 @@ export class SessionManager {
     this.injectTestData(s.view, resolveTemplate(template));
   }
 
-  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; spoofedTimeMs?: number; clear?: boolean }): Promise<void> {
+  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; timeOffsetMs?: number; clear?: boolean }): Promise<void> {
     const s = this.sessions.get(id);
     if (!s) return;
     const dbg = s.view.webContents.debugger;
@@ -1019,19 +1019,29 @@ export class SessionManager {
       applied.latitude = opts.latitude;
       applied.longitude = opts.longitude;
     }
-    if (opts.spoofedTimeMs !== undefined) {
+    if (opts.timeOffsetMs !== undefined) {
       const existingScriptId = this.dateOverrideScripts.get(id);
       if (existingScriptId) {
         await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch(() => {});
         this.dateOverrideScripts.delete(id);
       }
-      const offsetMs = opts.spoofedTimeMs - Date.now();
       await dbg.sendCommand('Page.enable').catch(() => {});
-      const result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-        source: buildDateOverrideScript(offsetMs),
-      }).catch(() => null) as { identifier: string } | null;
-      if (result?.identifier) this.dateOverrideScripts.set(id, result.identifier);
-      applied.spoofedTimeMs = opts.spoofedTimeMs;
+      // The CDP command occasionally fails transiently under system load
+      // (observed in CI) — retry once before giving up, and only report the
+      // offset as applied if the script genuinely got registered, so the UI
+      // never claims an override is active when it silently isn't.
+      let result: { identifier: string } | null = null;
+      for (let attempt = 0; attempt < 2 && !result; attempt++) {
+        result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+          source: buildDateOverrideScript(opts.timeOffsetMs),
+        }).catch(() => null) as { identifier: string } | null;
+      }
+      if (result?.identifier) {
+        this.dateOverrideScripts.set(id, result.identifier);
+        applied.timeOffsetMs = opts.timeOffsetMs;
+      } else {
+        this.recordFeatureError(`Failed to apply clock offset override for session ${id}`);
+      }
     }
     s.emulation = applied;
   }
