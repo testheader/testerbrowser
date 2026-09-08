@@ -101,6 +101,46 @@ test('"Use current values" fills timezone and locale from this machine, and repo
   await expect(window.locator('#spoofStatus')).toContainText(/location/i, { timeout: 9_000 });
 });
 
+test('switching tabs repopulates the panel fields with the newly active session\'s own overrides', async () => {
+  const sessions = await window.evaluate(() => (window as unknown as { testerBrowser: { sessions: { list(): Promise<{ id: string }[]> } } }).testerBrowser.sessions.list());
+  const sessionAId = sessions[0].id;
+
+  await window.click(`.tab[data-id="${sessionAId}"] .tab-name`);
+  await window.click('#consoleTabSpoof');
+  for (const id of ['#spoofTimezone', '#spoofLocale', '#spoofLat', '#spoofLon']) {
+    await window.fill(id, '');
+  }
+  await window.fill('#spoofTimezone', 'Asia/Tokyo');
+  await window.fill('#spoofLocale', 'ja-JP');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect(window.locator('#spoofDirty')).toBeHidden();
+
+  await window.click('#newSessionBtn');
+  const allSessions = await window.evaluate(() => (window as unknown as { testerBrowser: { sessions: { list(): Promise<{ id: string }[]> } } }).testerBrowser.sessions.list());
+  const sessionBId = allSessions.find((s) => s.id !== sessionAId)!.id;
+  await window.click(`.tab[data-id="${sessionBId}"] .tab-name`);
+
+  // Session B has no overrides: fields must clear and the summary must say
+  // so, not silently keep showing A's values under B's name.
+  await expect(window.locator('#spoofCurrent')).toContainText('No overrides applied', { timeout: 5_000 });
+  await expect(window.locator('#spoofTimezone')).toHaveValue('');
+  await expect(window.locator('#spoofLocale')).toHaveValue('');
+  await expect(window.locator('#spoofDirty')).toBeHidden();
+
+  await window.click(`.tab[data-id="${sessionAId}"] .tab-name`);
+
+  // Switching back to A must show A's own values — not B's, and not stale
+  // text left over from before A's overrides were applied — and must not
+  // flag them as unapplied edits.
+  await expect(window.locator('#spoofTimezone')).toHaveValue('Asia/Tokyo', { timeout: 5_000 });
+  await expect(window.locator('#spoofLocale')).toHaveValue('ja-JP');
+  await expect(window.locator('#spoofDirty')).toBeHidden();
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});
+
 test('a signed clock offset advances or rewinds Date.now() in the page, and Reset restores real time', async () => {
   // The Date shim is injected via Page.addScriptToEvaluateOnNewDocument, so
   // it only takes effect on the tab's *next* navigation — unlike the

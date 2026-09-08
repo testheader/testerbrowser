@@ -154,8 +154,40 @@ export async function refreshSpoofStatus() {
 
   const id = getActiveId();
   appliedForActiveSession = id ? await testerBrowser.emulation.get(id) : null;
+  populateFields(appliedForActiveSession);
   renderCurrent();
   updateDirtyState();
+}
+
+// Writes the active session's applied overrides into the input fields (or
+// clears them when it has none), so switching tabs shows *that* session's
+// values instead of leaving behind whatever the previously active session's
+// fields happened to say.
+function populateFields(a) {
+  document.getElementById('spoofTimezone').value = a?.timezone ?? '';
+  document.getElementById('spoofLocale').value = a?.locale ?? '';
+  document.getElementById('spoofLat').value = a?.latitude !== undefined ? String(a.latitude) : '';
+  document.getElementById('spoofLon').value = a?.longitude !== undefined ? String(a.longitude) : '';
+  const offsetValueEl = document.getElementById('spoofOffsetValue');
+  const offsetUnitEl = document.getElementById('spoofOffsetUnit');
+  if (a?.timeOffsetMs !== undefined) {
+    const { value, unitMs } = splitOffsetMs(a.timeOffsetMs);
+    offsetValueEl.value = String(value);
+    offsetUnitEl.value = String(unitMs);
+  } else {
+    offsetValueEl.value = '';
+    offsetUnitEl.value = '86400000';
+  }
+}
+
+// Inverse of "value * unitMs" in applySpoof(): picks the largest whole unit
+// that evenly divides the offset (matching formatOffsetMs's style), falling
+// back to a fractional number of seconds for an offset with no clean unit.
+function splitOffsetMs(ms) {
+  for (const unitMs of [86400000, 3600000, 60000, 1000]) {
+    if (ms % unitMs === 0) return { value: ms / unitMs, unitMs };
+  }
+  return { value: ms / 1000, unitMs: 1000 };
 }
 
 function renderCurrent() {

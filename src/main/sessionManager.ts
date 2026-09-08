@@ -685,8 +685,8 @@ export class SessionManager {
   saveSessions() {
     try {
       const orderIndex = new Map(this.tabOrder.map((id, i) => [id, i]));
-      const sessions = Array.from(this.sessions.values())
-        .filter(s => s.persistent)
+      const persistentSessions = Array.from(this.sessions.values()).filter(s => s.persistent);
+      const sessions = persistentSessions
         .sort((a, b) => (orderIndex.get(a.id) ?? Infinity) - (orderIndex.get(b.id) ?? Infinity))
         .map(s => ({ name: s.name, partition: s.partition, url: s.currentUrl, color: s.color }));
       const notes: Record<string, string> = {};
@@ -694,18 +694,29 @@ export class SessionManager {
         const s = this.sessions.get(id);
         if (s && note) notes[s.partition] = note;
       }
-      fs.writeFileSync(this.sessionsFile, JSON.stringify({ sessions, notes }));
+      const emulation: Record<string, EmulationOverrides> = {};
+      for (const s of persistentSessions) {
+        if (s.emulation) emulation[s.partition] = s.emulation;
+      }
+      fs.writeFileSync(this.sessionsFile, JSON.stringify({ sessions, notes, emulation }));
     } catch {}
   }
 
   loadAndRestoreSessions(): boolean {
     try {
       if (!fs.existsSync(this.sessionsFile)) return false;
-      const { sessions, notes } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
+      const { sessions, notes, emulation } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
       if (!sessions?.length) return false;
       for (const s of sessions) {
         const sess = this.createSession(s.name, { partition: s.partition, startUrl: s.url, color: s.color });
         if (notes?.[s.partition]) this.sessionNotes.set(sess.id, notes[s.partition]);
+        // Re-apply persisted overrides through setEmulation (not just record
+        // them on s.emulation) so the CDP commands / date-offset script are
+        // genuinely in force on the newly-created target, not merely
+        // remembered by the panel.
+        if (emulation?.[s.partition]) {
+          this.setEmulation(sess.id, emulation[s.partition]).catch(() => {});
+        }
       }
       const first = this.sessions.values().next().value as TestSession | undefined;
       if (first) this.switchTo(first.id);
