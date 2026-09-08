@@ -312,7 +312,6 @@ ipcMain.handle('sessions:notes:set', (_e, id: string, notes: string) => sessionM
 ipcMain.handle('sessions:contextMenu', (_e, id: string) => sessionManager?.showContextMenu(id));
 
 ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
-ipcMain.handle('recording:exportHAR', (_e, id: string) => sessionManager?.getHAR(id) ?? null);
 ipcMain.handle('a11y:getTree',        (_e, id: string) => sessionManager?.getA11yTree(id) ?? null);
 ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
 ipcMain.handle('session:captureScreenshot', (_e, id: string, opts?: { fullPage?: boolean }) => sessionManager?.captureScreenshot(id, opts) ?? null);

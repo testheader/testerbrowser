@@ -393,9 +393,6 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .filter-pill[data-level="info"].on  { color: var(--accent-text);  border-color: var(--info-border);  background: rgba(127,200,255,0.07); }
 .filter-pill[data-level="log"].on   { color: var(--text-muted);   border-color: var(--border-color);  background: rgba(176,176,176,0.07); }
 .filter-pill[data-level="debug"].on { color: var(--text-faint);   border-color: var(--border-color);  background: rgba(176,176,176,0.05); }
-#exportHarBtn { background: none; border: 1px solid var(--border-color); color: var(--text-faint); cursor: pointer;
-                font-size: 11px; padding: 2px 7px; border-radius: 3px; font-family: inherit; flex-shrink: 0; }
-#exportHarBtn:hover { border-color: var(--accent); color: var(--accent); }
 .console-icon-btn { background: none; border: none; color: var(--text-faint); cursor: pointer;
                     font-size: 13px; padding: 3px 6px; border-radius: 3px; line-height: 1; flex-shrink: 0; }
 .console-icon-btn:hover { color: var(--text-primary); background: var(--bg-hover); }

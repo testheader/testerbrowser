@@ -237,16 +237,4 @@ export function initReplay() {
     }
   };
 
-  document.getElementById('exportHarBtn').onclick = async () => {
-    if (!getActiveId()) return;
-    const har = await testerBrowser.recording.exportHAR(getActiveId());
-    if (!har) return;
-    const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `session-${getActiveId()}.har`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 }

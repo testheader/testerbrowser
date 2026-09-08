@@ -93,7 +93,6 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   recording: {
     timeline:  (id: string, opts?: { limit?: number; since?: number }) =>
                  ipcRenderer.invoke('recording:timeline', id, opts),
-    exportHAR: (id: string) => ipcRenderer.invoke('recording:exportHAR', id),
     replay: (req: { method: string; url: string; headers: Record<string, string>; body?: string }) =>
               ipcRenderer.invoke('recording:replay', req),
   },

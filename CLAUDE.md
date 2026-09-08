@@ -77,7 +77,6 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `devtools:toggle` | R→M | open/close DevTools for session |
 | `find:start/stop` | R→M | findInPage / stopFindInPage |
 | `recording:timeline` | R→M | query events (optional `since` timestamp, `limit`) |
-| `recording:exportHAR` | R→M | return HAR-formatted JSON |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |

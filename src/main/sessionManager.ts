@@ -805,10 +805,6 @@ export class SessionManager {
     return this.sessions.get(id)?.recorder.getTimeline(opts) ?? [];
   }
 
-  getHAR(id: string): object | null {
-    return this.sessions.get(id)?.recorder.exportHAR() ?? null;
-  }
-
   getLoadedDomains(id: string): string[] {
     return Array.from(this.sessions.get(id)?.loadedDomains ?? []);
   }
