@@ -310,3 +310,40 @@ test('step-by-step toggle has no effect on "Run N×" — repeat runs stay contin
 
   await window.uncheck('#rpStepModeToggle');
 });
+
+// ── Selector confidence indicator (#160) ─────────────────────────────────────
+
+test('recorded steps show a confidence dot that turns red after navigating away, since the selectors no longer match', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.click('#rpStartBtn');
+  await tab.fill('[data-testid="rp-input"]', 'Ada');
+  await tab.click('[data-testid="rp-btn"]');
+  await window.click('#rpStopBtn');
+
+  // Both recorded selectors ([data-testid="rp-input"] and [...="rp-btn"]) are
+  // unique on the page they were recorded against.
+  const dots = window.locator('#rpLiveSteps .rp-confidence-dot');
+  await expect(dots).toHaveCount(2);
+  await expect(dots.nth(0)).toHaveClass(/rp-confidence-green/, { timeout: 5_000 });
+  await expect(dots.nth(1)).toHaveClass(/rp-confidence-green/);
+  await expect(dots.nth(0)).toHaveAttribute('title', /unique and reliable/);
+
+  // Navigating the same tab elsewhere leaves those selectors matching
+  // nothing — the indicator should catch that without needing a re-run.
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/console/logs.html'));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, '/console/logs.html')).waitForLoadState('load');
+
+  await expect(dots.nth(0)).toHaveClass(/rp-confidence-red/, { timeout: 5_000 });
+  await expect(dots.nth(1)).toHaveClass(/rp-confidence-red/);
+  await expect(dots.nth(0)).toHaveAttribute('title', /broken/);
+
+  await window.click('#rpDiscardBtn');
+});

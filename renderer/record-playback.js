@@ -155,6 +155,7 @@ function renderLiveSteps() {
   el.innerHTML = currentSteps.map((s, i) => `
     <div class="rp-live-step" data-idx="${i}" title="Right-click to add assertion after this step">
       <span class="rp-step-num">${i + 1}</span>
+      ${s.selector ? `<span class="rp-confidence-dot rp-confidence-pending" data-selector-idx="${i}" title="Checking selector…"></span>` : ''}
       <span class="rp-step-type ${s.type.startsWith('assert') ? 'rp-type-assert' : ''}">${s.type}</span>
       <span class="rp-step-desc">${escHtml(s.selector || s.url || s.description || '')}</span>
       ${s.value && !s.sensitive ? `<span class="rp-step-val">${escHtml(String(s.value).slice(0, 40))}</span>` : ''}
@@ -180,6 +181,42 @@ function renderLiveSteps() {
 
   document.getElementById('rpSaveBtn').disabled = isRecording || currentSteps.length === 0;
   document.getElementById('rpDiscardBtn').disabled = isRecording || currentSteps.length === 0;
+
+  refreshSelectorConfidence();
+}
+
+// ─── Selector confidence ────────────────────────────────────────────────────
+// For each live-recorded step with a selector, queries how many elements on
+// the current page it matches, so a fragile selector (0 = broken, 2+ =
+// ambiguous) is visible while recording rather than discovered later at
+// playback time. Exported so ipc-events.js's session:navigated handler (the
+// one place allowed to call testerBrowser.sessions.onNavigated — it's a
+// single-listener IPC binding) can trigger a re-check after navigation.
+export async function refreshSelectorConfidence() {
+  const el = document.getElementById('rpLiveSteps');
+  if (!el || !getActiveId()) return;
+  const dots = [...el.querySelectorAll('.rp-confidence-dot')];
+  for (const dot of dots) {
+    const idx = parseInt(dot.dataset.selectorIdx, 10);
+    const step = currentSteps[idx];
+    if (!step?.selector) continue;
+    const count = await testerBrowser.tests.countSelectorMatches(getActiveId(), step.selector).catch(() => -1);
+    // The steps list (and thus the DOM) may have changed while this awaited.
+    if (!document.body.contains(dot)) continue;
+    dot.classList.remove('rp-confidence-pending');
+    if (count === 1) {
+      dot.classList.add('rp-confidence-green');
+      dot.title = '1 match — unique and reliable';
+    } else if (count >= 2 && count <= 5) {
+      dot.classList.add('rp-confidence-yellow');
+      dot.title = `${count} matches — ambiguous, may click the wrong element`;
+    } else {
+      dot.classList.add('rp-confidence-red');
+      dot.title = count === 0 ? '0 matches — selector is broken on this page'
+        : count > 5 ? `${count} matches — too broad`
+        : 'Invalid selector or page unavailable';
+    }
+  }
 }
 
 // ─── Assertion insertion ─────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { reloadA11yIfLoaded } from './a11y.js';
 import { clearSecurityFindings } from './security.js';
 import { openNotes } from './notes.js';
 import { openHistory } from './history.js';
+import { refreshSelectorConfidence } from './record-playback.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 
@@ -32,6 +33,7 @@ export function initIpcEvents() {
       if (activeConsoleTab === 'storage') loadStoragePanel();
       if (activeConsoleTab === 'a11y') reloadA11yIfLoaded();
       if (activeConsoleTab === 'security') clearSecurityFindings();
+      refreshSelectorConfidence();
     }
   });
 

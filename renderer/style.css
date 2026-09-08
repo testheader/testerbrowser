@@ -1165,6 +1165,11 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .rp-del-step { background: transparent; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; flex-shrink: 0; }
 .rp-del-step:hover { color: var(--error-strong); }
 .rp-hint { color: var(--text-faint); font-size: 11px; font-style: italic; padding: 4px 2px; }
+.rp-confidence-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.rp-confidence-pending { background: var(--text-faint); opacity: 0.5; }
+.rp-confidence-green   { background: var(--success-strong); }
+.rp-confidence-yellow  { background: var(--warn-strong); }
+.rp-confidence-red     { background: var(--error-strong); }
 .rp-test-list { display: flex; flex-direction: column; gap: 4px; }
 .rp-test-item { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; }
 .rp-test-name { font-size: 12px; color: var(--text-primary); font-weight: 500; margin-bottom: 2px; }

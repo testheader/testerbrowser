@@ -1414,6 +1414,22 @@ export class SessionManager {
     }
   }
 
+  // Returns how many elements on the session's current page match `selector`,
+  // or -1 if the selector itself is invalid — used to flag fragile recorded
+  // selectors (0 matches = broken, >1 = ambiguous) before/while a test runs.
+  async countSelectorMatches(id: string, selector: string): Promise<number> {
+    const s = this.sessions.get(id);
+    if (!s) return -1;
+    try {
+      const count = await s.view.webContents.executeJavaScript(
+        `document.querySelectorAll(${JSON.stringify(selector)}).length`
+      );
+      return typeof count === 'number' ? count : -1;
+    } catch {
+      return -1;
+    }
+  }
+
   // ─── Follow Along ─────────────────────────────────────────────────────────
   // Links a "leader" session to a "follower" session: the leader keeps
   // recording clicks/fills via the same mechanism as Tests recording, but

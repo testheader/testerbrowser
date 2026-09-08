@@ -215,6 +215,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     stopRecording:     (id: string) => ipcRenderer.invoke('session:stopRecording', id),
     pollRecordingSteps:(id: string) => ipcRenderer.invoke('session:pollRecordingSteps', id),
     playbackStep:      (id: string, step: object) => ipcRenderer.invoke('session:playbackStep', id, step),
+    countSelectorMatches: (id: string, selector: string) => ipcRenderer.invoke('session:countSelectorMatches', id, selector),
     captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
   },
 

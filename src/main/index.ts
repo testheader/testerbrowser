@@ -712,6 +712,7 @@ ipcMain.handle('session:startRecording',     (_e, id: string) => sessionManager?
 ipcMain.handle('session:stopRecording',      (_e, id: string) => sessionManager?.stopRecording(id) ?? []);
 ipcMain.handle('session:pollRecordingSteps', (_e, id: string) => sessionManager?.pollRecordingSteps(id) ?? []);
 ipcMain.handle('session:playbackStep',       (_e, id: string, step: TestStep) => sessionManager?.playbackStep(id, step) ?? null);
+ipcMain.handle('session:countSelectorMatches', (_e, id: string, selector: string) => sessionManager?.countSelectorMatches(id, selector) ?? -1);
 
 ipcMain.handle('followalong:start', (_e, leaderId: string, followerId: string, mirrorNavigation: boolean) =>
   sessionManager?.startFollowAlong(leaderId, followerId, mirrorNavigation) ?? { ok: false, error: 'No session manager' });
