@@ -55,7 +55,6 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
      reads as a session color. */
   --tab-selected:  #bbbbbb;
 
-  --titlebar-h:    36px;
   --active-tab-color: #4fc3f7;
 }
 
@@ -100,26 +99,26 @@ body.light-mode {
 
 body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: var(--bg-primary); color: var(--text-primary); }
 
-/* ── Custom Titlebar ── */
-#titlebar { display: flex; align-items: center; height: var(--titlebar-h); flex-shrink: 0;
+/* ── Custom Titlebar (merged with the tab strip) ── */
+#titlebar { display: flex; align-items: center; height: 40px; flex-shrink: 0;
             background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
             -webkit-app-region: drag; user-select: none; }
-#titlebarDrag { flex: 1; display: flex; align-items: center; padding: 0 12px; -webkit-app-region: drag; }
-#appMenuWrapper { position: relative; -webkit-app-region: no-drag; }
-#appName { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
-           color: var(--text-muted); background: none; border: none; cursor: pointer;
+#appMenuWrapper { position: relative; flex-shrink: 0; padding-left: 8px; -webkit-app-region: no-drag; }
+#appName { color: var(--text-muted); background: none; border: none; cursor: pointer;
            font-family: inherit; padding: 4px 8px; border-radius: 4px; display: flex;
            align-items: center; gap: 5px; transition: background 0.1s, color 0.1s; }
 #appName:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.app-logo { flex-shrink: 0; }
 #appMenuCaret { font-size: 8px; letter-spacing: 0; }
 #appMenuDropdown { position: absolute; top: calc(100% + 4px); left: 0; background: var(--bg-secondary);
                    border: 1px solid var(--border-strong); border-radius: 6px; min-width: 200px;
                    box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 80; display: none; overflow: hidden; }
 #appMenuDropdown.open { display: block; }
-#titlebarControls { display: flex; align-items: stretch; -webkit-app-region: no-drag; }
+#titlebarDrag { flex: 1; align-self: stretch; -webkit-app-region: drag; }
+#titlebarControls { display: flex; align-items: stretch; flex-shrink: 0; -webkit-app-region: no-drag; }
 #themeToggleBtn, #winMinBtn, #winMaxBtn, #winCloseBtn {
   background: none; border: none; color: var(--text-muted); cursor: pointer;
-  width: 46px; height: 36px; display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 40px; display: flex; align-items: center; justify-content: center;
   font-size: 14px; transition: background 0.1s, color 0.1s; -webkit-app-region: no-drag;
   padding: 0; position: relative;
 }
@@ -137,8 +136,8 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 /* ── Top bar ── */
 #topbar { display: flex; flex-direction: column; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
 
-/* Tabs */
-#tabs { display: flex; align-items: center; height: 40px; padding: 0 8px; gap: 4px; overflow-x: auto; }
+/* Tabs (now inside #titlebar, sharing the row with window controls) */
+#tabs { display: flex; align-items: center; flex-shrink: 1; min-width: 0; height: 100%; padding: 0 8px; gap: 4px; overflow-x: auto; }
 #tabs::-webkit-scrollbar { height: 3px; }
 #tabs::-webkit-scrollbar-thumb { background: var(--bg-raised); }
 .tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px; background: var(--bg-hover);

@@ -8,24 +8,43 @@
 </head>
 <body>
   <div id="titlebar">
-    <div id="titlebarDrag">
-      <div id="appMenuWrapper">
-        <button id="appName" title="Application menu">TesterBrowser <span id="appMenuCaret">&#9662;</span></button>
-        <div id="appMenuDropdown">
-          <div class="view-item" id="appMenuNewTemp">
-            <span>New temporary tab</span>
-            <span class="view-shortcut">Shift+click +</span>
-          </div>
-          <div class="view-item" id="appMenuSettings">
-            <span>Settings</span>
-          </div>
-          <div class="view-item" id="appMenuBugReport">
-            <span>Report Bug…</span>
-            <span class="view-shortcut">Ctrl+Shift+R</span>
-          </div>
+    <div id="appMenuWrapper">
+      <button id="appName" title="Application menu">
+        <svg id="appLogo" class="app-logo" viewBox="0 0 64 64" width="20" height="20" aria-hidden="true">
+          <defs>
+            <linearGradient id="appLogoOrbit" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#1a73ff"/>
+              <stop offset="100%" stop-color="#3b8bff"/>
+            </linearGradient>
+          </defs>
+          <ellipse cx="32" cy="32" rx="27" ry="14" transform="rotate(-20 32 32)"
+                    fill="none" stroke="url(#appLogoOrbit)" stroke-width="4"
+                    stroke-dasharray="60 40" stroke-dashoffset="-52" stroke-linecap="round"/>
+          <rect x="14" y="14" width="36" height="36" rx="8" fill="currentColor"/>
+          <path d="M23 33 L29 39 L41 27" fill="none" stroke="var(--bg-secondary, #f4f1ea)"
+                stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <ellipse cx="32" cy="32" rx="27" ry="14" transform="rotate(-20 32 32)"
+                    fill="none" stroke="url(#appLogoOrbit)" stroke-width="4"
+                    stroke-dasharray="60 40" stroke-dashoffset="8" stroke-linecap="round"/>
+        </svg>
+        <span id="appMenuCaret">&#9662;</span>
+      </button>
+      <div id="appMenuDropdown">
+        <div class="view-item" id="appMenuNewTemp">
+          <span>New temporary tab</span>
+          <span class="view-shortcut">Shift+click +</span>
+        </div>
+        <div class="view-item" id="appMenuSettings">
+          <span>Settings</span>
+        </div>
+        <div class="view-item" id="appMenuBugReport">
+          <span>Report Bug…</span>
+          <span class="view-shortcut">Ctrl+Shift+R</span>
         </div>
       </div>
     </div>
+    <div id="tabs"><button id="newSessionBtn" title="New tab (Ctrl+T)">+</button></div>
+    <div id="titlebarDrag"></div>
     <div id="titlebarControls">
       <button id="themeToggleBtn" title="Toggle light/dark mode">&#9728;</button>
       <button id="winMinBtn" title="Minimize">&#8211;</button>
@@ -37,7 +56,6 @@
     </div>
   </div>
   <div id="topbar">
-    <div id="tabs"><button id="newSessionBtn" title="New tab (Ctrl+T)">+</button></div>
     <div id="toolbar">
       <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"    disabled>&#8592;</button>
       <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)"  disabled>&#8594;</button>

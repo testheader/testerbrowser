@@ -255,7 +255,7 @@ export class SessionManager {
   private activeId: string | null = null;
   private dbDir: string;
   private consoleHeight = 220;
-  private topBarHeight = 88;
+  private topBarHeight = 91;
   private rightPanelWidth = 0;
   private topInset = 0;
   private isViewVisible = true;
@@ -830,7 +830,10 @@ export class SessionManager {
   }
 
   setTopBarHeight(height: number) {
-    this.topBarHeight = Math.max(88, height);
+    // Floor kept well below the merged titlebar+tabs row's real minimum
+    // (~91px unadorned) so it only guards against a degenerate 0/negative
+    // value from the renderer, never clamps the reclaimed layout space.
+    this.topBarHeight = Math.max(60, height);
     this.layoutActive();
   }
 
