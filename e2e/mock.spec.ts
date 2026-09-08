@@ -84,10 +84,19 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
 
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
-  await requestRow.first().locator('.evt-summary').click();
 
+  // renderTimeline() fully clears and rebuilds every row on each 1s poll
+  // tick (see the comment above), and on a loaded CI runner that redraw can
+  // still be in flight right as this click lands — detaching the row out
+  // from under it, so the click silently no-ops instead of opening the
+  // detail tab. Retry the click itself, not just the wait, so a click lost
+  // to one redraw gets a fresh element on the next attempt.
   const detailMockBtn = window.locator('#detailMockBtn');
-  await expect(detailMockBtn).toBeVisible({ timeout: 10_000 });
+  await expect(async () => {
+    await requestRow.first().locator('.evt-summary').click();
+    await expect(detailMockBtn).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
   await detailMockBtn.click();
 
   await expect(window.locator('#mockPanel')).toBeVisible();
