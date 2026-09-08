@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { escHtml, wirePillGroup, activePillValues } from './utils.js';
+import { populateSessionPickers } from './session-picker.js';
 
 let lastDiffRows = [];
 let cachedSessions = [];
@@ -75,49 +76,7 @@ export async function refreshDiffPickers() {
 }
 
 async function populatePickers() {
-  cachedSessions = await testerBrowser.sessions.list();
-  const pickA = document.getElementById('diffPickA');
-  const pickB = document.getElementById('diffPickB');
-  if (!pickA || !pickB) return;
-
-  const prevA = pickA.value;
-  const prevB = pickB.value;
-
-  buildPickerOptions(pickA, cachedSessions, prevB);
-  buildPickerOptions(pickB, cachedSessions, prevA);
-
-  // Restore previous selections if still valid; otherwise default to first two
-  const validIds = new Set(cachedSessions.map(s => s.id));
-  if (prevA && validIds.has(prevA) && prevA !== pickB.value) {
-    pickA.value = prevA;
-  } else if (!pickA.value && cachedSessions.length >= 1) {
-    pickA.value = cachedSessions[0].id;
-  }
-  if (prevB && validIds.has(prevB) && prevB !== pickA.value) {
-    pickB.value = prevB;
-  } else if (!pickB.value && cachedSessions.length >= 2) {
-    pickB.value = cachedSessions[1].id;
-  }
-
-  pickA.onchange = () => {
-    buildPickerOptions(pickB, cachedSessions, pickA.value);
-    if (pickB.value === pickA.value) pickB.value = '';
-  };
-  pickB.onchange = () => {
-    buildPickerOptions(pickA, cachedSessions, pickB.value);
-    if (pickA.value === pickB.value) pickA.value = '';
-  };
-}
-
-function buildPickerOptions(select, sessions, excludeId) {
-  const current = select.value;
-  const opts = sessions
-    .filter(s => s.id !== excludeId)
-    .map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`)
-    .join('');
-  select.innerHTML = '<option value="">— pick session —</option>' + opts;
-  // Restore selection if still present after filter
-  if (current && current !== excludeId) select.value = current;
+  cachedSessions = await populateSessionPickers('diffPickA', 'diffPickB');
 }
 
 async function runDiff() {

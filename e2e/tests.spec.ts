@@ -13,6 +13,12 @@ test.beforeAll(async () => {
   window = await getMainWindow(app);
   await window.waitForLoadState('domcontentloaded');
   await window.waitForTimeout(1000);
+
+  // Record Playback used to validate with alert()/prompt() — a native dialog
+  // this harness never dismisses would hang any test that hits one. Guarding
+  // the whole file, not just one test, proves the inline-status refactor
+  // reaches every call site (#150).
+  window.on('dialog', () => { throw new Error('Unexpected native dialog opened'); });
 });
 
 test.afterAll(async () => {
@@ -153,11 +159,6 @@ test('"Run N×" uses an inline number input with inline validation, not an OS pr
   const repeatInput = testItem.locator('.rp-repeat-input');
   await expect(repeatInput).toHaveValue('10');
 
-  // window.prompt()/alert() would hang the renderer waiting on a native
-  // dialog this harness never dismisses — registering a handler that fails
-  // the test if one fires proves this path really never opens one.
-  window.on('dialog', () => { throw new Error('Unexpected native dialog opened'); });
-
   await repeatInput.fill('0');
   await testItem.locator('.rp-run-many').click();
   await expect(repeatInput).toHaveClass(/rp-input-invalid/);
@@ -205,4 +206,43 @@ test('a repeated run resets page state between iterations instead of accumulatin
   await expect(window.locator('.rp-repeat-header')).toContainText('STABLE', { timeout: 15_000 });
   await expect(window.locator('.rp-repeat-summary')).toContainText('Passed: 3');
   await expect(window.locator('.rp-repeat-summary')).toContainText('Failed: 0');
+});
+
+// ── Remaining alert()/prompt() dialogs replaced with inline status (#150) ───
+// ("No active session"/"No steps recorded" guard branches in startRecording/
+// saveRecordedTest/runTest are unreachable from the real UI — the buttons
+// that call them are disabled whenever those conditions hold — so only the
+// assertion dialog's validation, which real user input can actually trigger,
+// has a meaningful UI-driven test here.)
+
+test('the assertion dialog shows inline validation instead of alert() for a missing selector/value', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'assertion validation');
+  await window.click('#rpStartBtn');
+  await tab.click('[data-testid="rp-btn"]');
+
+  await openAssertionMenu(0);
+  await window.locator('.rp-assert-menu-item', { hasText: 'Assert: element contains text' }).click();
+  // Leave both the selector and value fields empty.
+  await window.click('#rpAssertOk');
+  await expect(window.locator('#rpAssertDlgStatus')).toHaveText('Selector required');
+  await expect(window.locator('#rpAssertDlg')).toBeVisible(); // dialog stays open, unlike a dismissed alert()
+
+  await window.fill('#rpAssertSel', '[data-testid="rp-result"]');
+  await window.click('#rpAssertOk');
+  await expect(window.locator('#rpAssertDlgStatus')).toHaveText('Value required');
+  await expect(window.locator('#rpAssertDlg')).toBeVisible();
+
+  await window.fill('#rpAssertVal', 'anything');
+  await window.click('#rpAssertOk');
+  await expect(window.locator('#rpAssertDlg')).toHaveCount(0);
+
+  await window.click('#rpStopBtn');
+  await window.click('#rpDiscardBtn');
 });

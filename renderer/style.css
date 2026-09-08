@@ -1119,6 +1119,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
             padding: 4px 7px; font-size: 12px; width: 100%; box-sizing: border-box; }
 .rp-input:focus { outline: none; border-color: var(--accent); }
 .rp-record-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.rp-form-status { font-size: 11px; color: var(--text-muted); }
+.rp-form-status-error { color: var(--error-strong); }
 .rp-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 3px;
           padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .rp-btn:hover:not(:disabled) { background: var(--bg-tertiary); }
@@ -1191,4 +1193,5 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                         padding: 16px; min-width: 280px; display: flex; flex-direction: column; gap: 8px;
                         box-shadow: 0 6px 24px rgba(0,0,0,.7); }
 .rp-assert-dlg-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.rp-assert-dlg-status { font-size: 11px; color: var(--error-strong); min-height: 14px; }
 .rp-assert-dlg-btns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }

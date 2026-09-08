@@ -25,6 +25,7 @@ export function initRecordPlayback() {
             <button class="rp-btn" id="rpSaveBtn" disabled>Save</button>
             <button class="rp-btn" id="rpDiscardBtn" disabled>Discard</button>
           </div>
+          <span class="rp-form-status" id="rpFormStatus"></span>
         </div>
         <div id="rpLiveSteps" class="rp-live-steps"></div>
 
@@ -60,10 +61,21 @@ export function initRecordPlayback() {
   refreshTestList();
 }
 
+// Inline status pattern used throughout the app (spoofStatus, secStatus,
+// rp-run-status) instead of blocking alert()/prompt() dialogs.
+function showFormStatus(msg, isError) {
+  const el = document.getElementById('rpFormStatus');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle('rp-form-status-error', !!isError);
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.textContent = ''; }, 4000);
+}
+
 // ─── Recording ─────────────────────────────────────────────────────────────
 
 async function startRecording() {
-  if (!getActiveId()) { alert('No active session'); return; }
+  if (!getActiveId()) { showFormStatus('No active session', true); return; }
   isRecording = true;
   currentSteps = [];
   setRecordBtns(true);
@@ -96,7 +108,7 @@ function discardRecording() {
 
 async function saveRecordedTest() {
   const name = document.getElementById('rpTestName').value.trim() || ('Test ' + new Date().toLocaleString());
-  if (currentSteps.length === 0) { alert('No steps recorded'); return; }
+  if (currentSteps.length === 0) { showFormStatus('No steps recorded', true); return; }
   const test = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2),
     name,
@@ -211,6 +223,7 @@ function showAssertionDialog(afterIdx, def) {
       ${def.needsSelector ? `<input class="rp-input" id="rpAssertSel" placeholder="CSS selector" />` : ''}
       ${def.needsAttr     ? `<input class="rp-input" id="rpAssertAttr" placeholder="Attribute name" />` : ''}
       ${def.needsValue    ? `<input class="rp-input" id="rpAssertVal" placeholder="${def.valuePlaceholder || 'Value'}" />` : ''}
+      <span class="rp-assert-dlg-status" id="rpAssertDlgStatus"></span>
       <div class="rp-assert-dlg-btns">
         <button class="rp-btn" id="rpAssertOk">Add</button>
         <button class="rp-btn" id="rpAssertCancel">Cancel</button>
@@ -223,8 +236,9 @@ function showAssertionDialog(afterIdx, def) {
     const selector  = def.needsSelector ? (document.getElementById('rpAssertSel')?.value.trim() || '') : undefined;
     const attr      = def.needsAttr     ? (document.getElementById('rpAssertAttr')?.value.trim() || '') : undefined;
     const value     = def.needsValue    ? (document.getElementById('rpAssertVal')?.value.trim() || '') : undefined;
-    if (def.needsSelector && !selector) { alert('Selector required'); return; }
-    if (def.needsValue    && !value)    { alert('Value required'); return; }
+    const dlgStatus = document.getElementById('rpAssertDlgStatus');
+    if (def.needsSelector && !selector) { dlgStatus.textContent = 'Selector required'; return; }
+    if (def.needsValue    && !value)    { dlgStatus.textContent = 'Value required'; return; }
 
     const step = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -305,7 +319,7 @@ async function refreshTestList() {
 async function runTest(testId, runCount) {
   const test = savedTests.find(t => t.id === testId);
   if (!test) return;
-  if (!getActiveId()) { alert('No active session'); return; }
+  if (!getActiveId()) { showFormStatus('No active session', true); return; }
 
   const runView = document.getElementById('rpRunView');
   const placeholder = document.getElementById('rpRunPlaceholder');

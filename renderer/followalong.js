@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { escHtml } from './utils.js';
+import { populateSessionPickers } from './session-picker.js';
 
 let cachedSessions = [];
 
@@ -46,47 +47,7 @@ export async function refreshFollowPickers() {
 }
 
 async function populatePickers() {
-  cachedSessions = await testerBrowser.sessions.list();
-  const pickL = document.getElementById('followPickLeader');
-  const pickF = document.getElementById('followPickFollower');
-  if (!pickL || !pickF) return;
-
-  const prevL = pickL.value;
-  const prevF = pickF.value;
-
-  buildPickerOptions(pickL, cachedSessions, prevF);
-  buildPickerOptions(pickF, cachedSessions, prevL);
-
-  const validIds = new Set(cachedSessions.map(s => s.id));
-  if (prevL && validIds.has(prevL) && prevL !== pickF.value) {
-    pickL.value = prevL;
-  } else if (!pickL.value && cachedSessions.length >= 1) {
-    pickL.value = cachedSessions[0].id;
-  }
-  if (prevF && validIds.has(prevF) && prevF !== pickL.value) {
-    pickF.value = prevF;
-  } else if (!pickF.value && cachedSessions.length >= 2) {
-    pickF.value = cachedSessions[1].id;
-  }
-
-  pickL.onchange = () => {
-    buildPickerOptions(pickF, cachedSessions, pickL.value);
-    if (pickF.value === pickL.value) pickF.value = '';
-  };
-  pickF.onchange = () => {
-    buildPickerOptions(pickL, cachedSessions, pickF.value);
-    if (pickL.value === pickF.value) pickL.value = '';
-  };
-}
-
-function buildPickerOptions(select, sessions, excludeId) {
-  const current = select.value;
-  const opts = sessions
-    .filter(s => s.id !== excludeId)
-    .map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`)
-    .join('');
-  select.innerHTML = '<option value="">— pick session —</option>' + opts;
-  if (current && current !== excludeId) select.value = current;
+  cachedSessions = await populateSessionPickers('followPickLeader', 'followPickFollower');
 }
 
 async function startFollow() {
