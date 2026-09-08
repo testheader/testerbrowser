@@ -1,5 +1,10 @@
 # TesterBrowser — project context for Claude
 
+> **Agents:** operational context (commands, test placement, CI job graph,
+> ticket workflow) lives in `.github/copilot-instructions.md` and is loaded
+> automatically. This file holds the deeper reference material: the IPC channel
+> table, renderer panel behaviour and keyboard shortcuts.
+
 ## What this is
 
 Electron desktop app purpose-built for software testers. Two core features:
@@ -7,8 +12,8 @@ Electron desktop app purpose-built for software testers. Two core features:
 2. **Always-on recording** — CDP Network + Console + Log events captured to a per-session SQLite ring buffer the moment a session is created, regardless of whether any UI panel is open.
 
 **GitHub repo:** https://github.com/testheader/testerbrowser (public)
-**Stack:** Electron 31, TypeScript (main + preload), plain HTML/JS (renderer), better-sqlite3, electron-updater, electron-builder
-**Current version:** ~0.10.x (CI bumps on every push)
+**Stack:** Electron, TypeScript (main + preload), plain ESM JavaScript (renderer), better-sqlite3, electron-updater, electron-builder
+**Version:** see `package.json` — CI bumps it on every push, so it is never quoted here
 
 ---
 
@@ -19,17 +24,18 @@ src/main/index.ts          Main process: BrowserWindow, IPC handlers, app menu, 
 src/main/sessionManager.ts BrowserView lifecycle, tab mgmt, CDP forwarding, downloads, permissions
 src/main/recorder.ts       CDP debugger → SQLite ring buffer (20 000 events/session cap)
 src/preload/index.ts       contextBridge → window.testerBrowser (full API surface)
-renderer/index.html        All CSS + HTML shell: topbar, console panel (Console+Storage tabs),
-                           modals (settings, notes), View dropdown, permission notifications
-renderer/renderer.js       All renderer logic: tabs, URL bar, find, bookmarks, downloads,
-                           console filter pills, Storage tab, View dropdown, timeline polling
+renderer/index.html        HTML shell; renderer/style.css holds the styling
+renderer/*.js              Renderer logic, split into ES modules (main.js is the entry point):
+                           tabs, URL bar, find, bookmarks, downloads, timeline, storage, …
+renderer/renderer.js       LEGACY monolith — superseded by the module split, no longer
+                           loaded, ESLint-ignored. Do not add to it.
 test-pages/                Static HTML fixtures for testing TesterBrowser itself (cookies,
                            console/errors, network, downloads, popups, permissions, perf).
                            Dev/CI only — excluded from the packaged build automatically by
                            build.files in package.json. See test-pages/README.md.
 e2e/fixtures/server.ts     Shared HTTP server serving test-pages/ + dynamic routes (status
                            codes, delay, redirects, generated downloads) for e2e tests.
-.github/workflows/build.yml  CI: typecheck → bump-version → build-windows → build-linux
+.github/workflows/build.yml  CI: typecheck → bump-version → build-windows + e2e → publish-release
 ```
 
 ---
@@ -163,13 +169,14 @@ Each session is assigned a colour from `TAB_COLORS` in `sessionManager.ts` (10 c
 
 ## CI / CD pipeline
 
-Every push to `main` (by a non-bot actor) runs four sequential jobs:
+Every push (by a non-bot actor) runs:
 
-1. **typecheck** — `npm run typecheck` (`tsc --noEmit`). Fails fast on TypeScript errors before anything is built or published.
-2. **bump-version** — parses commit message, runs `npm version [patch|minor|major]`, pushes `[skip ci]`-free commit back.
+1. **typecheck** — `npm run typecheck`, `npm run lint` **and** `npm test`. All three must pass.
+2. **bump-version** (main only) — parses commit message, runs `npm version [patch|minor|major]`, pushes the bump commit and a draft release.
    - `feat:` → minor | `feat!:` / `BREAKING CHANGE` → major | anything else → patch
-3. **build-windows** — `npm run dist:win`, publishes to GitHub release.
-4. **build-linux** — `npm run dist:linux`, same.
+3. **build-windows** — builds the NSIS installer and uploads it to the draft release.
+4. **e2e** — Playwright against the built app on Windows.
+5. **publish-release** — promotes the draft to a prerelease once the rest are green.
 
 ---
 
@@ -178,10 +185,12 @@ Every push to `main` (by a non-bot actor) runs four sequential jobs:
 ```bash
 npm install               # Install deps (runs electron-rebuild for better-sqlite3)
 npm run typecheck         # Type-check only — no output files, fast feedback
+npm run lint              # ESLint over renderer/*.js
+npm test                  # Jest unit tests (src/**/__tests__/*.test.ts)
+npm run test:e2e          # build + Playwright e2e
 npm run build             # Compile TypeScript → dist/
 npm run dev               # build + launch Electron (no auto-update, no publish)
 npm run dist:win          # Full Windows installer build + publish
-npm run dist:linux        # Full Linux AppImage build + publish
 ```
 
 ---
@@ -198,7 +207,9 @@ npm run dist:linux        # Full Linux AppImage build + publish
 - **BrowserView swallows all keyboard events** — `document.keydown` in the renderer doesn't fire when a WebContentsView has focus. Use `webContents.on('before-input-event')` to intercept and forward via IPC.
 - **electron-builder defaults to draft releases** — `electron-updater` ignores drafts. Set `"releaseType": "prerelease"`.
 - **electron-builder needs `GH_TOKEN`** in CI even with `--publish always` — pass as env on the npm step.
-- **Calling `electron-builder` directly in workflow steps fails** — always invoke via `npm run dist:*`.
+- **Calling `electron-builder` directly in workflow steps fails** — always invoke via `npm run dist:*` (or `npx electron-builder` as the workflow now does).
+- **Unit tests must live in `src/**/__tests__/`** — `jest.config.js` matches nothing else, so a stray `*.test.ts` is silently never run.
+- **E2E launches need an isolated profile** — use `launchApp()` from `e2e/helpers.ts`; a shared user-data dir leaks tab state between spec files and causes run-order-dependent failures.
 - **Infinite bump loop prevention** — `if: github.actor != 'github-actions[bot]'` on bump-version.
 - **Build jobs must `ref: main`** after bump-version pushes — without it they'd checkout the pre-bump SHA.
 - **`setConsoleHeight(0)` is special** — the method clamps to min 80px for drag-resize, but explicitly accepts 0 to fully hide the console (BrowserView fills the window).
@@ -207,13 +218,13 @@ npm run dist:linux        # Full Linux AppImage build + publish
 
 ---
 
-## Roadmap (not yet built)
+## Roadmap
 
-1. Visual regression panel (`Page.captureScreenshot` + `pixelmatch` diffing)
-2. Accessibility tree panel (`Accessibility.getFullAXTree`)
-3. Network request/response mocking UI (`Fetch.enable` + `Fetch.fulfillRequest`)
-4. Environment diffing (compare timelines across two sessions)
-5. Test data generators injectable into forms
-6. Code signing for Windows installer (currently unsigned — SmartScreen warns)
-7. ESLint for renderer JS (currently plain JS, no linting)
-8. Automated e2e test harness (Playwright with Electron driver)
+Not tracked here — it drifts. The board is the single source of planned work:
+https://github.com/users/testheader/projects/3
+
+The visual-regression, accessibility, network-mocking, environment-diffing and
+test-data panels listed here previously have all shipped
+(`renderer/visual-regression.js`, `a11y.js`, `mock.js`, `diff.js`,
+`testdata.js`), as have renderer ESLint and the Playwright e2e harness. Check
+the board and `renderer/` before assuming a feature is missing.
