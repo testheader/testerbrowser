@@ -354,6 +354,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #consoleTabResilience::before { content: '\26A0'; }
 #consoleTabJira::before       { content: '\1F3AB'; }
 #consoleTabTests::before      { content: '\25B6'; }
+#consoleTabFollow::before     { content: '\1F463'; }
 /* Per-tab filter/search sub-header, docked to the top of that tab's own panel
    (not the shared tab-strip row) so it visually reads as part of the active
    panel. Hidden until switchConsoleTab shows it — lives here, not in a style
