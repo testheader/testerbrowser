@@ -14,11 +14,13 @@ const timelineEvents = []; // ring buffer, max TIMELINE_MAX entries
 let lastTs          = 0;
 let autoScroll       = true;
 
-// Only network-request payloads carry `request.method` directly; response/
-// failed/body payloads only share the request's `requestId`. This maps one
-// to the other so the method filter can hide a whole request+response(+body)
-// group, not just the request line.
-const requestIdToMethod = new Map();
+// Only network-request payloads carry `request.method`/`request.url`
+// directly; response/failed/body payloads only share the request's
+// `requestId`. This maps one to the other so the method filter can hide a
+// whole request+response(+body) group, not just the request line, and so a
+// failed row's second line can show the URL even though loadingFailed's own
+// CDP payload never carries it.
+const requestMeta = new Map(); // requestId -> { method, url }
 const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
 
 // Rows whose level falls outside these five pills (e.g. CDP Log's 'verbose',
@@ -33,10 +35,79 @@ function getEventMethod(e) {
   if (!e.payload) return null;
   try {
     const p = JSON.parse(e.payload);
-    const method = e.kind === 'network-request' ? p.request?.method : requestIdToMethod.get(p.requestId);
+    const method = e.kind === 'network-request' ? p.request?.method : requestMeta.get(p.requestId)?.method;
     return method || null;
   } catch { return null; }
 }
+
+// The method shown on line 1: BODY rows always show the literal "BODY",
+// never the underlying request's real method (that's what made "BODY POST"
+// read like two unrelated tokens) — everything else uses the real method,
+// falling back to "FAILED" for a failed row whose method never resolved
+// (e.g. the request row itself never made it into the buffer).
+function getEventDisplayMethod(e) {
+  if (e.kind === 'network-body') return 'BODY';
+  if (e.kind === 'network-request' || e.kind === 'network-response' || e.kind === 'network-failed') {
+    return getEventMethod(e) || (e.kind === 'network-failed' ? 'FAILED' : null);
+  }
+  return null;
+}
+
+function getEventStatus(e) {
+  if (e.kind !== 'network-response' || !e.payload) return null;
+  try { return JSON.parse(e.payload).response?.status ?? null; } catch { return null; }
+}
+
+// The URL for line 2. network-response's own CDP payload does carry
+// response.url, but network-failed's loadingFailed payload never carries a
+// url at all — it's resolved from the request row recorded earlier via
+// requestMeta instead of re-parsing the "FAILED <url>: <err>" summary text,
+// which would be ambiguous for a URL that itself contains a colon or spaces.
+function getEventUrl(e) {
+  if (!e.payload) return null;
+  try {
+    const p = JSON.parse(e.payload);
+    if (e.kind === 'network-request') return p.request?.url ?? null;
+    if (e.kind === 'network-response') return p.response?.url ?? requestMeta.get(p.requestId)?.url ?? null;
+    if (e.kind === 'network-failed') return requestMeta.get(p.requestId)?.url ?? null;
+  } catch {}
+  return null;
+}
+
+// The text rendered on line 2, below the hanging indent. Falls back to the
+// stored summary for anything that doesn't resolve cleanly from payload —
+// notably the synthetic "LOAD FAILED" row (sessions:loadFailed) which never
+// carries a payload at all.
+function getEventLine2(e) {
+  if (e.kind === 'network-body' && e.payload) {
+    try {
+      const body = JSON.parse(e.payload).body;
+      if (typeof body === 'string') return body;
+    } catch {}
+    return e.summary;
+  }
+  if (e.kind === 'network-request' || e.kind === 'network-response') {
+    return getEventUrl(e) ?? e.summary;
+  }
+  if (e.kind === 'network-failed') {
+    const url = getEventUrl(e);
+    if (url && e.payload) {
+      try {
+        const errorText = JSON.parse(e.payload).errorText;
+        if (errorText) return `${url}: ${errorText}`;
+      } catch {}
+    }
+    return e.summary;
+  }
+  if (e.kind === 'console' || e.kind === 'log') {
+    // Strips the "[level] " prefix that summary was built with — a fixed,
+    // anchored-at-start prefix, so this is safe even when the message text
+    // itself contains brackets or spaces (unlike splitting on whitespace).
+    return e.summary.replace(/^\[[^\]]*\]\s?/, '');
+  }
+  return e.summary;
+}
+
 
 // <input type="datetime-local"> values (no timezone) are parsed by Date()
 // as local time, matching how `new Date(e.ts).toLocaleTimeString()` already
@@ -149,38 +220,37 @@ export function renderTimeline() {
     line.dataset.tabId   = tabId;
     if (isDetailTabActive(tabId)) line.classList.add('detail-row-active');
 
-    const summary = document.createElement('div');
-    summary.className = 'evt-summary';
+    // Line 1: timestamp, then method, status, badges and duration — a
+    // fixed-width column so these line up down the whole list. Line 2
+    // (built below) starts at the same offset as the method, not the
+    // timestamp, giving the row its hanging indent.
+    const line1 = document.createElement('div');
+    line1.className = 'evt-line1';
+
     const d = new Date(e.ts);
     const pad = (n) => String(n).padStart(2, '0');
     const tsSpan = document.createElement('span');
     tsSpan.className = 'evt-ts';
     tsSpan.innerHTML = `[<span class="evt-ts-date">${pad(d.getMonth() + 1)}-${pad(d.getDate())}</span> ${d.toLocaleTimeString()}]`;
-    summary.appendChild(tsSpan);
-    summary.appendChild(document.createTextNode(` ${e.summary}`));
-    line.appendChild(summary);
+    line1.appendChild(tsSpan);
 
-    // Duration is only known once the response arrives (ts - matching
-    // request's ts, computed in the recorder) — every other row kind,
-    // including network-request/failed, leaves this column empty.
-    if (e.kind === 'network-response' && e.payload) {
-      let durationMs;
-      try { durationMs = JSON.parse(e.payload).durationMs; } catch {}
-      if (typeof durationMs === 'number' && Number.isFinite(durationMs)) {
-        const durationEl = document.createElement('span');
-        durationEl.className = 'evt-duration';
-        durationEl.textContent = `${Math.round(durationMs)}ms`;
-        line.appendChild(durationEl);
-      }
+    const rest = document.createElement('div');
+    rest.className = 'evt-line1-rest';
+
+    const method = getEventDisplayMethod(e);
+    if (method) {
+      const methodSpan = document.createElement('span');
+      methodSpan.className = 'evt-method';
+      methodSpan.textContent = method;
+      rest.appendChild(methodSpan);
     }
 
-    if (e.kind === 'network-request' && e.payload) {
-      const replayBtn = document.createElement('button');
-      replayBtn.className   = 'evt-replay-btn';
-      replayBtn.textContent = '↺ Replay';
-      replayBtn.title       = 'Edit and replay this request';
-      replayBtn.onclick     = (ev) => { ev.stopPropagation(); openReplay(e); };
-      summary.appendChild(replayBtn);
+    const status = getEventStatus(e);
+    if (status !== null) {
+      const statusSpan = document.createElement('span');
+      statusSpan.className = 'evt-status';
+      statusSpan.textContent = String(status);
+      rest.appendChild(statusSpan);
     }
 
     if ((e.kind === 'network-request' || e.kind === 'network-response' || e.kind === 'network-failed') && e.payload) {
@@ -191,13 +261,13 @@ export function renderTimeline() {
           badge.className = 'evt-badge evt-badge-mock';
           badge.textContent = 'MOCK';
           badge.title = 'Response served by a Mock rule instead of the real server';
-          summary.appendChild(badge);
+          rest.appendChild(badge);
         } else if (p.resilienceRuleId) {
           const badge = document.createElement('span');
           badge.className = 'evt-badge evt-badge-resilience';
           badge.textContent = 'RESILIENCE';
           badge.title = `Altered by a Resilience rule (${p.resilienceType || 'unknown'})`;
-          summary.appendChild(badge);
+          rest.appendChild(badge);
         }
       } catch {}
     }
@@ -210,14 +280,47 @@ export function renderTimeline() {
           badge.className = 'evt-badge evt-badge-log-source';
           badge.textContent = source.toUpperCase();
           badge.title = `Log source: ${source}`;
-          summary.appendChild(badge);
+          rest.appendChild(badge);
         }
       } catch {}
     }
 
+    // Duration is only known once the response arrives (ts - matching
+    // request's ts, computed in the recorder) — every other row kind,
+    // including network-request/failed, leaves this column empty.
+    if (e.kind === 'network-response' && e.payload) {
+      let durationMs;
+      try { durationMs = JSON.parse(e.payload).durationMs; } catch {}
+      if (typeof durationMs === 'number' && Number.isFinite(durationMs)) {
+        const durationEl = document.createElement('span');
+        durationEl.className = 'evt-duration';
+        durationEl.textContent = `${Math.round(durationMs)}ms`;
+        rest.appendChild(durationEl);
+      }
+    }
+
+    if (e.kind === 'network-request' && e.payload) {
+      const replayBtn = document.createElement('button');
+      replayBtn.className   = 'evt-replay-btn';
+      replayBtn.textContent = '↺ Replay';
+      replayBtn.title       = 'Edit and replay this request';
+      replayBtn.onclick     = (ev) => { ev.stopPropagation(); openReplay(e); };
+      rest.appendChild(replayBtn);
+    }
+
+    line1.appendChild(rest);
+    line.appendChild(line1);
+
+    // Line 2: the URL (or message, or response body for BODY rows), wrapped
+    // under the method column instead of scrolling sideways.
+    const line2 = document.createElement('div');
+    line2.className = 'evt-line2';
+    line2.textContent = getEventLine2(e);
+    line.appendChild(line2);
+
     if (e.payload) {
-      summary.style.cursor = 'pointer';
-      summary.addEventListener('click', (ev) => {
+      line.style.cursor = 'pointer';
+      line.addEventListener('click', (ev) => {
         if (!ev.target.closest('.evt-replay-btn')) openDetailTab(e);
       });
     }
@@ -237,7 +340,9 @@ async function fetchTimeline() {
       if (e.kind !== 'network-request' || !e.payload) continue;
       try {
         const p = JSON.parse(e.payload);
-        if (p.requestId && p.request?.method) requestIdToMethod.set(p.requestId, p.request.method);
+        if (p.requestId && p.request?.method) {
+          requestMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
+        }
       } catch {}
     }
     timelineEvents.push(...events);
@@ -266,7 +371,7 @@ export function refreshTimelineNow() {
 export function resetTimelineForNewSession() {
   timelineEvents.length = 0;
   lastTs = 0;
-  requestIdToMethod.clear();
+  requestMeta.clear();
   document.getElementById('timelinePanel').innerHTML = '';
 }
 
@@ -301,7 +406,7 @@ export function initTimeline() {
     // against the backend's SQLite ring buffer, which Clear doesn't touch.
     // Resetting it to 0 makes `since: lastTs || undefined` drop the filter
     // entirely, so the next poll re-fetches everything Clear just wiped.
-    requestIdToMethod.clear();
+    requestMeta.clear();
     timelinePanel.innerHTML = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     autoScroll = true;

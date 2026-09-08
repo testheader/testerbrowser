@@ -428,18 +428,18 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .storage-badge.no  { color: var(--text-faint); }
 
 /* Console event subtypes */
-.evt.console-error .evt-summary { color: var(--error-strong); }
-.evt.console-warn  .evt-summary { color: var(--warn-strong); }
-.evt.console-info  .evt-summary { color: var(--accent-text); }
-.evt.console-log   .evt-summary { color: var(--text-muted); }
-.evt.console-debug .evt-summary { color: var(--text-faint); }
-.evt.network-body  .evt-summary { color: var(--text-faint); font-style: italic; }
+.evt.console-error .evt-line2 { color: var(--error-strong); }
+.evt.console-warn  .evt-line2 { color: var(--warn-strong); }
+.evt.console-info  .evt-line2 { color: var(--accent-text); }
+.evt.console-log   .evt-line2 { color: var(--text-muted); }
+.evt.console-debug .evt-line2 { color: var(--text-faint); }
+.evt.network-body  .evt-line2 { color: var(--text-faint); font-style: italic; }
 
 /* Uncaught JS exceptions (Runtime.exceptionThrown) — counted as errors for
    filtering, but visually distinct from a plain console.error() call. */
 .evt.exception { border-left: 3px solid var(--error-strong); }
-.evt.exception .evt-summary { color: var(--error-strong); font-weight: 600; }
-.evt.exception .evt-summary::before { content: '⚠ '; }
+.evt.exception .evt-line2 { color: var(--error-strong); font-weight: 600; }
+.evt.exception .evt-line2::before { content: '⚠ '; }
 
 /* Pill count badges */
 .pill-count { font-size: 10px; color: inherit; opacity: 0.7; margin-left: 2px; }
@@ -608,20 +608,28 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .feature-item p code { font-family: monospace; font-size: 11px; background: var(--bg-hover); border-radius: 3px; padding: 1px 4px; }
 
 /* Timeline events */
-.evt { padding: 1px 10px; cursor: pointer; display: flex; align-items: baseline; gap: 8px; }
+.evt { padding: 3px 10px; cursor: default; }
 .evt:hover { background: var(--bg-primary); }
-.evt-summary { white-space: nowrap; overflow-x: auto; min-width: 0; flex: 1 1 auto; }
-.evt-ts { color: var(--text-faint); vertical-align: top; font-variant-numeric: tabular-nums; }
+.evt-line1 { display: flex; align-items: baseline; gap: 8px; }
+.evt-line1-rest { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.evt-ts { flex: 0 0 8em; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .evt-ts-date { opacity: 0.65; }
+.evt-method { font-weight: 600; }
+.evt-status { font-weight: 600; }
 .evt-duration { flex-shrink: 0; color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* Hanging indent: line 2 starts at the same column as the method on line 1
+   (ts width + the gap between ts and evt-line1-rest), instead of under the
+   timestamp — so it reads as a continuation of the request/message, not of
+   the time. It wraps rather than scrolling; no per-row horizontal scrollbar. */
+.evt-line2 { margin-left: calc(8em + 8px); white-space: normal; word-break: break-word; overflow-wrap: anywhere; }
 .evt-detail { background: var(--bg-deep); border-left: 2px solid var(--border-strong); margin: 4px 10px 4px 0;
               padding: 6px 8px; font-size: 11px; overflow-x: auto; white-space: pre; display: none; }
 .evt-detail.open { display: block; }
-.evt.network-request  .evt-summary { color: var(--accent-text); }
-.evt.network-response .evt-summary { color: var(--success-strong); }
-.evt.network-failed   .evt-summary { color: var(--error-strong); }
-.evt.console          .evt-summary { color: var(--warn-strong); }
-.evt.log              .evt-summary { color: var(--text-secondary); }
+.evt.network-request  .evt-line2 { color: var(--accent-text); }
+.evt.network-response .evt-line2 { color: var(--success-strong); }
+.evt.network-failed   .evt-line2 { color: var(--error-strong); }
+.evt.console          .evt-line2 { color: var(--warn-strong); }
+.evt.log              .evt-line2 { color: var(--text-secondary); }
 
 /* ── Detail panel (request side panel) ── */
 #consolePanelBody { display: flex; flex: 1; flex-direction: row; min-height: 0; overflow: hidden; }

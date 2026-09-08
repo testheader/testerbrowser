@@ -99,7 +99,7 @@ test('console/logs.html: an uncaught exception renders as a visually distinct ro
 
 // ── Network ──────────────────────────────────────────────────────────────────
 
-test('a request with a very long URL stays a single line and scrolls horizontally instead of wrapping', async () => {
+test('a request with a very long URL wraps onto additional lines instead of scrolling horizontally', async () => {
   const longQuery = 'x'.repeat(3000);
   await navigate('/network/status-codes.html?' + longQuery);
   await window.click('#consoleTabNetwork');
@@ -108,19 +108,17 @@ test('a request with a very long URL stays a single line and scrolls horizontall
   const row = window.locator('.evt.network-request', { hasText: 'x'.repeat(50) });
   await expect(row).toBeVisible();
 
-  const box = await row.evaluate(el => ({
-    height: el.getBoundingClientRect().height,
-  }));
-  expect(box.height).toBeLessThan(40);
+  // The row grows taller to fit the wrapped URL instead of staying a single
+  // line and scrolling sideways — the regression this ticket (#166) exists
+  // to prevent.
+  const box = await row.evaluate(el => ({ height: el.getBoundingClientRect().height }));
+  expect(box.height).toBeGreaterThan(40);
 
-  // The row itself is a flex container (timestamp/text + duration column);
-  // the long text scrolls within its own .evt-summary cell instead of
-  // pushing the whole row wider, so the overflow is measured there.
-  const summaryBox = await row.locator('.evt-summary').evaluate(el => ({
+  const line2Box = await row.locator('.evt-line2').evaluate(el => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
-  expect(summaryBox.scrollWidth).toBeGreaterThan(summaryBox.clientWidth + 100);
+  expect(line2Box.scrollWidth).toBeLessThanOrEqual(line2Box.clientWidth + 1);
 });
 
 test('network/status-codes.html: a 404 shows up as a network event', async () => {
