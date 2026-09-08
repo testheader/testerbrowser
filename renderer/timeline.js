@@ -150,8 +150,14 @@ export function renderTimeline() {
     if (isDetailTabActive(tabId)) line.classList.add('detail-row-active');
 
     const summary = document.createElement('div');
-    summary.className   = 'evt-summary';
-    summary.textContent = `[${new Date(e.ts).toLocaleTimeString()}] ${e.summary}`;
+    summary.className = 'evt-summary';
+    const d = new Date(e.ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    const tsSpan = document.createElement('span');
+    tsSpan.className = 'evt-ts';
+    tsSpan.innerHTML = `[<span class="evt-ts-date">${pad(d.getMonth() + 1)}-${pad(d.getDate())}</span> ${d.toLocaleTimeString()}]`;
+    summary.appendChild(tsSpan);
+    summary.appendChild(document.createTextNode(` ${e.summary}`));
     line.appendChild(summary);
 
     if (e.kind === 'network-request' && e.payload) {
