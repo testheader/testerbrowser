@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
-import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel } from './utils.js';
+import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matchesFreeText } from './utils.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { openReplay } from './replay.js';
 import { getActiveId } from './tabs.js';
@@ -156,7 +156,7 @@ export function renderTimeline() {
       return !!e.payload && e.payload.toLowerCase().includes(netFilter);
     });
   } else {
-    const filterText   = document.getElementById('filterText').value.toLowerCase();
+    const filterText   = document.getElementById('filterText').value;
     const activeLevels = activePillValues(document.getElementById('consoleLevelPills'), 'level');
     const CONSOLE_KINDS = new Set(['console', 'log', 'exception']);
     filtered = timelineEvents.filter(e => {
@@ -164,7 +164,7 @@ export function renderTimeline() {
       const level = getConsoleLevel(e);
       const levelVisible = !level || !KNOWN_LEVELS.has(level) || activeLevels.has(level);
       if (!levelVisible) return false;
-      return !filterText || e.summary.toLowerCase().includes(filterText);
+      return matchesFreeText(e.summary, filterText);
     });
   }
 

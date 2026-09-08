@@ -97,6 +97,38 @@ test('console/logs.html: an uncaught exception renders as a visually distinct ro
   await expect(exceptionRow).not.toHaveClass(/console-error/);
 });
 
+test('console/logs.html: a negative term in the free-text filter hides matching rows and keeps the rest (#170)', async () => {
+  await window.click('#clearConsoleBtn');
+  await window.waitForTimeout(200);
+  await navigate('/console/logs.html');
+  await window.waitForTimeout(1_500);
+
+  const warnRow  = window.locator('.evt', { hasText: 'warn on load' });
+  const errorRow = window.locator('.evt', { hasText: 'error on load' });
+  await expect(warnRow).toBeVisible();
+  await expect(errorRow).toBeVisible();
+
+  await window.fill('#filterText', '-warn');
+  await expect(warnRow).toHaveCount(0);
+  await expect(errorRow).toBeVisible();
+
+  // Positive and negative terms combine: keep rows containing "on load" that
+  // do not also contain "error".
+  await window.fill('#filterText', 'on load -error');
+  await expect(errorRow).toHaveCount(0);
+  await expect(warnRow).toBeVisible();
+
+  // A lone "-" is literal text, not a negation — matches nothing here since
+  // no summary contains a bare hyphen, so every row disappears.
+  await window.fill('#filterText', '-');
+  await expect(warnRow).toHaveCount(0);
+  await expect(errorRow).toHaveCount(0);
+
+  await window.fill('#filterText', '');
+  await expect(warnRow).toBeVisible();
+  await expect(errorRow).toBeVisible();
+});
+
 // ── Network ──────────────────────────────────────────────────────────────────
 
 test('a request with a very long URL wraps onto additional lines instead of scrolling horizontally', async () => {
