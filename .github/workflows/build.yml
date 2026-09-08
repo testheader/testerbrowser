@@ -145,9 +145,13 @@ jobs:
     if: "always() && needs.bump-version.result != 'failure'"
     runs-on: windows-2022
     steps:
+      # On main, check out the branch so the bump-version commit is included.
+      # Anywhere else bump-version is skipped and there is no such commit, so
+      # checking out main would test main's code instead of the code that was
+      # actually pushed — making every branch/PR run report main's failures.
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.ref == 'refs/heads/main' && 'main' || github.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22

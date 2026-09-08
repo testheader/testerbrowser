@@ -32,8 +32,19 @@ test.afterAll(async () => {
 // Enter handler reads to know which session to navigate — stays in sync.
 async function newSessionTab(): Promise<string> {
   const before = await window.locator('.tab').count();
+  const pagesBefore = new Set(app.windows());
   await window.click('#newSessionBtn');
   await expect.poll(() => window.locator('.tab').count()).toBe(before + 1);
+
+  // A new session's WebContentsView starts loading newtab.html the moment it
+  // is created. Driving the URL bar before that initial load commits lets it
+  // land *after* our loadURL and overwrite it, leaving the tab sitting on
+  // newtab.html — so the navigated-to page never appears and getTabPage()
+  // times out. Wait for the new view's own load to settle first.
+  await expect.poll(() => app.windows().some(p => !pagesBefore.has(p))).toBe(true);
+  const created = app.windows().find(p => !pagesBefore.has(p));
+  await created?.waitForLoadState('load');
+
   return window.locator('.tab.active').getAttribute('data-id') as unknown as Promise<string>;
 }
 

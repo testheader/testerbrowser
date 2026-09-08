@@ -85,15 +85,20 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
 
-  // renderTimeline() fully clears and rebuilds every row on each 1s poll
-  // tick (see the comment above), and on a loaded CI runner that redraw can
-  // still be in flight right as this click lands — detaching the row out
-  // from under it, so the click silently no-ops instead of opening the
-  // detail tab. Retry the click itself, not just the wait, so a click lost
-  // to one redraw gets a fresh element on the next attempt.
+  // Click the timestamp, not the summary as a whole: a network-request row's
+  // summary also contains the "↺ Replay" button, which stops propagation and
+  // opens the Replay modal instead of the detail tab. Playwright clicks the
+  // centre of the element it is given, and how far along the row that centre
+  // falls depends on the window width — on the Windows CI runner it landed on
+  // that button, so the detail tab never opened. The timestamp is always at
+  // the very start of the row and never a button.
+  //
+  // renderTimeline() also fully clears and rebuilds every row on each 1s poll
+  // tick (see the comment above), so retry the click itself, not just the
+  // wait, in case one is lost to a redraw detaching the row mid-click.
   const detailMockBtn = window.locator('#detailMockBtn');
   await expect(async () => {
-    await requestRow.first().locator('.evt-summary').click();
+    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
     await expect(detailMockBtn).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
