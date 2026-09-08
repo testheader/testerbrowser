@@ -9,13 +9,15 @@
 ## Board Columns (Status field) and their labels
 
 The board's Status field is **not reachable from the plain issues API**, so
-`status-*` **labels are the source of truth** for ticket state. Agents read and
-write labels; the board column is mirrored from the label by whoever holds
-project credentials. Exactly one `status-*` label per issue at a time.
+`status-*` **labels are the source of truth** for ticket state. Agents run with
+project credentials, so every transition writes **both**: the label first (it is
+canonical), then the board column via the Projects v2 GraphQL API. `watch-ci`
+re-reconciles the board from labels on every run, so a failed mutation is
+self-healing. Exactly one `status-*` label per issue at a time.
 
 | Status | Label | Meaning |
 |---|---|---|
-| **Backlog** | _(no status label)_ | Captured, not yet groomed or not yet selected. |
+| **Backlog** | `status-backlog` _(older issues: no status label)_ | Captured, not yet groomed or not yet selected. |
 | **Ready** | `status-ready` | Groomed to the Definition of Ready and queued for implementation. |
 | **In progress** | `status-in-progress` | Implementing agent is actively working. |
 | **CI running** | `status-ci-running` | Committed and pushed to main. CI job is active. |
@@ -47,7 +49,7 @@ after CI is green and the label is `status-done`.
 
 ```
 Grooming agent (groom-ticket)
-  → takes a Backlog issue (no status label)
+  → takes a Backlog issue (status-backlog)
   → investigates the code, writes acceptance criteria + test plan
   → splits or closes as needed
   → moves ticket: Backlog → status-ready
@@ -80,13 +82,18 @@ CI monitor agent (watch-ci, looping)
 
 ## Agent Responsibilities
 
-All three agents live in `.github/agents/` so they are tool-agnostic and
-invokable by name. None has a restricted tool list — they may use every tool
-available to them. Shared project context (layout, commands, test conventions,
-CI graph) lives in `.github/copilot-instructions.md`, which loads automatically,
-so the agent prompts stay procedural.
+Each agent has **one canonical definition**, at
+`.agents/skills/<name>/SKILL.md`. `.github/agents/<name>.md` and
+`.claude/agents/<name>.md` are thin pointer files carrying only frontmatter and
+a link, so each tool discovers the agent from its own conventional directory
+without the policy being duplicated. Policy changes go in the skill; the
+pointers never carry behaviour.
 
-### Grooming agent (`.github/agents/groom-ticket.md`)
+None has a restricted tool list — they may use every tool available to them.
+Shared project context (layout, commands, test conventions, CI graph) lives in
+`.github/copilot-instructions.md`, which loads automatically.
+
+### Grooming agent (`.agents/skills/groom-ticket/SKILL.md`)
 
 **Trigger:** User says "groom the backlog" or "groom #N"
 
@@ -101,7 +108,7 @@ Never writes production code. Where a genuine product decision is needed it
 leaves the ticket in Backlog and asks one specific question with a recommended
 default — everything merely *unknown* it resolves by reading the code.
 
-### Implementing agent (`.github/agents/implement-ticket.md`)
+### Implementing agent (`.agents/skills/implement-ticket/SKILL.md`)
 
 **Trigger:** User says "implement next ticket" or "implement #N"
 
@@ -133,17 +140,23 @@ default — everything merely *unknown* it resolves by reading the code.
 - Must not use `closes #N`, must not close the issue, must not set `status-done`
 - Must not bump `package.json` — CI owns versioning
 
-### CI monitor agent (`.github/agents/watch-ci.md`)
+### CI monitor agent (`.agents/skills/watch-ci/SKILL.md`)
 
 **Trigger:** User invokes it, or it runs as a loop after the implementing agent
 
 **Steps:**
-1. Find all open issues labelled `status-ci-running`
+0. Reconcile the board from labels; sweep manually-closed issues into Done
+1. Find all open issues labelled `status-ci-running` (board query ∪ label query)
 2. For each: get the commit SHA from the handoff comment
 3. Look up the `Build` workflow run for that SHA
 4. Success → `status-done`, comment run URL, **close the issue**
-5. Failure → `status-needs-fix`, issue stays open, comment failure summary + log excerpt
-6. Still in progress → leave labels alone, poll again
+5. Failure, but the latest `main` run is green → Done (trunk-based: a green head
+   contains every earlier commit), noting the superseding run
+6. Failure, first time and trivially fixable → fix inline, push, stay in CI
+   running and re-monitor
+7. Failure otherwise → `status-needs-fix`, issue stays open, comment failure
+   summary + log excerpt + repro command + attempt count
+8. Still in progress → leave labels alone, poll again
 
 ## Issue Conventions
 
@@ -155,23 +168,31 @@ default — everything merely *unknown* it resolves by reading the code.
 
 ---
 
-## Board IDs (reference only)
+## Board IDs
 
-**Agents do not use these.** Labels are the source of truth; these IDs exist for
-whoever mirrors labels onto the board column. Treat them as unverified — the
-setup plan doc records a *different* set of option IDs, so at least one of the
-two is stale. Re-read them from the API before relying on them:
+Agents use these to write the Status column. Verified against the working
+skills; the *setup plan* doc records a different, stale set — ignore it. Re-read
+from the API if a mutation starts failing:
 
 ```
 gh project field-list 3 --owner @me --format json
 ```
 
 ```
-Project number:    3
+Project number:    3   (owner @me)
 Project ID:        PVT_kwHOA2Pe484BiHJY
 Status field ID:   PVTSSF_lAHOA2Pe484BiHJYzhhAV-0
 Repo:              testheader/testerbrowser
 ```
+
+| Column | Option ID |
+|---|---|
+| Backlog | `adf7ac3d` |
+| Ready | `70a64391` |
+| In progress | `978f4b40` |
+| CI running | `78882a20` |
+| Needs Fix | `211b4ce4` |
+| Done | `07528d57` |
 
 ---
 

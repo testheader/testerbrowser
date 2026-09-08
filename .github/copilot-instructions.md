@@ -102,18 +102,29 @@ successful run — pull with rebase before pushing.
 
 Work is tracked on the board at
 https://github.com/users/testheader/projects/3. The board's Status column is
-**not reachable from the issues API**, so `status-*` **labels are the source of
-truth** and the column is mirrored from them.
+**not reachable from the plain issues API**, so `status-*` **labels are the
+source of truth**; agents with project credentials update the board column to
+match in the same step.
 
-`status-ready` → `status-in-progress` → `status-ci-running` → `status-done`
-(or → `status-needs-fix` → back to `status-in-progress`)
+`status-backlog` → `status-ready` → `status-in-progress` → `status-ci-running`
+→ `status-done` (or → `status-needs-fix` → back to `status-in-progress`)
 
 Exactly one `status-*` label per issue at a time. A ticket stays **open** until
-it reaches Done; only the `watch-ci` agent closes issues.
+it reaches Done; only `watch-ci` closes issues, which is why commits use
+`refs #N` and never `closes #N`.
 
-Agents: `.github/agents/groom-ticket.md` (backlog → ready),
-`.github/agents/implement-ticket.md` (ready/needs-fix → CI running),
-`.github/agents/watch-ci.md` (CI running → done/needs-fix). Full design in
+**Agent definitions live in `.agents/skills/<name>/SKILL.md`** — one canonical
+copy each:
+
+| Skill | Transition |
+|---|---|
+| `groom-ticket` | Backlog → Ready |
+| `implement-ticket` | Ready / Needs Fix → CI running |
+| `watch-ci` | CI running → Done / Needs Fix |
+
+`.github/agents/` and `.claude/agents/` hold thin pointer files so each tool can
+discover them from its own conventional directory. **Never put policy in a
+pointer file** — edit the skill. Full design in
 `docs/superpowers/specs/2026-09-01-kanban-workflow-design.md`.
 
 ## Gotchas learned the hard way
