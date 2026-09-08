@@ -158,7 +158,7 @@ default — everything merely *unknown* it resolves by reading the code.
    summary + log excerpt + repro command + attempt count
 8. Still in progress → leave labels alone, poll again
 
-## Trunk-based development and the push gate
+## Trunk-based development and autonomy
 
 Work goes **straight onto `main`** — no feature branches, no forks, no pull
 requests. One ticket lands as one commit, CI validates it on `main`, and
@@ -166,24 +166,34 @@ requests. One ticket lands as one commit, CI validates it on `main`, and
 is only ever one line of history to reason about, so "is this ticket shipped?"
 reduces to "did its commit's run go green?".
 
-The cost of trunk-based is that a bad push breaks everyone immediately. Two
-things contain that:
+The cost of trunk-based is that a bad push breaks everyone immediately, so
+**local verification is mandatory** — typecheck, lint, unit tests and e2e must
+all pass before anything is pushed. That gate is a machine check, not a human
+one, which is what lets the agents run unattended.
 
-1. **Local verification is mandatory** — typecheck, lint, unit tests and e2e all
-   pass before a push is even proposed.
-2. **Every push to `main` needs the user's explicit consent.** The agent shows
-   the commit and its diffstat, states which checks passed, and waits for a real
-   answer. Being asked to implement a ticket authorises the *work*, not the
-   *push*.
+`implement-ticket` and `watch-ci` are **automated processes**. Consent is taken
+**once per run**, when the user asks for the work ("implement the next ticket",
+"watch CI"); after that each loops until its queue is empty or its token budget
+runs out, pushing to `main` without pausing for per-ticket approval. An agent
+that stops after every ticket is not automation, and an agent that blocks on a
+question halts a run that had other tickets it could have finished.
 
-If consent is withheld, or the agent is running non-interactively and cannot
-ask, the commit stays local and the ticket stays where it is —
-`status-in-progress` for `implement-ticket`, Needs Fix for a `watch-ci` Case A
-fix. The agent reports the commit as ready-but-unpushed and does not move on to
-another ticket, because a second push would carry the unapproved commit with it.
+Autonomy only works if **every decision has a non-blocking outcome**, so both
+skills are written to always terminate in a label rather than a question:
 
-Routing around the gate is forbidden: no pushing to a side branch, no opening a
-PR instead, no pushing first and mentioning it afterwards.
+- `implement-ticket` **parks** a ticket it cannot do as written — comment
+  explaining the blocker and its recommendation, correct label, clean working
+  tree — and moves to the next one. Parked tickets are reported together at the
+  end of the run.
+- `watch-ci` treats anything beyond a trivial first-failure fix as **Case B**:
+  `status-needs-fix` with a failure summary and repro command. That is a normal
+  outcome, not an escalation.
+
+The user is therefore in the loop twice: once at the start of a run, and once at
+the end when reading the report. Not in between.
+
+Routing around trunk-based flow is forbidden: no side branches, no pull
+requests, no force-pushing `main`.
 
 ---
 

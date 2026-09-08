@@ -1,6 +1,6 @@
 ---
 name: implement-ticket
-description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main after asking your approval, and hands off to CI monitoring. Loops one ticket at a time until the queues are empty or the token budget runs low.
+description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main and hands off to CI monitoring. Runs unattended once started, looping one ticket at a time until the queues are empty or the token budget runs low.
 ---
 
 # Implement a ticket — TesterBrowser
@@ -72,6 +72,30 @@ Do not silently stop, and do not start new work. Instead:
 3. Recommend the user start a **fresh session** and invoke this skill again — it
    resumes from Step 0 with a clean context and picks up exactly where you left
    off, because all the state lives in labels, not in your context.
+
+## Step 0.5 — Confirm the run once, then run unattended
+
+**This is an automated process.** Once it starts, it works the queue on its own:
+pick, implement, verify, push, hand off, next ticket. It does not check in
+between tickets and does not wait for approval on each push.
+
+Consent is therefore taken **once per run, up front** — before the first ticket.
+State plainly what you are about to do and get a yes:
+
+> "Starting an implementation run. I'll work the Needs Fix and Ready queues one
+> ticket at a time, and push each to `main` once typecheck, lint, unit tests and
+> e2e pass locally. Roughly N tickets in scope. Go ahead?"
+
+- **An explicit "implement the next ticket" / "start an implementation run" /
+  "go" is that consent.** Take it and run the whole loop; don't re-ask.
+- **If the user has not asked for implementation work** — say you were invoked
+  speculatively or as part of some other task — ask once, then run.
+- **Non-interactive run with no instruction to implement:** do nothing. Report
+  the queue state and stop. Never start unattended work nobody asked for.
+
+Everything after this point is autonomous. The rest of this skill is written so
+you never *need* to interrupt: anything you cannot decide safely gets parked on
+the issue and you move to the next ticket, rather than blocking the run.
 
 ## Step 1 — Pick the ticket
 
@@ -205,50 +229,29 @@ git commit -m "<type>: <ticket title> (refs #<N>)"
 
 `refs #N`, never `closes #N` — see Definition of Done.
 
-## Step 8 — Ask for consent, then push to main
+## Step 8 — Push to main
 
 This project is **trunk-based**: work goes straight onto `main`. No feature
 branches, no forks, no pull requests — a ticket's code lands as one commit on
 `main` and CI validates it there. That is also why `main` must never go red, and
 why Step 6 is non-negotiable.
 
-**Pushing to `main` requires the user's explicit consent, every time.** Show
-them what they are approving and wait for an answer:
+You already have consent to push (Step 0.5). Do not stop to ask again — a run
+that pauses on every ticket is not automation.
 
-```bash
-git log --oneline -1
-git show --stat HEAD
-```
-
-Then ask, plainly: *"Ready to push `<SHA-or-subject>` to main — <one-line
-summary>. Verified: typecheck ✅ lint ✅ unit ✅ e2e ✅ (or why not). Push?"*
-
-Rules for the gate:
-
-- **Wait for a real answer.** Silence is not consent, and neither is the user
-  having asked you to "implement the next ticket" — that authorised the work,
-  not the push.
-- **One approval covers one push.** In a looping session, ask again for each
-  ticket, unless the user explicitly pre-authorises the run ("push everything
-  this session"). If they do, say so in your report for each subsequent push and
-  still show the diffstat before pushing.
-- **If consent is withheld or you cannot ask** (non-interactive run), stop:
-  leave the commit local, keep the ticket on `status-in-progress`, and report
-  that it is committed but unpushed and awaiting approval. Do not loop on to
-  another ticket — an unpushed commit on `main` would end up under the next
-  ticket's push.
-- Never work around the gate: no pushing to another branch, no opening a PR
-  instead, no "I'll just push and mention it".
-
-Once approved, `bump-version` pushes a `chore: bump version …` commit back after
-every successful run, so your local `main` is probably stale:
+`bump-version` pushes a `chore: bump version …` commit back after every
+successful run, so your local `main` is probably stale:
 
 ```bash
 git stash -u && git pull --rebase origin main && git stash pop && git push origin main
 ```
 
 Re-run the checks if the rebase pulled in anything substantive. Never
-force-push `main`.
+force-push `main`, and never push to a branch or open a PR instead — the whole
+workflow assumes one line of history.
+
+If the rebase hits a conflict you cannot resolve confidently, park the ticket
+(see "When a ticket has to be parked") rather than guessing.
 
 ## Step 9 — Hand off to CI
 
@@ -272,15 +275,19 @@ If the run isn't listed yet, wait 5–10 s and retry.
 
 ## Step 10 — Report, then loop
 
-Report on the ticket you just finished: what changed, which checks you ran (and
-any you could not), the SHA, the run URL, and that it is now waiting on CI.
+Log one short paragraph on the ticket you just finished: what changed, which
+checks you ran (and any you could not), the SHA, the run URL, and that it is now
+waiting on CI. This is a progress note, **not** a handback — do not stop for a
+response.
 
-Then **go back to Step 0** and take the next ticket — each one needs its own
-push consent at Step 8 unless the user pre-authorised the whole run. Keep looping until either:
+Then **go back to Step 0** and take the next ticket immediately. Keep looping
+until either:
 
 - **the queues are empty** — no open `status-needs-fix` and no `status-ready`
   tickets left. Report that the board is clear and stop. This is the good exit.
 - **the budget runs low** — follow "Out of budget" in Step 0.
+- **every remaining ticket is parked** — nothing left you can act on
+  autonomously. Report the parked tickets and their blocking questions together.
 
 Between tickets, drop what you no longer need: the previous ticket's file
 contents, diffs and test output are dead weight once it is pushed. Carry forward
@@ -290,8 +297,11 @@ URL, one line on what changed.
 If the user asked for a single named ticket (`implement #31`), do not loop —
 finish it and hand back.
 
-Running `watch-ci` is a separate skill; invoke it once you stop looping rather
-than after every ticket, so CI has time to actually run.
+When the loop ends, chain straight into `watch-ci` if it is available to you:
+the tickets you pushed are sitting on `status-ci-running` and something has to
+carry them to Done. Invoking it once at the end rather than after every ticket
+also gives CI time to actually run. If you cannot invoke it, say explicitly that
+N tickets are awaiting CI monitoring.
 
 ## Fixing a failed ticket
 
@@ -338,10 +348,21 @@ typecheck ─→ bump-version ─→ build-windows ─┐
 - **build-windows** / **publish-release** package and ship the release; they fail
   on packaging concerns, not on your feature logic.
 
-## Stop and ask
+## When a ticket has to be parked
 
-Finish the ticket you claimed; don't let it grow into a different one. Stop,
-comment on the issue, and check with the user when:
+Finish the ticket you claimed; don't let it grow into a different one. But some
+tickets turn out to be undoable as written, and a fully automated run must not
+stall on them. **Park the ticket and carry on** — do not wait for the user.
+
+Parking a ticket means: leave it `status-in-progress` **only if partial work is
+committed locally**, otherwise reset it to `status-needs-fix` so it is visibly
+back in the queue; comment on the issue with what you found, what you tried, the
+specific question or decision that blocks it, and your recommendation; then
+return to Step 0 and take the next ticket. Collect every parked ticket in your
+end-of-run report so the user sees them together instead of one interruption at
+a time.
+
+Park — don't push through, don't ask mid-run — when:
 
 - the change is spreading well beyond the files named in the ticket's
   implementation notes, or into modules it never mentioned;
@@ -354,8 +375,12 @@ comment on the issue, and check with the user when:
   intended behaviour is legitimate; weakening one to get green is not, and the
   difference is worth a sentence of justification.
 
-Leaving a ticket unfinished with a clear explanation beats shipping a sprawling
-change nobody asked for.
+Parking with a clear explanation beats both shipping a sprawling change nobody
+asked for and halting a run that had five other tickets it could have done.
+
+Discard any uncommitted work for a parked ticket (`git checkout -- .` after
+noting what you learned in the comment) so the next ticket starts from a clean
+tree. Never carry one ticket's half-finished edits into another's commit.
 
 ## Constraints
 
@@ -364,14 +389,14 @@ change nobody asked for.
 - Check the token budget before every ticket; never start one you cannot finish
   through Step 9.
 - Never push if typecheck, lint, unit tests or e2e fail.
-- Never push to `main` without the user's explicit consent for that push.
-- Trunk-based only: commit onto `main`. Never create a branch or a PR as a way
-  around the consent gate.
+- Trunk-based only: commit onto `main`. Never create a branch or open a PR.
+- Take consent once per run at Step 0.5, then run unattended — never pause
+  mid-loop for approval. Park blocked tickets instead of asking.
 - Never close an issue and never set `status-done` — that is `watch-ci`'s call.
 - Never add to `renderer/renderer.js`.
 - Always update **both** the label and the board column on every transition.
-- If you cannot complete the ticket, leave it `status-in-progress`, comment
-  explaining exactly where you stopped and why, and tell the user.
+- If you cannot complete a ticket, park it (comment + correct label + clean
+  tree) and move on — never leave the run blocked on a question.
 
 ## Board reference
 

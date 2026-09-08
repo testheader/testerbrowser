@@ -96,11 +96,11 @@ successful run — pull with rebase before pushing.
 - **Trunk-based:** work goes straight to `main` — no feature branches, no PRs —
   so `main` must stay green. Run typecheck, lint, unit tests and e2e before
   pushing.
-- **Every push to `main` needs the user's explicit consent.** Show the commit
-  and diffstat, say which checks passed, and wait for an answer. A request to
-  implement a ticket authorises the work, not the push. Without consent the
-  commit stays local and the ticket keeps its current status; never route around
-  the gate with a branch or a PR.
+- **`implement-ticket` and `watch-ci` are automated runs.** Consent is taken
+  once, when the user asks for the work; after that they loop unattended and
+  push to `main` without pausing per ticket. Anything an agent cannot decide
+  safely is parked on the issue with a comment and a label so the run continues.
+  Never route around trunk-based flow with a branch or a PR.
 - **Issue commits reference, never close:** use `refs #N`, not `closes #N` —
   see the ticket workflow below.
 

@@ -17,6 +17,7 @@
       "Bash(git commit*)",
       "Bash(git pull*)",
       "Bash(git stash*)",
+      "Bash(git push origin main)",
       "Bash(git rev-parse*)",
       "Bash(gh issue*)",
       "Bash(gh run list*)",
@@ -25,8 +26,9 @@
       "Bash(gh api graphql*)",
       "Bash(gh label list*)"
     ],
-    "ask": [
-      "Bash(git push*)"
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)"
     ]
   }
 }

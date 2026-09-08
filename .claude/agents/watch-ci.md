@@ -1,6 +1,6 @@
 ---
 name: watch-ci
-description: Use when asked to watch CI, monitor a running build, or check whether a pushed ticket passed — for the TesterBrowser kanban board. Reconciles the board from labels, polls every CI Running ticket until it resolves, then moves it to Done (closing the issue) or Needs Fix with a failure summary.
+description: Use when asked to watch CI, monitor a running build, or check whether a pushed ticket passed — for the TesterBrowser kanban board. Reconciles the board from labels, polls every CI Running ticket until it resolves, then moves it to Done (closing the issue) or Needs Fix with a failure summary. Runs unattended to completion.
 ---
 
 # watch-ci

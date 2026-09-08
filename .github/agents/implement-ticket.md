@@ -1,6 +1,6 @@
 ---
 name: implement-ticket
-description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main after asking your approval, and hands off to CI monitoring. Loops one ticket at a time until the queues are empty or the token budget runs low.
+description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main and hands off to CI monitoring. Runs unattended once started, looping one ticket at a time until the queues are empty or the token budget runs low.
 ---
 
 # implement-ticket
