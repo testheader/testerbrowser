@@ -827,6 +827,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .diff-label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-muted); }
 .diff-pick { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 3px;
              padding: 2px 6px; font-size: 12px; }
+.diff-filter-text { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 3px;
+                     padding: 2px 6px; font-size: 12px; width: 180px; }
 .diff-run-btn { background: var(--accent); color: var(--on-fill); border: none; border-radius: 3px;
                 padding: 3px 10px; font-size: 12px; cursor: pointer; }
 .diff-run-btn:hover { background: var(--accent-soft); }

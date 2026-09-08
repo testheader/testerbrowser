@@ -67,6 +67,25 @@ export function buildSearchUrl(engine, query) {
   return engine === 'duckduckgo' ? `https://duckduckgo.com/?q=${q}` : `https://www.google.com/search?q=${q}`;
 }
 
+// Space-separated terms combine: every positive term must match and any
+// negative (`-term`) match excludes. A lone `-` (length 1) is a literal
+// character, not a negation, so it is matched as-is. Case-insensitive;
+// callers pass raw text, matching happens against its lowercased form.
+export function matchesFreeText(text, filterText) {
+  const terms = filterText.trim().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const textLower = text.toLowerCase();
+  for (const term of terms) {
+    const termLower = term.toLowerCase();
+    if (termLower.length > 1 && termLower.startsWith('-')) {
+      if (textLower.includes(termLower.slice(1))) return false;
+    } else if (!textLower.includes(termLower)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');

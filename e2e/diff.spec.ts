@@ -127,3 +127,79 @@ test('Reset clears the comparison back to its initial state and disables HAR exp
   await expect(window.locator('.diff-meta')).toHaveCount(0);
   await expect(window.locator('#diffHarBtn')).toBeDisabled();
 });
+
+// ── Free-text filtering of the diff table (#164) ─────────────────────────────
+
+test('a positive free-text term narrows the table to matching URLs, and clearing restores every row', async () => {
+  const sharedPath = '/network/status-codes.html';
+  const onlyAPath = '/downloads/sample.txt';
+
+  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const sessionAId = sessions[0].id;
+  const sessionBId = sessions[1].id;
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionAId);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(sharedPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(onlyAPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, onlyAPath)).waitForLoadState('load');
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionBId);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(sharedPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+
+  await window.click('#consoleTabDiff');
+  await window.selectOption('#diffPickA', sessionAId);
+  await window.selectOption('#diffPickB', sessionBId);
+  await window.click('#diffRunBtn');
+
+  const totalRows = await window.locator('.diff-row').count();
+  expect(totalRows).toBeGreaterThan(1);
+  const sameCount = await window.locator('.diff-badge.same').textContent();
+
+  await window.fill('#diffFilterText', 'sample.txt');
+  await expect(window.locator('.diff-row')).toHaveCount(1);
+  await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toBeVisible();
+  // Legend is unaffected by the text filter, same as the category pills.
+  await expect(window.locator('.diff-badge.same')).toHaveText(sameCount!);
+
+  await window.fill('#diffFilterText', '');
+  await expect(window.locator('.diff-row')).toHaveCount(totalRows);
+});
+
+test('a negative -term hides matching URLs, and combined terms apply both rules together', async () => {
+  await window.fill('#diffFilterText', '-sample');
+  await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toHaveCount(0);
+  await expect(window.locator('.diff-row', { hasText: '/network/status-codes.html' }).first()).toBeVisible();
+
+  await window.fill('#diffFilterText', 'downloads -sample');
+  await expect(window.locator('.diff-row')).toHaveCount(0);
+
+  await window.fill('#diffFilterText', '');
+});
+
+test('a lone "-" is treated as a literal character rather than a negation', async () => {
+  // "-" as a bare term is a positive literal match, not a negation: it keeps
+  // only URLs that actually contain a hyphen (status-codes.html) and hides
+  // the ones that don't (sample.txt) — the opposite of what negation would do.
+  await window.fill('#diffFilterText', '-');
+  await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toHaveCount(0);
+  await expect(window.locator('.diff-row', { hasText: '/network/status-codes.html' }).first()).toBeVisible();
+  await window.fill('#diffFilterText', '');
+});
+
+test('Reset also clears the free-text filter input', async () => {
+  await window.fill('#diffFilterText', 'sample');
+  await expect(window.locator('#diffFilterText')).toHaveValue('sample');
+
+  await window.click('#diffResetBtn');
+
+  await expect(window.locator('#diffFilterText')).toHaveValue('');
+});

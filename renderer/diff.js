@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { escHtml, wirePillGroup, activePillValues } from './utils.js';
+import { escHtml, wirePillGroup, activePillValues, matchesFreeText } from './utils.js';
 import { populateSessionPickers } from './session-picker.js';
 
 let lastDiffRows = [];
@@ -35,6 +35,8 @@ export function initDiff() {
         <button class="filter-pill on" data-cat="only-b"  title="Only in B">Only B</button>
         <button class="filter-pill on" data-cat="same"    title="Identical">Same</button>
       </div>
+      <input type="text" class="diff-filter-text" id="diffFilterText"
+        placeholder="Filter URLs, e.g. api -analytics" />
       <button class="diff-har-btn" id="diffHarBtn" disabled>Export HAR</button>
       <button class="console-icon-btn" id="diffResetBtn" title="Reset comparison">&#10005;</button>
     </div>
@@ -48,6 +50,9 @@ export function initDiff() {
   document.getElementById('diffHarBtn').addEventListener('click', exportDiffHar);
   document.getElementById('diffGroupToggle').addEventListener('change', onGroupToggleChanged);
   document.getElementById('diffResetBtn').addEventListener('click', resetDiff);
+  document.getElementById('diffFilterText').addEventListener('input', () => {
+    if (lastDiffRows.length > 0) renderDiffTable(document.getElementById('diffBody'));
+  });
   wirePillGroup(document.getElementById('diffCatPills'), () => {
     if (lastDiffRows.length > 0) renderDiffTable(document.getElementById('diffBody'));
   });
@@ -58,6 +63,7 @@ function resetDiff() {
   rawMapB = new Map();
   lastDiffRows = [];
   diffMeta = null;
+  document.getElementById('diffFilterText').value = '';
   document.getElementById('diffBody').innerHTML = '<div class="diff-hint">Select two sessions above and click Compare.</div>';
   document.getElementById('diffHarBtn').disabled = true;
 }
@@ -248,7 +254,8 @@ function renderDiffTable(body) {
   </div>`;
 
   const activeCats = activePillValues(document.getElementById('diffCatPills'), 'cat');
-  const rows = lastDiffRows.filter(r => activeCats.has(r.category)).map(r => {
+  const filterText = document.getElementById('diffFilterText').value;
+  const rows = lastDiffRows.filter(r => activeCats.has(r.category) && matchesFreeText(r.url, filterText)).map(r => {
     const url = escHtml(r.url);
     const method = escHtml(r.method);
     return `<tr class="diff-row ${r.category}">
