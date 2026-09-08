@@ -158,6 +158,30 @@ default — everything merely *unknown* it resolves by reading the code.
    summary + log excerpt + repro command + attempt count
 8. Still in progress → leave labels alone, poll again
 
+## Token Budget
+
+Each agent works **one ticket at a time and loops** until its queue is empty or
+its context runs low, so every one of them checks its remaining `total_tokens`
+before picking up the next item and stops cleanly above a floor.
+
+| Skill | Full-speed above | Floor — stop below | Why the floor is where it is |
+|---|---|---|---|
+| `groom-ticket` | 20,000 | 10,000 | Investigation-heavy; a half-read codebase produces a thin ticket |
+| `implement-ticket` | 25,000 | 12,000 | Full cycle is explore → implement → four verification commands → push → handoff |
+| `watch-ci` | 20,000 | 8,000 | Polling is cheap per round but unbounded in length |
+
+Stopping early is safe **because all state lives in labels**, not in the agent's
+context — a fresh session resumes exactly where the last one stopped. What is
+*not* safe is stopping mid-ticket: a ticket stranded on `status-in-progress`, or
+code pushed to `main` that never reached `status-ci-running`, is invisible to the
+next agent in the chain. Hence the rule shared by all three: never start a unit
+of work you cannot finish through its handoff.
+
+On stopping for budget, an agent reports what it completed, what remains, and
+that it stopped for budget rather than because the queue was empty.
+
+---
+
 ## Issue Conventions
 
 - **Title format:** `<type>: <description>` (conventional commits — feat/fix/chore/refactor/test)

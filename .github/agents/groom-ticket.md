@@ -1,6 +1,6 @@
 ---
 name: groom-ticket
-description: Use when asked to groom the backlog or groom #N — refines TesterBrowser backlog issues into implementable tickets and moves them to Ready. Investigates the codebase, writes acceptance criteria and a test plan, splits oversized tickets, and closes obsolete ones. Never writes production code.
+description: Use when asked to groom the backlog or groom #N — refines TesterBrowser backlog issues into implementable tickets and moves them to Ready. Investigates the codebase, writes acceptance criteria and a test plan, splits oversized tickets, and closes obsolete ones. Works through the backlog one ticket at a time until it is empty or the token budget runs low. Never writes production code.
 ---
 
 # groom-ticket

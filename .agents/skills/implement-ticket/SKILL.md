@@ -1,11 +1,12 @@
 ---
 name: implement-ticket
-description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main, and hands off to CI monitoring.
+description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main, and hands off to CI monitoring. Loops one ticket at a time until the queues are empty or the token budget runs low.
 ---
 
 # Implement a ticket — TesterBrowser
 
-You implement **one ticket at a time** for `testheader/testerbrowser`.
+You implement tickets for `testheader/testerbrowser`, **one at a time**, looping
+until the queues are empty or your token budget runs low.
 
 Board: https://github.com/users/testheader/projects/3
 
@@ -40,6 +41,38 @@ and adds the new one in the same step. Non-status labels (`enhancement`, `bug`,
   and the label is `status-done`.
 - Your job ends at `status-ci-running`, not at "code pushed".
 
+## Step 0 — Check the token budget
+
+**Do this first, and again at the top of every loop.** Read `total_tokens`
+remaining from the system reminder.
+
+| Tokens left | Action |
+|---|---|
+| **> 25,000** | Plenty. Take the next ticket and run the full cycle. |
+| **12,000–25,000** | Enough for one small ticket only. Take it **only if** the ticket looks genuinely small (a handful of files, no new e2e spec); otherwise go to "Out of budget" below. |
+| **< 12,000** | **Stop.** Do not start a ticket. Go to "Out of budget". |
+
+Judge the size from the ticket's implementation notes and test plan before
+committing to it — that is what the Definition of Ready exists for.
+
+**Never start a ticket you cannot finish.** Abandoning work mid-cycle leaves a
+ticket stuck on `status-in-progress` with a half-built tree, which is worse than
+not starting. The dangerous moment is *after* the push: if you run dry between
+Step 8 and Step 9 the code is on `main` but the ticket still says In progress and
+`watch-ci` will never see it. Budget for the whole cycle, including the handoff.
+
+### Out of budget
+
+Do not silently stop, and do not start new work. Instead:
+
+1. Report what you completed this session: tickets, SHAs, run URLs, and the
+   current state of anything unfinished.
+2. Say plainly that you stopped for budget, not because the queues are empty,
+   and name what is still waiting.
+3. Recommend the user start a **fresh session** and invoke this skill again — it
+   resumes from Step 0 with a clean context and picks up exactly where you left
+   off, because all the state lives in labels, not in your context.
+
 ## Step 1 — Pick the ticket
 
 If the user named an issue (`implement #31`), use that one. Otherwise work the
@@ -57,8 +90,9 @@ gh issue list --repo testheader/testerbrowser --state open \
   --label status-ready --json number,title --jq '.[]'
 ```
 
-If both queues are empty, say so and stop. Promoting Backlog → Ready is the
-`groom-ticket` skill's job, not yours.
+If both queues are empty, the board is clear — report that and stop looping.
+Promoting Backlog → Ready is the `groom-ticket` skill's job, not yours, so don't
+reach into Backlog to keep yourself busy.
 
 **Check for a stale claim first.** If an issue is already `status-in-progress`,
 a previous run is either still going or died. If it was updated recently, stop
@@ -203,14 +237,27 @@ Actions: $RUN_URL"
 
 If the run isn't listed yet, wait 5–10 s and retry.
 
-## Step 10 — Report and stop
+## Step 10 — Report, then loop
 
-Report to the user: what changed, which checks you ran (and any you could not),
-the SHA, the run URL, and that the ticket is now waiting on CI. Then run
-`watch-ci`, or hand back.
+Report on the ticket you just finished: what changed, which checks you ran (and
+any you could not), the SHA, the run URL, and that it is now waiting on CI.
 
-Do **not** loop straight into another ticket in the same session — start a fresh
-one so context stays bounded.
+Then **go back to Step 0** and take the next ticket. Keep looping until either:
+
+- **the queues are empty** — no open `status-needs-fix` and no `status-ready`
+  tickets left. Report that the board is clear and stop. This is the good exit.
+- **the budget runs low** — follow "Out of budget" in Step 0.
+
+Between tickets, drop what you no longer need: the previous ticket's file
+contents, diffs and test output are dead weight once it is pushed. Carry forward
+only the summary you will need for the final report — issue number, SHA, run
+URL, one line on what changed.
+
+If the user asked for a single named ticket (`implement #31`), do not loop —
+finish it and hand back.
+
+Running `watch-ci` is a separate skill; invoke it once you stop looping rather
+than after every ticket, so CI has time to actually run.
 
 ## Fixing a failed ticket
 
@@ -278,7 +325,10 @@ change nobody asked for.
 
 ## Constraints
 
-- One ticket at a time.
+- One ticket at a time — never work two in parallel, and never claim the next
+  one before the current is at `status-ci-running`.
+- Check the token budget before every ticket; never start one you cannot finish
+  through Step 9.
 - Never push if typecheck, lint, unit tests or e2e fail.
 - Never close an issue and never set `status-done` — that is `watch-ci`'s call.
 - Never add to `renderer/renderer.js`.

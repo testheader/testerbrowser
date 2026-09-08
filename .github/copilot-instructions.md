@@ -122,6 +122,12 @@ copy each:
 | `implement-ticket` | Ready / Needs Fix → CI running |
 | `watch-ci` | CI running → Done / Needs Fix |
 
+Each skill takes **one ticket at a time and loops** until its queue is empty or
+its remaining token budget hits the floor documented in the skill. Because
+labels hold all the state, stopping for budget is safe and a fresh session
+resumes where the last stopped — but stopping *mid-ticket* is not, so no agent
+starts a unit of work it cannot finish through its handoff.
+
 `.github/agents/` and `.claude/agents/` hold thin pointer files so each tool can
 discover them from its own conventional directory. **Never put policy in a
 pointer file** — edit the skill. Full design in

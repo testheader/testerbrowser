@@ -32,7 +32,28 @@ cannot close a ticket before CI has proved it.
 
 ---
 
-## Step 0 — Reconcile the board from labels
+## Step 0 — Check the token budget
+
+**Do this first, and again before each polling round.** Read `total_tokens`
+remaining from the system reminder.
+
+| Tokens left | Action |
+|---|---|
+| **> 20,000** | Run the full sweep and poll normally. |
+| **8,000–20,000** | Finish the tickets you are already tracking, but don't start a Case A inline fix — go straight to Needs Fix so nothing is left half-done. |
+| **< 8,000** | **Stop.** Report the state of every ticket you were watching and hand back. |
+
+Polling is cheap per round but unbounded in length — a slow CI run can drain a
+session by attrition. Two things keep that in check: wait the full 180 s between
+rounds rather than polling tightly, and read only what you need from the API
+(`--jq` filters, `--log-failed` rather than whole logs).
+
+Ending a watch session early is safe: labels hold all the state, so a fresh
+session resumes cleanly. Leaving a ticket **mid-Case-A** is not safe — the fix
+may be pushed but unmonitored — so never begin an inline fix you cannot see
+through to its next verdict.
+
+## Step 0a — Reconcile the board from labels
 
 Before anything else, correct any ticket whose board column doesn't match its
 label. Labels win.
@@ -222,9 +243,12 @@ Then comment with everything the implementer needs as its starting spec:
 
 ## Step 6 — Loop, then stop
 
-Process every CI Running ticket, then re-check the board. If new items appeared,
-handle them; otherwise report which tickets went to Done, which need attention,
-and terminate cleanly to keep context bounded.
+Process every CI Running ticket, then re-check the budget (Step 0) and the
+board. If new items appeared and you have budget, handle them; otherwise report
+which tickets went to Done, which need attention, and terminate cleanly.
+
+Between rounds, drop the log excerpts and API output you have already acted on —
+keep only each ticket's number, verdict and run URL for the final report.
 
 `status-needs-fix` is the top of `implement-ticket`'s queue, so anything you
 park there gets picked up before new work.
@@ -239,6 +263,8 @@ park there gets picked up before new work.
 - Don't touch tickets that aren't `status-ci-running`, except in the Step 0/0b
   sweeps.
 - Always update **both** the label and the board column.
+- Check the budget before each round; never begin a Case A inline fix you cannot
+  monitor through to its next verdict.
 - Keep failure comments short and actionable — the next agent reads them as its
   spec and will try to reproduce from what you wrote, so name the failing job
   and the command precisely.

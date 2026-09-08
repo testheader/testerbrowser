@@ -1,6 +1,6 @@
 ---
 name: groom-ticket
-description: Use when asked to groom the backlog or groom #N — refines TesterBrowser backlog issues into implementable tickets and moves them to Ready. Investigates the codebase, writes acceptance criteria and a test plan, splits oversized tickets, and closes obsolete ones. Never writes production code.
+description: Use when asked to groom the backlog or groom #N — refines TesterBrowser backlog issues into implementable tickets and moves them to Ready. Investigates the codebase, writes acceptance criteria and a test plan, splits oversized tickets, and closes obsolete ones. Works through the backlog one ticket at a time until it is empty or the token budget runs low. Never writes production code.
 ---
 
 # Groom a ticket — TesterBrowser
@@ -38,6 +38,27 @@ it without asking a question. The issue body must contain:
    should be extended or a new one added.
 5. **Out of scope** — what this ticket deliberately does not do. This is what
    stops the implementer's change sprawling.
+
+## Step 0 — Check the token budget
+
+**Do this first, and again before each ticket.** Read `total_tokens` remaining
+from the system reminder.
+
+| Tokens left | Action |
+|---|---|
+| **> 20,000** | Groom the next ticket in full — investigate the code properly. |
+| **10,000–20,000** | One more ticket only, and only if it is narrow enough to investigate honestly. |
+| **< 10,000** | **Stop.** Report what you groomed and hand back. |
+
+Grooming is investigation-heavy: most of the cost is reading code, not writing
+the issue. That makes running dry mid-ticket a real risk, and a half-investigated
+ticket is the exact failure this skill exists to prevent — **never** apply
+`status-ready` to a ticket you did not have the budget to investigate properly.
+Leave it in Backlog and say so.
+
+When the budget runs out, report which tickets you groomed, which you closed, and
+which are still waiting, then recommend a fresh session — labels hold all the
+state, so nothing is lost.
 
 ## Workflow
 
@@ -96,8 +117,16 @@ it without asking a question. The issue body must contain:
 
    and move the board item to **Ready** (`70a64391`) — see Board reference.
 
-8. **Report** to the user: what you groomed, what you split, what you closed as
-   already-done, and anything you deliberately left in Backlog.
+8. **Report, then loop.** Say what you groomed, what you split, what you closed
+   as already-done, and anything you deliberately left in Backlog. Then go back
+   to Step 0 and take the next Backlog ticket. Keep looping until Backlog is
+   empty or the budget runs low.
+
+   Drop each ticket's investigation notes once its issue body is written — carry
+   forward only the issue number and a one-line summary for the final report.
+
+   If the user asked for a single named ticket (`groom #31`), don't loop —
+   finish it and hand back.
 
 ## When you can't make it ready
 
@@ -115,6 +144,8 @@ to answer.
 
 ## Constraints
 
+- Check the budget before each ticket; never mark a ticket `status-ready` on an
+  investigation you had to cut short.
 - **Never write production code**, never open a PR, never push. You edit issues
   only. If grooming reveals a trivial fix, say so and leave a ticket for it.
 - Never label a ticket `status-ready` that you would not want handed to you. A
