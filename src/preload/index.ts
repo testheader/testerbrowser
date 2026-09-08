@@ -188,7 +188,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   },
 
   emulation: {
-    set:   (id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; clear?: boolean }) =>
+    set:   (id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; spoofedTimeMs?: number; clear?: boolean }) =>
              ipcRenderer.invoke('session:setEmulation', id, opts),
     get:   (id: string) => ipcRenderer.invoke('session:getEmulation', id),
   },

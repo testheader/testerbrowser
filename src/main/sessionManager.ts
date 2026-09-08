@@ -64,6 +64,29 @@ export interface EmulationOverrides {
   locale?: string;
   latitude?: number;
   longitude?: number;
+  spoofedTimeMs?: number;
+}
+
+// Overrides window.Date/Date.now() on every new document with a fixed
+// offset from real wall-clock time, so the spoofed clock keeps advancing
+// at normal speed instead of freezing at one instant.
+function buildDateOverrideScript(offsetMs: number): string {
+  return `(() => {
+    if (window.__tbDateOverridden) return;
+    window.__tbDateOverridden = true;
+    const __tbOffset = ${offsetMs};
+    const RealDate = Date;
+    function TBDate(...args) {
+      if (!new.target) return new RealDate(RealDate.now() + __tbOffset).toString();
+      if (args.length === 0) return new RealDate(RealDate.now() + __tbOffset);
+      return new RealDate(...args);
+    }
+    TBDate.prototype = RealDate.prototype;
+    TBDate.now = () => RealDate.now() + __tbOffset;
+    TBDate.parse = RealDate.parse;
+    TBDate.UTC = RealDate.UTC;
+    Object.defineProperty(window, 'Date', { value: TBDate, writable: true, configurable: true });
+  })();`;
 }
 
 const TAB_COLORS = [
@@ -208,6 +231,8 @@ export class SessionManager {
   private recordingBuffers = new Map<string, Map<string, TestStep>>();
   // Live leader→follower links ("Follow Along"), keyed by leader session id.
   private followPairings = new Map<string, FollowPairing>();
+  // CDP script identifier of the injected Date-override shim, keyed by session id.
+  private dateOverrideScripts = new Map<string, string>();
   private recordFeatureError: (message: string) => void;
 
   constructor(win: BrowserWindow, getRedactHeaders: () => boolean, recordFeatureError: (message: string) => void = () => {}) {
@@ -908,7 +933,7 @@ export class SessionManager {
     this.injectTestData(s.view, resolveTemplate(template));
   }
 
-  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; clear?: boolean }): Promise<void> {
+  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; spoofedTimeMs?: number; clear?: boolean }): Promise<void> {
     const s = this.sessions.get(id);
     if (!s) return;
     const dbg = s.view.webContents.debugger;
@@ -916,6 +941,11 @@ export class SessionManager {
       await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
       await dbg.sendCommand('Emulation.setLocaleOverride', { locale: '' }).catch(() => {});
       await dbg.sendCommand('Emulation.clearGeolocationOverride').catch(() => {});
+      const existingScriptId = this.dateOverrideScripts.get(id);
+      if (existingScriptId) {
+        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch(() => {});
+        this.dateOverrideScripts.delete(id);
+      }
       s.emulation = null;
       return;
     }
@@ -932,6 +962,20 @@ export class SessionManager {
       await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude: opts.latitude, longitude: opts.longitude, accuracy: opts.accuracy ?? 10 }).catch(() => {});
       applied.latitude = opts.latitude;
       applied.longitude = opts.longitude;
+    }
+    if (opts.spoofedTimeMs !== undefined) {
+      const existingScriptId = this.dateOverrideScripts.get(id);
+      if (existingScriptId) {
+        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch(() => {});
+        this.dateOverrideScripts.delete(id);
+      }
+      const offsetMs = opts.spoofedTimeMs - Date.now();
+      await dbg.sendCommand('Page.enable').catch(() => {});
+      const result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+        source: buildDateOverrideScript(offsetMs),
+      }).catch(() => null) as { identifier: string } | null;
+      if (result?.identifier) this.dateOverrideScripts.set(id, result.identifier);
+      applied.spoofedTimeMs = opts.spoofedTimeMs;
     }
     s.emulation = applied;
   }
@@ -1211,6 +1255,7 @@ export class SessionManager {
     this.sessionNotes.delete(id);
     this.recordingHandlers.delete(id);
     this.recordingBuffers.delete(id);
+    this.dateOverrideScripts.delete(id);
   }
 
   // Reads the page's live in-progress steps and merges them (by id) into the
