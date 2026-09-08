@@ -611,7 +611,7 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .evt { padding: 1px 10px; cursor: pointer; display: flex; align-items: baseline; gap: 8px; }
 .evt:hover { background: var(--bg-primary); }
 .evt-summary { white-space: nowrap; overflow-x: auto; min-width: 0; flex: 1 1 auto; }
-.evt-ts { color: var(--text-faint); vertical-align: top; font-variant-numeric: tabular-nums; }
+.evt-ts { color: var(--text-faint); flex-shrink: 0; white-space: nowrap; align-self: flex-start; font-variant-numeric: tabular-nums; }
 .evt-ts-date { opacity: 0.65; }
 .evt-duration { flex-shrink: 0; color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 .evt-detail { background: var(--bg-deep); border-left: 2px solid var(--border-strong); margin: 4px 10px 4px 0;

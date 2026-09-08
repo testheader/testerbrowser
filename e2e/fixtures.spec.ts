@@ -97,6 +97,38 @@ test('console/logs.html: an uncaught exception renders as a visually distinct ro
   await expect(exceptionRow).not.toHaveClass(/console-error/);
 });
 
+test('console/logs.html: free-text filter supports negative terms and combines them with positive ones', async () => {
+  const tab = await navigate('/console/logs.html');
+  await window.click('#clearConsoleBtn');
+  await tab.click('button:text-is("console.log")');
+  await tab.click('button:text-is("console.info")');
+  await tab.click('button:text-is("console.warn")');
+  await window.waitForTimeout(1_500);
+
+  const plainLog = window.locator('.evt', { hasText: 'plain log' });
+  const infoLog  = window.locator('.evt', { hasText: 'info message' });
+  const warnLog  = window.locator('.evt', { hasText: 'warning message' });
+  await expect(plainLog).toHaveCount(1);
+  await expect(infoLog).toHaveCount(1);
+  await expect(warnLog).toHaveCount(1);
+
+  // A leading '-' excludes matching rows...
+  await window.fill('#filterText', '-warning');
+  await expect(warnLog).toHaveCount(0);
+  await expect(plainLog).toHaveCount(1);
+  await expect(infoLog).toHaveCount(1);
+
+  // ...and combines with a positive term, which on its own matches both
+  // "info message" and "warning message".
+  await window.fill('#filterText', 'message -warning');
+  await expect(infoLog).toHaveCount(1);
+  await expect(warnLog).toHaveCount(0);
+  await expect(plainLog).toHaveCount(0);
+
+  await window.fill('#filterText', '');
+  await expect(warnLog).toHaveCount(1);
+});
+
 // ── Network ──────────────────────────────────────────────────────────────────
 
 test('a request with a very long URL stays a single line and scrolls horizontally instead of wrapping', async () => {
@@ -121,6 +153,16 @@ test('a request with a very long URL stays a single line and scrolls horizontall
     clientWidth: el.clientWidth,
   }));
   expect(summaryBox.scrollWidth).toBeGreaterThan(summaryBox.clientWidth + 100);
+
+  // The timestamp is its own column outside that scroll box, so scrolling
+  // the long URL sideways must not carry the timestamp out of view (#156).
+  await row.locator('.evt-summary').evaluate(el => { el.scrollLeft = el.scrollWidth; });
+  const tsVisible = await row.evaluate(el => {
+    const ts  = el.querySelector('.evt-ts')!.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return ts.left >= box.left - 1 && ts.right <= box.right + 1 && ts.width > 0;
+  });
+  expect(tsVisible).toBe(true);
 });
 
 test('network/status-codes.html: a 404 shows up as a network event', async () => {

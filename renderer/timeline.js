@@ -47,6 +47,25 @@ function parseLocalDatetime(value) {
   return Number.isNaN(t) ? null : t;
 }
 
+// Free-text filter supporting negative terms: a term prefixed with `-`
+// excludes rows containing it, and terms are ANDed together, so
+// `api -load` keeps rows matching "api" that don't contain "load".
+// `haystacks` are already lower-cased; a term matches if any of them
+// contains it (network rows search summary *and* payload).
+export function matchesFilterText(haystacks, filterText) {
+  const terms = filterText.split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const includes = (needle) => haystacks.some(h => h && h.includes(needle));
+  for (const term of terms) {
+    if (term.length > 1 && term.startsWith('-')) {
+      if (includes(term.slice(1))) return false;
+    } else if (!includes(term)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function getTimelineEvents() { return timelineEvents; }
 
 export function renderTimeline() {
@@ -81,8 +100,7 @@ export function renderTimeline() {
       if (toTs !== null && e.ts > toTs) return false;
 
       if (!netFilter) return true;
-      if (e.summary.toLowerCase().includes(netFilter)) return true;
-      return !!e.payload && e.payload.toLowerCase().includes(netFilter);
+      return matchesFilterText([e.summary.toLowerCase(), e.payload ? e.payload.toLowerCase() : ''], netFilter);
     });
   } else {
     const filterText   = document.getElementById('filterText').value.toLowerCase();
@@ -93,7 +111,7 @@ export function renderTimeline() {
       const level = getConsoleLevel(e);
       const levelVisible = !level || !KNOWN_LEVELS.has(level) || activeLevels.has(level);
       if (!levelVisible) return false;
-      return !filterText || e.summary.toLowerCase().includes(filterText);
+      return !filterText || matchesFilterText([e.summary.toLowerCase()], filterText);
     });
   }
 
@@ -149,15 +167,19 @@ export function renderTimeline() {
     line.dataset.tabId   = tabId;
     if (isDetailTabActive(tabId)) line.classList.add('detail-row-active');
 
-    const summary = document.createElement('div');
-    summary.className = 'evt-summary';
+    // The timestamp is its own flex column, *outside* .evt-summary: the
+    // summary is the horizontally scrollable box, so a timestamp inside it
+    // would scroll out of view on rows with a long URL or body (#156).
     const d = new Date(e.ts);
     const pad = (n) => String(n).padStart(2, '0');
     const tsSpan = document.createElement('span');
     tsSpan.className = 'evt-ts';
     tsSpan.innerHTML = `[<span class="evt-ts-date">${pad(d.getMonth() + 1)}-${pad(d.getDate())}</span> ${d.toLocaleTimeString()}]`;
-    summary.appendChild(tsSpan);
-    summary.appendChild(document.createTextNode(` ${e.summary}`));
+    line.appendChild(tsSpan);
+
+    const summary = document.createElement('div');
+    summary.className = 'evt-summary';
+    summary.textContent = e.summary;
     line.appendChild(summary);
 
     // Duration is only known once the response arrives (ts - matching
