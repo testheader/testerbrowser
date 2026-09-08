@@ -1,5 +1,4 @@
 /* global testerBrowser */
-import { getActiveId } from './tabs.js';
 import { escHtml, cookieMatchesDomain } from './utils.js';
 
 function formatXml(xml) {
