@@ -57,6 +57,10 @@ export interface TestSession {
   resilienceRules: ResilienceRule[];
   a11yInspecting: boolean;
   emulation: EmulationOverrides | null;
+  // Real UA captured at session creation, before any override — the only
+  // way to restore it once webContents.setUserAgent() has been called,
+  // since Electron doesn't expose "reset to default" directly.
+  defaultUserAgent: string;
 }
 
 export interface HistoryEntry {
@@ -71,6 +75,7 @@ export interface EmulationOverrides {
   latitude?: number;
   longitude?: number;
   timeOffsetMs?: number;
+  userAgent?: string;
 }
 
 // Overrides window.Date/Date.now() on every new document with a fixed
@@ -93,6 +98,35 @@ function buildDateOverrideScript(offsetMs: number): string {
     TBDate.UTC = RealDate.UTC;
     Object.defineProperty(window, 'Date', { value: TBDate, writable: true, configurable: true });
   })();`;
+}
+
+// Chromium's CDP Emulation.setUserAgentOverride only touches navigator.userAgent
+// (and the request header, alongside webContents.setUserAgent()) — it leaves
+// navigator.userAgentData / Sec-CH-UA-* Client Hints reporting the *real*
+// browser unless userAgentMetadata is supplied too, which would silently
+// contradict the spoofed UA on any site that reads them. Derive a plausible
+// metadata object from the UA string itself rather than requiring a second
+// field the tester would have to keep in sync by hand.
+function buildUserAgentMetadata(ua: string): {
+  brands: { brand: string; version: string }[];
+  platform: string;
+  platformVersion: string;
+  architecture: string;
+  model: string;
+  mobile: boolean;
+} {
+  const mobile = /Mobi|Android|iPhone|iPad/i.test(ua);
+  const platform =
+    /iPhone|iPad|iPod/i.test(ua) ? 'iOS' :
+    /Android/i.test(ua) ? 'Android' :
+    /Windows/i.test(ua) ? 'Windows' :
+    /Mac OS X/i.test(ua) ? 'macOS' :
+    /Linux/i.test(ua) ? 'Linux' : '';
+  const chromeMatch = ua.match(/Chrome\/(\d+)/);
+  const brands = chromeMatch
+    ? [{ brand: 'Chromium', version: chromeMatch[1] }, { brand: 'Google Chrome', version: chromeMatch[1] }]
+    : [];
+  return { brands, platform, platformVersion: '', architecture: '', model: '', mobile };
 }
 
 const TAB_COLORS = [
@@ -302,6 +336,7 @@ export class SessionManager {
       resilienceRules: [],
       a11yInspecting: false,
       emulation: null,
+      defaultUserAgent: view.webContents.getUserAgent(),
     };
 
     // Handle CDP events: Fetch.requestPaused for mock/resilience rules, Runtime.bindingCalled for a11y hover
@@ -1000,7 +1035,7 @@ export class SessionManager {
     this.injectTestData(s.view, resolveTemplate(template));
   }
 
-  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; timeOffsetMs?: number; clear?: boolean }): Promise<void> {
+  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; timeOffsetMs?: number; userAgent?: string; clear?: boolean }): Promise<void> {
     const s = this.sessions.get(id);
     if (!s) return;
     const dbg = s.view.webContents.debugger;
@@ -1008,6 +1043,8 @@ export class SessionManager {
       await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
       await dbg.sendCommand('Emulation.setLocaleOverride', { locale: '' }).catch(() => {});
       await dbg.sendCommand('Emulation.clearGeolocationOverride').catch(() => {});
+      s.view.webContents.setUserAgent(s.defaultUserAgent);
+      await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch(() => {});
       const existingScriptId = this.dateOverrideScripts.get(id);
       if (existingScriptId) {
         await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch(() => {});
@@ -1029,6 +1066,24 @@ export class SessionManager {
       await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude: opts.latitude, longitude: opts.longitude, accuracy: opts.accuracy ?? 10 }).catch(() => {});
       applied.latitude = opts.latitude;
       applied.longitude = opts.longitude;
+    }
+    if (opts.userAgent !== undefined) {
+      // An explicit empty string (the field cleared, then Apply) means
+      // "restore the default UA", not "leave it unchanged" — unlike the
+      // other fields, this one has an explicit clear-via-Apply acceptance
+      // criterion, not just the Reset button above.
+      if (opts.userAgent === '') {
+        s.view.webContents.setUserAgent(s.defaultUserAgent);
+        await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch(() => {});
+        delete applied.userAgent;
+      } else {
+        s.view.webContents.setUserAgent(opts.userAgent);
+        await dbg.sendCommand('Emulation.setUserAgentOverride', {
+          userAgent: opts.userAgent,
+          userAgentMetadata: buildUserAgentMetadata(opts.userAgent),
+        }).catch(() => {});
+        applied.userAgent = opts.userAgent;
+      }
     }
     if (opts.timeOffsetMs !== undefined) {
       const existingScriptId = this.dateOverrideScripts.get(id);

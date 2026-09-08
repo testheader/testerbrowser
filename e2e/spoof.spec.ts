@@ -19,6 +19,22 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
+// getTabPage can resolve while the tab's frame is mid-navigation (observed as
+// an intermittent "Execution context was destroyed" from page.evaluate right
+// after a fresh navigation) — retry briefly instead of asserting once.
+async function retryEvaluate<T>(page: Page, fn: () => T): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < 10; i++) {
+    try {
+      return await page.evaluate(fn);
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  throw lastErr;
+}
+
 test('Spoof tab button is present', async () => {
   await expect(window.locator('#consoleTabSpoof')).toBeVisible();
 });
@@ -198,4 +214,64 @@ test('a signed clock offset advances or rewinds Date.now() in the page, and Rese
   ).toBeFalsy();
   const realNow = await tab.evaluate(() => Date.now());
   expect(Math.abs(realNow - Date.now())).toBeLessThan(10_000);
+});
+
+test('a user-agent preset overrides navigator.userAgent and the request header, and clearing restores the default', async () => {
+  // webContents.setUserAgent() (unlike the Emulation-domain overrides above)
+  // is a direct Electron API, not scoped to a separate CDP debugger session,
+  // so it genuinely is observable through Playwright's own page.evaluate()
+  // and through the real request header the fixture server receives.
+  const urlPath = '/network/status-codes.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  // getTabPage can resolve microtasks before its own navigation has fully
+  // settled (observed as an intermittent "Execution context was destroyed"),
+  // so retry evaluate() a couple of times rather than asserting once.
+  const realUa = await retryEvaluate(tab, () => navigator.userAgent);
+
+  await window.click('#consoleTabSpoof');
+  await window.click('button.spoof-preset-btn:text("Android Chrome")');
+  const androidUa = await window.locator('#spoofUserAgent').inputValue();
+  expect(androidUa).toContain('Android');
+
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect(window.locator('#spoofCurrent')).toContainText('UA', { timeout: 5_000 });
+
+  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(androidUa);
+
+  const echoUrl = fixtures.url('/echo/user-agent');
+  const body = await tab.evaluate((url) => fetch(url).then((r) => r.json()), echoUrl);
+  expect((body as { userAgent: string }).userAgent).toBe(androidUa);
+
+  // Client Hints metadata must agree with the spoofed UA, not silently keep
+  // reporting the real browser.
+  const uaData = await retryEvaluate(tab, () =>
+    (navigator as unknown as { userAgentData?: { mobile: boolean; platform: string } }).userAgentData
+  );
+  if (uaData) {
+    expect(uaData.mobile).toBe(true);
+    expect(uaData.platform).toBe('Android');
+  }
+
+  // Clearing the field and re-applying restores the default UA (a distinct
+  // path from the Reset button, per the ticket's explicit acceptance criterion).
+  await window.fill('#spoofUserAgent', '');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
+
+  // Reset overrides also restores the default UA.
+  await window.click('button.spoof-preset-btn:text("Googlebot")');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toContain('Googlebot');
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
 });

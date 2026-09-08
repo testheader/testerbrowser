@@ -944,6 +944,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .spoof-offset-row { display: flex; gap: 6px; }
 .spoof-offset-row .spoof-input { width: auto; flex: 1; }
 .spoof-offset-unit { flex: 0 0 auto; cursor: pointer; }
+.spoof-field-ua { grid-column: 1 / -1; }
+.spoof-ua-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .spoof-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .spoof-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px;
              padding: 4px 12px; font-size: 12px; cursor: pointer; }

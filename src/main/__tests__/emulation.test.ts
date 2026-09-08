@@ -32,8 +32,9 @@ function makeManager(): SessionManager {
 function installFakeSession(sm: SessionManager, id: string, sendCommand: jest.Mock) {
   const session = {
     id,
-    view: { webContents: { debugger: { sendCommand } } },
+    view: { webContents: { debugger: { sendCommand }, setUserAgent: jest.fn(), getUserAgent: jest.fn(() => 'real-ua') } },
     emulation: null,
+    defaultUserAgent: 'real-ua',
   };
   (sm as unknown as { sessions: Map<string, unknown> }).sessions.set(id, session);
 }
@@ -60,8 +61,15 @@ function installFakeSessionFull(
     name: opts.id,
     partition: opts.partition,
     persistent: opts.persistent,
-    view: { webContents: { debugger: { sendCommand: jest.fn().mockResolvedValue({ identifier: 'x' }) } } },
+    view: {
+      webContents: {
+        debugger: { sendCommand: jest.fn().mockResolvedValue({ identifier: 'x' }) },
+        setUserAgent: jest.fn(),
+        getUserAgent: jest.fn(() => 'real-ua'),
+      },
+    },
     emulation: opts.emulation ?? null,
+    defaultUserAgent: 'real-ua',
   };
   (sm as unknown as { sessions: Map<string, unknown> }).sessions.set(opts.id, session);
 }
@@ -126,6 +134,83 @@ describe('setEmulation — signed clock offset', () => {
 
     expect(sendCommand).toHaveBeenCalledWith('Page.removeScriptToEvaluateOnNewDocument', { identifier: 'script-4a' });
     expect(sm.getEmulation('s4')).toEqual({ timeOffsetMs: 2000 });
+  });
+});
+
+describe('setEmulation — user-agent override (#163)', () => {
+  it('applies a UA override via webContents.setUserAgent and CDP, with derived Client Hints metadata', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'ua1', sendCommand);
+    const s = (sm as unknown as { sessions: Map<string, { view: { webContents: { setUserAgent: jest.Mock } } } > }).sessions.get('ua1')!;
+
+    const androidUa = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+    await sm.setEmulation('ua1', { userAgent: androidUa });
+
+    expect(s.view.webContents.setUserAgent).toHaveBeenCalledWith(androidUa);
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', {
+      userAgent: androidUa,
+      userAgentMetadata: {
+        brands: [{ brand: 'Chromium', version: '124' }, { brand: 'Google Chrome', version: '124' }],
+        platform: 'Android',
+        platformVersion: '',
+        architecture: '',
+        model: '',
+        mobile: true,
+      },
+    });
+    expect(sm.getEmulation('ua1')).toEqual({ userAgent: androidUa });
+  });
+
+  it('applying an empty-string userAgent restores the captured default UA and clears the override', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'ua2', sendCommand);
+    const s = (sm as unknown as { sessions: Map<string, { view: { webContents: { setUserAgent: jest.Mock } } } > }).sessions.get('ua2')!;
+
+    await sm.setEmulation('ua2', { userAgent: 'spoofed-ua' });
+    sendCommand.mockClear();
+    (s.view.webContents.setUserAgent as jest.Mock).mockClear();
+
+    await sm.setEmulation('ua2', { userAgent: '' });
+
+    expect(s.view.webContents.setUserAgent).toHaveBeenCalledWith('real-ua');
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', { userAgent: 'real-ua' });
+    expect(sm.getEmulation('ua2')).toEqual({});
+  });
+
+  it('the clear path also restores the default UA', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'ua3', sendCommand);
+    const s = (sm as unknown as { sessions: Map<string, { view: { webContents: { setUserAgent: jest.Mock } } } > }).sessions.get('ua3')!;
+
+    await sm.setEmulation('ua3', { userAgent: 'spoofed-ua' });
+    await sm.setEmulation('ua3', { clear: true });
+
+    expect(s.view.webContents.setUserAgent).toHaveBeenCalledWith('real-ua');
+    expect(sm.getEmulation('ua3')).toBeNull();
+  });
+
+  it('derives iOS platform metadata for an iPhone UA string with no Chrome token', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'ua4', sendCommand);
+
+    const iosUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
+    await sm.setEmulation('ua4', { userAgent: iosUa });
+
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', {
+      userAgent: iosUa,
+      userAgentMetadata: {
+        brands: [],
+        platform: 'iOS',
+        platformVersion: '',
+        architecture: '',
+        model: '',
+        mobile: true,
+      },
+    });
   });
 });
 

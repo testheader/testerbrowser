@@ -58,6 +58,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/downloads/file') return handleDownload(u, res);
   if (u.pathname === '/storage/set-cookie') return handleSetCookie(u, res);
   if (u.pathname === '/perf/echo') return handleEcho(u, res);
+  if (u.pathname === '/echo/user-agent') return handleUserAgentEcho(req, res);
 
   return handleStatic(u, res);
 }
@@ -117,6 +118,15 @@ function handleSetCookie(u: URL, res: ServerResponse): void {
 function handleEcho(u: URL, res: ServerResponse): void {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ ok: true, i: u.searchParams.get('i') }));
+}
+
+// Reports the request's own User-Agent header back to the page, so a spoof
+// test can assert what the *server* actually received — not just what
+// navigator.userAgent claims client-side, which a CDP-only override could
+// fake without ever touching the outgoing request.
+function handleUserAgentEcho(req: IncomingMessage, res: ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ userAgent: req.headers['user-agent'] ?? '' }));
 }
 
 async function handleStatic(u: URL, res: ServerResponse): Promise<void> {

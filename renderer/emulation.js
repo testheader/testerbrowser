@@ -16,6 +16,12 @@ const PRESETS = [
   { label: 'Toronto',     timezone: 'America/Toronto',       locale: 'en-CA', latitude:  43.6532, longitude:  -79.3832 },
 ];
 
+const UA_PRESETS = [
+  { label: 'iOS Safari', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' },
+  { label: 'Android Chrome', userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36' },
+  { label: 'Googlebot', userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' },
+];
+
 let initialized = false;
 // Overrides actually applied to the currently displayed session, as last
 // confirmed by the backend — drives both the "currently applied" summary and
@@ -63,6 +69,11 @@ export function initSpoof() {
             </select>
           </div>
         </div>
+        <div class="spoof-field spoof-field-ua">
+          <label class="spoof-label">User-Agent</label>
+          <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="e.g. Mozilla/5.0 (...)" spellcheck="false" />
+          <div class="spoof-presets spoof-ua-presets" id="spoofUaPresets"></div>
+        </div>
       </div>
       <div class="spoof-actions">
         <button class="spoof-btn spoof-apply" id="spoofApply">Apply to session</button>
@@ -82,10 +93,19 @@ export function initSpoof() {
     presetsEl.appendChild(btn);
   }
 
+  const uaPresetsEl = document.getElementById('spoofUaPresets');
+  for (const p of UA_PRESETS) {
+    const btn = document.createElement('button');
+    btn.className = 'spoof-preset-btn';
+    btn.textContent = p.label;
+    btn.addEventListener('click', () => fillUaPreset(p));
+    uaPresetsEl.appendChild(btn);
+  }
+
   document.getElementById('spoofApply').addEventListener('click', applySpoof);
   document.getElementById('spoofReset').addEventListener('click', resetSpoof);
   document.getElementById('spoofUseCurrent').addEventListener('click', useCurrentValues);
-  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon', 'spoofOffsetValue']) {
+  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon', 'spoofOffsetValue', 'spoofUserAgent']) {
     document.getElementById(id).addEventListener('input', updateDirtyState);
   }
   document.getElementById('spoofOffsetUnit').addEventListener('change', updateDirtyState);
@@ -111,6 +131,11 @@ function fillPreset(p) {
   document.getElementById('spoofLocale').value   = p.locale;
   document.getElementById('spoofLat').value      = p.latitude;
   document.getElementById('spoofLon').value      = p.longitude;
+  updateDirtyState();
+}
+
+function fillUaPreset(p) {
+  document.getElementById('spoofUserAgent').value = p.userAgent;
   updateDirtyState();
 }
 
@@ -168,6 +193,7 @@ function populateFields(a) {
   document.getElementById('spoofLocale').value = a?.locale ?? '';
   document.getElementById('spoofLat').value = a?.latitude !== undefined ? String(a.latitude) : '';
   document.getElementById('spoofLon').value = a?.longitude !== undefined ? String(a.longitude) : '';
+  document.getElementById('spoofUserAgent').value = a?.userAgent ?? '';
   const offsetValueEl = document.getElementById('spoofOffsetValue');
   const offsetUnitEl = document.getElementById('spoofOffsetUnit');
   if (a?.timeOffsetMs !== undefined) {
@@ -194,7 +220,7 @@ function renderCurrent() {
   const current = document.getElementById('spoofCurrent');
   if (!current) return;
   const a = appliedForActiveSession;
-  if (!a || (a.timezone === undefined && a.locale === undefined && a.latitude === undefined && a.timeOffsetMs === undefined)) {
+  if (!a || (a.timezone === undefined && a.locale === undefined && a.latitude === undefined && a.timeOffsetMs === undefined && a.userAgent === undefined)) {
     current.textContent = 'No overrides applied to this session.';
     current.classList.remove('spoof-current-active');
     return;
@@ -207,6 +233,7 @@ function renderCurrent() {
     const spoofedNow = new Date(Date.now() + a.timeOffsetMs).toLocaleString();
     parts.push(`clock ${formatOffsetMs(a.timeOffsetMs)} (${spoofedNow})`);
   }
+  if (a.userAgent !== undefined) parts.push(`UA ${a.userAgent}`);
   current.textContent = `Applied to this session: ${parts.join(' · ')}`;
   current.classList.add('spoof-current-active');
 }
@@ -219,6 +246,7 @@ function updateDirtyState() {
   const locale   = document.getElementById('spoofLocale').value.trim();
   const latRaw   = document.getElementById('spoofLat').value.trim();
   const lonRaw   = document.getElementById('spoofLon').value.trim();
+  const userAgent = document.getElementById('spoofUserAgent').value.trim();
   const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
   const unitMs   = Number(document.getElementById('spoofOffsetUnit').value);
   const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
@@ -229,6 +257,7 @@ function updateDirtyState() {
     locale !== (a.locale ?? '') ||
     latRaw !== (a.latitude !== undefined ? String(a.latitude) : '') ||
     lonRaw !== (a.longitude !== undefined ? String(a.longitude) : '') ||
+    userAgent !== (a.userAgent ?? '') ||
     offsetMs !== a.timeOffsetMs;
 
   dirty.hidden = !changed;
@@ -242,6 +271,11 @@ async function applySpoof() {
   const lonRaw    = document.getElementById('spoofLon').value.trim();
   const latitude  = latRaw !== '' ? parseFloat(latRaw)  : undefined;
   const longitude = lonRaw !== '' ? parseFloat(lonRaw) : undefined;
+  // Unlike the other fields, an empty User-Agent field is a meaningful,
+  // always-sent value ('' — "restore the default"), not "leave unchanged":
+  // clearing it and hitting Apply must revert navigator.userAgent and the
+  // request header, same as Reset overrides does.
+  const userAgent = document.getElementById('spoofUserAgent').value.trim();
   const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
   const unitMs    = Number(document.getElementById('spoofOffsetUnit').value);
   const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
@@ -254,7 +288,7 @@ async function applySpoof() {
   const btn = document.getElementById('spoofApply');
   btn.disabled = true;
   try {
-    await testerBrowser.emulation.set(getActiveId(), { timezone, locale, latitude, longitude, timeOffsetMs });
+    await testerBrowser.emulation.set(getActiveId(), { timezone, locale, latitude, longitude, timeOffsetMs, userAgent });
     await refreshSpoofStatus();
     showStatus('Overrides applied. Reload the page for full effect.', false);
   } catch {
