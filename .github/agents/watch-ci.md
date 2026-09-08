@@ -17,7 +17,7 @@ so **labels are the source of truth**; the board column is mirrored from them by
 whoever holds project credentials. Read and write `status-*` labels, never rely
 on the column.
 
-`status-ready` → `status-in-progress` → `status-ci-running` →
+Backlog → `status-ready` → `status-in-progress` → `status-ci-running` →
 `status-done` | `status-needs-fix`
 
 Exactly one `status-*` label at a time — every transition removes the old label
@@ -55,7 +55,12 @@ close an issue, and only when CI for its commit has completed successfully.
    - a short plain-English summary of the cause,
    - the relevant log excerpt (the failing lines, not the whole log),
    - the exact local command that should reproduce it (`npm run typecheck`,
-     `npm run lint`, `npm test`, or `npx playwright test <spec>`).
+     `npm run lint`, `npm test`, or `npx playwright test <spec>`),
+   - how many times this ticket has already been through Needs Fix, so the
+     implementer can count its attempts without re-reading every comment.
+
+   If the handoff comment says e2e was not run locally and the `e2e` job is what
+   failed, note that too — it is unverified work rather than a regression.
    Then tell the user which tickets need attention — `status-needs-fix` is the
    top of `implement-ticket`'s queue, so these get picked up before anything new.
 

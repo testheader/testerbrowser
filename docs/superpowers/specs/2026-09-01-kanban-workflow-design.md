@@ -15,12 +15,26 @@ project credentials. Exactly one `status-*` label per issue at a time.
 
 | Status | Label | Meaning |
 |---|---|---|
-| **Backlog** | _(no status label)_ | Planned, not started. Ticket has enough spec to implement. |
-| **Ready** | `status-ready` | User has selected this for the next implementation cycle. |
+| **Backlog** | _(no status label)_ | Captured, not yet groomed or not yet selected. |
+| **Ready** | `status-ready` | Groomed to the Definition of Ready and queued for implementation. |
 | **In progress** | `status-in-progress` | Implementing agent is actively working. |
 | **CI running** | `status-ci-running` | Committed and pushed to main. CI job is active. |
 | **Needs Fix** | `status-needs-fix` | CI failed. Fix notes and log excerpt posted as a comment. |
 | **Done** | `status-done` | CI passed. Feature shipped. |
+
+## Definition of Ready
+
+A ticket may only be labelled `status-ready` when an implementer who has never
+seen it could finish it without asking a question. The body must carry:
+
+1. **Problem / motivation** — what is wrong or missing, and for whom
+2. **Acceptance criteria** — observable, testable statements
+3. **Implementation notes** — the real files, modules and IPC channels involved
+4. **Test plan** — which unit tests and which e2e specs prove the criteria
+5. **Out of scope** — what this ticket deliberately does not do
+
+`groom-ticket` owns this gate. `implement-ticket` bounces anything that fails it
+back to Backlog rather than guessing the scope.
 
 ## Definition of Done
 
@@ -32,8 +46,13 @@ after CI is green and the label is `status-done`.
 ## Workflow Loop
 
 ```
-User selects a ticket
-  → labels it status-ready (or asks agent to pick next)
+Grooming agent (groom-ticket)
+  → takes a Backlog issue (no status label)
+  → investigates the code, writes acceptance criteria + test plan
+  → splits or closes as needed
+  → moves ticket: Backlog → status-ready
+
+User reviews the ready queue
 
 Implementing agent (implement-ticket)
   → picks oldest open issue: status-needs-fix queue first,
@@ -41,7 +60,7 @@ Implementing agent (implement-ticket)
   → moves ticket: that label → status-in-progress
   → reads title + body for spec
   → implements code + tests (TDD)
-  → typecheck + lint + unit tests must pass
+  → typecheck + lint + unit tests + e2e must pass
   → commits with "refs #N" in message (never "closes #N")
   → pushes to main
   → moves ticket: status-in-progress → status-ci-running
@@ -61,9 +80,26 @@ CI monitor agent (watch-ci, looping)
 
 ## Agent Responsibilities
 
-Both agents live in `.github/agents/` so they are tool-agnostic and invokable by
-name. Neither has a restricted tool list — they may use every tool available to
-them.
+All three agents live in `.github/agents/` so they are tool-agnostic and
+invokable by name. None has a restricted tool list — they may use every tool
+available to them. Shared project context (layout, commands, test conventions,
+CI graph) lives in `.github/copilot-instructions.md`, which loads automatically,
+so the agent prompts stay procedural.
+
+### Grooming agent (`.github/agents/groom-ticket.md`)
+
+**Trigger:** User says "groom the backlog" or "groom #N"
+
+Takes a Backlog issue (no `status-*` label) and rewrites it into an
+implementable ticket: problem statement, testable acceptance criteria,
+implementation notes naming real files and IPC channels, a test plan, and an
+explicit out-of-scope list. Splits oversized tickets into independently
+shippable slices, closes ones that are already built or duplicated, fixes the
+title to conventional-commits form, then applies `status-ready`.
+
+Never writes production code. Where a genuine product decision is needed it
+leaves the ticket in Backlog and asks one specific question with a recommended
+default — everything merely *unknown* it resolves by reading the code.
 
 ### Implementing agent (`.github/agents/implement-ticket.md`)
 
@@ -74,12 +110,15 @@ them.
    first**, then `status-ready`; oldest open issue in the first non-empty queue
 2. Swap that label → `status-in-progress`, read title + body + comments as the spec
    (for a needs-fix ticket the `watch-ci` failure comment is part of the spec)
-3. Implement with tests (Jest for main-process logic, Playwright e2e for UI flows)
-4. `npm run typecheck`, `npm run lint`, `npm test` → all must pass before commit
-5. `git commit -m "feat/fix: <title> (refs #N)"`
-6. `git push origin main`
-7. Swap `status-in-progress` → `status-ci-running`
-8. Post comment with commit SHA and Actions run URL
+3. Post a short approach comment (files, tests, risks) before editing
+4. Implement with tests — Jest in `src/**/__tests__/`, Playwright in `e2e/`;
+   confirm any new test file actually ran
+5. `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:e2e` → all
+   must pass before commit (trunk-based: CI runs the full suite on every push)
+6. `git commit -m "feat/fix: <title> (refs #N)"`
+7. `git pull --rebase origin main`, then `git push origin main`
+8. Swap `status-in-progress` → `status-ci-running`
+9. Post comment with commit SHA and Actions run URL
 
 **Constraints:**
 - One ticket at a time
@@ -87,6 +126,10 @@ them.
 - Must not push if typecheck, lint or tests fail
 - Must reproduce a CI failure locally before fixing it; fix forward, never delete
   or weaken a failing test
+- Stops and escalates after two failed fix attempts on the same ticket
+- Bounces an unready ticket back to Backlog for `groom-ticket` rather than
+  guessing the scope
+- Reclaims a `status-in-progress` ticket left stale by a crashed run
 - Must not use `closes #N`, must not close the issue, must not set `status-done`
 - Must not bump `package.json` — CI owns versioning
 
@@ -105,24 +148,28 @@ them.
 ## Issue Conventions
 
 - **Title format:** `<type>: <description>` (conventional commits — feat/fix/chore/refactor/test)
-- **Body:** Must include acceptance criteria for backlog items so the implementing agent knows when it's done
+- **Body:** Must meet the Definition of Ready above before `status-ready` is applied
+- **Size:** One focused change — a handful of files, one coherent behaviour. Bigger items get split into independently shippable slices by `groom-ticket`.
 - **Labels:** enhancement, bug, infrastructure, testing, refactor
 - **Closing:** Commits use `refs #N`, never `closes #N`. The CI monitor agent closes the issue once CI passes and the ticket reaches Done.
 
 ---
 
-## Board IDs (for agent scripts)
+## Board IDs (reference only)
+
+**Agents do not use these.** Labels are the source of truth; these IDs exist for
+whoever mirrors labels onto the board column. Treat them as unverified — the
+setup plan doc records a *different* set of option IDs, so at least one of the
+two is stale. Re-read them from the API before relying on them:
+
+```
+gh project field-list 3 --owner @me --format json
+```
 
 ```
 Project number:    3
 Project ID:        PVT_kwHOA2Pe484BiHJY
 Status field ID:   PVTSSF_lAHOA2Pe484BiHJYzhhAV-0
-Backlog option:    adf7ac3d
-Ready option:      70a64391
-In progress option: 978f4b40
-CI running option: 78882a20
-Needs Fix option:  211b4ce4
-Done option:       07528d57
 Repo:              testheader/testerbrowser
 ```
 
