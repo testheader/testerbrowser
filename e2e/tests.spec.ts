@@ -347,3 +347,88 @@ test('recorded steps show a confidence dot that turns red after navigating away,
 
   await window.click('#rpDiscardBtn');
 });
+
+// ── Editing and deleting steps of a saved test (#162) ───────────────────────
+
+test('a saved test can be expanded to show its steps with type, selector and value', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'editable steps target');
+  await window.click('#rpStartBtn');
+  await tab.fill('[data-testid="rp-input"]', 'Ada');
+  await tab.click('[data-testid="rp-btn"]');
+  await window.click('#rpStopBtn');
+  await window.click('#rpSaveBtn');
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'editable steps target' });
+  await expect(testItem).toBeVisible();
+  await expect(testItem.locator('.rp-saved-steps')).toHaveCount(0);
+
+  await testItem.locator('.rp-test-expand').click();
+  const rows = testItem.locator('.rp-saved-steps .rp-live-step');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0).locator('.rp-step-type')).toHaveValue('fill');
+  await expect(rows.nth(0).locator('.rp-step-desc')).toHaveValue('[data-testid="rp-input"]');
+  await expect(rows.nth(0).locator('.rp-step-val')).toHaveValue('Ada');
+  await expect(rows.nth(1).locator('.rp-step-type')).toHaveValue('click');
+  await expect(rows.nth(1).locator('.rp-step-desc')).toHaveValue('[data-testid="rp-btn"]');
+});
+
+test('editing a step\'s selector inline breaks the run, and correcting it fixes the run — without duplicating the saved test', async () => {
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'editable steps target' });
+  const selectorInput = testItem.locator('.rp-saved-steps .rp-live-step').nth(0).locator('.rp-step-desc');
+
+  await selectorInput.fill('[data-testid="does-not-exist"]');
+  await selectorInput.blur();
+
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toContainText('Failed at step 1', { timeout: 15_000 });
+
+  // Editing in place must not create a second entry for the same test.
+  await expect(window.locator('.rp-test-item', { hasText: 'editable steps target' })).toHaveCount(1);
+
+  await selectorInput.fill('[data-testid="rp-input"]');
+  await selectorInput.blur();
+
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+});
+
+test('deleting a step from a saved test updates the step count and the removed action no longer executes', async () => {
+  // Fresh navigation resets the fixture's DOM state so a stale #rp-result
+  // from an earlier run in this file can't be mistaken for the click step
+  // actually having fired here.
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+  await expect(tab.locator('[data-testid="rp-result"]')).toHaveAttribute('data-status', 'idle');
+
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'editable steps target' });
+  await expect(testItem.locator('.rp-test-meta')).toHaveText('2 steps');
+
+  const clickStepRow = testItem.locator('.rp-saved-steps .rp-live-step').nth(1);
+  await clickStepRow.locator('.rp-saved-step-del').click();
+
+  await expect(testItem.locator('.rp-test-meta')).toHaveText('1 steps');
+  await expect(testItem.locator('.rp-saved-steps .rp-live-step')).toHaveCount(1);
+
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+
+  // The fill step still ran (the input carries the recorded value)...
+  await expect(tab.locator('[data-testid="rp-input"]')).toHaveValue('Ada');
+  // ...but the deleted click step did not: the page's own click handler
+  // never fired, so its side effects never happened.
+  await expect(tab.locator('[data-testid="rp-result"]')).toHaveAttribute('data-status', 'idle');
+  await expect(tab.locator('[data-testid="rp-counter"]')).toHaveText('0');
+});

@@ -156,10 +156,7 @@ function renderLiveSteps() {
     <div class="rp-live-step" data-idx="${i}" title="Right-click to add assertion after this step">
       <span class="rp-step-num">${i + 1}</span>
       ${s.selector ? `<span class="rp-confidence-dot rp-confidence-pending" data-selector-idx="${i}" title="Checking selector…"></span>` : ''}
-      <span class="rp-step-type ${s.type.startsWith('assert') ? 'rp-type-assert' : ''}">${s.type}</span>
-      <span class="rp-step-desc">${escHtml(s.selector || s.url || s.description || '')}</span>
-      ${s.value && !s.sensitive ? `<span class="rp-step-val">${escHtml(String(s.value).slice(0, 40))}</span>` : ''}
-      ${s.sensitive ? '<span class="rp-step-val">[hidden]</span>' : ''}
+      ${stepRowFieldsHtml(s, i, false)}
       <button class="rp-del-step" data-idx="${i}" title="Remove step">×</button>
     </div>
   `).join('');
@@ -183,6 +180,47 @@ function renderLiveSteps() {
   document.getElementById('rpDiscardBtn').disabled = isRecording || currentSteps.length === 0;
 
   refreshSelectorConfidence();
+}
+
+// Shared row content (everything between the step number/confidence dot and
+// the delete button) for both the live-recording buffer (read-only spans)
+// and a saved test's expanded, editable step list (inputs/select) — so the
+// two views of the same TestStep object stay visually consistent instead of
+// drifting into separate markup. `editable` false renders the original
+// read-only spans (.rp-step-type / .rp-step-desc / .rp-step-val) unchanged;
+// `editable` true renders a type <select> plus selector/url/attr/value
+// <input>s, constrained to the fields sessionManager's buildPlaybackScript
+// actually understands for that step's type (STEP_TYPE_DEFS).
+function stepRowFieldsHtml(step, idx, editable) {
+  const isAssertType = step.type.startsWith('assert');
+  if (!editable) {
+    return `
+      <span class="rp-step-type ${isAssertType ? 'rp-type-assert' : ''}">${step.type}</span>
+      <span class="rp-step-desc">${escHtml(step.selector || step.url || step.description || '')}</span>
+      ${step.value && !step.sensitive ? `<span class="rp-step-val">${escHtml(String(step.value).slice(0, 40))}</span>` : ''}
+      ${step.sensitive ? '<span class="rp-step-val">[hidden]</span>' : ''}
+    `;
+  }
+  const def = STEP_TYPE_DEFS[step.type] || {};
+  const typeOptions = Object.keys(STEP_TYPE_DEFS)
+    .map(t => `<option value="${t}" ${t === step.type ? 'selected' : ''}>${t}</option>`)
+    .join('');
+  const showSelectorInput = def.needsSelector || def.needsUrl;
+  const selectorField = def.needsUrl ? 'url' : 'selector';
+  const selectorValue = def.needsUrl ? (step.url || '') : (step.selector || '');
+  return `
+    <select class="rp-input rp-step-type rp-step-field" data-step-idx="${idx}" data-field="type">${typeOptions}</select>
+    ${showSelectorInput
+      ? `<input class="rp-input rp-step-desc rp-step-field" data-step-idx="${idx}" data-field="${selectorField}" value="${escHtml(selectorValue)}" placeholder="${def.needsUrl ? 'URL' : 'CSS selector'}" />`
+      : '<span class="rp-step-desc"></span>'}
+    ${def.needsAttr
+      ? `<input class="rp-input rp-step-val rp-step-field" data-step-idx="${idx}" data-field="attr" value="${escHtml(step.attr || '')}" placeholder="Attribute" />`
+      : ''}
+    ${def.needsValue
+      ? `<input class="rp-input rp-step-val rp-step-field" data-step-idx="${idx}" data-field="value" value="${step.sensitive ? '' : escHtml(step.value || '')}" placeholder="${step.sensitive ? '[hidden] — type to replace' : (def.valuePlaceholder || 'Value')}" />`
+      : ''}
+    <button class="rp-saved-step-del" data-step-idx="${idx}" title="Delete step">×</button>
+  `;
 }
 
 // ─── Selector confidence ────────────────────────────────────────────────────
@@ -231,6 +269,18 @@ const ASSERT_TYPES = [
   { type: 'assert-attr',        label: 'Assert: attribute equals',     needsSelector: true,  needsValue: true,  needsAttr: true, valuePlaceholder: 'Expected value' },
   { type: 'wait-visible',       label: 'Wait: element visible',        needsSelector: true,  needsValue: false },
 ];
+
+// The full set of step types the playback engine (sessionManager's
+// buildPlaybackScript) actually understands, for the saved-test step editor's
+// type dropdown — a constrained choice rather than free text that would fail
+// at run time. Built from ASSERT_TYPES plus the non-assertion action types.
+const STEP_TYPE_DEFS = {
+  navigate: { needsSelector: false, needsUrl: true, needsValue: false },
+  click:    { needsSelector: true,  needsValue: false },
+  fill:     { needsSelector: true,  needsValue: true, valuePlaceholder: 'Value to type' },
+  ...Object.fromEntries(ASSERT_TYPES.map(a => [a.type, { needsSelector: a.needsSelector, needsValue: a.needsValue, needsAttr: a.needsAttr, valuePlaceholder: a.valuePlaceholder }])),
+  'wait-navigation': { needsSelector: false, needsValue: false },
+};
 
 let assertMenuInsertIdx = -1;
 
@@ -315,8 +365,18 @@ function removeAssertionDialog() {
 
 // ─── Test list ──────────────────────────────────────────────────────────────
 
+// Which saved test's steps are currently expanded for editing — module-level
+// so a re-render (after an edit's autosave) can keep it open instead of
+// collapsing the panel the user is actively working in.
+let expandedTestId = null;
+
 async function refreshTestList() {
   try { savedTests = (await testerBrowser.tests.list()) || []; } catch { savedTests = []; }
+  if (!savedTests.some(t => t.id === expandedTestId)) expandedTestId = null;
+  renderTestList();
+}
+
+function renderTestList() {
   const el = document.getElementById('rpTestList');
   if (!el) return;
   if (savedTests.length === 0) {
@@ -325,7 +385,10 @@ async function refreshTestList() {
   }
   el.innerHTML = savedTests.map(t => `
     <div class="rp-test-item" data-id="${t.id}">
-      <div class="rp-test-name">${escHtml(t.name)}</div>
+      <div class="rp-test-header">
+        <button class="rp-test-expand" data-id="${t.id}" title="${t.id === expandedTestId ? 'Collapse' : 'Expand to view/edit steps'}">${t.id === expandedTestId ? '▾' : '▸'}</button>
+        <div class="rp-test-name">${escHtml(t.name)}</div>
+      </div>
       <div class="rp-test-meta">${t.steps.length} steps</div>
       <div class="rp-test-actions">
         <button class="rp-btn rp-btn-sm rp-run-once" data-id="${t.id}">Run</button>
@@ -333,8 +396,17 @@ async function refreshTestList() {
         <button class="rp-btn rp-btn-sm rp-run-many" data-id="${t.id}">Run N×</button>
         <button class="rp-btn rp-btn-sm rp-btn-del" data-id="${t.id}">&#10005;</button>
       </div>
+      ${t.id === expandedTestId ? `<div class="rp-saved-steps" id="rpSavedSteps-${t.id}">${renderSavedStepsHtml(t)}</div>` : ''}
     </div>
   `).join('');
+
+  el.querySelectorAll('.rp-test-expand').forEach(btn => {
+    btn.addEventListener('click', () => {
+      expandedTestId = expandedTestId === btn.dataset.id ? null : btn.dataset.id;
+      renderTestList();
+    });
+  });
+  if (expandedTestId) wireSavedStepEditors(savedTests.find(t => t.id === expandedTestId));
 
   el.querySelectorAll('.rp-run-once').forEach(btn => {
     btn.addEventListener('click', () => runTest(btn.dataset.id, 1));
@@ -363,6 +435,77 @@ async function refreshTestList() {
       await refreshTestList();
     });
   });
+}
+
+// Renders one saved test's steps as editable rows (reusing the shared
+// .rp-live-step row shell and stepRowFieldsHtml's editable branch), plus a
+// per-step delete button distinct from both the live-recording buffer's
+// .rp-del-step and the whole-test .rp-btn-del above, to avoid any class
+// collision between the three different "delete" actions.
+function renderSavedStepsHtml(test) {
+  if (test.steps.length === 0) return '<div class="rp-hint">No steps.</div>';
+  return test.steps.map((s, i) => `
+    <div class="rp-live-step" data-step-idx="${i}">
+      <span class="rp-step-num">${i + 1}</span>
+      ${stepRowFieldsHtml(s, i, true)}
+    </div>
+  `).join('');
+}
+
+function wireSavedStepEditors(test) {
+  if (!test) return;
+  const container = document.getElementById(`rpSavedSteps-${test.id}`);
+  if (!container) return;
+
+  container.querySelectorAll('.rp-step-field').forEach(field => {
+    field.addEventListener('change', () => handleSavedStepFieldChange(test, field));
+  });
+  container.querySelectorAll('.rp-saved-step-del').forEach(btn => {
+    btn.addEventListener('click', () => handleSavedStepDelete(test, parseInt(btn.dataset.stepIdx, 10)));
+  });
+}
+
+async function handleSavedStepFieldChange(test, field) {
+  const idx = parseInt(field.dataset.stepIdx, 10);
+  const step = test.steps[idx];
+  if (!step) return;
+
+  if (field.dataset.field === 'type') {
+    step.type = field.value;
+    // Clear whichever fields the new type doesn't use, so a stale selector
+    // from before a type change (e.g. click → assert-url) doesn't silently
+    // linger unused, or worse, get re-used if the type is changed back.
+    const def = STEP_TYPE_DEFS[step.type] || {};
+    if (!def.needsSelector) delete step.selector;
+    if (!def.needsUrl) delete step.url;
+    if (!def.needsAttr) delete step.attr;
+    if (!def.needsValue) { delete step.value; step.sensitive = false; }
+  } else if (field.dataset.field === 'value') {
+    // A sensitive step's value field is rendered empty (masked); leaving it
+    // empty and blurring away must not overwrite the real value with ''.
+    // Only a non-empty edit replaces it — and it stays sensitive/masked.
+    if (step.sensitive && field.value === '') {
+      // untouched — keep the existing (masked) value
+    } else {
+      step.value = field.value;
+    }
+  } else {
+    step[field.dataset.field] = field.value;
+  }
+
+  await persistSavedTest(test);
+  renderTestList();
+}
+
+async function handleSavedStepDelete(test, idx) {
+  test.steps.splice(idx, 1);
+  await persistSavedTest(test);
+  renderTestList();
+}
+
+async function persistSavedTest(test) {
+  test.updatedAt = Date.now();
+  await testerBrowser.tests.save(test);
 }
 
 // ─── Playback ───────────────────────────────────────────────────────────────

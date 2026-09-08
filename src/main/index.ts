@@ -5,6 +5,7 @@ import os from 'os';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, TestStep } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
+import { upsertById } from './upsert';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -700,11 +701,7 @@ ipcMain.handle('app:reportError', (_e, message: string) => recordAppError(String
 // Tests (record-playback) IPC
 ipcMain.handle('tests:list', () => testsStore.get());
 ipcMain.handle('tests:save', (_e, test: SavedTest) => {
-  testsStore.update(all => {
-    const idx = all.findIndex(t => t.id === test.id);
-    if (idx >= 0) { all[idx] = test; return all; }
-    return [...all, test];
-  });
+  testsStore.update(all => upsertById(all, test));
 });
 ipcMain.handle('tests:load', (_e, id: string) => testsStore.get().find(t => t.id === id) ?? null);
 ipcMain.handle('tests:delete', (_e, id: string) => testsStore.update(all => all.filter(t => t.id !== id)));

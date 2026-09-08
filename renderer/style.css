@@ -1178,11 +1178,20 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .rp-confidence-red     { background: var(--error-strong); }
 .rp-test-list { display: flex; flex-direction: column; gap: 4px; }
 .rp-test-item { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 8px; }
+.rp-test-header { display: flex; align-items: center; gap: 4px; }
+.rp-test-expand { background: transparent; border: none; color: var(--text-faint); cursor: pointer; font-size: 10px; padding: 0 2px; flex-shrink: 0; }
+.rp-test-expand:hover { color: var(--text-primary); }
 .rp-test-name { font-size: 12px; color: var(--text-primary); font-weight: 500; margin-bottom: 2px; }
 .rp-test-meta { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }
 .rp-test-actions { display: flex; align-items: center; gap: 4px; }
 .rp-repeat-input { width: 52px; flex: 0 0 auto; padding: 2px 4px; font-size: 11px; }
 .rp-input-invalid { border-color: var(--error-strong) !important; }
+.rp-saved-steps { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-color); }
+.rp-saved-steps .rp-step-type { flex: 0 0 auto; width: 110px; padding: 2px 4px; font-size: 10px; }
+.rp-saved-steps .rp-step-desc { flex: 1; padding: 2px 4px; font-size: 11px; min-width: 60px; }
+.rp-saved-steps .rp-step-val { flex: 0 0 auto; width: 90px; max-width: none; padding: 2px 4px; font-size: 11px; font-style: normal; }
+.rp-saved-step-del { background: transparent; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; flex-shrink: 0; }
+.rp-saved-step-del:hover { color: var(--error-strong); }
 .rp-run-view { display: flex; flex-direction: column; gap: 6px; }
 .rp-run-header { display: flex; align-items: center; justify-content: space-between; }
 .rp-run-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
