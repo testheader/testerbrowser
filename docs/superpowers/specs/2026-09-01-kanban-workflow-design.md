@@ -6,89 +6,102 @@
 
 ---
 
-## Board Columns (Status field)
+## Board Columns (Status field) and their labels
 
-| Status | Meaning |
-|---|---|
-| **Backlog** | Planned, not started. Ticket has enough spec to implement. |
-| **Ready** | User has selected this for the next implementation cycle. |
-| **In progress** | Implementing agent is actively working. |
-| **CI running** | Committed and pushed to main. CI job is active. |
-| **Needs Fix** | CI failed. Fix notes and log excerpt posted as a comment. |
-| **Done** | CI passed. Feature shipped. |
+The board's Status field is **not reachable from the plain issues API**, so
+`status-*` **labels are the source of truth** for ticket state. Agents read and
+write labels; the board column is mirrored from the label by whoever holds
+project credentials. Exactly one `status-*` label per issue at a time.
 
----
+| Status | Label | Meaning |
+|---|---|---|
+| **Backlog** | _(no status label)_ | Planned, not started. Ticket has enough spec to implement. |
+| **Ready** | `status-ready` | User has selected this for the next implementation cycle. |
+| **In progress** | `status-in-progress` | Implementing agent is actively working. |
+| **CI running** | `status-ci-running` | Committed and pushed to main. CI job is active. |
+| **Needs Fix** | `status-needs-fix` | CI failed. Fix notes and log excerpt posted as a comment. |
+| **Done** | `status-done` | CI passed. Feature shipped. |
+
+## Definition of Done
+
+A ticket stays **open** until it is in the Done column. Commit messages must not
+use `closes #N` (that would auto-close the issue on push, before CI has proved
+anything) — use `refs #N`. Only the CI monitor agent closes an issue, and only
+after CI is green and the label is `status-done`.
 
 ## Workflow Loop
 
 ```
 User selects a ticket
-  → moves it to Ready (or asks agent to pick next)
+  → labels it status-ready (or asks agent to pick next)
 
-Implementing agent (/implement)
-  → reads oldest Ready ticket from board
+Implementing agent (implement-ticket)
+  → reads oldest open issue labelled status-ready
+  → moves ticket: status-ready → status-in-progress
   → reads title + body for spec
   → implements code + tests (TDD)
-  → commits with "closes #N" in message
+  → typecheck + lint + unit tests must pass
+  → commits with "refs #N" in message (never "closes #N")
   → pushes to main
-  → moves ticket: Ready → CI running
+  → moves ticket: status-in-progress → status-ci-running
   → posts comment: commit SHA + Actions run URL
 
-CI monitor agent (/watch-ci, looping)
-  → polls gh run list for the commit SHA
-  → CI passes → moves ticket: CI running → Done
+CI monitor agent (watch-ci, looping)
+  → polls the Build workflow run for the commit SHA
+  → CI passes → moves ticket: status-ci-running → status-done
                → posts comment: run URL + "CI passed"
-  → CI fails  → moves ticket: CI running → Needs Fix
+               → closes the issue (only place this happens)
+  → CI fails  → moves ticket: status-ci-running → status-needs-fix
+               → issue stays open
                → posts comment: failure summary + log excerpt
-               → optionally sends push notification to user
 ```
 
 ---
 
 ## Agent Responsibilities
 
-### Implementing agent (`/implement`)
+Both agents live in `.github/agents/` so they are tool-agnostic and invokable by
+name. Neither has a restricted tool list — they may use every tool available to
+them.
+
+### Implementing agent (`.github/agents/implement-ticket.md`)
 
 **Trigger:** User says "implement next ticket" or "implement #N"
 
 **Steps:**
-1. `gh project item-list 3 --owner @me` → find oldest item with Status=Ready
-2. `gh issue view <N> --repo testheader/testerbrowser` → read spec
+1. Find the oldest open issue labelled `status-ready` (or the named issue)
+2. Swap `status-ready` → `status-in-progress`, read title + body + comments as the spec
 3. Implement with tests (Jest for main-process logic, Playwright e2e for UI flows)
-4. `npm run typecheck` → must pass before commit
-5. `git commit -m "feat/fix: <title> (closes #N)"`
+4. `npm run typecheck`, `npm run lint`, `npm test` → all must pass before commit
+5. `git commit -m "feat/fix: <title> (refs #N)"`
 6. `git push origin main`
-7. Move ticket to CI running:
-   ```
-   gh api graphql -f query="mutation{updateProjectV2ItemFieldValue(...)}"
-   ```
+7. Swap `status-in-progress` → `status-ci-running`
 8. Post comment with commit SHA and Actions run URL
 
 **Constraints:**
 - One ticket at a time
-- Must not push if typecheck fails
-- Commit message must include `closes #N` to auto-close the issue when CI passes
+- Must not push if typecheck, lint or tests fail
+- Must not use `closes #N`, must not close the issue, must not set `status-done`
+- Must not bump `package.json` — CI owns versioning
 
-### CI monitor agent (`/watch-ci`)
+### CI monitor agent (`.github/agents/watch-ci.md`)
 
-**Trigger:** User runs `/watch-ci` or it runs as a loop after `/implement`
+**Trigger:** User invokes it, or it runs as a loop after the implementing agent
 
 **Steps:**
-1. Find all items with Status=CI running on the board
-2. For each: get the commit SHA from the item's comment
-3. `gh run list --repo testheader/testerbrowser --commit <SHA>` → get run ID and status
-4. If `status=completed, conclusion=success` → Done
-5. If `status=completed, conclusion=failure` → Needs Fix + post failure summary
-6. If still in progress → sleep and retry
-
----
+1. Find all open issues labelled `status-ci-running`
+2. For each: get the commit SHA from the handoff comment
+3. Look up the `Build` workflow run for that SHA
+4. Success → `status-done`, comment run URL, **close the issue**
+5. Failure → `status-needs-fix`, issue stays open, comment failure summary + log excerpt
+6. Still in progress → leave labels alone, poll again
 
 ## Issue Conventions
 
 - **Title format:** `<type>: <description>` (conventional commits — feat/fix/chore/refactor/test)
 - **Body:** Must include acceptance criteria for backlog items so the implementing agent knows when it's done
 - **Labels:** enhancement, bug, infrastructure, testing, refactor
-- **Closing:** Implementing agent uses `closes #N` in commit — GitHub auto-closes on merge to main
+- **Closing:** Commits use `refs #N`, never `closes #N`. The CI monitor agent closes the issue once CI passes and the ticket reaches Done.
 
 ---
 
