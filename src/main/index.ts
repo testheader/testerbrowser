@@ -340,6 +340,7 @@ ipcMain.handle('resilience:updateRule',  (_e, id: string, ruleId: string, patch)
 ipcMain.handle('session:setEmulation', (_e, id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; spoofedTimeMs?: number; clear?: boolean }) => sessionManager?.setEmulation(id, opts));
 ipcMain.handle('session:getEmulation', (_e, id: string) => sessionManager?.getEmulation(id) ?? null);
 ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.getCookies(id) ?? []);
+ipcMain.handle('sessions:getHistory',      (_e, id: string) => sessionManager?.getHistory(id) ?? []);
 ipcMain.handle('sessions:getLoadedDomains', (_e, id: string) => sessionManager?.getLoadedDomains(id) ?? []);
 ipcMain.handle('sessions:getLocalStorage', (_e, id: string) => sessionManager?.getLocalStorage(id) ?? {});
 ipcMain.handle('sessions:deleteCookie', (_e, id: string, name: string, domain: string, cookiePath: string, secure: boolean) =>

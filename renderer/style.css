@@ -739,6 +739,27 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                  border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: none; }
 #notesTextarea:focus { outline: none; border-color: var(--accent); }
 
+/* ── History modal ── */
+#historyOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                  z-index: 100; align-items: center; justify-content: center; }
+#historyOverlay.open { display: flex; }
+#historyOverlay.open #historyModal { animation: modal-pop-in 150ms ease; }
+#historyModal { background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px;
+                width: 560px; min-width: 300px; max-height: 80vh; padding: 24px 28px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto;
+                display: flex; flex-direction: column; position: relative; }
+#historyModal h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; color: var(--text-strong); }
+#historyList { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.history-empty { color: var(--text-faint); font-size: 12px; padding: 8px 0; }
+.history-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                 background: none; border: none; border-radius: 4px; padding: 6px 8px; text-align: left;
+                 cursor: pointer; font-family: inherit; color: var(--text-primary); }
+.history-entry:hover { background: var(--bg-primary); }
+.history-entry-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.history-entry-ts { flex-shrink: 0; font-size: 11px; color: var(--text-faint); }
+.history-entry-failed .history-entry-url { color: var(--error-strong); }
+.history-entry-failed .history-entry-url::before { content: '⚠ '; }
+
 /* ── Bug report modal ── */
 #bugReportOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                     z-index: 100; align-items: center; justify-content: center; }

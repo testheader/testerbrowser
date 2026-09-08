@@ -59,6 +59,12 @@ export interface TestSession {
   emulation: EmulationOverrides | null;
 }
 
+export interface HistoryEntry {
+  url: string;
+  ts: number;
+  failed?: boolean;
+}
+
 export interface EmulationOverrides {
   timezone?: string;
   locale?: string;
@@ -233,6 +239,8 @@ export class SessionManager {
   private followPairings = new Map<string, FollowPairing>();
   // CDP script identifier of the injected Date-override shim, keyed by session id.
   private dateOverrideScripts = new Map<string, string>();
+  // Per-session navigation history, newest entry last — cleared on destroy.
+  private sessionHistory = new Map<string, HistoryEntry[]>();
   private recordFeatureError: (message: string) => void;
 
   constructor(win: BrowserWindow, getRedactHeaders: () => boolean, recordFeatureError: (message: string) => void = () => {}) {
@@ -409,12 +417,14 @@ export class SessionManager {
       testSession.currentUrl = displayUrl;
       testSession.loadedDomains = new Set<string>();
       try { if (displayUrl) testSession.loadedDomains.add(new URL(displayUrl).hostname); } catch {}
+      if (displayUrl) this.addHistoryEntry(id, displayUrl);
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
     });
     view.webContents.on('did-navigate-in-page', (_e, url) => {
       const displayUrl = isNewtabUrl(url) ? '' : url;
       testSession.currentUrl = displayUrl;
+      if (displayUrl) this.addHistoryEntry(id, displayUrl);
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
     });
@@ -441,6 +451,7 @@ export class SessionManager {
     // Navigation failure
     view.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
       if (!isMainFrame || errorCode === -3) return; // ignore subframe failures and user-aborted
+      if (validatedURL) this.addHistoryEntry(id, validatedURL, true);
       this.win.webContents.send('session:loadFailed', { id, errorCode, errorDescription, url: validatedURL });
     });
 
@@ -649,6 +660,7 @@ export class SessionManager {
         if (c) this.win.webContents.send('session:newTab', { id: c.id });
       }},
       { label: 'Notes…', click: () => send('notes') },
+      { label: 'History…', click: () => send('history') },
       { type: 'separator' },
       { label: 'Export snapshot…', click: () => this.exportSnapshotDialog(id) },
       { label: 'Import snapshot…', click: () => this.importSnapshotDialog(id) },
@@ -1028,6 +1040,19 @@ export class SessionManager {
     return this.sessions.get(id)?.emulation ?? null;
   }
 
+  private addHistoryEntry(id: string, url: string, failed = false) {
+    const list = this.sessionHistory.get(id) ?? [];
+    const last = list[list.length - 1];
+    if (last && last.url === url && !failed) return; // collapse consecutive duplicates
+    list.push({ url, ts: Date.now(), failed });
+    this.sessionHistory.set(id, list);
+  }
+
+  // Newest first, matching how a browser's history list is normally read.
+  getHistory(id: string): HistoryEntry[] {
+    return [...(this.sessionHistory.get(id) ?? [])].reverse();
+  }
+
   // newtab.html renders in its own WebContentsView, out of reach of the app
   // shell's light-mode class, so the chosen theme is pushed to each view.
   broadcastTheme(theme: string) {
@@ -1300,6 +1325,7 @@ export class SessionManager {
     this.recordingHandlers.delete(id);
     this.recordingBuffers.delete(id);
     this.dateOverrideScripts.delete(id);
+    this.sessionHistory.delete(id);
   }
 
   // Reads the page's live in-progress steps and merges them (by id) into the
