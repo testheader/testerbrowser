@@ -1,0 +1,439 @@
+---
+name: implement-ticket
+description: Use when the user says "implement next ticket", "implement #N", or asks you to pick up the next ready item — for the TesterBrowser kanban board (GitHub Projects #3, testheader/testerbrowser). Picks up Needs Fix tickets before Ready ones, implements with tests, verifies locally, pushes to main and hands off to CI monitoring. Runs unattended once started, looping one ticket at a time until the queues are empty or the token budget runs low.
+---
+
+# Implement a ticket — TesterBrowser
+
+You implement tickets for `testheader/testerbrowser`, **one at a time**, looping
+until the queues are empty or your token budget runs low.
+
+Board: https://github.com/users/testheader/projects/3
+
+## Source of truth
+
+`status-*` **labels are the source of truth** for ticket state — the board's
+Status column is not reachable from the plain issues API. But you have project
+credentials, so **update both on every transition**: the label first (it is
+canonical), then the board column (it is the view). See "Board reference" at the
+end for the IDs and the exact mutation.
+
+| Label | Board column | Meaning |
+|---|---|---|
+| `status-backlog` _(or no status label)_ | Backlog | Not groomed / not selected |
+| `status-ready` | Ready | Groomed and queued for implementation |
+| `status-in-progress` | In progress | You are working on it right now |
+| `status-ci-running` | CI running | Pushed to main, CI is executing |
+| `status-needs-fix` | Needs Fix | CI failed, notes posted as a comment |
+| `status-done` | Done | CI passed, feature shipped, issue closed |
+
+Exactly **one** `status-*` label at a time. Every transition removes the old one
+and adds the new one in the same step. Non-status labels (`enhancement`, `bug`,
+`ui`, …) are untouched.
+
+## Definition of Done
+
+**A ticket stays open until it reaches Done.**
+
+- Never write `closes #N` / `fixes #N` in a commit message — pushing to `main`
+  would auto-close the issue before CI has proved anything. Use `refs #N`.
+- You never close an issue. Only `watch-ci` closes it, and only once CI is green
+  and the label is `status-done`.
+- Your job ends at `status-ci-running`, not at "code pushed".
+
+## Step 0 — Check the token budget
+
+**Do this first, and again at the top of every loop.** Read `total_tokens`
+remaining from the system reminder.
+
+| Tokens left | Action |
+|---|---|
+| **> 25,000** | Plenty. Take the next ticket and run the full cycle. |
+| **12,000–25,000** | Enough for one small ticket only. Take it **only if** the ticket looks genuinely small (a handful of files, no new e2e spec); otherwise go to "Out of budget" below. |
+| **< 12,000** | **Stop.** Do not start a ticket. Go to "Out of budget". |
+
+Judge the size from the ticket's implementation notes and test plan before
+committing to it — that is what the Definition of Ready exists for.
+
+**Never start a ticket you cannot finish.** Abandoning work mid-cycle leaves a
+ticket stuck on `status-in-progress` with a half-built tree, which is worse than
+not starting. The dangerous moment is *after* the push: if you run dry between
+Step 8 and Step 9 the code is on `main` but the ticket still says In progress and
+`watch-ci` will never see it. Budget for the whole cycle, including the handoff.
+
+### Out of budget
+
+Do not silently stop, and do not start new work. Instead:
+
+1. Report what you completed this session: tickets, SHAs, run URLs, and the
+   current state of anything unfinished.
+2. Say plainly that you stopped for budget, not because the queues are empty,
+   and name what is still waiting.
+3. Recommend the user start a **fresh session** and invoke this skill again — it
+   resumes from Step 0 with a clean context and picks up exactly where you left
+   off, because all the state lives in labels, not in your context.
+
+## Step 0.5 — Confirm the run once, then run unattended
+
+**This is an automated process.** Once it starts, it works the queue on its own:
+pick, implement, verify, push, hand off, next ticket. It does not check in
+between tickets and does not wait for approval on each push.
+
+Consent is therefore taken **once per run, up front** — before the first ticket.
+State plainly what you are about to do and get a yes:
+
+> "Starting an implementation run. I'll work the Needs Fix and Ready queues one
+> ticket at a time, and push each to `main` once typecheck, lint, unit tests and
+> e2e pass locally. Roughly N tickets in scope. Go ahead?"
+
+- **An explicit "implement the next ticket" / "start an implementation run" /
+  "go" is that consent.** Take it and run the whole loop; don't re-ask.
+- **If the user has not asked for implementation work** — say you were invoked
+  speculatively or as part of some other task — ask once, then run.
+- **Non-interactive run with no instruction to implement:** do nothing. Report
+  the queue state and stop. Never start unattended work nobody asked for.
+
+Everything after this point is autonomous. The rest of this skill is written so
+you never *need* to interrupt: anything you cannot decide safely gets parked on
+the issue and you move to the next ticket, rather than blocking the run.
+
+## Step 1 — Pick the ticket
+
+If the user named an issue (`implement #31`), use that one. Otherwise work the
+queues **in priority order** and take the lowest-numbered open issue in the
+first non-empty one:
+
+1. **`status-needs-fix`** — always first. That work is already on `main` and
+   already red; finishing it beats starting something new.
+2. **`status-ready`** — groomed and queued.
+
+```bash
+gh issue list --repo testheader/testerbrowser --state open \
+  --label status-needs-fix --json number,title --jq '.[]'
+gh issue list --repo testheader/testerbrowser --state open \
+  --label status-ready --json number,title --jq '.[]'
+```
+
+If both queues are empty, the board is clear — report that and stop looping.
+Promoting Backlog → Ready is the `groom-ticket` skill's job, not yours, so don't
+reach into Backlog to keep yourself busy.
+
+**Check for a stale claim first.** If an issue is already `status-in-progress`,
+a previous run is either still going or died. If it was updated recently, stop
+and report — one ticket at a time. If it has been untouched for a day or more,
+it was abandoned: say so, read its comments to see how far the last run got, and
+reclaim it rather than starting something new on top of it.
+
+**Check the ticket is ready.** It must have testable acceptance criteria. If it
+doesn't, don't guess the scope and don't interrogate the user — comment saying
+what is missing, move it back to Backlog (`status-backlog`), recommend running
+`groom-ticket` on it, and move to the next ticket in the queue.
+
+## Step 2 — Claim it
+
+Swap the current status label → `status-in-progress`, update the board, and
+comment that you have picked it up.
+
+```bash
+gh issue edit <N> --repo testheader/testerbrowser \
+  --add-label status-in-progress \
+  --remove-label status-ready --remove-label status-needs-fix
+```
+
+Then move the board item to **In progress** (`978f4b40`) — see Board reference.
+
+## Step 3 — Read the spec
+
+```bash
+gh issue view <N> --repo testheader/testerbrowser --comments
+```
+
+The acceptance criteria are the contract and "out of scope" bounds it. Implement
+against them, not against assumptions. If a detail is merely *unknown* — which
+file, which IPC channel, how a panel works — resolve it by reading the code.
+Only genuine product ambiguity goes back to `groom-ticket`.
+
+## Step 4 — Explore, then post your approach
+
+Read the relevant modules first. `.github/copilot-instructions.md` has the
+layout, test conventions and CI graph; `CLAUDE.md` has the IPC channel table,
+panel behaviour and the hard-won gotchas — read it before touching
+main/preload/renderer.
+
+Then comment on the issue with two or three sentences: the files you'll touch,
+the tests you'll add, any risk you spotted. You are **not** waiting for
+approval; this exists so a wrong direction is visible early. Skip it only for
+genuinely one-line changes.
+
+## Step 5 — Implement
+
+Where things go in the current architecture:
+
+| Change | Where |
+|---|---|
+| Backend / session logic | `src/main/sessionManager.ts` |
+| IPC handler | `src/main/index.ts` (`ipcMain.handle`) |
+| Preload exposure | `src/preload/index.ts` (`contextBridge`) |
+| New renderer module | create `renderer/<feature>.js`, export `init<Feature>()`, import and call it from `renderer/main.js` |
+| New console-panel tab | `renderer/index.html` (tab button + panel div), `renderer/console-tabs.js` (switch + init), `renderer/style.css` |
+
+**`renderer/renderer.js` is the legacy monolith** — superseded by the module
+split, no longer loaded by `index.html`, and ESLint-ignored. Never add to it;
+code you put there will not run. `renderer/main.js` is the entry point.
+
+Test-first where practical:
+
+- Main-process / pure logic → Jest, in `src/**/__tests__/*.test.ts`.
+  **A `*.test.ts` outside a `__tests__` directory is silently never run** —
+  `jest.config.js` matches nothing else.
+- UI and end-to-end flows → Playwright, in `e2e/*.spec.ts`, launched via
+  `launchApp()` from `e2e/helpers.ts` so each run gets an isolated profile.
+- **Confirm any new test file actually ran** — see it named in the Jest or
+  Playwright output. A green run that skipped your test proves nothing.
+
+Keep the change surgical. Don't refactor unrelated code, don't delete or weaken
+existing tests, don't add dependencies without a clear need.
+
+## Step 6 — Verify locally (all four must pass)
+
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run test:e2e
+```
+
+This is trunk-based development: your push goes straight to `main` and CI runs
+the full suite on every push, so anything you skip locally breaks `main` for
+everyone. **e2e is not optional.**
+
+E2E needs `better-sqlite3` rebuilt for Electron
+(`npx electron-rebuild -f -w better-sqlite3`) and a display — on headless Linux
+use `xvfb-run`. If you genuinely cannot run it, say so **explicitly in your
+handoff comment and to the user** ("e2e not run locally: `<reason>`") so an e2e
+failure is read as unverified work rather than a regression. Never silently skip
+it.
+
+If anything fails, fix it. Never push a red tree.
+
+## Step 7 — Commit
+
+Conventional-commits prefix, because CI parses it to choose the version bump:
+`feat:` → minor, `feat!:` / `BREAKING CHANGE` → major, anything else → patch.
+Never bump `package.json` yourself — CI owns the version.
+
+```bash
+git add <specific files>
+git commit -m "<type>: <ticket title> (refs #<N>)"
+```
+
+`refs #N`, never `closes #N` — see Definition of Done.
+
+## Step 8 — Push to main
+
+This project is **trunk-based**: work goes straight onto `main`. No feature
+branches, no forks, no pull requests — a ticket's code lands as one commit on
+`main` and CI validates it there. That is also why `main` must never go red, and
+why Step 6 is non-negotiable.
+
+You already have consent to push (Step 0.5). Do not stop to ask again — a run
+that pauses on every ticket is not automation.
+
+`bump-version` pushes a `chore: bump version …` commit back after every
+successful run, so your local `main` is probably stale:
+
+```bash
+git stash -u && git pull --rebase origin main && git stash pop && git push origin main
+```
+
+Re-run the checks if the rebase pulled in anything substantive. Never
+force-push `main`, and never push to a branch or open a PR instead — the whole
+workflow assumes one line of history.
+
+If the rebase hits a conflict you cannot resolve confidently, park the ticket
+(see "When a ticket has to be parked") rather than guessing.
+
+## Step 9 — Hand off to CI
+
+Swap `status-in-progress` → `status-ci-running`, move the board item to
+**CI running** (`78882a20`), and post the SHA and run URL so `watch-ci` can find
+the run without guessing.
+
+```bash
+gh issue edit <N> --repo testheader/testerbrowser \
+  --add-label status-ci-running --remove-label status-in-progress
+
+SHA=$(git rev-parse HEAD)
+RUN_URL=$(gh run list --repo testheader/testerbrowser --commit "$SHA" \
+  --json url --jq '.[0].url')
+gh issue comment <N> --repo testheader/testerbrowser \
+  --body "Implemented. Commit: $SHA
+Actions: $RUN_URL"
+```
+
+If the run isn't listed yet, wait 5–10 s and retry.
+
+## Step 10 — Report, then loop
+
+Log one short paragraph on the ticket you just finished: what changed, which
+checks you ran (and any you could not), the SHA, the run URL, and that it is now
+waiting on CI. This is a progress note, **not** a handback — do not stop for a
+response.
+
+Then **go back to Step 0** and take the next ticket immediately. Keep looping
+until either:
+
+- **the queues are empty** — no open `status-needs-fix` and no `status-ready`
+  tickets left. Report that the board is clear and stop. This is the good exit.
+- **the budget runs low** — follow "Out of budget" in Step 0.
+- **every remaining ticket is parked** — nothing left you can act on
+  autonomously. Report the parked tickets and their blocking questions together.
+
+Between tickets, drop what you no longer need: the previous ticket's file
+contents, diffs and test output are dead weight once it is pushed. Carry forward
+only the summary you will need for the final report — issue number, SHA, run
+URL, one line on what changed.
+
+If the user asked for a single named ticket (`implement #31`), do not loop —
+finish it and hand back.
+
+When the loop ends, chain straight into `watch-ci` if it is available to you:
+the tickets you pushed are sitting on `status-ci-running` and something has to
+carry them to Done. Invoking it once at the end rather than after every ticket
+also gives CI time to actually run. If you cannot invoke it, say explicitly that
+N tickets are awaiting CI monitoring.
+
+## Fixing a failed ticket
+
+A `status-needs-fix` ticket is code **already on `main`** whose CI run went red.
+Treat it as a continuation, not new work:
+
+- Read the failure comment `watch-ci` left — failing job, run URL, log excerpt.
+  That comment is your spec; the original acceptance criteria still apply.
+- **Reproduce the failure locally first** (`npm run typecheck`, `npm run lint`,
+  `npm test`, `npm run test:e2e` — whichever job went red) before changing
+  anything. If you can't reproduce it, say so and read the run logs rather than
+  guessing.
+- Fix forward with the smallest change that makes CI green. Don't revert the
+  original commit unless asked, and don't "fix" a red test by deleting or
+  weakening it.
+- Never open a new issue for the fix; the existing ticket carries it through.
+- Then run Steps 4–9 as normal, committing with the same `refs #N`.
+
+**Count your attempts before you start.** The issue comments record every
+previous attempt. If this ticket has already been through
+`needs-fix → in-progress → ci-running → needs-fix` **twice**, stop. Comment with
+what was tried, what each attempt assumed, and why you think it keeps failing;
+leave it `status-needs-fix` and escalate. Three identical failures means the
+ticket or the approach is wrong, not that the next attempt will land.
+
+If the failure is flaky or unrelated to this ticket, say so explicitly rather
+than quietly re-pushing — a re-run may be the right answer, and that is the
+user's call.
+
+## What CI will run
+
+```
+typecheck ─→ bump-version ─→ build-windows ─┐
+                          └─→ e2e ──────────┴─→ publish-release
+```
+
+- **typecheck** = `npm run typecheck` + `npm run lint` + `npm test`. If this job
+  is red, one of those three reproduces it locally.
+- **bump-version** picks the version from your commit prefix and pushes a
+  `chore: bump version …` commit as `github-actions[bot]`. That bot commit's own
+  run is skipped by design — not a failure.
+- **e2e** = `npx playwright test` on Windows. Reproduce with `npm run test:e2e`,
+  or one spec with `npx playwright test e2e/<name>.spec.ts`.
+- **build-windows** / **publish-release** package and ship the release; they fail
+  on packaging concerns, not on your feature logic.
+
+## When a ticket has to be parked
+
+Finish the ticket you claimed; don't let it grow into a different one. But some
+tickets turn out to be undoable as written, and a fully automated run must not
+stall on them. **Park the ticket and carry on** — do not wait for the user.
+
+Parking a ticket means: leave it `status-in-progress` **only if partial work is
+committed locally**, otherwise reset it to `status-needs-fix` so it is visibly
+back in the queue; comment on the issue with what you found, what you tried, the
+specific question or decision that blocks it, and your recommendation; then
+return to Step 0 and take the next ticket. Collect every parked ticket in your
+end-of-run report so the user sees them together instead of one interruption at
+a time.
+
+Park — don't push through, don't ask mid-run — when:
+
+- the change is spreading well beyond the files named in the ticket's
+  implementation notes, or into modules it never mentioned;
+- it needs a **new dependency**, or a version bump of an existing one;
+- it needs a new IPC channel, a schema change, or a change to how sessions or
+  the recorder persist data — these are cross-cutting and easy to get wrong;
+- delivering the acceptance criteria turns out to require work the ticket
+  explicitly puts out of scope;
+- an existing test has to change to accommodate you. Adapting a test to new
+  intended behaviour is legitimate; weakening one to get green is not, and the
+  difference is worth a sentence of justification.
+
+Parking with a clear explanation beats both shipping a sprawling change nobody
+asked for and halting a run that had five other tickets it could have done.
+
+Discard any uncommitted work for a parked ticket (`git checkout -- .` after
+noting what you learned in the comment) so the next ticket starts from a clean
+tree. Never carry one ticket's half-finished edits into another's commit.
+
+## Constraints
+
+- One ticket at a time — never work two in parallel, and never claim the next
+  one before the current is at `status-ci-running`.
+- Check the token budget before every ticket; never start one you cannot finish
+  through Step 9.
+- Never push if typecheck, lint, unit tests or e2e fail.
+- Trunk-based only: commit onto `main`. Never create a branch or open a PR.
+- Take consent once per run at Step 0.5, then run unattended — never pause
+  mid-loop for approval. Park blocked tickets instead of asking.
+- Never close an issue and never set `status-done` — that is `watch-ci`'s call.
+- Never add to `renderer/renderer.js`.
+- Always update **both** the label and the board column on every transition.
+- If you cannot complete a ticket, park it (comment + correct label + clean
+  tree) and move on — never leave the run blocked on a question.
+
+## Board reference
+
+```
+Project number:  3   (owner @me)
+Project ID:      PVT_kwHOA2Pe484BiHJY
+Status field ID: PVTSSF_lAHOA2Pe484BiHJYzhhAV-0
+Repo:            testheader/testerbrowser
+```
+
+| Column | Option ID | Label |
+|---|---|---|
+| Backlog | `adf7ac3d` | `status-backlog` |
+| Ready | `70a64391` | `status-ready` |
+| In progress | `978f4b40` | `status-in-progress` |
+| CI running | `78882a20` | `status-ci-running` |
+| Needs Fix | `211b4ce4` | `status-needs-fix` |
+| Done | `07528d57` | `status-done` |
+
+To move a board item:
+
+```bash
+ITEM_ID=$(gh project item-list 3 --owner @me --format json \
+  --jq ".items[] | select(.content.number == <N>) | .id")
+
+gh api graphql \
+  -f query='mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){updateProjectV2ItemFieldValue(input:{projectId:$p,itemId:$i,fieldId:$f,value:{singleSelectOptionId:$o}}){projectV2Item{id}}}' \
+  -f p="PVT_kwHOA2Pe484BiHJY" -f i="$ITEM_ID" \
+  -f f="PVTSSF_lAHOA2Pe484BiHJYzhhAV-0" -f o="<OPTION_ID>"
+```
+
+If the issue isn't on the board yet, add it first:
+
+```bash
+gh project item-add 3 --owner @me \
+  --url https://github.com/testheader/testerbrowser/issues/<N>
+```
+
+If a mutation fails, the label is still correct — say so and carry on; `watch-ci`
+reconciles the board from labels on its next run.
