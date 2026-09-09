@@ -16,17 +16,34 @@ const PRESETS = [
   { label: 'Toronto',     timezone: 'America/Toronto',       locale: 'en-CA', latitude:  43.6532, longitude:  -79.3832 },
 ];
 
-const UA_PRESETS = [
-  { label: 'iOS Safari', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' },
-  { label: 'Android Chrome', userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36' },
-  { label: 'Googlebot', userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' },
-];
+// group is the <optgroup> label; a rendered dropdown, not buttons, is what
+// scales past a handful of entries (#184). "This browser"'s userAgent is
+// resolved live from this window's own navigator.userAgent right before the
+// dropdown is built, rather than a hardcoded string that would rot on the
+// next Electron/Chromium bump.
+function buildUaPresets() {
+  return [
+    { group: 'This browser', label: 'TesterBrowser (this app)', userAgent: navigator.userAgent },
+    { group: 'Desktop', label: 'Chrome (Windows)', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' },
+    { group: 'Desktop', label: 'Firefox (Windows)', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0' },
+    { group: 'Desktop', label: 'Safari (macOS)', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15' },
+    { group: 'Desktop', label: 'Edge (Windows)', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0' },
+    { group: 'Mobile', label: 'iOS Safari', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1' },
+    { group: 'Mobile', label: 'Android Chrome', userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36' },
+    { group: 'Mobile', label: 'Android 8 (older)', userAgent: 'Mozilla/5.0 (Linux; Android 8.0.0; SM-G930F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.84 Mobile Safari/537.36' },
+    { group: 'Bots', label: 'Googlebot', userAgent: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' },
+    { group: 'Bots', label: 'Bingbot', userAgent: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm) Safari/537.36' },
+  ];
+}
 
 let initialized = false;
 // Overrides actually applied to the currently displayed session, as last
 // confirmed by the backend — drives both the "currently applied" summary and
 // the dirty-field detection (edited-but-not-applied) below it.
 let appliedForActiveSession = null;
+// Built once at init (navigator.userAgent doesn't change at runtime) and
+// looked up by option index when the UA dropdown changes.
+let uaPresets = [];
 
 export function initSpoof() {
   const panel = document.getElementById('spoofPanel');
@@ -72,7 +89,7 @@ export function initSpoof() {
         <div class="spoof-field spoof-field-ua">
           <label class="spoof-label">User-Agent</label>
           <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="e.g. Mozilla/5.0 (...)" spellcheck="false" />
-          <div class="spoof-presets spoof-ua-presets" id="spoofUaPresets"></div>
+          <select class="spoof-input spoof-ua-select" id="spoofUaPresets"></select>
         </div>
       </div>
       <div class="spoof-actions">
@@ -93,21 +110,35 @@ export function initSpoof() {
     presetsEl.appendChild(btn);
   }
 
-  const uaPresetsEl = document.getElementById('spoofUaPresets');
-  for (const p of UA_PRESETS) {
-    const btn = document.createElement('button');
-    btn.className = 'spoof-preset-btn';
-    btn.textContent = p.label;
-    btn.addEventListener('click', () => fillUaPreset(p));
-    uaPresetsEl.appendChild(btn);
-  }
+  uaPresets = buildUaPresets();
+  const uaSelect = document.getElementById('spoofUaPresets');
+  uaSelect.innerHTML = '<option value="">Custom / none</option>' +
+    Object.entries(
+      uaPresets.reduce((groups, p, i) => {
+        (groups[p.group] ??= []).push([p, i]);
+        return groups;
+      }, {})
+    ).map(([group, entries]) => `<optgroup label="${group}">${
+      entries.map(([p, i]) => `<option value="${i}">${p.label}</option>`).join('')
+    }</optgroup>`).join('');
+  uaSelect.addEventListener('change', () => {
+    if (uaSelect.value === '') return; // "Custom / none" — leave the field as-is
+    fillUaPreset(uaPresets[Number(uaSelect.value)]);
+  });
 
   document.getElementById('spoofApply').addEventListener('click', applySpoof);
   document.getElementById('spoofReset').addEventListener('click', resetSpoof);
   document.getElementById('spoofUseCurrent').addEventListener('click', useCurrentValues);
-  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon', 'spoofOffsetValue', 'spoofUserAgent']) {
+  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon', 'spoofOffsetValue']) {
     document.getElementById(id).addEventListener('input', updateDirtyState);
   }
+  // Hand-editing the UA field means it's no longer exactly whatever preset
+  // was last chosen (if any) — fall the dropdown back to "Custom / none"
+  // rather than leave it pointing at a preset the field no longer matches.
+  document.getElementById('spoofUserAgent').addEventListener('input', () => {
+    uaSelect.value = '';
+    updateDirtyState();
+  });
   document.getElementById('spoofOffsetUnit').addEventListener('change', updateDirtyState);
 
   refreshSpoofStatus();
@@ -194,6 +225,8 @@ function populateFields(a) {
   document.getElementById('spoofLat').value = a?.latitude !== undefined ? String(a.latitude) : '';
   document.getElementById('spoofLon').value = a?.longitude !== undefined ? String(a.longitude) : '';
   document.getElementById('spoofUserAgent').value = a?.userAgent ?? '';
+  const uaSelectEl = document.getElementById('spoofUaPresets');
+  if (uaSelectEl) uaSelectEl.value = ''; // switching sessions is never "the same preset was just picked"
   const offsetValueEl = document.getElementById('spoofOffsetValue');
   const offsetUnitEl = document.getElementById('spoofOffsetUnit');
   if (a?.timeOffsetMs !== undefined) {

@@ -234,7 +234,7 @@ test('a user-agent preset overrides navigator.userAgent and the request header, 
   const realUa = await retryEvaluate(tab, () => navigator.userAgent);
 
   await window.click('#consoleTabSpoof');
-  await window.click('button.spoof-preset-btn:text("Android Chrome")');
+  await window.selectOption('#spoofUaPresets', { label: 'Android Chrome' });
   const androidUa = await window.locator('#spoofUserAgent').inputValue();
   expect(androidUa).toContain('Android');
 
@@ -266,7 +266,7 @@ test('a user-agent preset overrides navigator.userAgent and the request header, 
   await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
 
   // Reset overrides also restores the default UA.
-  await window.click('button.spoof-preset-btn:text("Googlebot")');
+  await window.selectOption('#spoofUaPresets', { label: 'Googlebot' });
   await window.click('#spoofApply');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
   await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toContain('Googlebot');
@@ -274,4 +274,37 @@ test('a user-agent preset overrides navigator.userAgent and the request header, 
   await window.click('#spoofReset');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
   await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
+});
+
+test('the user-agent presets are a dropdown grouped by optgroup, including this browser\'s own UA, and hand-editing falls back to Custom (#184)', async () => {
+  await window.click('#consoleTabSpoof');
+  const uaSelect = window.locator('#spoofUaPresets');
+  await expect(uaSelect).toHaveJSProperty('tagName', 'SELECT');
+
+  const groups = await uaSelect.locator('optgroup').evaluateAll(
+    els => els.map(el => (el as HTMLOptGroupElement).label)
+  );
+  expect(groups).toEqual(expect.arrayContaining(['This browser', 'Desktop', 'Mobile', 'Bots']));
+
+  const labels = await uaSelect.locator('option').allTextContents();
+  expect(labels).toEqual(expect.arrayContaining([
+    'Custom / none', 'TesterBrowser (this app)', 'Chrome (Windows)', 'Firefox (Windows)',
+    'Safari (macOS)', 'Edge (Windows)', 'iOS Safari', 'Android Chrome', 'Android 8 (older)',
+    'Googlebot', 'Bingbot',
+  ]));
+
+  // "This browser" uses the chrome window's own live navigator.userAgent,
+  // not a hardcoded string that would rot on the next Electron bump.
+  const ownUa = await window.evaluate(() => navigator.userAgent);
+  await window.selectOption('#spoofUaPresets', { label: 'TesterBrowser (this app)' });
+  await expect(window.locator('#spoofUserAgent')).toHaveValue(ownUa);
+
+  // Selecting a different preset still fills the field as before.
+  await window.selectOption('#spoofUaPresets', { label: 'Chrome (Windows)' });
+  await expect(window.locator('#spoofUserAgent')).toHaveValue(/Chrome\/124/);
+  await expect(uaSelect).toHaveValue(/.+/); // a real preset index, not "" (Custom)
+
+  // Hand-editing the field afterwards switches the dropdown back to Custom.
+  await window.fill('#spoofUserAgent', 'MyCustomAgent/1.0');
+  await expect(uaSelect).toHaveValue('');
 });
