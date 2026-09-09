@@ -1142,6 +1142,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-badge { font-size: 10px; padding: 1px 5px; border-radius: 2px;
              background: var(--success-surface); color: var(--info-strong); font-family: monospace; white-space: nowrap; }
 .res-prob-badge { background: var(--info-surface); color: var(--info-strong); }
+.res-method-badge { background: var(--bg-tertiary); color: var(--text-secondary); }
 .res-hits-badge.res-hits-active { background: var(--warn-surface); color: var(--warn-strong); }
 .res-rule-url { flex: 1; font-size: 11px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .res-toggle { display: flex; align-items: center; cursor: pointer; }
@@ -1157,6 +1158,12 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-rule-row-editing .res-edit-url { flex: 1; min-width: 120px; }
 .res-rule-row-editing .res-edit-prob { width: 60px; }
 .res-rule-row-editing .res-edit-latency { width: 80px; }
+.res-provenance { flex-basis: 100%; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--border-color);
+                   font-size: 11px; color: var(--text-muted); font-family: monospace; }
+.res-provenance-label { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 2px; }
+.res-provenance-row { word-break: break-all; }
+.res-provenance-key { color: var(--text-secondary); }
+.res-provenance-body { margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; max-height: 80px; overflow-y: auto; }
 
 /* ── Record-Playback panel ────────────────────────────────────────────────── */
 .rp-wrap { display: flex; height: 100%; overflow: hidden; }

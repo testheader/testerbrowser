@@ -1,17 +1,38 @@
 /* global testerBrowser */
+import { escHtml } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 
+// Request headers/body from the captured call the add-rule form is currently
+// prefilled from — read-only provenance, shown in a rule's edit view once
+// saved. Never sent to the real server or matched against; only method +
+// urlPattern decide whether a rule fires. Reset on every prefill and after
+// submit; stay null for a rule composed by hand.
+let capturedMethod         = null;
+let capturedRequestHeaders = null;
+let capturedRequestBody    = null;
+
 // Entry point for the "⇒ Resilience" button on a network request's detail
 // panel: switches to the Resilience tab and prefills the add-rule form's URL
-// with this exact call's URL (not a glob — the tester can widen it). No
-// method field exists on a resilience rule, so unlike Mock there's nothing
-// else to prefill.
-export function openResilienceFromRequest(url) {
+// with this exact call's URL (not a glob — the tester can widen it), scopes
+// the rule to the call's method, and defaults type/probability to the most
+// common case (500 error, 100%) so a single click plus Add is enough.
+export function openResilienceFromRequest(method, url, requestHeaders, requestBody) {
   switchConsoleTab('resilience'); // also runs initResilience() if this is the first visit
   const urlInput = document.getElementById('resUrl');
   if (!urlInput) return;
   urlInput.value = url || '*';
+
+  const typeSel = document.getElementById('resType');
+  typeSel.value = 'error500';
+  document.getElementById('resTypeDesc').textContent = TYPES[0].desc;
+  document.getElementById('resLatencyField').classList.add('res-hidden');
+  document.getElementById('resProb').value = '100';
+
+  capturedMethod         = method || null;
+  capturedRequestHeaders = requestHeaders || null;
+  capturedRequestBody    = requestBody ?? null;
+
   urlInput.focus();
 }
 
@@ -93,11 +114,19 @@ export function initResilience() {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type,
       urlPattern: document.getElementById('resUrl').value.trim() || '*',
+      method: capturedMethod || '*',
       probability: Math.min(1, Math.max(0.01, parseInt(document.getElementById('resProb').value, 10) / 100)),
       latencyMs: parseInt(document.getElementById('resLatency').value, 10) || 2000,
       enabled: true,
     };
+    if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
+    if (capturedRequestBody !== null) rule.requestBody = capturedRequestBody;
     await testerBrowser.resilience.addRule(getActiveId(), rule);
+
+    capturedMethod = null;
+    capturedRequestHeaders = null;
+    capturedRequestBody = null;
+
     await loadRules();
   });
 
@@ -137,12 +166,15 @@ function buildRuleRow(rule) {
   const row = document.createElement('div');
   row.className = 'res-rule-row';
   row.dataset.id = rule.id;
+  const methodBadge = rule.method && rule.method !== '*'
+    ? `<span class="res-badge res-method-badge">${escHtml(rule.method)}</span>` : '';
   row.innerHTML = `
     <label class="res-toggle" title="Enable/disable">
       <input type="checkbox" class="res-enable" ${rule.enabled ? 'checked' : ''} />
       <span class="res-toggle-label"></span>
     </label>
     <span class="res-rule-type res-badge">${typeLabel}${extra}</span>
+    ${methodBadge}
     <span class="res-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
     <span class="res-badge res-prob-badge">${probLabel}</span>
     <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
@@ -164,6 +196,25 @@ function buildRuleRow(rule) {
   return row;
 }
 
+// Read-only provenance from the captured call a rule was created from — never
+// editable, never sent anywhere or matched against, just context for why
+// this rule exists and what it was pointed at. Omitted entirely for a rule
+// composed by hand (no requestHeaders/requestBody to show).
+function buildProvenanceHtml(rule) {
+  const headerEntries = Object.entries(rule.requestHeaders || {});
+  if (headerEntries.length === 0 && !rule.requestBody) return '';
+  const headersHtml = headerEntries.length
+    ? headerEntries.map(([k, v]) => `<div class="res-provenance-row"><span class="res-provenance-key">${escHtml(k)}</span>: ${escHtml(String(v))}</div>`).join('')
+    : '';
+  const bodyHtml = rule.requestBody
+    ? `<pre class="res-provenance-body">${escHtml(rule.requestBody)}</pre>` : '';
+  return `<div class="res-provenance" title="From the captured call this rule was created from — read-only, never matched against">
+    <div class="res-provenance-label">Captured request${rule.method && rule.method !== '*' ? ` (${escHtml(rule.method)})` : ''}</div>
+    ${headersHtml}
+    ${bodyHtml}
+  </div>`;
+}
+
 function buildEditRow(rule) {
   const row = document.createElement('div');
   row.className = 'res-rule-row res-rule-row-editing';
@@ -176,7 +227,8 @@ function buildEditRow(rule) {
     <input class="res-input res-edit-prob" type="number" min="1" max="100" value="${Math.round(rule.probability * 100)}" title="Probability %" />
     <input class="res-input res-edit-latency${rule.type === 'latency' ? '' : ' res-hidden'}" type="number" min="0" value="${rule.latencyMs ?? 2000}" title="Delay ms" />
     <button class="res-btn res-save-btn" title="Save">Save</button>
-    <button class="res-btn res-cancel-btn" title="Cancel">Cancel</button>`;
+    <button class="res-btn res-cancel-btn" title="Cancel">Cancel</button>
+    ${buildProvenanceHtml(rule)}`;
 
   const typeSel = row.querySelector('.res-edit-type');
   const latencyInput = row.querySelector('.res-edit-latency');

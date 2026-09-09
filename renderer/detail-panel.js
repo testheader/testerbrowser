@@ -115,7 +115,7 @@ function renderDetailContent() {
 
       if (reqEvt && reqEvt.payload) {
         const req = (JSON.parse(reqEvt.payload).request) || {};
-        mockData = { method: req.method, url: req.url, requestHeaders: req.headers || {} };
+        mockData = { method: req.method, url: req.url, requestHeaders: req.headers || {}, requestBody: req.postData || null };
         actionReqEvt = reqEvt;
         html += `<div class="detail-section">
           <span class="detail-method ${methodClass(req.method)}">${escHtml(req.method || '?')}</span>
@@ -124,7 +124,7 @@ function renderDetailContent() {
         <div class="detail-section detail-actions">
           <button class="detail-action-btn" id="detailReplayBtn" title="Edit and replay this request">↺ Replay</button>
           <button class="detail-action-btn" id="detailMockBtn" title="Send this call's method, URL, status and body to the Mock panel">⇒ Mock</button>
-          <button class="detail-action-btn" id="detailResilienceBtn" title="Send this call's URL to the Resilience panel">⇒ Resilience</button>
+          <button class="detail-action-btn" id="detailResilienceBtn" title="Send this call's method and URL to the Resilience panel">⇒ Resilience</button>
         </div>`;
         if (req.headers && Object.keys(req.headers).length) {
           html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
@@ -220,7 +220,7 @@ function renderDetailContent() {
     }
     const resilienceBtn = document.getElementById('detailResilienceBtn');
     if (resilienceBtn) {
-      resilienceBtn.onclick = () => openResilienceFromRequest(mockData.url);
+      resilienceBtn.onclick = () => openResilienceFromRequest(mockData.method, mockData.url, mockData.requestHeaders, mockData.requestBody);
     }
   }
 }

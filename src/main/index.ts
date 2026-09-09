@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
-import { SessionManager, TestStep, MockRule } from './sessionManager';
+import { SessionManager, TestStep, MockRule, ResilienceRule } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
 import { upsertById } from './upsert';
 
@@ -334,10 +334,10 @@ ipcMain.handle('mock:addRule',     (_e, id: string, rule: MockRule) => sessionMa
 ipcMain.handle('mock:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeMockRule(id, ruleId));
 ipcMain.handle('mock:toggleRule',  (_e, id: string, ruleId: string, enabled: boolean) => sessionManager?.toggleMockRule(id, ruleId, enabled));
 ipcMain.handle('resilience:getRules',    (_e, id: string) => sessionManager?.getResilienceRules(id) ?? []);
-ipcMain.handle('resilience:addRule',     (_e, id: string, rule) => sessionManager?.addResilienceRule(id, rule));
+ipcMain.handle('resilience:addRule',     (_e, id: string, rule: ResilienceRule) => sessionManager?.addResilienceRule(id, rule));
 ipcMain.handle('resilience:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeResilienceRule(id, ruleId));
 ipcMain.handle('resilience:toggleRule',  (_e, id: string, ruleId: string, enabled: boolean) => sessionManager?.toggleResilienceRule(id, ruleId, enabled));
-ipcMain.handle('resilience:updateRule',  (_e, id: string, ruleId: string, patch) => sessionManager?.updateResilienceRule(id, ruleId, patch));
+ipcMain.handle('resilience:updateRule',  (_e, id: string, ruleId: string, patch: Partial<ResilienceRule>) => sessionManager?.updateResilienceRule(id, ruleId, patch));
 ipcMain.handle('session:setEmulation', (_e, id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; timeOffsetMs?: number; userAgent?: string; clear?: boolean }) => sessionManager?.setEmulation(id, opts));
 ipcMain.handle('session:getEmulation', (_e, id: string) => sessionManager?.getEmulation(id) ?? null);
 ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.getCookies(id) ?? []);

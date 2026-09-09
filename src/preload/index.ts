@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MockRule } from '../main/sessionManager';
+import type { MockRule, ResilienceRule } from '../main/sessionManager';
 
 contextBridge.exposeInMainWorld('testerBrowser', {
   sessions: {
@@ -177,10 +177,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   },
   resilience: {
     getRules:   (id: string) => ipcRenderer.invoke('resilience:getRules', id),
-    addRule:    (id: string, rule: object) => ipcRenderer.invoke('resilience:addRule', id, rule),
+    addRule:    (id: string, rule: Omit<ResilienceRule, 'hitCount' | 'lastHitAt'>) => ipcRenderer.invoke('resilience:addRule', id, rule),
     removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('resilience:removeRule', id, ruleId),
     toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('resilience:toggleRule', id, ruleId, enabled),
-    updateRule: (id: string, ruleId: string, patch: object) => ipcRenderer.invoke('resilience:updateRule', id, ruleId, patch),
+    updateRule: (id: string, ruleId: string, patch: Partial<ResilienceRule>) => ipcRenderer.invoke('resilience:updateRule', id, ruleId, patch),
   },
 
   jira: {

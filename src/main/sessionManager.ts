@@ -44,11 +44,20 @@ export interface ResilienceRule {
   id: string;
   type: ResilienceType;
   urlPattern: string;
+  // '*' (the default, matching every method) or a single HTTP method — never
+  // matched against headers or body, only used to scope which requests this
+  // rule degrades.
+  method: string;
   probability: number;
   latencyMs: number;
   enabled: boolean;
   hitCount: number;
   lastHitAt: number | null;
+  // Provenance from the captured call this rule was created from — read-only
+  // display in the panel, never sent anywhere and never part of matching.
+  // Undefined for a rule composed by hand.
+  requestHeaders?: Record<string, string>;
+  requestBody?: string;
 }
 
 function matchesGlob(pattern: string, url: string): boolean {
@@ -56,6 +65,14 @@ function matchesGlob(pattern: string, url: string): boolean {
     const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
     return re.test(url);
   } catch { return false; }
+}
+
+// Pulled out as a pure function so the method-scoping this ticket (#181)
+// adds is unit-testable without the CDP debugger/session plumbing around it.
+// A missing/'*' method matches every method, same as before this field
+// existed — never matched against headers or body, only method + URL.
+export function resilienceRuleMatchesRequest(rule: ResilienceRule, request: { method: string; url: string }): boolean {
+  return (!rule.method || rule.method === '*' || rule.method === request.method) && matchesGlob(rule.urlPattern, request.url);
 }
 
 export interface TestSession {
@@ -408,9 +425,7 @@ export class SessionManager {
         dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule) }).catch(() => {});
         return;
       }
-      const res = testSession.resilienceRules.find(r =>
-        r.enabled && matchesGlob(r.urlPattern, request.url)
-      );
+      const res = testSession.resilienceRules.find(r => r.enabled && resilienceRuleMatchesRequest(r, request));
       if (res && Math.random() < res.probability) {
         res.hitCount = (res.hitCount || 0) + 1;
         res.lastHitAt = Date.now();
@@ -1388,7 +1403,7 @@ export class SessionManager {
   addResilienceRule(id: string, rule: ResilienceRule): void {
     const s = this.sessions.get(id);
     if (!s) return;
-    s.resilienceRules.push({ ...rule, hitCount: 0, lastHitAt: null });
+    s.resilienceRules.push({ ...rule, method: rule.method || '*', hitCount: 0, lastHitAt: null });
     this._applyFetch(id);
   }
 
