@@ -108,15 +108,27 @@ function setLog(text, isError) {
   log.innerHTML = `<div class="follow-log-line ${isError ? 'err' : 'ok'}">${escHtml(text)}</div>`;
 }
 
+// Long URLs would otherwise wrap the whole log line and push older lines
+// out of view; the full URL is still visible via a tooltip on the line
+// itself if truncated.
+function truncateUrl(url, max = 60) {
+  return url.length > max ? url.slice(0, max - 1) + '…' : url;
+}
+
 function logStepResult(step, result) {
   const log = document.getElementById('followLog');
   if (!log) return;
-  const desc = step.type === 'click' ? `click ${step.selector}` : step.type === 'fill' ? `fill ${step.selector}` : step.type;
+  const desc = step.type === 'click' ? `click ${step.selector}`
+    : step.type === 'fill' ? `fill ${step.selector}`
+    : step.type === 'navigate' ? `navigate to ${truncateUrl(step.url || '')}`
+    : step.type === 'navigate-in-page' ? `in-page navigate to ${truncateUrl(step.url || '')}`
+    : step.type;
   const line = document.createElement('div');
   line.className = 'follow-log-line ' + (result.success ? 'ok' : 'err');
   line.textContent = result.success
     ? `✓ mirrored ${desc}`
     : `✗ failed to mirror ${desc}: ${result.error || 'unknown error'}`;
+  if (step.url) line.title = step.url;
   log.prepend(line);
   while (log.children.length > 50) log.removeChild(log.lastChild);
 }

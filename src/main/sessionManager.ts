@@ -259,6 +259,18 @@ export interface TestStep {
   sensitive?: boolean;
 }
 
+// Pulled out as a pure function so the followAlong:stepResult payload shape
+// for a mirrored navigation (#186) is unit-testable without the WebContents/
+// pairing plumbing around it.
+export function buildNavMirrorStepResult(
+  kind: 'navigate' | 'navigate-in-page', url: string, error?: string
+): { step: { type: 'navigate' | 'navigate-in-page'; url: string }; result: { success: boolean; error?: string } } {
+  return {
+    step: { type: kind, url },
+    result: error === undefined ? { success: true } : { success: false, error },
+  };
+}
+
 interface FollowPairing {
   leaderId: string;
   followerId: string;
@@ -269,6 +281,7 @@ interface FollowPairing {
   relayedSteps: Map<string, string>;
   pollTimer: ReturnType<typeof setInterval>;
   navHandler: (_e: unknown, url: string) => void;
+  navInPageHandler: (_e: unknown, url: string) => void;
 }
 
 function buildPlaybackScript(step: TestStep): string {
@@ -1601,21 +1614,41 @@ export class SessionManager {
 
     await this.startRecording(leaderId);
 
-    const navHandler = (_e: unknown, url: string) => {
+    // Full-page and in-page navigation both mirror through here — logged via
+    // the same followAlong:stepResult event the click/fill relay path uses
+    // (renderer/followalong.js already falls back to step.type for a kind it
+    // doesn't special-case, but gives 'navigate'/'navigate-in-page' their own
+    // description), so there's no silent-success gap for the tester to
+    // second-guess. Gated on mirrorNavigation like the mirroring itself —
+    // nothing is emitted, let alone logged, while it's off.
+    const makeNavHandler = (kind: 'navigate' | 'navigate-in-page') => (_e: unknown, url: string) => {
       const pairing = this.followPairings.get(leaderId);
       if (!pairing?.mirrorNavigation) return;
       const followerSession = this.sessions.get(pairing.followerId);
       if (!followerSession) return;
       if (followerSession.view.webContents.getURL() === url) return;
-      followerSession.view.webContents.loadURL(url).catch(() => {});
+      followerSession.view.webContents.loadURL(url)
+        .then(() => {
+          this.win.webContents.send('followAlong:stepResult', {
+            leaderId, followerId: pairing.followerId, ...buildNavMirrorStepResult(kind, url),
+          });
+        })
+        .catch((err: unknown) => {
+          this.win.webContents.send('followAlong:stepResult', {
+            leaderId, followerId: pairing.followerId,
+            ...buildNavMirrorStepResult(kind, url, err instanceof Error ? err.message : String(err)),
+          });
+        });
     };
+    const navHandler = makeNavHandler('navigate');
+    const navInPageHandler = makeNavHandler('navigate-in-page');
     leader.view.webContents.on('did-navigate', navHandler);
-    leader.view.webContents.on('did-navigate-in-page', navHandler);
+    leader.view.webContents.on('did-navigate-in-page', navInPageHandler);
 
     const pollTimer = setInterval(() => { this.relayFollowSteps(leaderId).catch(() => {}); }, 300);
 
     this.followPairings.set(leaderId, {
-      leaderId, followerId, mirrorNavigation, relayedSteps: new Map(), pollTimer, navHandler,
+      leaderId, followerId, mirrorNavigation, relayedSteps: new Map(), pollTimer, navHandler, navInPageHandler,
     });
     return { ok: true };
   }
@@ -1627,7 +1660,7 @@ export class SessionManager {
     const leader = this.sessions.get(leaderId);
     if (leader) {
       leader.view.webContents.off('did-navigate', pairing.navHandler);
-      leader.view.webContents.off('did-navigate-in-page', pairing.navHandler);
+      leader.view.webContents.off('did-navigate-in-page', pairing.navInPageHandler);
     }
     this.followPairings.delete(leaderId);
     if (this.recordingHandlers.has(leaderId)) await this.stopRecording(leaderId);
