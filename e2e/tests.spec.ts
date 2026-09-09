@@ -403,6 +403,46 @@ test('editing a step\'s selector inline breaks the run, and correcting it fixes 
   await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
 });
 
+test('a failed step renders a click-to-enlarge thumbnail and a readable error line naming the selector (#185)', async () => {
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'editable steps target' });
+  const selectorInput = testItem.locator('.rp-saved-steps .rp-live-step').nth(0).locator('.rp-step-desc');
+
+  await selectorInput.fill('[data-testid="does-not-exist"]');
+  await selectorInput.blur();
+
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toContainText('Failed at step 1', { timeout: 15_000 });
+
+  // The error is its own readable line, not just squeezed into the status
+  // cell, and names the selector that couldn't be found.
+  const errorLine = window.locator('.rp-step-error');
+  await expect(errorLine).toBeVisible();
+  await expect(errorLine).toContainText('[data-testid="does-not-exist"]');
+
+  // Bounded thumbnail, not the whole run column's width.
+  const shot = window.locator('.rp-failure-shot');
+  await expect(shot).toBeVisible();
+  const shotBox = (await shot.boundingBox())!;
+  expect(shotBox.height).toBeLessThanOrEqual(140);
+
+  // Click to enlarge: the overlay opens with that exact image, not a blank
+  // or re-captured one (the page has moved on by the time this fires).
+  await shot.click();
+  await expect(window.locator('#imageOverlay')).toHaveClass(/open/);
+  const overlayImg = window.locator('#imageOverlayImg');
+  await expect(overlayImg).toBeVisible();
+  const src = await overlayImg.getAttribute('src');
+  expect(src).toMatch(/^data:image\/png;base64,.+/);
+
+  await window.keyboard.press('Escape');
+  await expect(window.locator('#imageOverlay')).not.toHaveClass(/open/);
+
+  // Restore the step — later tests reuse this same saved test.
+  await selectorInput.fill('[data-testid="rp-input"]');
+  await selectorInput.blur();
+});
+
 test('deleting a step from a saved test updates the step count and the removed action no longer executes', async () => {
   // Fresh navigation resets the fixture's DOM state so a stale #rp-result
   // from an earlier run in this file can't be mistaken for the click step

@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
 import { escHtml } from './utils.js';
+import { openImageOverlay } from './image-overlay.js';
 
 let initialized = false;
 let isRecording = false;
@@ -693,7 +694,10 @@ async function executeTest(test, silent, stepByStep = false) {
       const result = await testerBrowser.tests.playbackStep(sessionId, step);
       row.classList.remove('rp-step-running');
       row.classList.add(result.success ? 'rp-step-pass' : 'rp-step-fail');
-      row.querySelector('.rp-step-status').textContent = result.success ? '✓' : ('✗ ' + (result.error || ''));
+      // The full error (and which selector it was) gets its own readable
+      // line below the row instead — this stays a short, fixed-width glyph
+      // so it doesn't crowd the row.
+      row.querySelector('.rp-step-status').textContent = result.success ? '✓' : '✗';
 
       currentRow?.classList.remove('rp-step-current');
       row.classList.add('rp-step-current');
@@ -705,11 +709,24 @@ async function executeTest(test, silent, stepByStep = false) {
         document.getElementById('rpRunStatus').textContent = `Failed at step ${i + 1}: ${result.error || ''}`;
         document.getElementById('rpProgressFill').style.width = '100%';
 
+        const errorLine = document.createElement('div');
+        errorLine.className = 'rp-step-error';
+        errorLine.textContent = step.selector
+          ? `${result.error || 'Step failed'} (selector: ${step.selector})`
+          : (result.error || 'Step failed');
+        stepEls.appendChild(errorLine);
+
+        // Bounded thumbnail (see .rp-failure-shot) — click to enlarge. The
+        // base64 data lives on the <img> itself so re-clicking later (the
+        // page has long since moved on) still opens the exact same shot.
         const shot = await testerBrowser.tests.captureScreenshot(sessionId);
         if (shot) {
           const img = document.createElement('img');
           img.src = `data:image/png;base64,${shot}`;
           img.className = 'rp-failure-shot';
+          img.alt = `Screenshot at step ${i + 1} failure`;
+          img.title = 'Click to enlarge';
+          img.addEventListener('click', () => openImageOverlay(img.src));
           stepEls.appendChild(img);
         }
         break;

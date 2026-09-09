@@ -751,6 +751,16 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                  border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: none; }
 #notesTextarea:focus { outline: none; border-color: var(--accent); }
 
+/* ── Image lightbox (reusable — see renderer/image-overlay.js) ── */
+#imageOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+                z-index: 100; align-items: center; justify-content: center; cursor: zoom-out; }
+#imageOverlay.open { display: flex; }
+#imageOverlay.open #imageOverlayModal { animation: modal-pop-in 150ms ease; }
+#imageOverlayModal { position: relative; max-width: 90vw; max-height: 90vh; cursor: default; }
+#imageOverlayImg { display: block; max-width: 90vw; max-height: 90vh; border-radius: 4px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+#imageOverlayModal .modal-close-btn { top: -32px; right: -8px; color: var(--text-primary); }
+
 /* ── History modal ── */
 #historyOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                   z-index: 100; align-items: center; justify-content: center; }
@@ -1256,7 +1266,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                         margin: 6px 0; cursor: pointer; }
 .rp-step-controls { gap: 4px; }
 .rp-step-controls:not([hidden]) { display: flex; }
-.rp-failure-shot { max-width: 100%; border: 1px solid var(--error-border); border-radius: 4px; margin-top: 6px; }
+/* Bounded thumbnail, not max-width:100% — the narrow run column would
+   otherwise render it wide enough to push the step list out of view (#185).
+   Aspect ratio preserved (no width set) since screenshots vary in shape. */
+.rp-failure-shot { display: block; max-height: 140px; border: 1px solid var(--error-border);
+                    border-radius: 4px; margin-top: 4px; cursor: zoom-in; }
+.rp-step-error { color: var(--error-strong); font-size: 11px; line-height: 1.4; margin: 2px 0 2px 20px;
+                  word-break: break-word; }
 .rp-placeholder { color: var(--text-faint); font-size: 12px; text-align: center; padding: 20px; }
 .rp-repeat-results { margin-top: 8px; }
 .rp-repeat-header { font-size: 13px; font-weight: 700; padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; }
