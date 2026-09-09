@@ -137,7 +137,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #topbar { display: flex; flex-direction: column; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
 
 /* Tabs (now inside #titlebar, sharing the row with window controls) */
-#tabs { display: flex; align-items: center; flex-shrink: 1; min-width: 0; height: 100%; padding: 0 8px; gap: 4px; overflow-x: auto; }
+#tabs { display: flex; align-items: center; flex-shrink: 1; min-width: 0; height: 100%; padding: 0 8px; gap: 4px; overflow-x: auto; -webkit-app-region: no-drag; }
 #tabs::-webkit-scrollbar { height: 3px; }
 #tabs::-webkit-scrollbar-thumb { background: var(--bg-raised); }
 .tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px; background: var(--bg-hover);

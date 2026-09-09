@@ -67,6 +67,22 @@ test('new tab button creates a second tab', async () => {
   await expect(window.locator('.tab')).toHaveCount(2);
 });
 
+test('tab strip opts out of the titlebar drag region', async () => {
+  // A real click can't be proven headlessly (Playwright's synthetic clicks bypass
+  // -webkit-app-region: drag), so assert the CSS contract instead: no ancestor
+  // between #newSessionBtn and #titlebar leaves the drag region active.
+  const dragRegion = await window.evaluate(() => {
+    let el: HTMLElement | null = document.getElementById('newSessionBtn');
+    while (el && el.id !== 'titlebar') {
+      const region = getComputedStyle(el).webkitAppRegion;
+      if (region === 'no-drag') return 'no-drag';
+      el = el.parentElement;
+    }
+    return getComputedStyle(el as HTMLElement).webkitAppRegion;
+  });
+  expect(dragRegion).toBe('no-drag');
+});
+
 test('closing the last remaining tab opens a fresh one instead of leaving the window empty', async () => {
   // Close down to exactly one tab first, in case an earlier test left more than one open.
   while ((await window.locator('.tab').count()) > 1) {
