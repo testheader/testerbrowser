@@ -115,7 +115,7 @@ function renderDetailContent() {
 
       if (reqEvt && reqEvt.payload) {
         const req = (JSON.parse(reqEvt.payload).request) || {};
-        mockData = { method: req.method, url: req.url };
+        mockData = { method: req.method, url: req.url, requestHeaders: req.headers || {} };
         actionReqEvt = reqEvt;
         html += `<div class="detail-section">
           <span class="detail-method ${methodClass(req.method)}">${escHtml(req.method || '?')}</span>
@@ -142,7 +142,7 @@ function renderDetailContent() {
       if (resEvt && resEvt.payload) {
         const resPayload = JSON.parse(resEvt.payload);
         res = resPayload.response || {};
-        if (mockData) mockData.statusCode = res.status;
+        if (mockData) { mockData.statusCode = res.status; mockData.responseHeaders = res.headers || {}; }
         html += `<div class="detail-section">
           <h3>Response</h3>
           <span class="${statusClass(res.status)}">${escHtml(String(res.status || ''))}</span>
@@ -171,7 +171,19 @@ function renderDetailContent() {
           html += `<pre class="detail-body-pre">${escHtml(String(bp.body || ''))}</pre>`;
         }
         html += `</div>`;
+        // A base64 body is binary (an image, a font, ...) — Mock's body field
+        // is plain text that gets base64-encoded fresh when the rule fires,
+        // so stuffing already-encoded bytes in there would double-encode and
+        // serve garbage. Leave it unset; bodyUnavailable below turns into a
+        // note in the Mock panel instead of prefilling something wrong.
         if (mockData && !bp.base64Encoded) mockData.body = String(bp.body || '');
+      }
+      // No usable body to prefill: never captured (redirect, or the response
+      // hadn't finished when Send to Mock was clicked) or captured but binary
+      // (image/font) — either way the Mock panel shows a note instead of
+      // silently leaving the field empty with no explanation.
+      if (mockData && mockData.body === undefined && (resEvt || failEvt)) {
+        mockData.bodyUnavailable = true;
       }
 
       if (failEvt && failEvt.payload) {
@@ -196,7 +208,11 @@ function renderDetailContent() {
   if (mockData) {
     const mockBtn = document.getElementById('detailMockBtn');
     if (mockBtn) {
-      mockBtn.onclick = () => openMockFromRequest(mockData.method, mockData.url, mockData.statusCode, mockData.body);
+      mockBtn.onclick = () => openMockFromRequest(mockData.method, mockData.url, mockData.statusCode, mockData.body, {
+        requestHeaders: mockData.requestHeaders,
+        responseHeaders: mockData.responseHeaders,
+        bodyUnavailable: !!mockData.bodyUnavailable,
+      });
     }
     const replayBtn = document.getElementById('detailReplayBtn');
     if (replayBtn && actionReqEvt) {

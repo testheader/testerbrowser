@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { MockRule } from '../main/sessionManager';
 
 contextBridge.exposeInMainWorld('testerBrowser', {
   sessions: {
@@ -170,7 +171,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
 
   mock: {
     getRules:   (id: string) => ipcRenderer.invoke('mock:getRules', id),
-    addRule:    (id: string, rule: object) => ipcRenderer.invoke('mock:addRule', id, rule),
+    addRule:    (id: string, rule: Omit<MockRule, 'hitCount' | 'lastHitAt'>) => ipcRenderer.invoke('mock:addRule', id, rule),
     removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('mock:removeRule', id, ruleId),
     toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('mock:toggleRule', id, ruleId, enabled),
   },

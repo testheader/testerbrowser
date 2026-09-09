@@ -1,24 +1,90 @@
 /* global testerBrowser */
+import { escHtml } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 
 const MOCK_METHODS = ['*', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
+// Request headers from the captured call the form is currently prefilled
+// from — read-only provenance shown in the panel, never submitted as
+// anything matching runs against. Reset on every prefill and after submit;
+// stays null for a rule composed by hand rather than from a real request.
+let capturedRequestHeaders = null;
+
+function addKvRow(container, key, val) {
+  const row = document.createElement('div');
+  row.className = 'kv-row';
+  const kInput = document.createElement('input');
+  kInput.className   = 'kv-key';
+  kInput.type        = 'text';
+  kInput.value       = key;
+  kInput.placeholder = 'Name';
+  const vInput = document.createElement('input');
+  vInput.className   = 'kv-val';
+  vInput.type        = 'text';
+  vInput.value       = val;
+  vInput.placeholder = 'Value';
+  const del = document.createElement('button');
+  del.className   = 'kv-del';
+  del.type        = 'button';
+  del.textContent = '×';
+  del.title       = 'Remove';
+  del.onclick     = () => row.remove();
+  row.appendChild(kInput);
+  row.appendChild(vInput);
+  row.appendChild(del);
+  container.appendChild(row);
+}
+
+function readKvTable(container) {
+  const obj = {};
+  for (const row of container.querySelectorAll('.kv-row')) {
+    const k = row.querySelector('.kv-key').value.trim();
+    const v = row.querySelector('.kv-val').value;
+    if (k) obj[k] = v;
+  }
+  return obj;
+}
+
+function renderCapturedRequestHeaders() {
+  const col  = document.getElementById('mockRequestHeadersCol');
+  const list = document.getElementById('mockRequestHeadersList');
+  if (!col || !list) return;
+  const entries = Object.entries(capturedRequestHeaders || {});
+  col.hidden = entries.length === 0;
+  list.innerHTML = entries
+    .map(([k, v]) => `<div class="mock-request-header-row"><span class="mock-request-header-key">${escHtml(k)}</span>: ${escHtml(String(v))}</div>`)
+    .join('');
+}
+
 // Entry point for the "⇒ Mock" button on a network request's detail panel:
 // switches to the Mock tab and prefills the add-rule form with everything
-// needed to reproduce that call's response — method, URL, status and body —
-// so the user doesn't have to retype them.
-export function openMockFromRequest(method, url, statusCode, body) {
+// needed to reproduce that call's response — method, URL, status, request
+// headers (read-only provenance), response headers and body — so the user
+// doesn't have to retype them.
+export function openMockFromRequest(method, url, statusCode, body, opts = {}) {
   switchConsoleTab('mock'); // also runs initMock() if this is the first visit
   const urlInput    = document.getElementById('mockUrl');
   const methodSel   = document.getElementById('mockMethod');
   const statusInput = document.getElementById('mockStatus');
   const bodyInput   = document.getElementById('mockBody');
+  const bodyNote    = document.getElementById('mockBodyNote');
+  const resHeaders  = document.getElementById('mockResponseHeadersTable');
   if (!urlInput || !methodSel) return;
   urlInput.value  = url || '';
   methodSel.value = MOCK_METHODS.includes(method) ? method : '*';
   if (statusInput && statusCode) statusInput.value = statusCode;
-  if (bodyInput && body !== null && body !== undefined) bodyInput.value = body;
+  if (bodyInput) bodyInput.value = body || '';
+  if (bodyNote) bodyNote.hidden = !opts.bodyUnavailable;
+
+  if (resHeaders) {
+    resHeaders.innerHTML = '';
+    for (const [k, v] of Object.entries(opts.responseHeaders || {})) addKvRow(resHeaders, k, v);
+  }
+
+  capturedRequestHeaders = opts.requestHeaders || null;
+  renderCapturedRequestHeaders();
+
   urlInput.focus();
 }
 
@@ -44,13 +110,30 @@ export function initMock() {
         </div>
         <div class="mock-form-row">
           <textarea class="mock-input mock-body" id="mockBody" rows="2" placeholder='Response body (e.g. {"error":"mocked"})'></textarea>
-          <button class="mock-btn mock-add-btn" type="submit">Add rule</button>
         </div>
+        <div class="mock-body-note" id="mockBodyNote" hidden>
+          This call's body wasn't captured (binary content, or the response hadn't finished) — nothing to prefill here.
+        </div>
+        <div class="mock-headers-row">
+          <div class="mock-headers-col">
+            <div class="mock-headers-label">Response headers</div>
+            <div class="kv-table" id="mockResponseHeadersTable"></div>
+            <button type="button" class="kv-add-btn" id="mockAddResponseHeader">+ Add</button>
+          </div>
+          <div class="mock-headers-col" id="mockRequestHeadersCol" hidden>
+            <div class="mock-headers-label" title="Provenance only — rules still match by URL pattern and method, never by headers">Request headers (from the captured call)</div>
+            <div class="mock-request-headers" id="mockRequestHeadersList"></div>
+          </div>
+        </div>
+        <button class="mock-btn mock-add-btn" type="submit">Add rule</button>
       </form>
       <div class="mock-rules" id="mockRules">
         <div class="mock-empty" id="mockEmpty">Add a rule above to intercept requests.</div>
       </div>
     </div>`;
+
+  document.getElementById('mockAddResponseHeader').addEventListener('click', () =>
+    addKvRow(document.getElementById('mockResponseHeadersTable'), '', ''));
 
   document.getElementById('mockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -61,11 +144,19 @@ export function initMock() {
       method: document.getElementById('mockMethod').value,
       statusCode: parseInt(document.getElementById('mockStatus').value, 10) || 200,
       body: document.getElementById('mockBody').value,
+      responseHeaders: readKvTable(document.getElementById('mockResponseHeadersTable')),
       enabled: true,
     };
+    if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
     await testerBrowser.mock.addRule(getActiveId(), rule);
-    document.getElementById('mockUrl').value = '';
+
+    document.getElementById('mockUrl').value  = '';
     document.getElementById('mockBody').value = '';
+    document.getElementById('mockResponseHeadersTable').innerHTML = '';
+    document.getElementById('mockBodyNote').hidden = true;
+    capturedRequestHeaders = null;
+    renderCapturedRequestHeaders();
+
     await loadRules();
   });
 

@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
-import { SessionManager, TestStep } from './sessionManager';
+import { SessionManager, TestStep, MockRule } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
 import { upsertById } from './upsert';
 
@@ -330,7 +330,7 @@ ipcMain.handle('theme:set', (_e, scheme: string) => {
 });
 ipcMain.handle('testdata:apply',      (_e, id: string, template: string) => sessionManager?.applyTemplate(id, template));
 ipcMain.handle('mock:getRules',    (_e, id: string) => sessionManager?.getMockRules(id) ?? []);
-ipcMain.handle('mock:addRule',     (_e, id: string, rule) => sessionManager?.addMockRule(id, rule));
+ipcMain.handle('mock:addRule',     (_e, id: string, rule: MockRule) => sessionManager?.addMockRule(id, rule));
 ipcMain.handle('mock:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeMockRule(id, ruleId));
 ipcMain.handle('mock:toggleRule',  (_e, id: string, ruleId: string, enabled: boolean) => sessionManager?.toggleMockRule(id, ruleId, enabled));
 ipcMain.handle('resilience:getRules',    (_e, id: string) => sessionManager?.getResilienceRules(id) ?? []);

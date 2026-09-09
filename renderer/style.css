@@ -1032,6 +1032,14 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-select { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);
                border-radius: 3px; padding: 4px 6px; font-size: 12px; }
 .mock-body { flex: 1; resize: vertical; min-height: 40px; font-family: monospace; }
+.mock-body-note { font-size: 11px; color: var(--text-faint); font-style: italic; }
+.mock-headers-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.mock-headers-col { flex: 1 1 220px; min-width: 200px; display: flex; flex-direction: column; gap: 4px; }
+.mock-headers-label { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .03em; }
+.mock-request-headers { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--text-muted);
+                         font-family: monospace; max-height: 100px; overflow-y: auto; }
+.mock-request-header-row { word-break: break-all; }
+.mock-request-header-key { color: var(--text-secondary); }
 .mock-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px;
             padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .mock-btn:hover { background: var(--bg-raised); }

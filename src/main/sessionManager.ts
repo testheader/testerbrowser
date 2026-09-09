@@ -16,9 +16,26 @@ export interface MockRule {
   method: string;
   statusCode: number;
   body: string;
+  responseHeaders: Record<string, string>;
+  // Request headers from the captured call this rule was created from, kept
+  // only as read-only provenance in the panel — never used for matching.
+  // Undefined for a rule composed by hand rather than from a real request.
+  requestHeaders?: Record<string, string>;
   enabled: boolean;
   hitCount: number;
   lastHitAt: number | null;
+}
+
+// Pulled out as a pure function so the Fetch.fulfillRequest shape a mock rule
+// produces can be unit-tested without the CDP debugger/session plumbing
+// around it. responseHeaders defaults to {} for a rule saved before that
+// field existed (or built by hand without one).
+export function buildMockFulfillParams(rule: MockRule): { responseCode: number; responseHeaders: { name: string; value: string }[]; body: string } {
+  return {
+    responseCode: rule.statusCode,
+    responseHeaders: Object.entries(rule.responseHeaders || {}).map(([name, value]) => ({ name, value })),
+    body: Buffer.from(rule.body).toString('base64'),
+  };
 }
 
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
@@ -388,11 +405,7 @@ export class SessionManager {
         rule.hitCount = (rule.hitCount || 0) + 1;
         rule.lastHitAt = Date.now();
         testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
-        dbg.sendCommand('Fetch.fulfillRequest', {
-          requestId,
-          responseCode: rule.statusCode,
-          body: Buffer.from(rule.body).toString('base64'),
-        }).catch(() => {});
+        dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule) }).catch(() => {});
         return;
       }
       const res = testSession.resilienceRules.find(r =>
@@ -1329,7 +1342,7 @@ export class SessionManager {
   addMockRule(id: string, rule: MockRule): void {
     const s = this.sessions.get(id);
     if (!s) return;
-    s.mockRules.push({ ...rule, hitCount: 0, lastHitAt: null });
+    s.mockRules.push({ ...rule, responseHeaders: rule.responseHeaders || {}, hitCount: 0, lastHitAt: null });
     this._applyMocks(id);
   }
 

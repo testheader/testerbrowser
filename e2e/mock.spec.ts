@@ -64,7 +64,7 @@ test('a rule actually intercepts a matching fetch and its hit count increments',
   await expect(window.locator('.mock-hits-badge')).toHaveText('Hits: 1', { timeout: 3_000 });
 });
 
-test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, status and body', async () => {
+test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, status, headers and body (#180)', async () => {
   const urlPath = '/network/status-codes.html';
 
   // Clear first: by this point in the file the timeline already holds every
@@ -104,6 +104,49 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
   await expect(window.locator('#mockMethod')).toHaveValue('GET');
   await expect(window.locator('#mockStatus')).toHaveValue('200');
+
+  // Body: status-codes.html's own page load is a real text response, so it
+  // has a captured, non-binary body to prefill.
+  await expect(window.locator('#mockBody')).not.toHaveValue('');
+  await expect(window.locator('#mockBodyNote')).toBeHidden();
+
+  // Request headers: read-only provenance, not an editable kv-table.
+  await expect(window.locator('#mockRequestHeadersCol')).toBeVisible();
+  const reqHeaderRows = window.locator('#mockRequestHeadersList .mock-request-header-row');
+  await expect(reqHeaderRows.first()).toBeVisible();
+
+  // Response headers: an editable kv-table, prefilled with at least
+  // content-type (an HTML page response always sets one).
+  const resHeaderRows = window.locator('#mockResponseHeadersTable .kv-row');
+  await expect(resHeaderRows.first()).toBeVisible();
+  const resHeaderKeys = await window.locator('#mockResponseHeadersTable .kv-key').evaluateAll(
+    els => (els as HTMLInputElement[]).map(el => el.value.toLowerCase())
+  );
+  expect(resHeaderKeys).toContain('content-type');
+});
+
+test('a mock rule\'s response headers actually reach the page (#180)', async () => {
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabMock');
+  await window.fill('#mockUrl', '*/api/headers-check');
+  await window.fill('#mockStatus', '200');
+  await window.fill('#mockBody', '{}');
+  await window.click('#mockAddResponseHeader');
+  await window.fill('#mockResponseHeadersTable .kv-key', 'X-Mock-Header');
+  await window.fill('#mockResponseHeadersTable .kv-val', 'from-mock-rule');
+  await window.click('.mock-add-btn');
+  await expect(window.locator('.mock-rule-row').last()).toBeVisible();
+
+  const headerValue = await tab.evaluate(async () => {
+    const res = await fetch('/api/headers-check');
+    return res.headers.get('x-mock-header');
+  });
+  expect(headerValue).toBe('from-mock-rule');
 });
 
 test('a network request\'s detail panel offers Replay, Mock and Resilience, in that order (#179)', async () => {
