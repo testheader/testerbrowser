@@ -163,6 +163,18 @@ test('network/status-codes.html: a 404 shows up as a network event', async () =>
   await expect(resPill).not.toHaveText('');
 });
 
+test('network/status-codes.html: timeline rows show a time-only, date-free timestamp', async () => {
+  const tab = await navigate('/network/status-codes.html');
+  await window.click('#consoleTabNetwork');
+  await tab.click('button:text-is("404")');
+  await window.waitForTimeout(1_500);
+
+  const resRow = window.locator('.evt.network-response', { hasText: '/network/status/404' }).first();
+  await expect(resRow).toBeVisible();
+  await expect(resRow.locator('.evt-ts')).toHaveText(/^\[\d{2}:\d{2}:\d{2}\]$/);
+  await expect(resRow.locator('.evt-ts-date')).toHaveCount(0);
+});
+
 test('network/status-codes.html: Clear button empties the log and it stays empty on the next poll', async () => {
   const tab = await navigate('/network/status-codes.html');
   await window.click('#consoleTabNetwork');

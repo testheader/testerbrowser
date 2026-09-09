@@ -231,7 +231,8 @@ export function renderTimeline() {
     const pad = (n) => String(n).padStart(2, '0');
     const tsSpan = document.createElement('span');
     tsSpan.className = 'evt-ts';
-    tsSpan.innerHTML = `[<span class="evt-ts-date">${pad(d.getMonth() + 1)}-${pad(d.getDate())}</span> ${d.toLocaleTimeString()}]`;
+    tsSpan.textContent = `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}]`;
+    tsSpan.title = d.toLocaleString();
     line1.appendChild(tsSpan);
 
     const rest = document.createElement('div');
