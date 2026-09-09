@@ -37,6 +37,15 @@ async function navigate(urlPath: string): Promise<Page> {
   return getTabPage(app, urlPath);
 }
 
+// Res defaults off (#176) — tests that specifically exercise response-row
+// rendering need to turn it on themselves rather than relying on the old
+// on-by-default behaviour.
+async function ensureResPillOn() {
+  const pill = window.locator('#networkPills .filter-pill[data-type="network-response"]');
+  const classes = await pill.getAttribute('class');
+  if (!classes?.includes('on')) await pill.click();
+}
+
 // ── Console ──────────────────────────────────────────────────────────────────
 
 test('console/logs.html produces console events at every level', async () => {
@@ -163,9 +172,37 @@ test('network/status-codes.html: a 404 shows up as a network event', async () =>
   await expect(resPill).not.toHaveText('');
 });
 
+test('network/status-codes.html: Res and Err pills default off, hiding those rows until toggled on', async () => {
+  const resPillBtn = window.locator('#networkPills .filter-pill[data-type="network-response"]');
+  const errPillBtn = window.locator('#networkPills .filter-pill[data-type="network-failed"]');
+  await expect(resPillBtn).not.toHaveClass(/\bon\b/);
+  await expect(errPillBtn).not.toHaveClass(/\bon\b/);
+
+  const tab = await navigate('/network/status-codes.html');
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await tab.click('button:text-is("404")');
+  await window.waitForTimeout(1_500);
+
+  // Captured (the pill count reflects everything in the buffer)...
+  const resPillCount = resPillBtn.locator('.pill-count');
+  await expect(resPillCount).not.toHaveText('');
+  // ...but not rendered while the pill is off.
+  await expect(window.locator('.evt.network-response')).toHaveCount(0);
+
+  // Toggling it on shows the rows already in the buffer — nothing was dropped.
+  await resPillBtn.click();
+  await expect(window.locator('.evt.network-response', { hasText: '/network/status/404' })).toBeVisible();
+
+  // Toggling back off round-trips cleanly.
+  await resPillBtn.click();
+  await expect(window.locator('.evt.network-response')).toHaveCount(0);
+});
+
 test('network/status-codes.html: timeline rows show a time-only, date-free timestamp', async () => {
   const tab = await navigate('/network/status-codes.html');
   await window.click('#consoleTabNetwork');
+  await ensureResPillOn();
   await tab.click('button:text-is("404")');
   await window.waitForTimeout(1_500);
 
@@ -199,6 +236,7 @@ test('network/status-codes.html: Clear button empties the log and it stays empty
 test('network/slow.html: free-text filter also matches payload content not present in the summary line', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
+  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
@@ -220,6 +258,7 @@ test('network/slow.html: free-text filter also matches payload content not prese
 test('network/slow.html: min-duration filter hides fast responses but keeps slow ones', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
+  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
@@ -245,6 +284,7 @@ test('network/slow.html: min-duration filter hides fast responses but keeps slow
 test('network/slow.html: response rows show a duration column that stays visible without scrolling', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
+  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
@@ -270,6 +310,7 @@ test('network/slow.html: response rows show a duration column that stays visible
 test('network/slow.html: method filter hides both the request and response rows for that method', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
+  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
@@ -292,6 +333,7 @@ test('network/slow.html: method filter hides both the request and response rows 
 test('network/slow.html: date-range "from" filter hides events before the chosen time', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
+  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);

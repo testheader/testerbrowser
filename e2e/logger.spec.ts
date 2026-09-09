@@ -13,16 +13,19 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { await app.close(); });
 
-test('Network tab pills are visible and on by default', async () => {
+test('Network tab pills are visible, with only Req on by default', async () => {
   await window.locator('#consoleTabNetwork').click();
-  const resPill = window.locator('#networkPills .filter-pill[data-type="network-response"]');
-  await expect(resPill).toBeVisible();
-  const resClasses = await resPill.getAttribute('class');
-  expect(resClasses).toContain('on');
   const reqPill = window.locator('#networkPills .filter-pill[data-type="network-request"]');
   await expect(reqPill).toBeVisible();
-  const reqClasses = await reqPill.getAttribute('class');
-  expect(reqClasses).toContain('on');
+  await expect(reqPill).toHaveClass(/\bon\b/);
+
+  const resPill = window.locator('#networkPills .filter-pill[data-type="network-response"]');
+  await expect(resPill).toBeVisible();
+  await expect(resPill).not.toHaveClass(/\bon\b/);
+
+  const errPill = window.locator('#networkPills .filter-pill[data-type="network-failed"]');
+  await expect(errPill).toBeVisible();
+  await expect(errPill).not.toHaveClass(/\bon\b/);
 });
 
 test('detail panel tab bar exists', async () => {

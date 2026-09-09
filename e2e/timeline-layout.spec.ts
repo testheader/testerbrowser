@@ -16,6 +16,12 @@ test.beforeAll(async () => {
   app = await launchApp(MAIN_PATH);
   window = await getMainWindow(app);
   await window.waitForLoadState('load');
+
+  // This file's tests are all about response/body row rendering, which the
+  // Res pill defaulting off (#176) would otherwise hide — turn it on once
+  // for the whole file rather than per test.
+  await window.click('#consoleTabNetwork');
+  await window.click('#networkPills .filter-pill[data-type="network-response"]');
 });
 
 test.afterAll(async () => {
