@@ -172,3 +172,55 @@ test('a severity master checkbox toggles the whole group, and goes indeterminate
 
   expect(mediumCount).toBeGreaterThan(1);
 });
+
+test('"Configure checks" is a cog that toggles open and closed indefinitely, and Escape closes it (#188)', async () => {
+  await page.click('#consoleTabSecurity');
+
+  const configBtn = page.locator('#secConfigBtn');
+  const configEl  = page.locator('#secConfig');
+
+  await expect(configBtn).toHaveAttribute('title', 'Configure checks');
+  await expect(configBtn).toHaveText('⚙');
+  await expect(configEl).toBeHidden();
+  await expect(configBtn).not.toHaveClass(/active/);
+
+  await configBtn.click();
+  await expect(configEl).toBeVisible();
+  await expect(configBtn).toHaveClass(/active/);
+
+  await configBtn.click();
+  await expect(configEl).toBeHidden();
+  await expect(configBtn).not.toHaveClass(/active/);
+
+  // Reopens again — not stuck closed after one open/close cycle.
+  await configBtn.click();
+  await expect(configEl).toBeVisible();
+  await expect(configBtn).toHaveClass(/active/);
+
+  // Escape closes it while open.
+  await page.keyboard.press('Escape');
+  await expect(configEl).toBeHidden();
+  await expect(configBtn).not.toHaveClass(/active/);
+
+  // A change made elsewhere (via settings directly) is reflected on reopen.
+  await page.evaluate(async () => {
+    const settings = await (window as any).testerBrowser.settings.get();
+    await (window as any).testerBrowser.settings.set({
+      securityRuleOverrides: { ...(settings.securityRuleOverrides ?? {}), 'http-unencrypted': false },
+    });
+  });
+  await configBtn.click();
+  const httpRuleCheckbox = page.locator('.sec-config-row', { hasText: 'HTTP (unencrypted)' }).locator('input');
+  await expect(httpRuleCheckbox).not.toBeChecked();
+  await httpRuleCheckbox.check(); // restore for other tests
+  await configBtn.click();
+
+  // Running a scan while the config is open doesn't close or corrupt it.
+  await configBtn.click();
+  await expect(configEl).toBeVisible();
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+  await expect(configEl).toBeVisible();
+  await expect(page.locator('.sec-config-row')).not.toHaveCount(0);
+  await configBtn.click();
+});

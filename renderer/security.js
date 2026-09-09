@@ -213,7 +213,8 @@ export function initSecurity() {
   panel.innerHTML = `
     <div class="sec-toolbar">
       <button class="sec-btn" id="secScanBtn">Scan session</button>
-      <button class="sec-btn sec-config-btn" id="secConfigBtn">Configure checks</button>
+      <button class="sec-btn sec-config-btn" id="secConfigBtn" title="Configure checks"
+              aria-label="Configure checks" aria-pressed="false">&#9881;</button>
       <span class="sec-status" id="secStatus"></span>
     </div>
     <div class="sec-config" id="secConfig" hidden></div>
@@ -234,12 +235,22 @@ export function initSecurity() {
   document.querySelectorAll('#secPills .filter-pill').forEach(btn =>
     btn.addEventListener('click', () => { btn.classList.toggle('on'); renderFilteredFindings(); })
   );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('secConfig').hidden) setConfigOpen(false);
+  });
+}
+
+function setConfigOpen(open) {
+  const configEl = document.getElementById('secConfig');
+  const btn = document.getElementById('secConfigBtn');
+  configEl.hidden = !open;
+  btn.classList.toggle('active', open);
+  btn.setAttribute('aria-pressed', String(open));
 }
 
 async function toggleConfigPanel() {
-  const configEl = document.getElementById('secConfig');
-  const opening = configEl.hidden;
-  configEl.hidden = !opening;
+  const opening = document.getElementById('secConfig').hidden;
+  setConfigOpen(opening);
   if (!opening) return;
   const settings = await testerBrowser.settings.get();
   renderConfigPanel(settings.securityRuleOverrides ?? {});
