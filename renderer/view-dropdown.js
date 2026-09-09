@@ -1,5 +1,6 @@
 import { toggleBookmarksBar } from './bookmarks.js';
 import { isConsoleVisible, toggleConsoleVisible, isBookmarksBarVisible, beginPageOverlay, endPageOverlay } from './layout.js';
+import { closeAppMenu } from './app-menu.js';
 
 function updateViewDropdown() {
   document.getElementById('viewConsoleCheck').textContent   = isConsoleVisible()      ? '✓' : '';
@@ -9,6 +10,7 @@ function updateViewDropdown() {
 function openViewDropdown() {
   const dd = document.getElementById('viewDropdown');
   if (dd.classList.contains('open')) return;
+  closeAppMenu();
   dd.classList.add('open');
   updateViewDropdown();
   // The dropdown can extend below the topbar into the region the native view
@@ -18,7 +20,7 @@ function openViewDropdown() {
   beginPageOverlay();
 }
 
-function closeViewDropdown() {
+export function closeViewDropdown() {
   const dd = document.getElementById('viewDropdown');
   if (!dd.classList.contains('open')) return;
   dd.classList.remove('open');
@@ -37,6 +39,10 @@ export function initViewDropdown() {
 
   document.addEventListener('click', (e) => {
     if (!viewWrapper.contains(e.target)) closeViewDropdown();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeViewDropdown();
   });
 
   document.getElementById('viewToggleConsole').addEventListener('click', () => {

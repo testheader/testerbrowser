@@ -64,3 +64,71 @@ test('app menu overlays the page without reflowing or losing the view\'s bounds'
 test('View dropdown overlays the page without reflowing or losing the view\'s bounds', async () => {
   await assertOverlayBehaviour('#viewBtn', '#viewDropdown');
 });
+
+// ── #177: dismissing the dropdowns ──────────────────────────────────────────
+//
+// With the view detached (see above), the only thing painted where the page
+// used to be is #pageSnapshot — plain chrome HTML, not a native view — so a
+// click there reaches the chrome document like any other click and is
+// dismissed by app-menu.js / view-dropdown.js's existing outside-click
+// listener. That click is not forwarded to the real page: it's fully
+// detached and has nothing to receive it while the overlay is up.
+
+test('clicking the page (the snapshot standing in for it) closes the app menu', async () => {
+  await window.click('#appName');
+  const snapshot = window.locator('#pageSnapshot');
+  await expect(snapshot).toBeVisible();
+
+  await snapshot.click();
+  await expect(window.locator('#appMenuDropdown')).not.toHaveClass(/open/);
+  await expect(snapshot).toBeHidden();
+});
+
+test('clicking the page closes the View dropdown', async () => {
+  await window.click('#viewBtn');
+  const snapshot = window.locator('#pageSnapshot');
+  await expect(snapshot).toBeVisible();
+
+  await snapshot.click();
+  await expect(window.locator('#viewDropdown')).not.toHaveClass(/open/);
+  await expect(snapshot).toBeHidden();
+});
+
+test('Escape closes the app menu and the View dropdown', async () => {
+  await window.click('#appName');
+  await expect(window.locator('#appMenuDropdown')).toHaveClass(/open/);
+  await window.keyboard.press('Escape');
+  await expect(window.locator('#appMenuDropdown')).not.toHaveClass(/open/);
+
+  await window.click('#viewBtn');
+  await expect(window.locator('#viewDropdown')).toHaveClass(/open/);
+  await window.keyboard.press('Escape');
+  await expect(window.locator('#viewDropdown')).not.toHaveClass(/open/);
+});
+
+test('opening one dropdown closes the other', async () => {
+  await window.click('#appName');
+  await expect(window.locator('#appMenuDropdown')).toHaveClass(/open/);
+
+  await window.click('#viewBtn');
+  await expect(window.locator('#viewDropdown')).toHaveClass(/open/);
+  await expect(window.locator('#appMenuDropdown')).not.toHaveClass(/open/);
+
+  await window.click('#appName');
+  await expect(window.locator('#appMenuDropdown')).toHaveClass(/open/);
+  await expect(window.locator('#viewDropdown')).not.toHaveClass(/open/);
+
+  // Leave both closed for later tests.
+  await window.click('#appName');
+  await expect(window.locator('#appMenuDropdown')).not.toHaveClass(/open/);
+});
+
+test('clicking the chrome (outside either dropdown) still closes the app menu', async () => {
+  await window.click('#appName');
+  await expect(window.locator('#appMenuDropdown')).toHaveClass(/open/);
+
+  // The empty titlebar-drag region — chrome, not part of either dropdown,
+  // and (unlike a button) has no side effect of its own to worry about.
+  await window.click('#titlebarDrag');
+  await expect(window.locator('#appMenuDropdown')).not.toHaveClass(/open/);
+});
