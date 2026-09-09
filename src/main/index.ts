@@ -77,9 +77,19 @@ interface AppSettings {
   // need no migration, they just aren't in anyone's map yet.
   securityRuleOverrides: Record<string, boolean>;
   searchEngine: 'google' | 'duckduckgo';
+  // Record/Playback tab column widths (px) — "Record new test" and "Replay
+  // tests"; the run view takes whatever's left. Missing/malformed values
+  // (an old settings.json, or a corrupt one) fall back to these defaults
+  // rather than a 0-width or negative column.
+  recordPlaybackColumnWidths: { record: number; saved: number };
 }
 
-const DEFAULT_SETTINGS: AppSettings = { redactSensitiveHeaders: false, securityRuleOverrides: {}, searchEngine: 'google' };
+const DEFAULT_SETTINGS: AppSettings = {
+  redactSensitiveHeaders: false,
+  securityRuleOverrides: {},
+  searchEngine: 'google',
+  recordPlaybackColumnWidths: { record: 220, saved: 420 },
+};
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
   { id: '2', url: 'https://github.com',            title: 'GitHub' },

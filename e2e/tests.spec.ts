@@ -1,4 +1,7 @@
-import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
@@ -431,4 +434,86 @@ test('deleting a step from a saved test updates the step count and the removed a
   // never fired, so its side effects never happened.
   await expect(tab.locator('[data-testid="rp-result"]')).toHaveAttribute('data-status', 'idle');
   await expect(tab.locator('[data-testid="rp-counter"]')).toHaveText('0');
+});
+
+// ── Column layout (#183) ────────────────────────────────────────────────────
+
+test('the tab lays out as three columns: Record new test, Replay tests, then the run view', async () => {
+  await window.click('#consoleTabTests');
+  const recordCol = window.locator('#rpRecordCol');
+  const savedCol  = window.locator('#rpSavedCol');
+  const mainCol   = window.locator('.rp-main');
+  await expect(recordCol).toContainText('Record New Test');
+  await expect(savedCol).toContainText('Replay Tests');
+  await expect(mainCol).toBeVisible();
+
+  const recordBox = (await recordCol.boundingBox())!;
+  const savedBox  = (await savedCol.boundingBox())!;
+  const mainBox   = (await mainCol.boundingBox())!;
+  expect(recordBox.x).toBeLessThan(savedBox.x);
+  expect(savedBox.x).toBeLessThan(mainBox.x);
+});
+
+test('dragging the splitter resizes the Replay tests column, clamped at its minimum when dragged far past it', async () => {
+  const savedCol  = window.locator('#rpSavedCol');
+  const splitter2 = window.locator('#rpSplitter2');
+
+  const before = (await savedCol.boundingBox())!;
+  const handle = (await splitter2.boundingBox())!;
+  const y = handle.y + handle.height / 2;
+
+  await window.mouse.move(handle.x + handle.width / 2, y);
+  await window.mouse.down();
+  await window.mouse.move(handle.x + handle.width / 2 - 60, y, { steps: 5 });
+  await window.mouse.up();
+
+  const afterShrink = (await savedCol.boundingBox())!;
+  expect(afterShrink.width).toBeCloseTo(before.width - 60, 0);
+
+  // Drag it far past the minimum — clamps there instead of shrinking further
+  // (or, worse, going to zero/negative).
+  const handle2 = (await splitter2.boundingBox())!;
+  await window.mouse.move(handle2.x + handle2.width / 2, y);
+  await window.mouse.down();
+  await window.mouse.move(handle2.x - 2000, y, { steps: 5 });
+  await window.mouse.up();
+
+  const clamped = (await savedCol.boundingBox())!;
+  expect(clamped.width).toBeGreaterThanOrEqual(280);
+  expect(clamped.width).toBeLessThan(afterShrink.width);
+});
+
+test('column widths persist across a restart', async () => {
+  // A dedicated instance sharing one profile dir across two sequential
+  // launches — unlike the file's shared `app`/`window`, which uses its own
+  // isolated profile and would otherwise carry settings between test files.
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-rp-'));
+
+  const app1 = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+  const win1 = await getMainWindow(app1);
+  await win1.waitForLoadState('load');
+  await win1.click('#consoleTabTests');
+
+  const handle = (await win1.locator('#rpSplitter1').boundingBox())!;
+  const y = handle.y + handle.height / 2;
+  await win1.mouse.move(handle.x + handle.width / 2, y);
+  await win1.mouse.down();
+  await win1.mouse.move(handle.x + handle.width / 2 + 50, y, { steps: 5 });
+  await win1.mouse.up();
+
+  const resizedWidth = (await win1.locator('#rpRecordCol').boundingBox())!.width;
+  // The width write is an async settings:set IPC round-trip, not something
+  // mouseup itself waits for — give it a moment to land before closing.
+  await win1.waitForTimeout(500);
+  await app1.close();
+
+  const app2 = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+  const win2 = await getMainWindow(app2);
+  await win2.waitForLoadState('load');
+  await win2.click('#consoleTabTests');
+
+  const restoredWidth = (await win2.locator('#rpRecordCol').boundingBox())!.width;
+  expect(restoredWidth).toBeCloseTo(resizedWidth, 0);
+
+  await app2.close();
 });

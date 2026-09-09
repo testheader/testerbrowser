@@ -1175,10 +1175,16 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-provenance-body { margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; max-height: 80px; overflow-y: auto; }
 
 /* ── Record-Playback panel ────────────────────────────────────────────────── */
-.rp-wrap { display: flex; height: 100%; overflow: hidden; }
-.rp-sidebar { width: 260px; min-width: 200px; flex-shrink: 0; overflow-y: auto;
-              border-right: 1px solid var(--border-color); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-.rp-main { flex: 1; overflow-y: auto; padding: 8px; }
+.rp-wrap { display: flex; height: 100%; overflow-x: auto; overflow-y: hidden; }
+.rp-col { flex: 0 0 auto; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; }
+.rp-record-col { min-width: 180px; border-right: 1px solid var(--border-color); }
+.rp-saved-col  { min-width: 280px; border-right: 1px solid var(--border-color); }
+/* Vertical drag handle between columns — same convention as .dragging
+   elsewhere (console panel, detail panel): a visible accent while held. */
+.rp-splitter { flex: 0 0 6px; cursor: col-resize; background: transparent; position: relative; }
+.rp-splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 2px; width: 2px; background: var(--border-color); }
+.rp-splitter:hover::after, .rp-splitter.dragging::after { background: var(--accent); }
+.rp-main { flex: 1; min-width: 200px; overflow-y: auto; padding: 8px; }
 .rp-section-title { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; padding: 2px 0; }
 .rp-record-form { display: flex; flex-direction: column; gap: 4px; }
 .rp-input { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 3px;

@@ -20,7 +20,7 @@ export function initRecordPlayback() {
 
   panel.innerHTML = `
     <div class="rp-wrap">
-      <div class="rp-sidebar">
+      <div class="rp-col rp-record-col" id="rpRecordCol">
         <div class="rp-section-title">Record New Test</div>
         <div class="rp-record-form">
           <input class="rp-input" id="rpTestName" type="text" placeholder="Test name…" />
@@ -33,13 +33,19 @@ export function initRecordPlayback() {
           <span class="rp-form-status" id="rpFormStatus"></span>
         </div>
         <div id="rpLiveSteps" class="rp-live-steps"></div>
+      </div>
 
-        <div class="rp-section-title" style="margin-top:12px">Saved Tests</div>
+      <div class="rp-splitter" id="rpSplitter1" title="Drag to resize"></div>
+
+      <div class="rp-col rp-saved-col" id="rpSavedCol">
+        <div class="rp-section-title">Replay Tests</div>
         <label class="rp-step-mode-toggle" title="Pause after each step instead of running the test straight through — useful for debugging where a script fails. Applies to the single Run button only, not Run N×.">
           <input type="checkbox" id="rpStepModeToggle" /> Step-by-step playback
         </label>
         <div id="rpTestList" class="rp-test-list"></div>
       </div>
+
+      <div class="rp-splitter" id="rpSplitter2" title="Drag to resize"></div>
 
       <div class="rp-main">
         <div id="rpRunView" class="rp-run-view" hidden>
@@ -61,6 +67,8 @@ export function initRecordPlayback() {
     </div>
   `;
 
+  initColumnResize();
+
   document.getElementById('rpStartBtn').addEventListener('click', startRecording);
   document.getElementById('rpStopBtn').addEventListener('click', stopRecording);
   document.getElementById('rpSaveBtn').addEventListener('click', saveRecordedTest);
@@ -73,6 +81,88 @@ export function initRecordPlayback() {
   document.getElementById('rpStopStepBtn').addEventListener('click', () => resolveStepAdvance('stop'));
 
   refreshTestList();
+}
+
+// Minimums keep every column usable and stop a splitter from being dragged
+// to (or past) zero. RP_MIN_SAVED in particular is wide enough that a step's
+// type/selector/value fields (renderSavedStepsHtml) sit side by side without
+// truncating at the default window size — the whole point of this ticket.
+const RP_MIN_RECORD = 180;
+const RP_MIN_SAVED  = 280;
+const RP_MIN_MAIN   = 200;
+const RP_SPLITTER_W = 6; // matches .rp-splitter's width in style.css
+
+// Mirrors the drag-resize pattern already used for the console panel
+// (layout.js initLayout) and the detail panel (detail-panel.js
+// initDetailPanel), just on the X axis and with two splitters instead of
+// one. Widths are restored from and saved back to testerBrowser.settings
+// (settings.json) rather than localStorage, per this ticket — the same
+// store security.js's rule overrides already use.
+function initColumnResize() {
+  const wrap      = document.querySelector('#testsPanel .rp-wrap');
+  const recordCol = document.getElementById('rpRecordCol');
+  const savedCol  = document.getElementById('rpSavedCol');
+  const splitter1 = document.getElementById('rpSplitter1');
+  const splitter2 = document.getElementById('rpSplitter2');
+
+  let widths = { record: RP_MIN_RECORD, saved: RP_MIN_SAVED + 140 };
+
+  function applyWidths() {
+    recordCol.style.width = widths.record + 'px';
+    savedCol.style.width  = widths.saved + 'px';
+  }
+
+  async function persistWidths() {
+    try { await testerBrowser.settings.set({ recordPlaybackColumnWidths: widths }); } catch {}
+  }
+
+  testerBrowser.settings.get().then((settings) => {
+    const saved = settings?.recordPlaybackColumnWidths;
+    if (saved && typeof saved.record === 'number' && typeof saved.saved === 'number') {
+      widths = { record: saved.record, saved: saved.saved };
+    }
+    applyWidths();
+  }).catch(() => applyWidths());
+
+  function dragSplitter(handle, { getStartWidth, getMax, setWidth }) {
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = getStartWidth();
+      handle.classList.add('dragging');
+      const onMove = (ev) => {
+        const max = getMax();
+        const newW = Math.max(0, Math.min(startW + (ev.clientX - startX), max));
+        setWidth(newW);
+        applyWidths();
+      };
+      const onUp = () => {
+        handle.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        persistWidths();
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  // Splitter 1 (between Record and Replay tests) resizes the record column;
+  // its ceiling leaves the saved column and the run view at their own
+  // minimums plus room for both splitters.
+  dragSplitter(splitter1, {
+    getStartWidth: () => widths.record,
+    getMax: () => Math.max(RP_MIN_RECORD, wrap.offsetWidth - widths.saved - RP_MIN_MAIN - RP_SPLITTER_W * 2),
+    setWidth: (w) => { widths.record = Math.max(RP_MIN_RECORD, w); },
+  });
+
+  // Splitter 2 (between Replay tests and the run view) resizes the saved
+  // column; its ceiling leaves the run view at its own minimum.
+  dragSplitter(splitter2, {
+    getStartWidth: () => widths.saved,
+    getMax: () => Math.max(RP_MIN_SAVED, wrap.offsetWidth - widths.record - RP_MIN_MAIN - RP_SPLITTER_W * 2),
+    setWidth: (w) => { widths.saved = Math.max(RP_MIN_SAVED, w); },
+  });
 }
 
 // Inline status pattern used throughout the app (spoofStatus, secStatus,
