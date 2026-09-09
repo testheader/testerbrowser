@@ -68,3 +68,21 @@ export async function getTabPage(app: ElectronApplication, urlIncludes: string, 
   }
   throw new Error(`No tab page found with URL including "${urlIncludes}"`);
 }
+
+/**
+ * Bounds of the active session's native WebContentsView, straight from
+ * Electron's contentView tree in the main process. Returns null while the
+ * view is detached (e.g. mid dropdown-overlay — see layout.js
+ * beginPageOverlay/endPageOverlay), which callers can use as the "detached"
+ * signal itself.
+ */
+export async function getActiveViewBounds(
+  app: ElectronApplication
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  return app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return null;
+    const child = win.contentView.children.find((c) => 'webContents' in c);
+    return child ? child.getBounds() : null;
+  });
+}

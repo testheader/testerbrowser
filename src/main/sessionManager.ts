@@ -257,7 +257,6 @@ export class SessionManager {
   private consoleHeight = 220;
   private topBarHeight = 91;
   private rightPanelWidth = 0;
-  private topInset = 0;
   private isViewVisible = true;
   private tabOrder: string[] = [];
   private sessionNotes = new Map<string, string>();
@@ -805,7 +804,7 @@ export class SessionManager {
 
   private computeCaptureBounds() {
     const bounds = this.win.getContentBounds();
-    const top = this.topBarHeight + this.topInset;
+    const top = this.topBarHeight;
     return {
       x: 0,
       y: top,
@@ -846,13 +845,25 @@ export class SessionManager {
     this.layoutActive();
   }
 
-  // Same idea as setRightPanelWidth, but for HTML overlays that extend below
-  // the topbar (e.g. the View/app-menu dropdowns) — push the view's top edge
-  // down to clear the overlay instead of detaching the view entirely, so the
-  // rest of the page keeps rendering underneath it.
-  setTopInset(px: number) {
-    this.topInset = Math.max(0, px);
-    this.layoutActive();
+  // Snapshot-and-detach, for HTML overlays that extend below the topbar (e.g.
+  // the View/app-menu dropdowns): the native view always paints over page HTML
+  // regardless of z-index, so it can't simply sit under the dropdown. Capture
+  // the page to an image the renderer paints in the view's place, then detach
+  // the view entirely — the dropdown gets a real HTML stacking context to sit
+  // above, and the page appears to stay put with zero reflow. Pair with
+  // endPageOverlay() to reattach once the dropdown closes.
+  async beginPageOverlay(): Promise<{ dataUrl: string; bounds: { x: number; y: number; width: number; height: number } } | null> {
+    if (!this.activeId || !this.isViewVisible) return null;
+    const s = this.sessions.get(this.activeId);
+    if (!s) return null;
+    const bounds = this.computeCaptureBounds();
+    const image = await s.view.webContents.capturePage();
+    this.setViewerVisible(false);
+    return { dataUrl: image.toDataURL(), bounds };
+  }
+
+  endPageOverlay() {
+    this.setViewerVisible(true);
   }
 
   setViewerVisible(visible: boolean) {

@@ -16,6 +16,7 @@ let consoleVisible        = true;
 let findOpen               = false;
 let bookmarksBarVisible    = false;
 let permissionBarHeight    = 0;
+let pageOverlayActive      = false;
 
 export function getConsoleHeight() { return consoleHeight; }
 
@@ -90,6 +91,40 @@ export function updateTopBarHeight() {
   testerBrowser.layout.setTopBarHeight(h + permissionBarHeight);
   document.getElementById('downloadsPanel').style.top          = h + 'px';
   document.getElementById('permissionNotifications').style.top = h + 'px';
+}
+
+// Backs the app-menu and View ▾ dropdowns: both extend below the topbar into
+// the region the native WebContentsView paints over regardless of CSS z-index,
+// so the view is snapshotted and detached while either is open — #pageSnapshot
+// stands in its exact place so the page appears to keep rendering underneath,
+// with zero reflow. Guarded so a stray double-open/close (e.g. switching
+// straight from one dropdown to the other) can't double-capture or
+// double-restore the view.
+export async function beginPageOverlay() {
+  if (pageOverlayActive) return;
+  const result = await testerBrowser.layout.beginPageOverlay();
+  if (!result) return;
+  pageOverlayActive = true;
+  const el = document.getElementById('pageSnapshot');
+  el.style.left   = result.bounds.x + 'px';
+  el.style.top    = result.bounds.y + 'px';
+  el.style.width  = result.bounds.width + 'px';
+  el.style.height = result.bounds.height + 'px';
+  el.style.backgroundImage = `url(${result.dataUrl})`;
+  el.style.display = 'block';
+}
+
+export async function endPageOverlay() {
+  if (!pageOverlayActive) return;
+  pageOverlayActive = false;
+  // Reattach the real view before dropping the snapshot — the view always
+  // paints above this HTML, so overlapping the two for one frame is
+  // invisible, while hiding the snapshot first would flash whatever's
+  // beneath it (the window background) for a frame instead.
+  await testerBrowser.layout.endPageOverlay();
+  const el = document.getElementById('pageSnapshot');
+  el.style.display = 'none';
+  el.style.backgroundImage = '';
 }
 
 export function currentTopBarHeight() {

@@ -1,27 +1,25 @@
-/* global testerBrowser */
 import { openSettings } from './settings.js';
 import { openBugReport } from './bugreport.js';
 import { newSession } from './tabs.js';
-import { currentTopBarHeight } from './layout.js';
+import { beginPageOverlay, endPageOverlay } from './layout.js';
 
-// The dropdown can extend past the topbar into the region the BrowserView
-// occupies — that native view always paints over page HTML regardless of
-// z-index, so the view's top edge is pushed down to clear the dropdown
-// (same pattern as view-dropdown.js) instead of detaching it entirely,
-// which would blank out the whole page while the menu is open.
+// The dropdown can extend past the topbar into the region the native view
+// occupies — that view always paints over page HTML regardless of z-index,
+// so the page is snapshotted and the view detached while the menu is open
+// (same pattern as view-dropdown.js) instead of just pushing the view down,
+// which used to shove the whole page out of place.
 function openAppMenu() {
   const dropdown = document.getElementById('appMenuDropdown');
   if (dropdown.classList.contains('open')) return;
   dropdown.classList.add('open');
-  const inset = Math.max(0, dropdown.getBoundingClientRect().bottom - currentTopBarHeight());
-  testerBrowser.layout.setTopInset(inset);
+  beginPageOverlay();
 }
 
 function closeAppMenu() {
   const dropdown = document.getElementById('appMenuDropdown');
   if (!dropdown.classList.contains('open')) return;
   dropdown.classList.remove('open');
-  testerBrowser.layout.setTopInset(0);
+  endPageOverlay();
 }
 
 export function initAppMenu() {

@@ -1,6 +1,5 @@
-/* global testerBrowser */
 import { toggleBookmarksBar } from './bookmarks.js';
-import { isConsoleVisible, toggleConsoleVisible, isBookmarksBarVisible, currentTopBarHeight } from './layout.js';
+import { isConsoleVisible, toggleConsoleVisible, isBookmarksBarVisible, beginPageOverlay, endPageOverlay } from './layout.js';
 
 function updateViewDropdown() {
   document.getElementById('viewConsoleCheck').textContent   = isConsoleVisible()      ? '✓' : '';
@@ -12,18 +11,18 @@ function openViewDropdown() {
   if (dd.classList.contains('open')) return;
   dd.classList.add('open');
   updateViewDropdown();
-  // The dropdown can extend below the topbar into the region the native
-  // WebContentsView paints over — push the view down to clear it instead of
-  // detaching the whole view, so the rest of the page keeps rendering.
-  const inset = Math.max(0, dd.getBoundingClientRect().bottom - currentTopBarHeight());
-  testerBrowser.layout.setTopInset(inset);
+  // The dropdown can extend below the topbar into the region the native view
+  // paints over — snapshot the page and detach the view while it's open (see
+  // layout.js beginPageOverlay) instead of pushing the view down, which used
+  // to shove the whole page out of place.
+  beginPageOverlay();
 }
 
 function closeViewDropdown() {
   const dd = document.getElementById('viewDropdown');
   if (!dd.classList.contains('open')) return;
   dd.classList.remove('open');
-  testerBrowser.layout.setTopInset(0);
+  endPageOverlay();
 }
 
 export function initViewDropdown() {

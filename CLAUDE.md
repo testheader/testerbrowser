@@ -86,6 +86,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |
+| `layout:beginPageOverlay` | R→M | snapshot + detach the view so a dropdown (app menu, View ▾) can float over the page; returns `{ dataUrl, bounds }` |
+| `layout:endPageOverlay` | R→M | reattach the view once the dropdown closes |
 | `download:list/open/reveal/cancel/clear` | R→M | download management |
 | `permission:respond` | R→M | grant/deny browser permission request |
 | `bookmarks:list/add/remove` | R→M | bookmark persistence |

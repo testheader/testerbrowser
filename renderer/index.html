@@ -99,6 +99,12 @@
     <div id="loadingBar"></div>
   </div>
 
+  <!-- Stand-in for the native page view while it's detached for the app-menu
+       or View ▾ dropdown (see layout.js beginPageOverlay/endPageOverlay) —
+       a snapshot of the page, positioned over its exact former bounds, so the
+       dropdown has real HTML to stack above without the page appearing to move. -->
+  <div id="pageSnapshot"></div>
+
   <!-- Permission notifications (floating) -->
   <div id="permissionNotifications"></div>
 

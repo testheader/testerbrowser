@@ -606,7 +606,8 @@ ipcMain.handle('layout:setConsoleHeight',(_e, h: number) => sessionManager?.setC
 ipcMain.handle('layout:setTopBarHeight', (_e, h: number) => sessionManager?.setTopBarHeight(h));
 ipcMain.handle('layout:setViewerVisible',(_e, v: boolean) => sessionManager?.setViewerVisible(v));
 ipcMain.handle('layout:setRightPanelWidth', (_e, w: number) => sessionManager?.setRightPanelWidth(w));
-ipcMain.handle('layout:setTopInset', (_e, px: number) => sessionManager?.setTopInset(px));
+ipcMain.handle('layout:beginPageOverlay', () => sessionManager?.beginPageOverlay() ?? null);
+ipcMain.handle('layout:endPageOverlay', () => sessionManager?.endPageOverlay());
 
 // Window control IPC
 ipcMain.handle('window:minimize',    () => win?.minimize());
