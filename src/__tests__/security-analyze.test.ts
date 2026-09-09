@@ -1,6 +1,6 @@
 // Regression tests for the Security tab's analyze() — imports the real renderer
 // module so a field-name drift (e.g. reading ev.type instead of ev.kind) fails here.
-import { analyze, computeEnabledRuleIds } from '../../renderer/security.js';
+import { analyze, computeEnabledRuleIds, computeGroupCheckState } from '../../renderer/security.js';
 
 // Mirrors what SessionRecorder stores: a row with `kind` and a JSON-string `payload`
 // holding raw CDP Network.responseReceived params.
@@ -327,5 +327,31 @@ describe('computeEnabledRuleIds', () => {
   it('treats an id explicitly set to true the same as absent', () => {
     const enabled = computeEnabledRuleIds({ 'http-unencrypted': true });
     expect(enabled.has('http-unencrypted')).toBe(true);
+  });
+});
+
+describe('computeGroupCheckState (#187 — severity master checkboxes)', () => {
+  const rules = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+
+  it('is "checked" when every rule in the group is enabled', () => {
+    expect(computeGroupCheckState(rules, {})).toBe('checked');
+    expect(computeGroupCheckState(rules, { a: true, b: true, c: true })).toBe('checked');
+  });
+
+  it('is "unchecked" when every rule in the group is disabled', () => {
+    expect(computeGroupCheckState(rules, { a: false, b: false, c: false })).toBe('unchecked');
+  });
+
+  it('is "indeterminate" for a mix of enabled and disabled rules', () => {
+    expect(computeGroupCheckState(rules, { a: false })).toBe('indeterminate');
+    expect(computeGroupCheckState(rules, { a: false, b: false })).toBe('indeterminate');
+  });
+
+  it('treats a rule missing from overrides as enabled, same as computeEnabledRuleIds', () => {
+    expect(computeGroupCheckState(rules, { a: false, b: true })).toBe('indeterminate');
+  });
+
+  it('treats undefined overrides as every rule enabled', () => {
+    expect(computeGroupCheckState(rules, undefined)).toBe('checked');
   });
 });

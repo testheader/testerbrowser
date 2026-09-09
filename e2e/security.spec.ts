@@ -103,3 +103,72 @@ test('"Configure checks" lets a rule be disabled, and the override persists acro
   await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
   await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first()).toBeVisible();
 });
+
+test('a severity master checkbox toggles the whole group, and goes indeterminate on a mixed selection (#187)', async () => {
+  const urlPath = '/network/status-codes.html';
+  await page.click('#urlbar');
+  await page.fill('#urlbar', fixtures.url(urlPath));
+  await page.press('#urlbar', 'Enter');
+  await page.waitForTimeout(1_000);
+
+  await page.click('#consoleTabSecurity');
+  await page.click('#secConfigBtn');
+
+  const mediumGroup   = page.locator('.sec-config-group', { has: page.locator('.sec-config-group-label.sec-medium') });
+  const mediumMaster  = mediumGroup.locator('.sec-config-group-label input');
+  const mediumRows    = mediumGroup.locator('.sec-config-row input');
+  const highGroup     = page.locator('.sec-config-group', { has: page.locator('.sec-config-group-label.sec-high') });
+  const highMaster    = highGroup.locator('.sec-config-group-label input');
+  const highRows      = highGroup.locator('.sec-config-row input');
+
+  const mediumCount = await mediumRows.count();
+  const highChecked = await Promise.all((await highRows.all()).map(cb => cb.isChecked()));
+
+  await expect(mediumMaster).toBeChecked();
+
+  // Unticking the master disables every rule in the group in one write, and
+  // leaves the other groups untouched.
+  await mediumMaster.uncheck();
+  for (const cb of await mediumRows.all()) await expect(cb).not.toBeChecked();
+  await expect(highMaster).toBeChecked();
+  expect(await Promise.all((await highRows.all()).map(cb => cb.isChecked()))).toEqual(highChecked);
+
+  const overridesAfterUncheck = await page.evaluate(() => (window as any).testerBrowser.settings.get());
+  const mediumRuleIds = ['csp-wildcard-source']; // spot check one; full disable verified via checkbox state above
+  for (const id of mediumRuleIds) expect(overridesAfterUncheck.securityRuleOverrides[id]).toBe(false);
+
+  // Re-checking one individual rule makes the master indeterminate, not checked.
+  await mediumRows.first().check();
+  await expect(mediumMaster).not.toBeChecked();
+  const masterIsIndeterminate = () => mediumMaster.evaluate((el: HTMLInputElement) => el.indeterminate);
+  expect(await masterIsIndeterminate()).toBe(true);
+
+  // Ticking the master re-enables the whole group in one write.
+  await mediumMaster.check();
+  expect(await masterIsIndeterminate()).toBe(false);
+  for (const cb of await mediumRows.all()) await expect(cb).toBeChecked();
+
+  // State survives closing and reopening the panel.
+  await page.click('#secConfigBtn');
+  await page.click('#secConfigBtn');
+  const mediumMasterReopened = page.locator('.sec-config-group', { has: page.locator('.sec-config-group-label.sec-medium') })
+    .locator('.sec-config-group-label input');
+  await expect(mediumMasterReopened).toBeChecked();
+
+  // Disable the whole medium group and confirm the next scan reports no medium findings.
+  await mediumMasterReopened.uncheck();
+  await page.click('#secConfigBtn'); // close
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+  await expect(page.locator('.sec-group-label.sec-medium')).toHaveCount(0);
+
+  // Restore full state for later tests in this file.
+  await page.click('#secConfigBtn');
+  await page.locator('.sec-config-group', { has: page.locator('.sec-config-group-label.sec-medium') })
+    .locator('.sec-config-group-label input').check();
+  await page.click('#secConfigBtn');
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+
+  expect(mediumCount).toBeGreaterThan(1);
+});

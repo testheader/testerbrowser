@@ -190,6 +190,20 @@ export function computeEnabledRuleIds(overrides) {
   return enabled;
 }
 
+// State for a severity group's master checkbox: 'checked' when every rule in
+// the group is enabled, 'unchecked' when none are, 'indeterminate' for a mix.
+// A rule absent from overrides counts as enabled, same as computeEnabledRuleIds.
+export function computeGroupCheckState(rules, overrides) {
+  const o = overrides ?? {};
+  let enabledCount = 0;
+  for (const rule of rules) {
+    if (o[rule.id] !== false) enabledCount++;
+  }
+  if (enabledCount === 0) return 'unchecked';
+  if (enabledCount === rules.length) return 'checked';
+  return 'indeterminate';
+}
+
 let lastFindings = [];
 
 export function initSecurity() {
@@ -242,10 +256,33 @@ function renderConfigPanel(overrides) {
     const group = document.createElement('div');
     group.className = 'sec-config-group';
 
-    const label = document.createElement('div');
+    const label = document.createElement('label');
     label.className = `sec-config-group-label sec-${sev}`;
-    label.textContent = sev.toUpperCase();
+
+    const master = document.createElement('input');
+    master.type = 'checkbox';
+    const applyMasterState = (state) => {
+      master.checked = state === 'checked';
+      master.indeterminate = state === 'indeterminate';
+    };
+    applyMasterState(computeGroupCheckState(rules, overrides));
+    label.appendChild(master);
+
+    const labelText = document.createElement('span');
+    labelText.textContent = sev.toUpperCase();
+    label.appendChild(labelText);
     group.appendChild(label);
+
+    const rowCheckboxes = [];
+
+    master.addEventListener('change', async () => {
+      const settings = await testerBrowser.settings.get();
+      const nextOverrides = { ...(settings.securityRuleOverrides ?? {}) };
+      for (const rule of rules) nextOverrides[rule.id] = master.checked;
+      await testerBrowser.settings.set({ securityRuleOverrides: nextOverrides });
+      for (const cb of rowCheckboxes) cb.checked = master.checked;
+      master.indeterminate = false;
+    });
 
     for (const rule of rules) {
       const row = document.createElement('label');
@@ -254,10 +291,12 @@ function renderConfigPanel(overrides) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = overrides[rule.id] !== false;
+      rowCheckboxes.push(checkbox);
       checkbox.addEventListener('change', async () => {
         const settings = await testerBrowser.settings.get();
         const nextOverrides = { ...(settings.securityRuleOverrides ?? {}), [rule.id]: checkbox.checked };
         await testerBrowser.settings.set({ securityRuleOverrides: nextOverrides });
+        applyMasterState(computeGroupCheckState(rules, nextOverrides));
       });
       row.appendChild(checkbox);
 
