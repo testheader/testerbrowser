@@ -108,7 +108,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
            font-family: inherit; padding: 4px 8px; border-radius: 4px; display: flex;
            align-items: center; gap: 5px; transition: background 0.1s, color 0.1s; }
 #appName:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-.app-logo { flex-shrink: 0; }
+.app-logo { flex-shrink: 0; height: 20px; width: auto; display: block; }
 #appMenuCaret { font-size: 8px; letter-spacing: 0; }
 #appMenuDropdown { position: absolute; top: calc(100% + 4px); left: 0; background: var(--bg-secondary);
                    border: 1px solid var(--border-strong); border-radius: 6px; min-width: 200px;

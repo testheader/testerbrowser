@@ -147,6 +147,9 @@ function createWindow() {
     width: 1400,
     height: 900,
     frame: false,
+    // PNG rather than .ico: reliable cross-platform for the BrowserWindow option
+    // (the .ico under build/ is for electron-builder — see package.json build.win.icon).
+    icon: path.join(__dirname, '..', '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,

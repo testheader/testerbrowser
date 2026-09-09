@@ -47,9 +47,11 @@
     "files": [
       "dist/**/*",
       "renderer/**/*",
+      "build/icon.png",
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
