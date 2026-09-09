@@ -1049,6 +1049,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-empty { color: var(--text-faint); font-size: 12px; padding: 4px 0; }
 .mock-rule-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
                  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 3px; }
+/* Shared with .res-rule-row — a disabled rule reads as "kept, not applied",
+   not as broken or gone: dimmed, plus an explicit badge rather than relying
+   on the unchecked toggle alone to communicate that. */
+.rule-row-disabled { opacity: 0.55; }
+.rule-inactive-badge { font-size: 9px; font-weight: 700; letter-spacing: .04em; padding: 1px 5px; border-radius: 2px;
+                        background: var(--bg-tertiary); color: var(--text-faint); white-space: nowrap; }
+.mock-rule-row-editing { flex-direction: column; align-items: stretch; gap: 6px; }
 .mock-badge { font-size: 10px; padding: 1px 5px; border-radius: 2px;
               background: var(--info-surface); color: var(--info-strong); font-family: monospace; white-space: nowrap; }
 .mock-status-badge { background: var(--success-surface); color: var(--success-strong); }
@@ -1058,6 +1065,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-toggle { display: flex; align-items: center; cursor: pointer; }
 .mock-del-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; font-size: 13px; }
 .mock-del-btn:hover { color: var(--error-strong); }
+.mock-edit-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; font-size: 13px; }
+.mock-edit-btn:hover { color: var(--accent); }
 
 /* Jira panel */
 #jiraPanel { flex: 1; overflow: auto; }

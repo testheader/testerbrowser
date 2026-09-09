@@ -164,7 +164,7 @@ function buildRuleRow(rule) {
   const probLabel = Math.round(rule.probability * 100) + '%';
   const extra = rule.type === 'latency' ? ` ${rule.latencyMs}ms` : '';
   const row = document.createElement('div');
-  row.className = 'res-rule-row';
+  row.className = `res-rule-row${rule.enabled ? '' : ' rule-row-disabled'}`;
   row.dataset.id = rule.id;
   const methodBadge = rule.method && rule.method !== '*'
     ? `<span class="res-badge res-method-badge">${escHtml(rule.method)}</span>` : '';
@@ -177,6 +177,7 @@ function buildRuleRow(rule) {
     ${methodBadge}
     <span class="res-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
     <span class="res-badge res-prob-badge">${probLabel}</span>
+    ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
     <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
     <button class="res-btn res-network-btn" title="View matching calls in the Network tab">⇒ Network</button>
     <button class="res-btn res-edit-btn" title="Edit rule">✎</button>
@@ -184,6 +185,7 @@ function buildRuleRow(rule) {
 
   row.querySelector('.res-enable').addEventListener('change', async (e) => {
     await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, e.target.checked);
+    await loadRules();
   });
   row.querySelector('.res-del-btn').addEventListener('click', async () => {
     await testerBrowser.resilience.removeRule(getActiveId(), rule.id);

@@ -333,6 +333,7 @@ ipcMain.handle('mock:getRules',    (_e, id: string) => sessionManager?.getMockRu
 ipcMain.handle('mock:addRule',     (_e, id: string, rule: MockRule) => sessionManager?.addMockRule(id, rule));
 ipcMain.handle('mock:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeMockRule(id, ruleId));
 ipcMain.handle('mock:toggleRule',  (_e, id: string, ruleId: string, enabled: boolean) => sessionManager?.toggleMockRule(id, ruleId, enabled));
+ipcMain.handle('mock:updateRule',  (_e, id: string, ruleId: string, patch: Partial<MockRule>) => sessionManager?.updateMockRule(id, ruleId, patch));
 ipcMain.handle('resilience:getRules',    (_e, id: string) => sessionManager?.getResilienceRules(id) ?? []);
 ipcMain.handle('resilience:addRule',     (_e, id: string, rule: ResilienceRule) => sessionManager?.addResilienceRule(id, rule));
 ipcMain.handle('resilience:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeResilienceRule(id, ruleId));

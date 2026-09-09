@@ -174,6 +174,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     addRule:    (id: string, rule: Omit<MockRule, 'hitCount' | 'lastHitAt'>) => ipcRenderer.invoke('mock:addRule', id, rule),
     removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('mock:removeRule', id, ruleId),
     toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('mock:toggleRule', id, ruleId, enabled),
+    updateRule: (id: string, ruleId: string, patch: Partial<MockRule>) => ipcRenderer.invoke('mock:updateRule', id, ruleId, patch),
   },
   resilience: {
     getRules:   (id: string) => ipcRenderer.invoke('resilience:getRules', id),

@@ -187,28 +187,86 @@ function renderRules(rules) {
   if (empty) empty.hidden = true;
 
   for (const rule of rules) {
-    const row = document.createElement('div');
-    row.className = 'mock-rule-row';
-    row.dataset.id = rule.id;
-    row.innerHTML = `
-      <label class="mock-toggle" title="Enable/disable">
-        <input type="checkbox" class="mock-enable" ${rule.enabled ? 'checked' : ''} />
-        <span class="mock-toggle-label"></span>
-      </label>
-      <span class="mock-rule-method mock-badge">${rule.method}</span>
-      <span class="mock-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
-      <span class="mock-badge mock-status-badge">${rule.statusCode}</span>
-      <span class="mock-rule-body" title="${rule.body}">${rule.body.slice(0, 40)}${rule.body.length > 40 ? '…' : ''}</span>
-      <span class="mock-badge mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
-      <button class="mock-btn mock-del-btn" title="Remove">✕</button>`;
-
-    row.querySelector('.mock-enable').addEventListener('change', async (e) => {
-      await testerBrowser.mock.toggleRule(getActiveId(), rule.id, e.target.checked);
-    });
-    row.querySelector('.mock-del-btn').addEventListener('click', async () => {
-      await testerBrowser.mock.removeRule(getActiveId(), rule.id);
-      await loadRules();
-    });
-    container.appendChild(row);
+    container.appendChild(buildMockRuleRow(rule));
   }
+}
+
+function buildMockRuleRow(rule) {
+  const row = document.createElement('div');
+  row.className = `mock-rule-row${rule.enabled ? '' : ' rule-row-disabled'}`;
+  row.dataset.id = rule.id;
+  row.innerHTML = `
+    <label class="mock-toggle" title="Enable/disable">
+      <input type="checkbox" class="mock-enable" ${rule.enabled ? 'checked' : ''} />
+      <span class="mock-toggle-label"></span>
+    </label>
+    <span class="mock-rule-method mock-badge">${rule.method}</span>
+    <span class="mock-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
+    <span class="mock-badge mock-status-badge">${rule.statusCode}</span>
+    <span class="mock-rule-body" title="${rule.body}">${rule.body.slice(0, 40)}${rule.body.length > 40 ? '…' : ''}</span>
+    ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
+    <span class="mock-badge mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
+    <button class="mock-btn mock-edit-btn" title="Edit rule">✎</button>
+    <button class="mock-btn mock-del-btn" title="Remove">✕</button>`;
+
+  row.querySelector('.mock-enable').addEventListener('change', async (e) => {
+    await testerBrowser.mock.toggleRule(getActiveId(), rule.id, e.target.checked);
+    await loadRules();
+  });
+  row.querySelector('.mock-del-btn').addEventListener('click', async () => {
+    await testerBrowser.mock.removeRule(getActiveId(), rule.id);
+    await loadRules();
+  });
+  row.querySelector('.mock-edit-btn').addEventListener('click', () => {
+    row.replaceWith(buildMockEditRow(rule));
+  });
+  return row;
+}
+
+function buildMockEditRow(rule) {
+  const row = document.createElement('div');
+  row.className = 'mock-rule-row mock-rule-row-editing';
+  row.dataset.id = rule.id;
+  row.innerHTML = `
+    <div class="mock-form-row">
+      <input class="mock-input mock-edit-url" type="text" value="${rule.urlPattern}" spellcheck="false" />
+      <select class="mock-select mock-edit-method">
+        ${MOCK_METHODS.map(m => `<option value="${m}" ${m === rule.method ? 'selected' : ''}>${m === '*' ? 'Any method' : m}</option>`).join('')}
+      </select>
+      <input class="mock-input mock-status mock-edit-status" type="number" value="${rule.statusCode}" min="100" max="599" />
+    </div>
+    <div class="mock-form-row">
+      <textarea class="mock-input mock-body mock-edit-body" rows="2">${escHtml(rule.body)}</textarea>
+    </div>
+    <div class="mock-headers-row">
+      <div class="mock-headers-col">
+        <div class="mock-headers-label">Response headers</div>
+        <div class="kv-table mock-edit-headers"></div>
+        <button type="button" class="kv-add-btn mock-edit-add-header">+ Add</button>
+      </div>
+    </div>
+    <div class="mock-form-row">
+      <button class="mock-btn mock-save-btn" type="button">Save</button>
+      <button class="mock-btn mock-cancel-btn" type="button">Cancel</button>
+    </div>`;
+
+  const headersTable = row.querySelector('.mock-edit-headers');
+  for (const [k, v] of Object.entries(rule.responseHeaders || {})) addKvRow(headersTable, k, v);
+  row.querySelector('.mock-edit-add-header').addEventListener('click', () => addKvRow(headersTable, '', ''));
+
+  row.querySelector('.mock-cancel-btn').addEventListener('click', () => {
+    row.replaceWith(buildMockRuleRow(rule));
+  });
+  row.querySelector('.mock-save-btn').addEventListener('click', async () => {
+    const patch = {
+      urlPattern: row.querySelector('.mock-edit-url').value.trim(),
+      method: row.querySelector('.mock-edit-method').value,
+      statusCode: parseInt(row.querySelector('.mock-edit-status').value, 10) || 200,
+      body: row.querySelector('.mock-edit-body').value,
+      responseHeaders: readKvTable(headersTable),
+    };
+    await testerBrowser.mock.updateRule(getActiveId(), rule.id, patch);
+    await loadRules();
+  });
+  return row;
 }

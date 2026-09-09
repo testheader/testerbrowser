@@ -38,6 +38,15 @@ export function buildMockFulfillParams(rule: MockRule): { responseCode: number; 
   };
 }
 
+// Pure so an edit's merge behaviour is unit-testable directly: id, hitCount
+// and lastHitAt are stripped from the incoming patch even if present, so an
+// edit can never reset a rule's identity or hit history regardless of what
+// the caller sends.
+export function applyMockRulePatch(rule: MockRule, patch: Partial<MockRule>): MockRule {
+  const { id: _id, hitCount: _hitCount, lastHitAt: _lastHitAt, ...safePatch } = patch;
+  return { ...rule, ...safePatch };
+}
+
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
 
 export interface ResilienceRule {
@@ -1373,6 +1382,17 @@ export class SessionManager {
     if (!s) return;
     const rule = s.mockRules.find(r => r.id === ruleId);
     if (rule) rule.enabled = enabled;
+    this._applyMocks(id);
+  }
+
+  // A ruleId that doesn't match any rule is a no-op (nothing to update,
+  // nothing to re-apply).
+  updateMockRule(id: string, ruleId: string, patch: Partial<MockRule>): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const idx = s.mockRules.findIndex(r => r.id === ruleId);
+    if (idx === -1) return;
+    s.mockRules[idx] = applyMockRulePatch(s.mockRules[idx], patch);
     this._applyMocks(id);
   }
 

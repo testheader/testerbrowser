@@ -64,6 +64,73 @@ test('a rule actually intercepts a matching fetch and its hit count increments',
   await expect(window.locator('.mock-hits-badge')).toHaveText('Hits: 1', { timeout: 3_000 });
 });
 
+test('an existing mock rule can be edited in place (#182)', async () => {
+  // Builds on the rule the previous test created (*/api/widgets → 201,
+  // hitCount 1) — editing it in place must not reset that history.
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabMock');
+  const row = window.locator('.mock-rule-row').first();
+  await row.locator('.mock-edit-btn').click();
+
+  const editRow = window.locator('.mock-rule-row-editing');
+  await expect(editRow).toBeVisible();
+  await editRow.locator('.mock-edit-status').fill('503');
+  await editRow.locator('.mock-save-btn').click();
+
+  const savedRow = window.locator('.mock-rule-row').first();
+  await expect(savedRow.locator('.mock-status-badge')).toHaveText('503');
+  await expect(savedRow).not.toHaveClass(/mock-rule-row-editing/);
+
+  await tab.click('#apiFetchBtn');
+  await expect(tab.locator('#apiOut')).toContainText('"status":503', { timeout: 5_000 });
+  // hitCount carried over from the pre-edit rule (was 1) rather than
+  // resetting, and the id stayed the same (same row, not a duplicate).
+  await expect(savedRow.locator('.mock-hits-badge')).toHaveText('Hits: 2', { timeout: 3_000 });
+  await expect(window.locator('.mock-rule-row')).toHaveCount(1);
+});
+
+test('cancelling an edit leaves the rule unchanged', async () => {
+  const row = window.locator('.mock-rule-row').first();
+  await row.locator('.mock-edit-btn').click();
+
+  const editRow = window.locator('.mock-rule-row-editing');
+  await editRow.locator('.mock-edit-status').fill('599');
+  await editRow.locator('.mock-cancel-btn').click();
+
+  const restoredRow = window.locator('.mock-rule-row').first();
+  await expect(restoredRow.locator('.mock-status-badge')).toHaveText('503');
+  await expect(window.locator('.mock-rule-row-editing')).toHaveCount(0);
+});
+
+test('a disabled mock rule does not intercept, and stays visibly disabled across a panel re-render (#182)', async () => {
+  const urlPath = '/network/api.html';
+  const tab = await getTabPage(app, urlPath);
+
+  const row = window.locator('.mock-rule-row').first();
+  await row.locator('.mock-enable').uncheck();
+
+  await expect(row).toHaveClass(/rule-row-disabled/);
+  await expect(row.locator('.rule-inactive-badge')).toBeVisible();
+  // Still editable while disabled.
+  await expect(row.locator('.mock-edit-btn')).toBeEnabled();
+
+  await tab.click('#apiFetchBtn');
+  // Not the rule's 503 — the fixture server's real static-handler 404 for an
+  // unrecognized path, since the (disabled) rule no longer intercepts it.
+  await expect(tab.locator('#apiOut')).toContainText('"status":404', { timeout: 5_000 });
+
+  // Survives the panel's own periodic re-render (loadRules() on an interval
+  // while the Mock tab is active), not just the toggle's own immediate one.
+  await window.click('#consoleTabNetwork');
+  await window.click('#consoleTabMock');
+  await expect(window.locator('.mock-rule-row').first()).toHaveClass(/rule-row-disabled/);
+});
+
 test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, status, headers and body (#180)', async () => {
   const urlPath = '/network/status-codes.html';
 
