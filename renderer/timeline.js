@@ -2,7 +2,6 @@
 import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
 import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matchesFreeText } from './utils.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
-import { openReplay } from './replay.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 
@@ -300,30 +299,32 @@ export function renderTimeline() {
       }
     }
 
-    if (e.kind === 'network-request' && e.payload) {
-      const replayBtn = document.createElement('button');
-      replayBtn.className   = 'evt-replay-btn';
-      replayBtn.textContent = '↺ Replay';
-      replayBtn.title       = 'Edit and replay this request';
-      replayBtn.onclick     = (ev) => { ev.stopPropagation(); openReplay(e); };
-      rest.appendChild(replayBtn);
+    // Request rows stay single-line: method badge immediately before the URL,
+    // truncated with an ellipsis rather than wrapping — Replay used to sit
+    // here too (now in the detail panel, see detail-panel.js), leaving this
+    // row otherwise mostly empty space. Every other kind still gets the
+    // hanging-indent second line, since there's more to show (status,
+    // duration, a message, a body) than fits legibly on one line.
+    if (e.kind === 'network-request') {
+      const urlSpan = document.createElement('span');
+      urlSpan.className = 'evt-inline-url';
+      urlSpan.textContent = getEventLine2(e);
+      rest.appendChild(urlSpan);
     }
 
     line1.appendChild(rest);
     line.appendChild(line1);
 
-    // Line 2: the URL (or message, or response body for BODY rows), wrapped
-    // under the method column instead of scrolling sideways.
-    const line2 = document.createElement('div');
-    line2.className = 'evt-line2';
-    line2.textContent = getEventLine2(e);
-    line.appendChild(line2);
+    if (e.kind !== 'network-request') {
+      const line2 = document.createElement('div');
+      line2.className = 'evt-line2';
+      line2.textContent = getEventLine2(e);
+      line.appendChild(line2);
+    }
 
     if (e.payload) {
       line.style.cursor = 'pointer';
-      line.addEventListener('click', (ev) => {
-        if (!ev.target.closest('.evt-replay-btn')) openDetailTab(e);
-      });
+      line.addEventListener('click', () => openDetailTab(e));
     }
 
     panel.appendChild(line);

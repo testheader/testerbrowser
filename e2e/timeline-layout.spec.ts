@@ -43,14 +43,46 @@ test('no event row has its own horizontal scrollbar', async () => {
   await window.click('#consoleTabNetwork');
   await window.waitForTimeout(500);
 
-  const row = window.locator('.evt.network-request', { hasText: 'y'.repeat(50) });
-  await expect(row).toBeVisible();
-
-  const line2Box = await row.locator('.evt-line2').evaluate(el => ({
+  // Response rows still wrap onto a second line rather than scrolling.
+  const resRow = window.locator('.evt.network-response', { hasText: 'y'.repeat(50) });
+  await expect(resRow).toBeVisible();
+  const line2Box = await resRow.locator('.evt-line2').evaluate(el => ({
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
   expect(line2Box.scrollWidth).toBeLessThanOrEqual(line2Box.clientWidth + 1);
+
+  // Request rows (#178) take the other route to the same guarantee: single
+  // line, URL truncated with an ellipsis instead of wrapping or scrolling.
+  const reqRow = window.locator('.evt.network-request', { hasText: 'y'.repeat(50) });
+  await expect(reqRow).toBeVisible();
+  const reqBox = await reqRow.evaluate(el => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  expect(reqBox.scrollWidth).toBeLessThanOrEqual(reqBox.clientWidth + 1);
+});
+
+test('a long request URL truncates with an ellipsis instead of wrapping', async () => {
+  const longQuery = 'z'.repeat(3000);
+  await navigate('/network/status-codes.html?' + longQuery);
+  await window.click('#consoleTabNetwork');
+  await window.waitForTimeout(500);
+
+  const shortRow = window.locator('.evt.network-request').first();
+  const longRow  = window.locator('.evt.network-request', { hasText: 'z'.repeat(50) });
+  await expect(longRow).toBeVisible();
+
+  // Same height as any other single-line request row — the long URL never
+  // pushes the row taller the way it would if it wrapped onto a second line.
+  const shortHeight = await shortRow.evaluate(el => el.getBoundingClientRect().height);
+  const longHeight  = await longRow.evaluate(el => el.getBoundingClientRect().height);
+  expect(longHeight).toBeCloseTo(shortHeight, 0);
+
+  const urlSpan = longRow.locator('.evt-inline-url');
+  await expect(urlSpan).toBeVisible();
+  await expect(urlSpan).toHaveCSS('text-overflow', 'ellipsis');
+  await expect(urlSpan).toHaveCSS('white-space', 'nowrap');
 });
 
 test('a row renders as two visual lines: line 1 has timestamp/method/status, line 2 has the URL', async () => {
@@ -135,7 +167,7 @@ test('a response row still shows its duration, and the panel still auto-scrolls 
   expect(atBottom).toBe(true);
 });
 
-test('clicking a row still opens its detail tab, and the Replay button still works on request rows', async () => {
+test('clicking a row still opens its detail tab, and Replay still works from there (#178)', async () => {
   await window.click('#consoleTabNetwork');
   await window.click('#clearNetworkBtn');
   const tab = await navigate('/network/status-codes.html');
@@ -144,9 +176,9 @@ test('clicking a row still opens its detail tab, and the Replay button still wor
 
   const reqRow = window.locator('.evt.network-request', { hasText: '/network/status/200' }).first();
   await expect(reqRow).toBeVisible();
-  await reqRow.locator('.evt-ts').click();
+  await reqRow.click();
   await expect(window.locator('.detail-tab.active')).toBeVisible();
 
-  await reqRow.locator('.evt-replay-btn').click();
+  await window.locator('#detailReplayBtn').click();
   await expect(window.locator('#replayOverlay')).toHaveClass(/open/);
 });

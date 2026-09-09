@@ -2,6 +2,19 @@
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 
+// Entry point for the "⇒ Resilience" button on a network request's detail
+// panel: switches to the Resilience tab and prefills the add-rule form's URL
+// with this exact call's URL (not a glob — the tester can widen it). No
+// method field exists on a resilience rule, so unlike Mock there's nothing
+// else to prefill.
+export function openResilienceFromRequest(url) {
+  switchConsoleTab('resilience'); // also runs initResilience() if this is the first visit
+  const urlInput = document.getElementById('resUrl');
+  if (!urlInput) return;
+  urlInput.value = url || '*';
+  urlInput.focus();
+}
+
 const TYPES = [
   { value: 'error500',  label: '500 Error',           desc: 'Return HTTP 500 Internal Server Error' },
   { value: 'timeout',   label: 'Timeout (504)',        desc: 'Return HTTP 504 Gateway Timeout' },

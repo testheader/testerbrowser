@@ -490,17 +490,12 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
                  border-radius: 2px; font-family: monospace; font-size: 11px;
                  padding: 1px 4px; outline: none; box-sizing: border-box; }
 
-/* Replay button on request events */
-.evt-replay-btn { background: none; border: 1px solid var(--info-border); color: var(--accent-text);
-                  border-radius: 3px; font-size: 11px; padding: 0 6px; cursor: pointer;
-                  margin-left: 6px; line-height: 1.5; vertical-align: middle; flex-shrink: 0; }
-.evt-replay-btn:hover { background: rgba(127,200,255,0.12); }
-
-/* "Send to Mock" button in a network request's detail panel */
-.detail-mock-btn { background: none; border: 1px solid var(--border-strong); color: var(--text-muted);
-                    border-radius: 3px; font-size: 11px; padding: 0 6px; cursor: pointer;
-                    margin-left: 8px; line-height: 1.5; vertical-align: middle; }
-.detail-mock-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+/* Replay / Mock / Resilience row in a network request's detail panel */
+.detail-actions { display: flex; gap: 8px; }
+.detail-action-btn { background: none; border: 1px solid var(--border-strong); color: var(--text-muted);
+                      border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;
+                      line-height: 1.5; vertical-align: middle; }
+.detail-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 /* Badge marking a network row as synthesized by a Mock/Resilience rule rather than real traffic */
 .evt-badge { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .04em;
@@ -616,8 +611,15 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .evt-line1 { display: flex; align-items: baseline; gap: 8px; }
 .evt-line1-rest { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .evt-ts { flex: 0 0 10ch; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.evt-method { font-weight: 600; }
+.evt-method { display: inline-block; width: 50px; flex-shrink: 0; text-align: center; font-size: 9px;
+              font-weight: 700; letter-spacing: .04em; border-radius: 2px; padding: 1px 5px;
+              background: var(--bg-tertiary); color: var(--text-secondary); vertical-align: middle; }
 .evt-status { font-weight: 600; }
+/* Request rows are single-line (see timeline.js) — the method badge stays a
+   fixed width and the URL takes the rest, truncating instead of wrapping. */
+.evt.network-request .evt-line1-rest { flex-wrap: nowrap; }
+.evt-inline-url { flex: 1 1 0%; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                   white-space: nowrap; color: var(--text-secondary); }
 .evt-duration { flex-shrink: 0; color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 /* Hanging indent: line 2 starts at the same column as the method on line 1
    (ts width + the gap between ts and evt-line1-rest), instead of under the

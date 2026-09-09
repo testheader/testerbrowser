@@ -140,7 +140,7 @@ test('console/logs.html: a negative term in the free-text filter hides matching 
 
 // ── Network ──────────────────────────────────────────────────────────────────
 
-test('a request with a very long URL wraps onto additional lines instead of scrolling horizontally', async () => {
+test('a request with a very long URL neither wraps nor scrolls horizontally — it stays single-line and truncates', async () => {
   const longQuery = 'x'.repeat(3000);
   await navigate('/network/status-codes.html?' + longQuery);
   await window.click('#consoleTabNetwork');
@@ -149,17 +149,20 @@ test('a request with a very long URL wraps onto additional lines instead of scro
   const row = window.locator('.evt.network-request', { hasText: 'x'.repeat(50) });
   await expect(row).toBeVisible();
 
-  // The row grows taller to fit the wrapped URL instead of staying a single
-  // line and scrolling sideways — the regression this ticket (#166) exists
-  // to prevent.
-  const box = await row.evaluate(el => ({ height: el.getBoundingClientRect().height }));
-  expect(box.height).toBeGreaterThan(40);
-
-  const line2Box = await row.locator('.evt-line2').evaluate(el => ({
+  // Request rows are single-line (#178): the row never grows taller to fit
+  // the URL, and never gains a horizontal scrollbar either — the URL just
+  // truncates with an ellipsis. (#166's original regression this guarded —
+  // wrapping onto additional lines — no longer applies to this row kind;
+  // see e2e/timeline-layout.spec.ts for the response-row case, which still
+  // wraps as #166 intended.)
+  const box = await row.evaluate(el => ({
+    height: el.getBoundingClientRect().height,
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
-  expect(line2Box.scrollWidth).toBeLessThanOrEqual(line2Box.clientWidth + 1);
+  expect(box.height).toBeLessThan(30);
+  expect(box.scrollWidth).toBeLessThanOrEqual(box.clientWidth + 1);
+  await expect(row.locator('.evt-inline-url')).toHaveCSS('text-overflow', 'ellipsis');
 });
 
 test('network/status-codes.html: a 404 shows up as a network event', async () => {

@@ -137,14 +137,16 @@ test('timeline receives events after navigation', async () => {
 
 // ── Replay overlay ───────────────────────────────────────────────────────────
 
-// Navigate and wait for at least one replay button to appear in the timeline.
+// Navigate, open a request row's detail tab, and click its Replay action
+// button (#178 moved Replay off the per-row button and into the detail
+// panel — see #detailReplayBtn in detail-panel.js).
 async function openReplayOverlay(win: Page, port: number) {
   await win.fill('#urlbar', `http://127.0.0.1:${port}`);
   await win.press('#urlbar', 'Enter');
   await win.waitForTimeout(2_500);
-  // Network tab shows network-request events; replay buttons only appear there.
   await win.click('#consoleTabNetwork');
-  await win.locator('.evt-replay-btn').last().click();
+  await win.locator('.evt.network-request').last().click();
+  await win.locator('#detailReplayBtn').click();
   await expect(win.locator('#replayOverlay')).toHaveClass(/open/);
 }
 

@@ -2,6 +2,8 @@ import { escHtml, getEventTabId, getHeader } from './utils.js';
 import { getTimelineEvents } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 import { openMockFromRequest } from './mock.js';
+import { openResilienceFromRequest } from './resilience.js';
+import { openReplay } from './replay.js';
 
 // detail-panel.js owns the set of open detail tabs and which one is active —
 // nothing outside this file touches them; console-tabs.js and timeline.js
@@ -94,10 +96,13 @@ function renderDetailContent() {
   const e = tab.event;
   let html = '';
   // Filled in as the request/response/body events are parsed below, then used
-  // after the detail HTML is rendered to wire up the "⇒ Mock" button — it
-  // needs everything captured here (method, url, status, body) to prefill a
-  // rule that reproduces this exact response.
+  // after the detail HTML is rendered to wire up the Replay/Mock/Resilience
+  // action row — mockData carries everything needed to prefill a Mock rule
+  // that reproduces this exact response; actionReqEvt is the raw
+  // network-request event Replay needs (it re-derives method/url/headers/body
+  // from the payload itself rather than from mockData).
   let mockData = null;
+  let actionReqEvt = null;
 
   try {
     if (e.kind.startsWith('network-')) {
@@ -111,10 +116,15 @@ function renderDetailContent() {
       if (reqEvt && reqEvt.payload) {
         const req = (JSON.parse(reqEvt.payload).request) || {};
         mockData = { method: req.method, url: req.url };
+        actionReqEvt = reqEvt;
         html += `<div class="detail-section">
           <span class="detail-method ${methodClass(req.method)}">${escHtml(req.method || '?')}</span>
           <span class="detail-url">${escHtml(req.url || '')}</span>
-          <button class="detail-mock-btn" id="detailMockBtn" title="Send this call's method, URL, status and body to the Mock panel">⇒ Mock</button>
+        </div>
+        <div class="detail-section detail-actions">
+          <button class="detail-action-btn" id="detailReplayBtn" title="Edit and replay this request">↺ Replay</button>
+          <button class="detail-action-btn" id="detailMockBtn" title="Send this call's method, URL, status and body to the Mock panel">⇒ Mock</button>
+          <button class="detail-action-btn" id="detailResilienceBtn" title="Send this call's URL to the Resilience panel">⇒ Resilience</button>
         </div>`;
         if (req.headers && Object.keys(req.headers).length) {
           html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
@@ -187,6 +197,14 @@ function renderDetailContent() {
     const mockBtn = document.getElementById('detailMockBtn');
     if (mockBtn) {
       mockBtn.onclick = () => openMockFromRequest(mockData.method, mockData.url, mockData.statusCode, mockData.body);
+    }
+    const replayBtn = document.getElementById('detailReplayBtn');
+    if (replayBtn && actionReqEvt) {
+      replayBtn.onclick = () => openReplay(actionReqEvt);
+    }
+    const resilienceBtn = document.getElementById('detailResilienceBtn');
+    if (resilienceBtn) {
+      resilienceBtn.onclick = () => openResilienceFromRequest(mockData.url);
     }
   }
 }

@@ -85,13 +85,9 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
 
-  // Click the timestamp, not the summary as a whole: a network-request row's
-  // summary also contains the "↺ Replay" button, which stops propagation and
-  // opens the Replay modal instead of the detail tab. Playwright clicks the
-  // centre of the element it is given, and how far along the row that centre
-  // falls depends on the window width — on the Windows CI runner it landed on
-  // that button, so the detail tab never opened. The timestamp is always at
-  // the very start of the row and never a button.
+  // Click the timestamp specifically — it's always at the very start of the
+  // row and never a button (the per-row Replay button that used to require
+  // this workaround is gone; Replay now lives in the detail panel, see #178).
   //
   // renderTimeline() also fully clears and rebuilds every row on each 1s poll
   // tick (see the comment above), so retry the click itself, not just the
@@ -108,4 +104,59 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
   await expect(window.locator('#mockMethod')).toHaveValue('GET');
   await expect(window.locator('#mockStatus')).toHaveValue('200');
+});
+
+test('a network request\'s detail panel offers Replay, Mock and Resilience, in that order (#179)', async () => {
+  const urlPath = '/network/status-codes.html';
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
+  await window.waitForTimeout(1_500);
+
+  const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
+  await expect(async () => {
+    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(window.locator('#detailReplayBtn')).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
+  const actions = window.locator('.detail-actions .detail-action-btn');
+  await expect(actions).toHaveCount(3);
+  await expect(actions.nth(0)).toHaveText('↺ Replay');
+  await expect(actions.nth(1)).toHaveText('⇒ Mock');
+  await expect(actions.nth(2)).toHaveText('⇒ Resilience');
+
+  // Replay: opens the modal, prefilled from this exact call.
+  await window.locator('#detailReplayBtn').click();
+  await expect(window.locator('#replayOverlay')).toHaveClass(/open/);
+  await expect(window.locator('#replayUrl')).toHaveValue(fixtures.url(urlPath));
+  await window.click('#closeReplayBtn');
+
+  // Resilience: switches panels and prefills the URL pattern with the exact
+  // call URL (no method field exists on a resilience rule to also prefill).
+  // Closing Replay doesn't touch the detail panel, so the same tab (and its
+  // action row) is still showing.
+  await window.locator('#detailResilienceBtn').click();
+  await expect(window.locator('#resiliencePanel')).toBeVisible();
+  await expect(window.locator('#resUrl')).toHaveValue(fixtures.url(urlPath));
+  await expect(window.locator('#resUrl')).toBeFocused();
+});
+
+test('console rows show no Replay/Mock/Resilience action row', async () => {
+  await window.click('#consoleTabConsole');
+  const urlPath = '/console/logs.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await window.waitForTimeout(1_500);
+
+  const consoleRow = window.locator('.evt.console, .evt.log').first();
+  await expect(consoleRow).toBeVisible();
+  await consoleRow.click();
+
+  await expect(window.locator('.detail-tab.active')).toBeVisible();
+  await expect(window.locator('.detail-actions')).toHaveCount(0);
 });
