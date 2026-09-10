@@ -433,6 +433,74 @@ ipcMain.handle('jira:createIssue', async (_e, summary: string, description: stri
 
 const GH_REPO_OWNER = 'testheader';
 const GH_REPO_NAME = 'testerbrowser';
+const OAUTH_CLIENT_ID = 'Ov23licgMtABkVvMJiem';
+
+let oauthPollAbort: AbortController | null = null;
+
+function saveGithubToken(token: string): boolean {
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  bugReportStore.set({ tokenEnc: safeStorage.encryptString(token).toString('base64') });
+  return true;
+}
+
+async function pollDeviceFlow(deviceCode: string, intervalSecs: number, expiresAt: number, signal: AbortSignal) {
+  let pollInterval = intervalSecs;
+  while (Date.now() < expiresAt && !signal.aborted) {
+    await new Promise<void>((resolve) => {
+      const t = setTimeout(resolve, pollInterval * 1000);
+      signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+    });
+    if (signal.aborted) return;
+    try {
+      const res = await net.fetch('https://github.com/login/oauth/access_token', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'TesterBrowser-BugReporter' },
+        body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
+      });
+      const data = await res.json() as { access_token?: string; error?: string; interval?: number };
+      if (data.access_token) {
+        saveGithubToken(data.access_token);
+        win?.webContents.send('bugreport:oauthDone', { ok: true });
+        return;
+      }
+      if (data.error === 'slow_down') pollInterval = (data.interval ?? pollInterval) + 5;
+      else if (data.error === 'access_denied' || data.error === 'expired_token') {
+        win?.webContents.send('bugreport:oauthDone', { ok: false, error: data.error });
+        return;
+      }
+      // 'authorization_pending' → keep polling
+    } catch { /* network hiccup — keep polling */ }
+  }
+  if (!signal.aborted) win?.webContents.send('bugreport:oauthDone', { ok: false, error: 'expired_token' });
+}
+
+ipcMain.handle('bugreport:startOAuth', async () => {
+  oauthPollAbort?.abort();
+  oauthPollAbort = new AbortController();
+  try {
+    const res = await net.fetch('https://github.com/login/device/code', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'TesterBrowser-BugReporter' },
+      body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, scope: 'public_repo' }),
+    });
+    if (!res.ok) return { ok: false, error: `GitHub returned HTTP ${res.status}` };
+    const data = await res.json() as { device_code?: string; user_code?: string; verification_uri?: string; expires_in?: number; interval?: number };
+    if (!data.device_code || !data.user_code) return { ok: false, error: 'Invalid response from GitHub' };
+    shell.openExternal(data.verification_uri ?? 'https://github.com/login/device');
+    const expiresAt = Date.now() + (data.expires_in ?? 900) * 1000;
+    pollDeviceFlow(data.device_code, data.interval ?? 5, expiresAt, oauthPollAbort.signal).catch(() => {});
+    return { ok: true, user_code: data.user_code, verification_uri: data.verification_uri, expires_in: data.expires_in };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
+
+ipcMain.handle('bugreport:signOut', () => {
+  oauthPollAbort?.abort();
+  oauthPollAbort = null;
+  bugReportStore.set({ tokenEnc: null });
+  return { ok: true };
+});
 
 ipcMain.handle('bugreport:hasToken', () => !!bugReportStore.get().tokenEnc);
 

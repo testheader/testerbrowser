@@ -242,11 +242,16 @@ contextBridge.exposeInMainWorld('testerBrowser', {
 
   bugReport: {
     hasToken:       () => ipcRenderer.invoke('bugreport:hasToken'),
-    saveToken:      (token: string) => ipcRenderer.invoke('bugreport:saveToken', token),
     getDiagnostics: () => ipcRenderer.invoke('bugreport:getDiagnostics'),
     captureScreenshot: () => ipcRenderer.invoke('app:captureScreenshot'),
     submit: (payload: { area: string; description: string; diagnostics?: string; screenshotB64?: string | null }) =>
               ipcRenderer.invoke('bugreport:submit', payload),
+    startOAuth: () => ipcRenderer.invoke('bugreport:startOAuth'),
+    signOut:    () => ipcRenderer.invoke('bugreport:signOut'),
+    onOAuthDone: (cb: (d: { ok: boolean; error?: string }) => void) => {
+      ipcRenderer.removeAllListeners('bugreport:oauthDone');
+      ipcRenderer.on('bugreport:oauthDone', (_e, d) => cb(d));
+    },
     onShow: (cb: () => void) => {
       ipcRenderer.removeAllListeners('show:bugreport');
       ipcRenderer.on('show:bugreport', () => cb());

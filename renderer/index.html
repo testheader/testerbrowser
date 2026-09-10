@@ -247,16 +247,18 @@
 
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
-                <div class="setting-label">GitHub token (bug reporter)</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Used by Help &rarr; Report Bug to file issues in testheader/testerbrowser. Needs "repo" and "project" scopes. Stored encrypted via your OS keychain, never in plain text.</div>
+                <div class="setting-label">GitHub (bug reporter)</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">Sign in with GitHub to file bug reports directly from TesterBrowser. Token stored encrypted via your OS keychain.</div>
               </div>
-              <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-                <input type="password" id="githubTokenInput" placeholder="ghp_…" autocomplete="off"
-                       style="width:200px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
-                <div style="display:flex;gap:6px;align-items:center">
-                  <span id="githubTokenStatus" style="font-size:11px;color:#555"></span>
-                  <button class="btn btn-secondary" id="githubTokenSaveBtn" style="padding:2px 10px;font-size:11px">Save</button>
+              <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+                <span id="githubTokenStatus" style="font-size:11px;color:#555"></span>
+                <button class="btn btn-secondary" id="githubSignInBtn" style="padding:2px 10px;font-size:11px" hidden>Sign in with GitHub</button>
+                <div id="githubOAuthPending" hidden style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+                  <div style="font-size:11px;color:var(--fg,#ccc)">Enter this code at <b>github.com/login/device</b>:</div>
+                  <div id="githubUserCode" style="font-size:15px;font-weight:bold;letter-spacing:3px;color:var(--fg,#ccc);font-family:monospace"></div>
+                  <div style="font-size:11px;color:#888">Waiting for authorisation&hellip;</div>
                 </div>
+                <button class="btn btn-secondary" id="githubSignOutBtn" style="padding:2px 10px;font-size:11px" hidden>Sign out</button>
               </div>
             </div>
           </div>

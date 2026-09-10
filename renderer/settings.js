@@ -31,12 +31,17 @@ export async function openSettings() {
 
   document.getElementById('themeSelect').value = getStoredScheme();
 
-  await refreshGithubTokenStatus();
+  await refreshGithubAuthStatus();
 }
 
-async function refreshGithubTokenStatus() {
+async function refreshGithubAuthStatus() {
   const hasToken = await testerBrowser.bugReport.hasToken();
-  document.getElementById('githubTokenStatus').textContent = hasToken ? 'Configured ✓' : 'Not configured';
+  const status = document.getElementById('githubTokenStatus');
+  status.textContent = hasToken ? 'Signed in ✓' : 'Not signed in';
+  status.style.color = hasToken ? 'var(--ok,#4caf50)' : '';
+  document.getElementById('githubSignInBtn').hidden = hasToken;
+  document.getElementById('githubSignOutBtn').hidden = !hasToken;
+  document.getElementById('githubOAuthPending').hidden = true;
 }
 
 function switchSettingsTab(pane) {
@@ -98,17 +103,37 @@ export function initSettings() {
     applyTheme(e.target.value);
   });
 
-  document.getElementById('githubTokenSaveBtn').onclick = async () => {
-    const input = document.getElementById('githubTokenInput');
+  document.getElementById('githubSignInBtn').onclick = async () => {
     const status = document.getElementById('githubTokenStatus');
-    const result = await testerBrowser.bugReport.saveToken(input.value);
-    input.value = '';
+    document.getElementById('githubSignInBtn').hidden = true;
+    status.textContent = '';
+    const result = await testerBrowser.bugReport.startOAuth();
     if (!result.ok) {
-      status.textContent = result.error || 'Failed to save token';
+      status.textContent = result.error || 'Failed to start sign-in';
+      status.style.color = 'var(--err,#f44336)';
+      document.getElementById('githubSignInBtn').hidden = false;
       return;
     }
-    await refreshGithubTokenStatus();
+    document.getElementById('githubUserCode').textContent = result.user_code;
+    document.getElementById('githubOAuthPending').hidden = false;
   };
+
+  document.getElementById('githubSignOutBtn').onclick = async () => {
+    await testerBrowser.bugReport.signOut();
+    await refreshGithubAuthStatus();
+  };
+
+  testerBrowser.bugReport.onOAuthDone(async ({ ok, error }) => {
+    if (ok) {
+      await refreshGithubAuthStatus();
+    } else {
+      const status = document.getElementById('githubTokenStatus');
+      status.textContent = error === 'access_denied' ? 'Sign-in cancelled.' : 'Sign-in expired — try again.';
+      status.style.color = 'var(--err,#f44336)';
+      document.getElementById('githubOAuthPending').hidden = true;
+      document.getElementById('githubSignInBtn').hidden = false;
+    }
+  });
 
   testerBrowser.app.onShowSettings(() => openSettings());
   testerBrowser.app.onUpdateStatus((data) => applyUpdateStatus(data));
