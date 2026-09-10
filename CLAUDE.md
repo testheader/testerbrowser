@@ -217,6 +217,7 @@ npm run dist:win          # Full Windows installer build + publish
 - **`setConsoleHeight(0)` is special** — the method clamps to min 80px for drag-resize, but explicitly accepts 0 to fully hide the console (BrowserView fills the window).
 - **`getLocalStorage` is page-scoped** — `executeJavaScript` runs in the currently loaded page's origin. Navigating to a new page changes what localStorage is visible.
 - **Session colour inheritance** — when `setWindowOpenHandler` fires (window.open or middle-click), the new session is created with the parent session's `color` captured in the `createSession` closure. Context-menu "Open link in new tab" does the same.
+- **Session snapshot export/import cannot restore in-memory JS/React state** — "Export snapshot…" / "Import snapshot…" (tab context menu, `sessionManager.ts`) capture cookies, localStorage, sessionStorage, IndexedDB, form field values, scroll position and `history.state`, per-frame (main frame + same-page iframes, via `WebFrameMain.framesInSubtree`). React (or any framework) component state that never gets persisted to storage is *not* restorable — there's no supported API to feed state back into arbitrary components. `snapshotScripts.ts`'s `COLLECT_FRAME_SCRIPT` will, best-effort, dump React state through the `__REACT_DEVTOOLS_GLOBAL_HOOK__` when present, but that dump is diagnostic-only (`reactState` field) and is never applied on import. Snapshot files are versioned (`version: 2`); v1 files (single implicit frame, storage inline) still import via a compatibility path in `restoreSnapshot`.
 
 ---
 

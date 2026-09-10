@@ -7,6 +7,7 @@ import { DownloadManager } from './downloadManager';
 import { PermissionManager } from './permissionManager';
 
 import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
+import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,35 @@ export interface HistoryEntry {
   url: string;
   ts: number;
   failed?: boolean;
+}
+
+// One entry per frame (main frame + same-page iframes) inside a session
+// snapshot. Storage/IndexedDB/history/scroll/fields are captured and
+// restored; reactState is diagnostic-only (see snapshotScripts.ts) and is
+// never fed back into a page on import.
+export interface FrameSnapshot {
+  url: string;
+  localStorage?: Record<string, string>;
+  sessionStorage?: Record<string, string>;
+  indexedDB?: Record<string, {
+    version: number;
+    stores: Record<string, { keyPath: string | string[] | null; autoIncrement: boolean; records: { key: unknown; value: unknown }[] }>;
+  }>;
+  fields?: { sel: string; kind: 'value' | 'checked'; value?: string; checked?: boolean }[];
+  scroll?: { x: number; y: number };
+  historyState?: unknown;
+  reactState?: { note: string; nodes: { path: string; state: unknown }[] };
+  warnings?: string[];
+}
+
+export interface SessionSnapshot {
+  version: 2;
+  ts: number;
+  sessionName: string;
+  url: string;
+  cookies: Electron.Cookie[];
+  frames: FrameSnapshot[];
+  warnings: string[];
 }
 
 export interface EmulationOverrides {
@@ -958,51 +988,126 @@ export class SessionManager {
 
   // ── Session snapshots ─────────────────────────────────────────────────────
 
-  private async collectSnapshot(id: string): Promise<object | null> {
+  // Resolves once the frame either finishes loading, fails to load, or
+  // timeoutMs elapses — whichever comes first — instead of the fixed delay
+  // the old implementation used, which was either too short (subframes not
+  // yet attached) or wastefully long depending on the page.
+  private waitForFrameLoad(wc: Electron.WebContents, timeoutMs = 10000): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        wc.removeListener('did-finish-load', onLoad);
+        wc.removeListener('did-fail-load', onFail);
+        clearTimeout(timer);
+        resolve();
+      };
+      const onLoad = () => finish();
+      const onFail = () => finish();
+      wc.once('did-finish-load', onLoad);
+      wc.once('did-fail-load', onFail);
+      const timer = setTimeout(finish, timeoutMs);
+    });
+  }
+
+  private async collectSnapshot(id: string): Promise<SessionSnapshot | null> {
     const s = this.sessions.get(id);
     if (!s) return null;
     const cookies = await s.view.webContents.session.cookies.get({});
-    let localStorageData: Record<string, string> = {};
-    let sessionStorageData: Record<string, string> = {};
-    try {
-      const r = await s.view.webContents.executeJavaScript(
-        'JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k=>[k,localStorage.getItem(k)])))'
-      );
-      localStorageData = JSON.parse(r);
-    } catch {}
-    try {
-      const r = await s.view.webContents.executeJavaScript(
-        'JSON.stringify(Object.fromEntries(Object.keys(sessionStorage).map(k=>[k,sessionStorage.getItem(k)])))'
-      );
-      sessionStorageData = JSON.parse(r);
-    } catch {}
-    return { version: 1, ts: Date.now(), sessionName: s.name, url: s.currentUrl, cookies, localStorage: localStorageData, sessionStorage: sessionStorageData };
+    const warnings: string[] = [];
+    const frames: FrameSnapshot[] = [];
+    for (const frame of s.view.webContents.mainFrame.framesInSubtree) {
+      try {
+        const raw = (await frame.executeJavaScript(COLLECT_FRAME_SCRIPT)) as string;
+        const parsed = JSON.parse(raw) as FrameSnapshot;
+        frames.push(parsed);
+        if (parsed.warnings?.length) warnings.push(...parsed.warnings.map((w) => `${parsed.url}: ${w}`));
+      } catch (e) {
+        warnings.push(`frame ${frame.url || '(unknown)'}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return { version: 2, ts: Date.now(), sessionName: s.name, url: s.currentUrl, cookies, frames, warnings };
   }
 
-  private async restoreSnapshot(id: string, snap: Record<string, unknown>): Promise<void> {
+  // Restores cookies, then per-frame storage/IndexedDB/history/scroll/form
+  // state. Accepts both the current (version 2, multi-frame) shape and the
+  // original version 1 shape (single implicit frame, storage inline) so
+  // older exported snapshot files still import cleanly. Returns any
+  // warnings collected along the way for the caller to surface.
+  private async restoreSnapshot(id: string, snap: Record<string, unknown>): Promise<string[]> {
     const s = this.sessions.get(id);
-    if (!s) return;
+    if (!s) return [];
+    const warnings: string[] = [];
+
     if (Array.isArray(snap.cookies)) {
       await s.view.webContents.session.clearStorageData({ storages: ['cookies'] });
       for (const c of snap.cookies as Electron.Cookie[]) {
         const url = `${c.secure ? 'https' : 'http'}://${(c.domain ?? '').replace(/^\./, '')}${c.path ?? '/'}`;
-        try { await s.view.webContents.session.cookies.set({ url, name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate }); } catch {}
+        try {
+          await s.view.webContents.session.cookies.set({ url, name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate });
+        } catch (e) {
+          warnings.push(`cookie ${c.name}: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
     }
-    if (snap.url && typeof snap.url === 'string') {
+
+    const frames: FrameSnapshot[] = Array.isArray(snap.frames) && (snap.frames as unknown[]).length
+      ? (snap.frames as FrameSnapshot[])
+      : [{
+          url: typeof snap.url === 'string' ? snap.url : '',
+          localStorage: snap.localStorage as Record<string, string> | undefined,
+          sessionStorage: snap.sessionStorage as Record<string, string> | undefined,
+        }];
+    const [mainFrameSnap, ...subframeSnaps] = frames;
+
+    if (typeof snap.url === 'string' && snap.url) {
       await s.view.webContents.loadURL(snap.url);
-      await new Promise<void>(r => setTimeout(r, 600));
+      await this.waitForFrameLoad(s.view.webContents);
+      // Same-page iframes start loading only after the main frame's load
+      // event fires — give them a brief moment to attach before we walk
+      // the frame tree below.
+      await new Promise<void>((r) => setTimeout(r, 250));
     }
-    const ls = snap.localStorage as Record<string, string> | undefined;
-    if (ls && typeof ls === 'object') {
-      const sets = Object.entries(ls).map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)},${JSON.stringify(v)});`).join('');
-      try { await s.view.webContents.executeJavaScript(`(function(){localStorage.clear();${sets}})();`); } catch {}
+
+    const applyFrame = async (frame: Electron.WebFrameMain, snapFrame: FrameSnapshot | undefined) => {
+      if (!snapFrame) return;
+      try {
+        const raw = (await frame.executeJavaScript(buildRestoreFrameScript(snapFrame))) as string;
+        const parsed = JSON.parse(raw) as { warnings?: string[] };
+        if (parsed.warnings?.length) warnings.push(...parsed.warnings.map((w) => `${snapFrame.url}: ${w}`));
+      } catch (e) {
+        warnings.push(`frame ${snapFrame.url}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    };
+
+    await applyFrame(s.view.webContents.mainFrame, mainFrameSnap);
+    const remaining = [...subframeSnaps];
+    const liveSubframes = s.view.webContents.mainFrame.framesInSubtree.filter((f) => f !== s.view.webContents.mainFrame);
+    for (const liveFrame of liveSubframes) {
+      const idx = remaining.findIndex((f) => f.url === liveFrame.url);
+      if (idx < 0) continue;
+      const [match] = remaining.splice(idx, 1);
+      await applyFrame(liveFrame, match);
     }
-    const ss = snap.sessionStorage as Record<string, string> | undefined;
-    if (ss && typeof ss === 'object') {
-      const sets = Object.entries(ss).map(([k, v]) => `sessionStorage.setItem(${JSON.stringify(k)},${JSON.stringify(v)});`).join('');
-      try { await s.view.webContents.executeJavaScript(`(function(){sessionStorage.clear();${sets}})();`); } catch {}
+    if (remaining.length) {
+      warnings.push(`${remaining.length} captured frame(s) had no matching frame on restore (page structure changed)`);
     }
+    if (frames.some((f) => f.reactState)) {
+      warnings.push('Snapshot includes captured React state (diagnostic only) — component state is not restored on import.');
+    }
+
+    return warnings;
+  }
+
+  private showSnapshotWarnings(title: string, warnings: string[]): void {
+    if (!warnings.length) return;
+    dialog.showMessageBox(this.win, {
+      type: 'warning',
+      title,
+      message: `Completed with ${warnings.length} warning(s):`,
+      detail: warnings.slice(0, 20).join('\n') + (warnings.length > 20 ? `\n…and ${warnings.length - 20} more` : ''),
+    });
   }
 
   async exportSnapshotDialog(id: string): Promise<void> {
@@ -1016,6 +1121,7 @@ export class SessionManager {
     });
     if (!result.canceled && result.filePath) {
       fs.writeFileSync(result.filePath, JSON.stringify(snap, null, 2));
+      this.showSnapshotWarnings('Export snapshot', snap.warnings);
     }
   }
 
@@ -1029,8 +1135,9 @@ export class SessionManager {
     const snap = this.readSnapshotFile(result.filePaths[0]);
     if (!snap) return;
     try {
-      await this.restoreSnapshot(id, snap);
+      const warnings = await this.restoreSnapshot(id, snap);
       this.win.webContents.send('tab:action', { action: 'refresh' });
+      this.showSnapshotWarnings('Import snapshot', warnings);
     } catch {
       dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
     }
@@ -1050,18 +1157,20 @@ export class SessionManager {
     const sessionName = typeof snap.sessionName === 'string' && snap.sessionName ? snap.sessionName : 'Imported session';
     const ns = this.createSession(sessionName);
     try {
-      await this.restoreSnapshot(ns.id, snap);
+      const warnings = await this.restoreSnapshot(ns.id, snap);
+      this.switchTo(ns.id);
+      this.win.webContents.send('session:newTab', { id: ns.id });
+      this.showSnapshotWarnings('Import session', warnings);
     } catch {
       dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
       this.destroySession(ns.id);
-      return;
     }
-    this.switchTo(ns.id);
-    this.win.webContents.send('session:newTab', { id: ns.id });
   }
 
   // Reads and validates a snapshot file, showing an error dialog and
-  // returning null if it's missing, malformed, or not shaped like a snapshot.
+  // returning null if it's missing, malformed, or not shaped like a
+  // snapshot. Accepts both version 1 (legacy, single implicit frame) and
+  // version 2 (multi-frame) shapes.
   private readSnapshotFile(filePath: string): Record<string, unknown> | null {
     let snap: unknown;
     try {
@@ -1070,12 +1179,17 @@ export class SessionManager {
       dialog.showErrorBox('Import failed', 'The selected file is not valid JSON.');
       return null;
     }
-    if (!snap || typeof snap !== 'object' || Array.isArray(snap) ||
-        (!Array.isArray((snap as Record<string, unknown>).cookies) && typeof (snap as Record<string, unknown>).url !== 'string')) {
+    if (!snap || typeof snap !== 'object' || Array.isArray(snap)) {
       dialog.showErrorBox('Import failed', 'The selected file is not a valid session snapshot.');
       return null;
     }
-    return snap as Record<string, unknown>;
+    const s = snap as Record<string, unknown>;
+    const looksValid = Array.isArray(s.frames) || Array.isArray(s.cookies) || typeof s.url === 'string';
+    if (!looksValid) {
+      dialog.showErrorBox('Import failed', 'The selected file is not a valid session snapshot.');
+      return null;
+    }
+    return s;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
