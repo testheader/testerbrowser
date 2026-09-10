@@ -4,6 +4,48 @@
 // the page's own JS context, not the Electron main process — tsc never sees
 // them, so there's no benefit to a separate compiled file.
 
+// Injected once per session (via CDP Page.addScriptToEvaluateOnNewDocument,
+// see sessionManager.ts's createSession) so it runs before any page script on
+// every navigation in that session, including the reload snapshot import
+// triggers. Real React DevTools support is normally provided by the
+// DevTools *browser extension*, which TesterBrowser doesn't install — so
+// without this stub, window.__REACT_DEVTOOLS_GLOBAL_HOOK__ never exists and
+// React never registers with it, and the reactState capture below silently
+// finds nothing on virtually every page. This stub implements only the
+// handful of hook methods react-reconciler actually calls (inject,
+// onCommitFiberRoot, ...), enough to track each renderer's current fiber
+// roots — not the full DevTools backend (which also isn't publicly
+// published as an installable script and implements a much larger surface
+// we don't need).
+export const REACT_HOOK_STUB_SCRIPT = `
+(function() {
+  if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) return;
+  var fiberRoots = new Map();
+  var renderers = new Map();
+  var nextRendererID = 1;
+  window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+    supportsFiber: true,
+    renderers: renderers,
+    checkDCE: function() {},
+    inject: function(renderer) {
+      var id = nextRendererID++;
+      renderers.set(id, renderer);
+      fiberRoots.set(id, new Set());
+      return id;
+    },
+    onScheduleFiberRoot: function() {},
+    onCommitFiberRoot: function(id, root) {
+      var set = fiberRoots.get(id);
+      if (set) set.add(root);
+    },
+    onCommitFiberUnmount: function() {},
+    getFiberRoots: function(id) {
+      return Array.from(fiberRoots.get(id) || []);
+    },
+  };
+})();
+`;
+
 // Executed once per frame (main frame + every same-page iframe) during
 // export. Returns a JSON string (frames can't return arbitrary structured
 // data across the executeJavaScript boundary reliably, so we stringify).
@@ -14,12 +56,12 @@
 //   - IndexedDB databases + object stores + records
 //   - visible form field values (skips password inputs)
 //   - scroll position and history.state
-//   - a diagnostic-only dump of React component state via the React
-//     DevTools global hook, when present. This is never restored on
-//     import — there's no supported way to feed state back into arbitrary
-//     React components from outside the app, so it's exported purely so a
-//     tester can inspect what a component's state looked like at capture
-//     time.
+//   - a best-effort dump of React component state via the REACT_HOOK_STUB_SCRIPT
+//     hook above, when present. On import, buildRestoreFrameScript attempts
+//     to write it back into the freshly-mounted tree (see there for how and
+//     its limits) — this is unstable, undocumented React internals, not a
+//     supported API, so it can silently do nothing on a page it can't
+//     confidently match or on a future React version that changes shape.
 export const COLLECT_FRAME_SCRIPT = `
 (async function() {
   const warnings = [];
@@ -113,17 +155,15 @@ export const COLLECT_FRAME_SCRIPT = `
         if (!fiber || nodes.length > 500) return;
         const name = (fiber.type && (fiber.type.displayName || fiber.type.name)) || (typeof fiber.type === 'string' ? fiber.type : null);
         if (name) {
-          let state;
           if (fiber.stateNode && fiber.stateNode.state !== undefined && fiber.stateNode.state !== null) {
-            state = serialize(fiber.stateNode.state, 0);
+            nodes.push({ path: path.concat(name).join(' > '), kind: 'class', state: serialize(fiber.stateNode.state, 0) });
           } else if (fiber.memoizedState) {
             const hooks = [];
             let h = fiber.memoizedState;
             let guard = 0;
             while (h && guard++ < 50) { hooks.push(serialize(h.memoizedState, 0)); h = h.next; }
-            if (hooks.length) state = hooks;
+            if (hooks.length) nodes.push({ path: path.concat(name).join(' > '), kind: 'function', hooks });
           }
-          if (state !== undefined) nodes.push({ path: path.concat(name).join(' > '), state });
         }
         if (fiber.child) visit(fiber.child, path.concat(name || '?'));
         if (fiber.sibling) visit(fiber.sibling, path);
@@ -133,7 +173,7 @@ export const COLLECT_FRAME_SCRIPT = `
         for (const root of roots) visit(root.current, []);
       }
       if (nodes.length) {
-        reactState = { note: 'Best-effort diagnostic dump via the React DevTools hook. Not restored on import.', nodes };
+        reactState = { note: 'Best-effort dump via a minimal DevTools hook stub. Import attempts to restore useState-backed hooks and class component state by matching component path; anything else (useReducer, custom hooks, unmatched paths) is left alone.', nodes };
       }
     }
   } catch (e) {
@@ -247,6 +287,80 @@ export function buildRestoreFrameScript(data: unknown): string {
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
       } catch (e) { warnings.push('field ' + f.sel + ': ' + (e && e.message || String(e))); }
+    }
+  }
+
+  // Best-effort React state restore. Requires the same REACT_HOOK_STUB_SCRIPT
+  // hook (present from page-start, so React has already registered its fresh
+  // fiber roots by the time this runs). We re-walk the newly-mounted tree
+  // with the identical traversal used at capture, match nodes by the same
+  // "Component > Component" path string, and only ever touch state through
+  // APIs the component itself would use:
+  //   - class components: instance.setState(...) — public API.
+  //   - hooks: the hook's own queue.dispatch (the exact function useState
+  //     returned as the setter) — but ONLY when queue.lastRenderedReducer
+  //     looks like React's built-in basicStateReducer, so we don't feed a
+  //     raw value into a useReducer hook's dispatch (which expects an
+  //     action, not a value, and would run the app's own reducer against
+  //     it). That name check is itself unreliable under minification, so
+  //     production builds will often just skip hook restoration — reported
+  //     as a warning, never a crash or corrupted state.
+  // Path matching is inherently ambiguous for sibling components that share
+  // a name/position (e.g. list items) — first match wins, extras are
+  // reported below.
+  if (DATA.reactState && Array.isArray(DATA.reactState.nodes) && DATA.reactState.nodes.length) {
+    try {
+      const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      if (!hook || !hook.getFiberRoots) {
+        warnings.push('reactState: no React DevTools hook present on the restored page — nothing restored');
+      } else {
+        const nodes = DATA.reactState.nodes;
+        const consumed = new Array(nodes.length).fill(false);
+        let restoredValues = 0;
+        let matchedComponents = 0;
+        const visit = (fiber, path) => {
+          if (!fiber) return;
+          const name = (fiber.type && (fiber.type.displayName || fiber.type.name)) || (typeof fiber.type === 'string' ? fiber.type : null);
+          if (name) {
+            const fullPath = path.concat(name).join(' > ');
+            const idx = nodes.findIndex((n, i) => !consumed[i] && n.path === fullPath);
+            if (idx >= 0) {
+              consumed[idx] = true;
+              matchedComponents++;
+              const match = nodes[idx];
+              try {
+                if (match.kind === 'class' && fiber.stateNode && typeof fiber.stateNode.setState === 'function') {
+                  fiber.stateNode.setState(match.state);
+                  restoredValues++;
+                } else if (match.kind === 'function' && Array.isArray(match.hooks) && fiber.memoizedState) {
+                  let h = fiber.memoizedState;
+                  let i = 0;
+                  while (h) {
+                    const value = match.hooks[i];
+                    if (value !== undefined && h.queue && typeof h.queue.dispatch === 'function' &&
+                        h.queue.lastRenderedReducer && h.queue.lastRenderedReducer.name === 'basicStateReducer') {
+                      h.queue.dispatch(value);
+                      restoredValues++;
+                    }
+                    h = h.next; i++;
+                  }
+                }
+              } catch (e) {
+                warnings.push('reactState ' + fullPath + ': ' + (e && e.message || String(e)));
+              }
+            }
+          }
+          if (fiber.child) visit(fiber.child, path.concat(name || '?'));
+          if (fiber.sibling) visit(fiber.sibling, path);
+        };
+        for (const rendererID of hook.renderers.keys()) {
+          const roots = hook.getFiberRoots(rendererID) || [];
+          for (const root of roots) visit(root.current, []);
+        }
+        warnings.push('reactState: restored ' + restoredValues + ' hook/state value(s) across ' + matchedComponents + ' matched component(s) of ' + nodes.length + ' captured (best-effort, see docs)');
+      }
+    } catch (e) {
+      warnings.push('reactState restore: ' + (e && e.message || String(e)));
     }
   }
 

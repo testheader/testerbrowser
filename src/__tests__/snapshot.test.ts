@@ -1,5 +1,9 @@
 // Unit tests for session snapshot data structure contract
 
+type ReactStateNode =
+  | { path: string; kind: 'class'; state: unknown }
+  | { path: string; kind: 'function'; hooks: unknown[] };
+
 interface FrameSnapshotShape {
   url: string;
   localStorage?: Record<string, string>;
@@ -8,7 +12,7 @@ interface FrameSnapshotShape {
   fields?: { sel: string; kind: 'value' | 'checked'; value?: string; checked?: boolean }[];
   scroll?: { x: number; y: number };
   historyState?: unknown;
-  reactState?: { note: string; nodes: unknown[] };
+  reactState?: { note: string; nodes: ReactStateNode[] };
   warnings?: string[];
 }
 
@@ -110,9 +114,19 @@ describe('session snapshot shape (v2)', () => {
     expect(validSnap.ts).toBeGreaterThan(0);
   });
 
-  it('reactState, when present, is diagnostic-only metadata rather than restorable state', () => {
-    const withReact: FrameSnapshotShape = { ...validFrame, reactState: { note: 'diagnostic only, not restored on import', nodes: [{ path: 'App > Counter', state: [{ count: 3 }] }] } };
-    expect(withReact.reactState?.note).toMatch(/not restored/i);
+  it('reactState nodes are tagged class or function so restore knows which mechanism to use', () => {
+    const withReact: FrameSnapshotShape = {
+      ...validFrame,
+      reactState: {
+        note: 'best-effort',
+        nodes: [
+          { path: 'App > Counter', kind: 'function', hooks: [3] },
+          { path: 'App > Profile', kind: 'class', state: { name: 'x' } },
+        ],
+      },
+    };
+    expect(withReact.reactState?.nodes[0].kind).toBe('function');
+    expect(withReact.reactState?.nodes[1].kind).toBe('class');
   });
 });
 

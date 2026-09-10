@@ -7,7 +7,7 @@ import { DownloadManager } from './downloadManager';
 import { PermissionManager } from './permissionManager';
 
 import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
-import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
+import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript, REACT_HOOK_STUB_SCRIPT } from './snapshotScripts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -128,7 +128,10 @@ export interface FrameSnapshot {
   fields?: { sel: string; kind: 'value' | 'checked'; value?: string; checked?: boolean }[];
   scroll?: { x: number; y: number };
   historyState?: unknown;
-  reactState?: { note: string; nodes: { path: string; state: unknown }[] };
+  reactState?: {
+    note: string;
+    nodes: ({ path: string; kind: 'class'; state: unknown } | { path: string; kind: 'function'; hooks: unknown[] })[];
+  };
   warnings?: string[];
 }
 
@@ -405,6 +408,18 @@ export class SessionManager {
       dbDir: this.dbDir,
       redactSensitiveHeaders: this.getRedactHeaders(),
     });
+
+    // Install a minimal React DevTools hook stub before any page script runs,
+    // on every navigation in this session (persists across loadURL calls,
+    // including the reload snapshot import triggers). Without it,
+    // window.__REACT_DEVTOOLS_GLOBAL_HOOK__ never exists — that global is
+    // normally injected by the DevTools browser extension, which
+    // TesterBrowser doesn't install — so React never registers with it and
+    // the snapshot's best-effort reactState capture/restore silently finds
+    // nothing. See snapshotScripts.ts for what the stub does and doesn't do.
+    const dbg = view.webContents.debugger;
+    dbg.sendCommand('Page.enable').catch(() => {});
+    dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: REACT_HOOK_STUB_SCRIPT }).catch(() => {});
 
     const color = opts.color ?? TAB_COLORS[this.colorIndex++ % TAB_COLORS.length];
     const testSession: TestSession = {
@@ -1093,9 +1108,9 @@ export class SessionManager {
     if (remaining.length) {
       warnings.push(`${remaining.length} captured frame(s) had no matching frame on restore (page structure changed)`);
     }
-    if (frames.some((f) => f.reactState)) {
-      warnings.push('Snapshot includes captured React state (diagnostic only) — component state is not restored on import.');
-    }
+    // Note: reactState restore outcome (values restored / components matched,
+    // or "no hook present") is reported per-frame by buildRestoreFrameScript
+    // itself via applyFrame() above — no separate summary needed here.
 
     return warnings;
   }
