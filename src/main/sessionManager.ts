@@ -530,6 +530,7 @@ export interface TestSession {
   mockRules: MockRule[];
   resilienceRules: ResilienceRule[];
   a11yInspecting: boolean;
+  devToolsOpen: boolean;
   a11yFocusOverlayOn: boolean;
   emulation: EmulationOverrides | null;
   // Real UA captured at session creation, before any override — the only
@@ -858,6 +859,7 @@ export class SessionManager {
       a11yFocusOverlayOn: false,
       emulation: null,
       defaultUserAgent: view.webContents.getUserAgent(),
+      devToolsOpen: false,
     };
 
     // Handle CDP events: Fetch.requestPaused for mock/resilience rules, Runtime.bindingCalled for a11y hover
@@ -997,6 +999,11 @@ export class SessionManager {
     view.webContents.on('did-stop-loading', () => {
       this.win.webContents.send('session:loading', { id, loading: false });
     });
+
+    // Track DevTools open state via events — isDevToolsOpened() can lag behind
+    // on slow runners because DevTools attaches asynchronously.
+    view.webContents.on('devtools-opened', () => { testSession.devToolsOpen = true; });
+    view.webContents.on('devtools-closed', () => { testSession.devToolsOpen = false; });
 
     // Navigation failure
     view.webContents.on('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -1176,7 +1183,7 @@ export class SessionManager {
   toggleDevTools(id: string) {
     const s = this.sessions.get(id);
     if (!s) return;
-    s.view.webContents.isDevToolsOpened() ? s.view.webContents.closeDevTools() : s.view.webContents.openDevTools();
+    s.devToolsOpen ? s.view.webContents.closeDevTools() : s.view.webContents.openDevTools();
   }
 
   findInPage(id: string, text: string, forward = true, findNext = false) {
