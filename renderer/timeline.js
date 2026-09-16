@@ -156,15 +156,6 @@ function getEventLine2(e) {
 }
 
 
-// <input type="datetime-local"> values (no timezone) are parsed by Date()
-// as local time, matching how `new Date(e.ts).toLocaleTimeString()` already
-// displays event timestamps in the timeline.
-function parseLocalDatetime(value) {
-  if (!value) return null;
-  const t = new Date(value).getTime();
-  return Number.isNaN(t) ? null : t;
-}
-
 export function getTimelineEvents() { return timelineEvents; }
 
 export function renderTimeline() {
@@ -177,8 +168,6 @@ export function renderTimeline() {
     const activeTypes  = activePillValues(document.getElementById('networkPills'), 'type');
     const activeMethods = activePillValues(document.getElementById('networkMethodPills'), 'method');
     const minDuration  = parseFloat(document.getElementById('networkMinDuration').value) || 0;
-    const fromTs       = parseLocalDatetime(document.getElementById('networkFromTs').value);
-    const toTs         = parseLocalDatetime(document.getElementById('networkToTs').value);
 
     filtered = timelineEvents.filter(e => {
       // network-response's own status/timing is merged into its request row
@@ -208,9 +197,6 @@ export function renderTimeline() {
         const tagVisible = (mockOn && tag === 'mock') || (resilienceOn && tag === 'resilience');
         if (!tagVisible) return false;
       }
-
-      if (fromTs !== null && e.ts < fromTs) return false;
-      if (toTs !== null && e.ts > toTs) return false;
 
       if (!netFilter) return true;
       if (e.summary.toLowerCase().includes(netFilter)) return true;
@@ -490,8 +476,6 @@ export function initTimeline() {
   document.getElementById('filterText').addEventListener('input', renderTimeline);
   document.getElementById('networkFilterText').addEventListener('input', renderTimeline);
   document.getElementById('networkMinDuration').addEventListener('input', renderTimeline);
-  document.getElementById('networkFromTs').addEventListener('input', renderTimeline);
-  document.getElementById('networkToTs').addEventListener('input', renderTimeline);
 
   wirePillGroup(document.getElementById('networkPills'), renderTimeline);
   wirePillGroup(document.getElementById('networkMethodPills'), renderTimeline);

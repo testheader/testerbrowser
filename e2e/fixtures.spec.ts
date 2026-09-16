@@ -333,41 +333,6 @@ test('network/slow.html: method filter hides both the request and response rows 
   await expect(resRow).toBeVisible();
 });
 
-test('network/slow.html: date-range "from" filter hides events before the chosen time', async () => {
-  const tab = await navigate('/network/slow.html');
-  await window.click('#consoleTabNetwork');
-  await ensureResPillOn();
-  await window.click('#clearNetworkBtn');
-  await tab.click('button[data-ms="500"]');
-  await window.waitForTimeout(700);
-
-  const row = window.locator('.evt.network-response', { hasText: 'ms=500' });
-  await expect(row).toBeVisible();
-
-  const future = new Date(Date.now() + 5 * 60 * 1000);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const futureLocal = `${future.getFullYear()}-${pad(future.getMonth() + 1)}-${pad(future.getDate())}` +
-    `T${pad(future.getHours())}:${pad(future.getMinutes())}:${pad(future.getSeconds())}`;
-  // Playwright's fill() reads the value back after setting it and throws
-  // "Malformed value" if it doesn't match exactly — flaky for this specific
-  // control (datetime-local with a seconds step), even though setting
-  // .value directly and dispatching input (what a real picker interaction
-  // ultimately does) always lands correctly. Drive it that way instead.
-  await window.evaluate((v) => {
-    const el = document.getElementById('networkFromTs') as HTMLInputElement;
-    el.value = v;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }, futureLocal);
-  await expect(row).toHaveCount(0);
-
-  await window.evaluate(() => {
-    const el = document.getElementById('networkFromTs') as HTMLInputElement;
-    el.value = '';
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  await expect(row).toBeVisible();
-});
-
 test('performance/network-flood.html: burst of 50 requests all get recorded', async () => {
   const tab = await navigate('/performance/network-flood.html');
   await window.click('#consoleTabNetwork');

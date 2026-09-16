@@ -371,11 +371,6 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #networkMinDuration { width: 60px; padding: 3px 6px; border-radius: 3px; flex-shrink: 0;
                       border: 1px solid var(--border-color); background: var(--bg-deep); color: var(--text-primary); font-size: 12px; }
 #networkMinDuration:focus { outline: none; border-color: var(--accent); }
-#networkFromTs, #networkToTs { padding: 2px 6px; border-radius: 3px; flex-shrink: 0;
-                                border: 1px solid var(--border-color); background: var(--bg-deep); color: var(--text-primary);
-                                font-size: 11px; font-family: inherit; color-scheme: dark; }
-#networkFromTs:focus, #networkToTs:focus { outline: none; border-color: var(--accent); }
-body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: light; }
 .filter-label { flex-shrink: 0; font-size: 11px; color: var(--text-muted); text-transform: uppercase;
                 letter-spacing: 0.03em; white-space: nowrap; }
 #filterText { flex: 1; min-width: 60px; padding: 3px 8px; border-radius: 3px;
