@@ -2239,11 +2239,19 @@ export class SessionManager {
     const activeRes = s.resilienceRules.filter(r => r.enabled);
     if (activeMocks.length === 0 && activeRes.length === 0) {
       dbg.sendCommand('Fetch.disable').catch(() => {});
-    } else if (activeRes.length > 0) {
-      dbg.sendCommand('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }).catch(() => {});
     } else {
+      // Use the rules' own URL patterns so Chromium only sends Fetch.requestPaused
+      // for matching requests. Previously, any active resilience rule forced urlPattern:'*',
+      // intercepting every resource on ad-heavy sites and causing CDP channel overload.
+      const patterns: { urlPattern: string; requestStage: 'Request' }[] = [
+        ...activeMocks.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' as const })),
+        ...activeRes.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' as const })),
+      ];
+      const hasWildcard = patterns.some(p => p.urlPattern === '*' || p.urlPattern === '');
       dbg.sendCommand('Fetch.enable', {
-        patterns: activeMocks.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' })),
+        patterns: hasWildcard
+          ? [{ urlPattern: '*', requestStage: 'Request' }]
+          : patterns,
       }).catch(() => {});
     }
   }

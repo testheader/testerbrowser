@@ -200,7 +200,16 @@ export function renderTimeline() {
 
       // Matches summary or payload the same way the console filter already
       // does — space-separated terms AND together, and a `-term` excludes.
-      const searchText = e.payload ? `${e.summary}\n${e.payload}` : e.summary;
+      // Payload is bounded to prevent O(N × payload_size) string allocations
+      // when the ring buffer is full of large CDP events: tags like
+      // resilienceRuleId are appended near the end of the object, so we
+      // search both a prefix and a suffix of large payloads.
+      let searchText = e.summary;
+      if (e.payload) {
+        const raw = e.payload;
+        const clipped = raw.length > 4096 ? raw.slice(0, 2048) + raw.slice(-512) : raw;
+        searchText = `${e.summary}\n${clipped}`;
+      }
       return matchesFreeText(searchText, netFilter);
     });
   } else {
