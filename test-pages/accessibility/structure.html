@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility structure fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / accessibility / structure</nav>
+
+<header data-testid="a11y-banner">Site header</header>
+<nav data-testid="a11y-nav">Nav</nav>
+
+<section aria-label="Intro" data-testid="a11y-section-1">
+  <h1>Page title</h1>
+  <h3>Skipped heading (no h2 in between)</h3>
+</section>
+
+<section aria-label="More content" data-testid="a11y-section-2">
+  <p>More content, no heading here.</p>
+</section>
+
+<!-- Deliberately no <main> element, to exercise the missing-main flag. -->
+
+<footer data-testid="a11y-footer">Site footer</footer>
+</body>
+</html>

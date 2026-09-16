@@ -1663,6 +1663,33 @@ export class SessionManager {
     }
   }
 
+  // Highlights an AX node by its backendDOMNodeId (present on every CDP
+  // Accessibility.AXNode) — used by the Structure view, which works from
+  // whatever the accessibility tree already carries rather than resolving a
+  // CSS selector, so it doesn't depend on the Tree view having been opened.
+  async highlightA11yNode(id: string, backendDOMNodeId: number): Promise<boolean> {
+    const s = this.sessions.get(id);
+    if (!s) return false;
+    const dbg = s.view.webContents.debugger;
+    try {
+      await dbg.sendCommand('DOM.enable');
+      await dbg.sendCommand('Overlay.enable');
+      await dbg.sendCommand('DOM.scrollIntoViewIfNeeded', { backendNodeId: backendDOMNodeId });
+      await dbg.sendCommand('Overlay.highlightNode', {
+        backendNodeId: backendDOMNodeId,
+        highlightConfig: {
+          showInfo: true,
+          contentColor: { r: 255, g: 82, b: 82, a: 0.3 },
+          borderColor: { r: 255, g: 82, b: 82, a: 0.8 },
+        },
+      });
+      setTimeout(() => { dbg.sendCommand('Overlay.hideHighlight').catch(() => {}); }, 2000);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async getCookies(id: string) {
     const s = this.sessions.get(id);
     if (!s) return [];

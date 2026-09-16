@@ -100,3 +100,27 @@ test('Contrast view lists failing/unknown-background elements but not fully-pass
   // Fully passes AA and AAA — should not appear anywhere in the results.
   await expect(content).not.toContainText('Normal contrast text that passes AA and AAA');
 });
+
+test('Structure view lists headings/landmarks in document order and flags a heading skip + missing <main> (#195)', async () => {
+  const urlPath = '/accessibility/structure.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yViewStructureBtn');
+  await window.click('#a11yRefreshBtn');
+
+  const content = window.locator('#a11yContent');
+  await expect(content).toContainText('Page title', { timeout: 10_000 });
+  await expect(content).toContainText('Skipped heading (no h2 in between)');
+  // The h1 → h3 jump is flagged inline on the skipped heading's own row.
+  await expect(content).toContainText('jumped from H1 to H3');
+  // banner/navigation/contentinfo landmarks are present…
+  await expect(content).toContainText('banner');
+  await expect(content).toContainText('navigation');
+  await expect(content).toContainText('contentinfo');
+  // …but there's deliberately no <main>, which should be flagged.
+  await expect(content).toContainText('No <main> landmark found');
+});

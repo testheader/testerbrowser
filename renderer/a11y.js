@@ -6,7 +6,7 @@ const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
 let hoveredRow = null;
 let selectedRow = null;
 let inspecting = false;
-let activeView = 'tree'; // 'tree' | 'violations' | 'contrast'
+let activeView = 'tree'; // 'tree' | 'violations' | 'contrast' | 'structure'
 
 // One entry per view: its toolbar button id, empty-state message, whether
 // it's been manually refreshed at least once (gates reloadA11yIfLoaded the
@@ -18,6 +18,8 @@ const VIEWS = {
                 loaded: false, load: () => loadA11yViolations() },
   contrast:   { btnId: 'a11yViewContrastBtn',   emptyMsg: 'Click Refresh to run a color contrast check for this page.',
                 loaded: false, load: () => loadA11yContrast() },
+  structure:  { btnId: 'a11yViewStructureBtn',  emptyMsg: 'Click Refresh to list headings and landmarks for this page.',
+                loaded: false, load: () => loadA11yStructure() },
 };
 
 export function initA11y() {
@@ -30,6 +32,7 @@ export function initA11y() {
         <button class="a11y-btn on" id="a11yViewTreeBtn" data-view="tree">Tree</button>
         <button class="a11y-btn" id="a11yViewViolationsBtn" data-view="violations">Violations</button>
         <button class="a11y-btn" id="a11yViewContrastBtn" data-view="contrast">Contrast</button>
+        <button class="a11y-btn" id="a11yViewStructureBtn" data-view="structure">Structure</button>
       </div>
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
@@ -492,4 +495,217 @@ function buildContrastRow(item, kind) {
   row.appendChild(textEl);
 
   return row;
+}
+
+// ── Structure (heading & landmark outline) ──────────────────────────────────
+// Pure, DOM-free helpers — exported for unit testing (see
+// src/__tests__/a11y-structure.test.ts) — that turn the raw CDP AX node array
+// (order not guaranteed to match the document) into a flat, document-order
+// list, then pick out headings/landmarks and flag structural issues.
+
+const LANDMARK_ROLES = new Set([
+  'banner', 'navigation', 'main', 'complementary', 'contentinfo', 'region', 'form', 'search',
+]);
+
+export function flattenAxTree(nodes) {
+  if (!nodes || nodes.length === 0) return [];
+  const nodeMap = new Map();
+  for (const n of nodes) nodeMap.set(n.nodeId, n);
+  const root = nodes.find(n => !n.parentId) ?? nodes[0];
+  const ordered = [];
+  const seen = new Set();
+  (function walk(node) {
+    if (!node || seen.has(node.nodeId)) return;
+    seen.add(node.nodeId);
+    ordered.push(node);
+    for (const childId of node.childIds || []) walk(nodeMap.get(childId));
+  })(root);
+  return ordered;
+}
+
+function getAxPropertyValue(node, name) {
+  const prop = node.properties?.find(p => p.name === name);
+  return prop?.value?.value;
+}
+
+export function extractHeadings(orderedNodes) {
+  return orderedNodes
+    .filter(n => n.role?.value === 'heading')
+    .map(n => ({
+      backendDOMNodeId: n.backendDOMNodeId,
+      level: Number(getAxPropertyValue(n, 'level')) || null,
+      name: n.name?.value || '',
+    }));
+}
+
+export function extractLandmarks(orderedNodes) {
+  return orderedNodes
+    .filter(n => LANDMARK_ROLES.has(n.role?.value))
+    .map(n => ({
+      backendDOMNodeId: n.backendDOMNodeId,
+      role: n.role.value,
+      name: n.name?.value || '',
+    }));
+}
+
+// Flags a heading whose level jumps by more than 1 from the previous heading
+// in the sequence (e.g. h2 straight to h4) — the first heading is never
+// flagged regardless of its own level, and a heading with no resolvable
+// level never updates what "previous" means for the next one.
+export function findHeadingSkips(headings) {
+  const skips = [];
+  let prevLevel = null;
+  for (const h of headings) {
+    if (prevLevel !== null && typeof h.level === 'number' && h.level - prevLevel > 1) {
+      skips.push({ heading: h, fromLevel: prevLevel, toLevel: h.level });
+    }
+    if (typeof h.level === 'number') prevLevel = h.level;
+  }
+  return skips;
+}
+
+export function hasMainLandmark(landmarks) {
+  return landmarks.some(l => l.role === 'main');
+}
+
+async function loadA11yStructure() {
+  const content = document.getElementById('a11yContent');
+  if (!content) return;
+  if (!getActiveId()) {
+    content.innerHTML = '<div class="a11y-empty">No active session.</div>';
+    return;
+  }
+  content.innerHTML = '<div class="a11y-loading">Loading document structure…</div>';
+  try {
+    const nodes = await testerBrowser.a11y.getTree(getActiveId());
+    if (!nodes || nodes.length === 0) {
+      content.innerHTML = '<div class="a11y-empty">No accessibility tree available for this page.</div>';
+      return;
+    }
+    const ordered = flattenAxTree(nodes);
+    renderA11yStructure(content, extractHeadings(ordered), extractLandmarks(ordered));
+  } catch (e) {
+    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+  }
+}
+
+function renderA11yStructure(panel, headings, landmarks) {
+  const skips = findHeadingSkips(headings);
+  const skippedNodeIds = new Set(skips.map(s => s.heading.backendDOMNodeId));
+  const mainMissing = !hasMainLandmark(landmarks);
+
+  panel.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'a11y-structure';
+
+  const headingSection = document.createElement('div');
+  headingSection.className = 'a11y-structure-section';
+  headingSection.appendChild(sectionHeading('Headings'));
+  if (headings.length === 0) {
+    headingSection.appendChild(emptyNote('No headings found.'));
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'a11y-structure-list';
+    for (const h of headings) {
+      const skip = skippedNodeIds.has(h.backendDOMNodeId)
+        ? skips.find(s => s.heading.backendDOMNodeId === h.backendDOMNodeId)
+        : null;
+      list.appendChild(buildHeadingRow(h, skip));
+    }
+    headingSection.appendChild(list);
+  }
+  wrap.appendChild(headingSection);
+
+  const landmarkSection = document.createElement('div');
+  landmarkSection.className = 'a11y-structure-section';
+  landmarkSection.appendChild(sectionHeading('Landmarks'));
+  if (mainMissing) {
+    landmarkSection.appendChild(flagNote('No <main> landmark found on this page.'));
+  }
+  if (landmarks.length === 0) {
+    landmarkSection.appendChild(emptyNote('No landmarks found.'));
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'a11y-structure-list';
+    for (const l of landmarks) list.appendChild(buildLandmarkRow(l));
+    landmarkSection.appendChild(list);
+  }
+  wrap.appendChild(landmarkSection);
+
+  panel.appendChild(wrap);
+}
+
+function sectionHeading(text) {
+  const h = document.createElement('h4');
+  h.className = 'a11y-structure-section-heading';
+  h.textContent = text;
+  return h;
+}
+
+function emptyNote(text) {
+  const el = document.createElement('div');
+  el.className = 'a11y-empty';
+  el.textContent = text;
+  return el;
+}
+
+function flagNote(text) {
+  const el = document.createElement('div');
+  el.className = 'a11y-structure-flag';
+  el.textContent = text;
+  return el;
+}
+
+function buildHeadingRow(h, skip) {
+  const li = document.createElement('li');
+  li.className = 'a11y-structure-row' + (skip ? ' a11y-structure-row-flagged' : '');
+  attachHighlightHandler(li, h.backendDOMNodeId);
+
+  const levelEl = document.createElement('span');
+  levelEl.className = 'a11y-structure-level';
+  levelEl.textContent = h.level ? `H${h.level}` : 'H?';
+  li.appendChild(levelEl);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'a11y-structure-name';
+  nameEl.textContent = h.name || '(no accessible name)';
+  li.appendChild(nameEl);
+
+  if (skip) {
+    const flagEl = document.createElement('span');
+    flagEl.className = 'a11y-structure-flag-badge';
+    flagEl.textContent = `skipped level — jumped from H${skip.fromLevel} to H${skip.toLevel}`;
+    li.appendChild(flagEl);
+  }
+
+  return li;
+}
+
+function buildLandmarkRow(l) {
+  const li = document.createElement('li');
+  li.className = 'a11y-structure-row';
+  attachHighlightHandler(li, l.backendDOMNodeId);
+
+  const roleEl = document.createElement('span');
+  roleEl.className = 'a11y-structure-role';
+  roleEl.textContent = l.role;
+  li.appendChild(roleEl);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'a11y-structure-name';
+  nameEl.textContent = l.name || '(no accessible name)';
+  li.appendChild(nameEl);
+
+  return li;
+}
+
+function attachHighlightHandler(row, backendDOMNodeId) {
+  if (typeof backendDOMNodeId !== 'number') return;
+  row.classList.add('a11y-structure-row-clickable');
+  row.title = 'Click to highlight this element on the page';
+  row.addEventListener('click', () => {
+    const id = getActiveId();
+    if (!id) return;
+    testerBrowser.a11y.highlightNode(id, backendDOMNodeId).catch(() => {});
+  });
 }

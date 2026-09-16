@@ -883,6 +883,24 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .a11y-contrast-threshold { font-size: 10px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
 .a11y-contrast-text { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.a11y-structure { display: flex; flex-direction: column; gap: 16px; }
+.a11y-structure-section-heading { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+                                   letter-spacing: 0.04em; color: var(--text-muted); }
+.a11y-structure-flag { color: var(--warn-strong); background: var(--warn-surface); border: 1px solid var(--warn-border);
+                        border-radius: 4px; padding: 4px 8px; font-size: 11px; margin-bottom: 6px; }
+.a11y-structure-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.a11y-structure-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 3px 6px;
+                       border-radius: 3px; font-size: 12px; }
+.a11y-structure-row-clickable { cursor: pointer; }
+.a11y-structure-row-clickable:hover { background: var(--bg-hover); }
+.a11y-structure-row-flagged { border-left: 3px solid var(--warn-border); }
+.a11y-structure-level, .a11y-structure-role { font-family: monospace; font-weight: 600; color: var(--info-strong);
+                                               background: var(--info-surface); border-radius: 3px; padding: 0 5px;
+                                               flex-shrink: 0; }
+.a11y-structure-name { color: var(--text-secondary); }
+.a11y-structure-flag-badge { font-size: 10px; color: var(--warn-strong); background: var(--warn-surface);
+                              border-radius: 3px; padding: 0 5px; }
+
 /* ── Diff panel ── */
 #diffPanel { flex: 1; overflow: hidden; display: none; flex-direction: column; }
 .diff-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
