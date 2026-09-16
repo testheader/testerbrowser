@@ -398,22 +398,34 @@ const FOCUS_OVERLAY_DISABLE_SCRIPT = `
 // #198's focus-trap walk needs to know N (the expected element count) and
 // the expected first/last selectors, computed the same way as #197's
 // overlay, without drawing badges or doing the focus/style diff pass.
+// Also caches element refs in window.__a11yTrapEls so READ_ACTIVE_ELEMENT_SCRIPT
+// can identify the active element by its position index rather than a CSS
+// selector string — two different elements with the same tag and no id (e.g.
+// two <a> links) would otherwise produce identical descriptors, and the
+// classifier would falsely report a cycle when the walk visits both.
 const FOCUS_CANDIDATES_LIST_SCRIPT = `
 (function() {
   ${FOCUS_CANDIDATES_JS}
   var candidates = computeFocusCandidates();
+  window.__a11yTrapEls = candidates.map(function(c) { return c.el; });
   return JSON.stringify(candidates.map(function(c) { return selectorForFocusable(c.el); }));
 })()
 `;
 
-// Reads document.activeElement as the same kind of short selector descriptor
-// FOCUS_CANDIDATES_LIST_SCRIPT produces, so a step in the observed traversal
-// sequence can be compared directly against the expected candidate list.
-// document.body itself (nothing meaningfully focused) reads as ''.
+// Returns the candidate list index of document.activeElement as a string
+// (e.g. '2'), falling back to a tag+id selector for elements not in the list.
+// Using the positional index — set up by FOCUS_CANDIDATES_LIST_SCRIPT —
+// guarantees uniqueness even when multiple elements share the same tag and
+// have no id.
 const READ_ACTIVE_ELEMENT_SCRIPT = `
 (function() {
   var el = document.activeElement;
   if (!el || el === document.body) return '';
+  var els = window.__a11yTrapEls;
+  if (Array.isArray(els)) {
+    var idx = els.indexOf(el);
+    if (idx !== -1) return String(idx);
+  }
   var sel = el.tagName.toLowerCase();
   if (el.id) sel += '#' + el.id;
   return sel;
@@ -1942,12 +1954,26 @@ export class SessionManager {
       if (n === 0) return { forward: empty, backward: empty };
 
       try { await s.view.webContents.executeJavaScript('document.activeElement && document.activeElement.blur();'); } catch {}
-      const forward = await this.walkFocusTrap(s, dbg, n, false, selectors[n - 1]);
+      // Walk with index-based terminals so classifyFocusTrapSequence compares
+      // unique identifiers — READ_ACTIVE_ELEMENT_SCRIPT returns the element's
+      // position index from window.__a11yTrapEls, not its CSS selector, so two
+      // elements sharing the same tag/no-id string can't collide.
+      const forward = await this.walkFocusTrap(s, dbg, n, false, String(n - 1));
 
       await this.focusElementBySelector(s, selectors[n - 1]);
-      const backward = await this.walkFocusTrap(s, dbg, n, true, selectors[0]);
+      const backward = await this.walkFocusTrap(s, dbg, n, true, '0');
 
-      return { forward, backward };
+      // Map positional indices in the result back to human-readable selectors.
+      const idxToSel = (v: string) => {
+        const i = Number(v);
+        return Number.isInteger(i) && i >= 0 && i < n ? selectors[i] : v;
+      };
+      const mapResult = (r: FocusTrapDirectionResult): FocusTrapDirectionResult => ({
+        ...r,
+        trappedElements: r.trappedElements.map(idxToSel),
+        sequence: r.sequence.map(idxToSel),
+      });
+      return { forward: mapResult(forward), backward: mapResult(backward) };
     } catch {
       return null;
     }

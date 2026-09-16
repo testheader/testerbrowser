@@ -64,8 +64,13 @@ test('Ctrl+W closes the active tab', async () => {
 });
 
 test('Ctrl+Shift+T reopens the last closed tab', async () => {
+  const beforeOpen = await tabCount();
   await window.keyboard.press('Control+t');
-  const afterOpen = await tabCount();
+  // Poll until the new tab is in the DOM — keyboard.press() resolves when the
+  // event is dispatched, but the resulting IPC round-trip to open the tab
+  // (main process → renderer DOM update) may not have completed yet.
+  await expect.poll(tabCount).toBe(beforeOpen + 1);
+  const afterOpen = beforeOpen + 1;
   await window.keyboard.press('Control+w');
   await expect.poll(tabCount).toBe(afterOpen - 1);
 
