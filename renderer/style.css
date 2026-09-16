@@ -848,6 +848,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
               padding: 0 4px; font-size: 10px; margin-left: 2px; }
 
 .a11y-view-toggle { display: flex; gap: 4px; }
+.a11y-toolbar-sep { width: 1px; height: 18px; background: var(--border-strong); flex-shrink: 0; align-self: center; }
 
 .a11y-violations { display: flex; flex-direction: column; gap: 14px; }
 .a11y-violation-group-heading { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;

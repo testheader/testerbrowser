@@ -38,6 +38,7 @@ export function initA11y() {
         <button class="a11y-btn" id="a11yViewStructureBtn" data-view="structure">Structure</button>
         <button class="a11y-btn" id="a11yViewAltLabelsBtn" data-view="altlabels">Alt &amp; Labels</button>
       </div>
+      <span class="a11y-toolbar-sep"></span>
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
       <button class="a11y-btn" id="a11yFocusOrderBtn" title="Show a numbered tab-order overlay on the page">Focus order</button>
