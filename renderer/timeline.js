@@ -20,6 +20,12 @@ let autoScroll       = true;
 // failed row's second line can show the URL even though loadingFailed's own
 // CDP payload never carries it.
 const requestMeta = new Map(); // requestId -> { method, url }
+// The Req row now carries the response's status/timing inline (see
+// getEventStatus/getEventDuration below) instead of leaving that to a
+// separate Res row — this map is the response-side counterpart of
+// requestMeta, populated the same way from network-response events as they
+// arrive.
+const responseMeta = new Map(); // requestId -> { status, durationMs }
 const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
 
 // Rows whose level falls outside these five pills (e.g. CDP Log's 'verbose',
@@ -52,9 +58,32 @@ function getEventDisplayMethod(e) {
   return null;
 }
 
+// Req rows show the response's status once it arrives (merged from
+// responseMeta, keyed by the request's own requestId); Res rows never
+// render standalone anymore (see kindVisible below) but the branch is kept
+// for the responseMeta-population pass in fetchTimeline.
 function getEventStatus(e) {
-  if (e.kind !== 'network-response' || !e.payload) return null;
-  try { return JSON.parse(e.payload).response?.status ?? null; } catch { return null; }
+  if (!e.payload) return null;
+  try {
+    const p = JSON.parse(e.payload);
+    if (e.kind === 'network-response') return p.response?.status ?? null;
+    if (e.kind === 'network-request') return responseMeta.get(p.requestId)?.status ?? null;
+  } catch {}
+  return null;
+}
+
+// Same merge as getEventStatus, for the duration column.
+function getEventDuration(e) {
+  if (!e.payload) return null;
+  try {
+    const p = JSON.parse(e.payload);
+    if (e.kind === 'network-response') return typeof p.durationMs === 'number' ? p.durationMs : null;
+    if (e.kind === 'network-request') {
+      const durationMs = responseMeta.get(p.requestId)?.durationMs;
+      return typeof durationMs === 'number' ? durationMs : null;
+    }
+  } catch {}
+  return null;
 }
 
 // The URL for line 2. network-response's own CDP payload does carry
@@ -133,17 +162,23 @@ export function renderTimeline() {
     const toTs         = parseLocalDatetime(document.getElementById('networkToTs').value);
 
     filtered = timelineEvents.filter(e => {
-      const kindVisible = activeTypes.has(e.kind) ||
-        (e.kind === 'network-body' && activeTypes.has('network-response'));
+      // network-response's own status/timing is merged into its request row
+      // (getEventStatus/getEventDuration) instead of rendering as a second,
+      // near-duplicate row — so it's never shown standalone. The Res pill
+      // now solely governs the response body row.
+      const kindVisible = e.kind === 'network-response'
+        ? false
+        : e.kind === 'network-body'
+          ? activeTypes.has('network-response')
+          : activeTypes.has(e.kind);
       if (!kindVisible) return false;
 
       const method = getEventMethod(e);
       const methodVisible = !method || activeMethods.has(KNOWN_METHODS.has(method) ? method : 'Other');
       if (!methodVisible) return false;
 
-      if (minDuration > 0 && e.kind === 'network-response') {
-        let durationMs = null;
-        try { durationMs = JSON.parse(e.payload).durationMs; } catch {}
+      if (minDuration > 0 && e.kind === 'network-request') {
+        const durationMs = getEventDuration(e);
         if (typeof durationMs !== 'number' || durationMs < minDuration) return false;
       }
 
@@ -169,6 +204,9 @@ export function renderTimeline() {
 
   const kindCounts = {};
   for (const e of timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
+  // The Res pill's count reflects what it actually filters now (body rows),
+  // not the network-response events merged into the Req row.
+  kindCounts['network-response'] = kindCounts['network-body'] || 0;
   document.querySelectorAll('#networkPills .filter-pill').forEach(btn => {
     const n    = kindCounts[btn.dataset.type] || 0;
     const span = btn.querySelector('.pill-count');
@@ -287,10 +325,10 @@ export function renderTimeline() {
 
     // Duration is only known once the response arrives (ts - matching
     // request's ts, computed in the recorder) — every other row kind,
-    // including network-request/failed, leaves this column empty.
-    if (e.kind === 'network-response' && e.payload) {
-      let durationMs;
-      try { durationMs = JSON.parse(e.payload).durationMs; } catch {}
+    // including network-failed, leaves this column empty. It's rendered on
+    // the request row (once its response lands) rather than a separate row.
+    {
+      const durationMs = getEventDuration(e);
       if (typeof durationMs === 'number' && Number.isFinite(durationMs)) {
         const durationEl = document.createElement('span');
         durationEl.className = 'evt-duration';
@@ -339,13 +377,22 @@ async function fetchTimeline() {
   const events = await testerBrowser.recording.timeline(activeId, { since: lastTs || undefined, limit: 200 });
   if (events.length > 0) {
     for (const e of events) {
-      if (e.kind !== 'network-request' || !e.payload) continue;
-      try {
-        const p = JSON.parse(e.payload);
-        if (p.requestId && p.request?.method) {
-          requestMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
-        }
-      } catch {}
+      if (!e.payload) continue;
+      if (e.kind === 'network-request') {
+        try {
+          const p = JSON.parse(e.payload);
+          if (p.requestId && p.request?.method) {
+            requestMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
+          }
+        } catch {}
+      } else if (e.kind === 'network-response') {
+        try {
+          const p = JSON.parse(e.payload);
+          if (p.requestId) {
+            responseMeta.set(p.requestId, { status: p.response?.status ?? null, durationMs: p.durationMs });
+          }
+        } catch {}
+      }
     }
     timelineEvents.push(...events);
     if (timelineEvents.length > TIMELINE_MAX) {
@@ -374,6 +421,7 @@ export function resetTimelineForNewSession() {
   timelineEvents.length = 0;
   lastTs = 0;
   requestMeta.clear();
+  responseMeta.clear();
   document.getElementById('timelinePanel').innerHTML = '';
 }
 
@@ -409,6 +457,7 @@ export function initTimeline() {
     // Resetting it to 0 makes `since: lastTs || undefined` drop the filter
     // entirely, so the next poll re-fetches everything Clear just wiped.
     requestMeta.clear();
+    responseMeta.clear();
     timelinePanel.innerHTML = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     autoScroll = true;
