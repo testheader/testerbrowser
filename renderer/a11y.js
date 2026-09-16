@@ -5,13 +5,20 @@ const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
 let hoveredRow = null;
 let selectedRow = null;
-let hasLoadedTreeOnce = false;
-let hasLoadedViolationsOnce = false;
 let inspecting = false;
-let activeView = 'tree'; // 'tree' | 'violations'
+let activeView = 'tree'; // 'tree' | 'violations' | 'contrast'
 
-const TREE_EMPTY_MSG = 'Click Refresh to load the accessibility tree for this page.';
-const VIOLATIONS_EMPTY_MSG = 'Click Refresh to run an accessibility violations audit for this page.';
+// One entry per view: its toolbar button id, empty-state message, whether
+// it's been manually refreshed at least once (gates reloadA11yIfLoaded the
+// same way the original single-view Tree panel did), and its loader.
+const VIEWS = {
+  tree:       { btnId: 'a11yViewTreeBtn',       emptyMsg: 'Click Refresh to load the accessibility tree for this page.',
+                loaded: false, load: () => loadA11yTree() },
+  violations: { btnId: 'a11yViewViolationsBtn', emptyMsg: 'Click Refresh to run an accessibility violations audit for this page.',
+                loaded: false, load: () => loadA11yViolations() },
+  contrast:   { btnId: 'a11yViewContrastBtn',   emptyMsg: 'Click Refresh to run a color contrast check for this page.',
+                loaded: false, load: () => loadA11yContrast() },
+};
 
 export function initA11y() {
   const panel = document.getElementById('a11yPanel');
@@ -22,45 +29,45 @@ export function initA11y() {
       <div class="a11y-view-toggle">
         <button class="a11y-btn on" id="a11yViewTreeBtn" data-view="tree">Tree</button>
         <button class="a11y-btn" id="a11yViewViolationsBtn" data-view="violations">Violations</button>
+        <button class="a11y-btn" id="a11yViewContrastBtn" data-view="contrast">Contrast</button>
       </div>
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
       <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
     </div>
     <div class="a11y-content" id="a11yContent">
-      <div class="a11y-empty">${TREE_EMPTY_MSG}</div>
+      <div class="a11y-empty">${VIEWS.tree.emptyMsg}</div>
     </div>`;
   document.getElementById('a11yRefreshBtn').addEventListener('click', () => {
-    if (activeView === 'tree') loadA11yTree(); else loadA11yViolations();
+    VIEWS[activeView].loaded = true;
+    VIEWS[activeView].load();
   });
   document.getElementById('a11yInspectBtn').addEventListener('click', () => {
     if (inspecting) disableA11yHover(); else enableA11yHover();
   });
-  document.getElementById('a11yViewTreeBtn').addEventListener('click', () => switchA11yView('tree'));
-  document.getElementById('a11yViewViolationsBtn').addEventListener('click', () => switchA11yView('violations'));
+  for (const view of Object.keys(VIEWS)) {
+    document.getElementById(VIEWS[view].btnId).addEventListener('click', () => switchA11yView(view));
+  }
 }
 
 function switchA11yView(view) {
   if (view === activeView) return;
   activeView = view;
-  document.getElementById('a11yViewTreeBtn')?.classList.toggle('on', view === 'tree');
-  document.getElementById('a11yViewViolationsBtn')?.classList.toggle('on', view === 'violations');
+  for (const v of Object.keys(VIEWS)) {
+    document.getElementById(VIEWS[v].btnId)?.classList.toggle('on', v === view);
+  }
   const inspectBtn = document.getElementById('a11yInspectBtn');
   if (inspectBtn) inspectBtn.style.display = view === 'tree' ? '' : 'none';
   if (view !== 'tree' && inspecting) disableA11yHover();
   const content = document.getElementById('a11yContent');
-  if (content) content.innerHTML = `<div class="a11y-empty">${view === 'tree' ? TREE_EMPTY_MSG : VIOLATIONS_EMPTY_MSG}</div>`;
+  if (content) content.innerHTML = `<div class="a11y-empty">${VIEWS[view].emptyMsg}</div>`;
 }
 
 // Called after navigation — only refresh if the active view has already been
 // loaded once, so the initial "Click Refresh…" empty state isn't skipped on
 // first activation.
 export function reloadA11yIfLoaded() {
-  if (activeView === 'tree') {
-    if (hasLoadedTreeOnce) loadA11yTree();
-  } else if (hasLoadedViolationsOnce) {
-    loadA11yViolations();
-  }
+  if (VIEWS[activeView].loaded) VIEWS[activeView].load();
 }
 
 export function enableA11yHover() {
@@ -147,7 +154,6 @@ export async function loadA11yTree() {
     content.innerHTML = '<div class="a11y-empty">No active session.</div>';
     return;
   }
-  hasLoadedTreeOnce = true;
   content.innerHTML = '<div class="a11y-loading">Loading accessibility tree…</div>';
   try {
     const nodes = await testerBrowser.a11y.getTree(getActiveId());
@@ -276,7 +282,6 @@ async function loadA11yViolations() {
     content.innerHTML = '<div class="a11y-empty">No active session.</div>';
     return;
   }
-  hasLoadedViolationsOnce = true;
   content.innerHTML = '<div class="a11y-loading">Running accessibility audit…</div>';
   try {
     const violations = await testerBrowser.a11y.getViolations(getActiveId());
@@ -386,4 +391,105 @@ function highlightA11yNode(selector) {
   const id = getActiveId();
   if (!id) return;
   testerBrowser.a11y.highlightElement(id, selector).catch(() => {});
+}
+
+// ── Contrast (WCAG color contrast checker) ──────────────────────────────────
+
+async function loadA11yContrast() {
+  const content = document.getElementById('a11yContent');
+  if (!content) return;
+  if (!getActiveId()) {
+    content.innerHTML = '<div class="a11y-empty">No active session.</div>';
+    return;
+  }
+  content.innerHTML = '<div class="a11y-loading">Checking color contrast…</div>';
+  try {
+    const issues = await testerBrowser.a11y.getContrastIssues(getActiveId());
+    renderA11yContrast(content, issues ?? []);
+  } catch (e) {
+    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+  }
+}
+
+function renderA11yContrast(panel, issues) {
+  const failures = issues.filter(i => i.status === 'aa-fail');
+  const notes = issues.filter(i => i.status === 'aaa-note');
+  const unknown = issues.filter(i => i.status === 'unknown-background');
+
+  if (failures.length === 0 && notes.length === 0 && unknown.length === 0) {
+    panel.innerHTML = '<div class="a11y-empty">No AA contrast failures found.</div>';
+    return;
+  }
+
+  panel.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'a11y-contrast-results';
+
+  if (failures.length > 0) {
+    wrap.appendChild(buildContrastSection('AA failures', failures, 'fail'));
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'a11y-empty';
+    empty.textContent = 'No AA contrast failures found.';
+    wrap.appendChild(empty);
+  }
+  if (notes.length > 0) {
+    wrap.appendChild(buildContrastSection('Passes AA, fails AAA', notes, 'note'));
+  }
+  if (unknown.length > 0) {
+    wrap.appendChild(buildContrastSection('Unknown background — check manually', unknown, 'unknown'));
+  }
+
+  panel.appendChild(wrap);
+}
+
+function buildContrastSection(title, items, kind) {
+  const section = document.createElement('div');
+  section.className = `a11y-contrast-group a11y-contrast-${kind}`;
+  const heading = document.createElement('h4');
+  heading.className = 'a11y-contrast-group-heading';
+  heading.textContent = `${title} (${items.length})`;
+  section.appendChild(heading);
+  for (const item of items) section.appendChild(buildContrastRow(item, kind));
+  return section;
+}
+
+function buildContrastRow(item, kind) {
+  const row = document.createElement('div');
+  row.className = 'a11y-contrast-row';
+  row.title = 'Click to highlight this element on the page';
+  row.addEventListener('click', () => highlightA11yNode(item.selector));
+
+  const swatches = document.createElement('span');
+  swatches.className = 'a11y-contrast-swatches';
+  const fgSwatch = document.createElement('span');
+  fgSwatch.className = 'a11y-contrast-swatch';
+  fgSwatch.style.background = item.color;
+  fgSwatch.title = `Text color: ${item.color}`;
+  swatches.appendChild(fgSwatch);
+  const bgSwatch = document.createElement('span');
+  bgSwatch.className = 'a11y-contrast-swatch';
+  bgSwatch.style.background = item.backgroundColor || 'transparent';
+  bgSwatch.title = kind === 'unknown' ? 'Background image — no solid color' : `Background color: ${item.backgroundColor}`;
+  swatches.appendChild(bgSwatch);
+  row.appendChild(swatches);
+
+  if (kind !== 'unknown') {
+    const ratioEl = document.createElement('span');
+    ratioEl.className = 'a11y-contrast-ratio';
+    ratioEl.textContent = `${item.ratio.toFixed(1)}:1`;
+    row.appendChild(ratioEl);
+
+    const thresholdEl = document.createElement('span');
+    thresholdEl.className = 'a11y-contrast-threshold';
+    thresholdEl.textContent = `needs ${item.threshold}:1${item.isLarge ? ' (large text)' : ''}`;
+    row.appendChild(thresholdEl);
+  }
+
+  const textEl = document.createElement('span');
+  textEl.className = 'a11y-contrast-text';
+  textEl.textContent = item.text || item.selector;
+  row.appendChild(textEl);
+
+  return row;
 }

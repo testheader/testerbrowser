@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility contrast fixture</title>
+<link rel="stylesheet" href="../shared.css">
+<style>
+  .contrast-low { background: #ffffff; color: #dddddd; font-size: 16px; } /* ~1.4:1 — fails AA (needs 4.5:1) */
+  .contrast-pass { background: #ffffff; color: #333333; font-size: 16px; } /* ~12.6:1 — passes AAA */
+  .contrast-large-borderline { background: #ffffff; color: #808080; font-size: 28px; font-weight: 400; } /* ~3.95:1 — clears the large-text 3:1 AA bar (would fail normal text's 4.5:1) but not the 4.5:1 large-text AAA bar */
+  .contrast-image-bg { background-image: linear-gradient(45deg, #000000, #ffffff); color: #333333; }
+</style>
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / accessibility / contrast</nav>
+<h1>Accessibility contrast fixture</h1>
+<p>Deliberate contrast cases for exercising the A11y tab's Contrast view.</p>
+
+<p class="contrast-low" data-testid="a11y-contrast-low">Low contrast text that fails AA</p>
+<p class="contrast-pass" data-testid="a11y-contrast-pass">Normal contrast text that passes AA and AAA</p>
+<p class="contrast-large-borderline" data-testid="a11y-contrast-large">Large text that clears the large-text bar only</p>
+<p class="contrast-image-bg" data-testid="a11y-contrast-image-bg">Text over a background image, not a solid color</p>
+</body>
+</html>

@@ -8,6 +8,10 @@ import { PermissionManager } from './permissionManager';
 
 import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
 import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
+import {
+  RGB, WCAG_AA_NORMAL, WCAG_AA_LARGE, WCAG_AAA_NORMAL, WCAG_AAA_LARGE,
+  contrastRatio, isLargeText, parseCssColor,
+} from './a11yContrast';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -75,6 +79,97 @@ export function buildAxeRuleConfig(): Record<string, { enabled: boolean }> {
   const config: Record<string, { enabled: boolean }> = {};
   for (const id of A11Y_VIOLATIONS_EXCLUDED_RULES) config[id] = { enabled: false };
   return config;
+}
+
+// Runs entirely in-page via executeJavaScript (same pattern as
+// getLocalStorage below) — walks the DOM to find visible leaf-text elements
+// and resolves each one's effective background by walking up the ancestor
+// chain past transparent backgrounds, same as a browser would composite it.
+// A background-image anywhere in that walk means no reliable solid color
+// exists, so the element is flagged rather than scored. The actual contrast
+// ratio math happens back in the main process (a11yContrast.ts), not here,
+// so that formula stays unit-testable without a DOM.
+const CONTRAST_SCAN_SCRIPT = `
+(function() {
+  function isVisible(el) {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+  function hasDirectText(el) {
+    for (const node of el.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length > 0) return true;
+    }
+    return false;
+  }
+  function isTransparent(colorStr) {
+    if (!colorStr) return true;
+    const m = colorStr.match(/rgba?\\(([^)]+)\\)/);
+    if (!m) return true;
+    const parts = m[1].split(',').map(function(s) { return parseFloat(s.trim()); });
+    const a = parts.length > 3 ? parts[3] : 1;
+    return a === 0;
+  }
+  function effectiveBackground(el) {
+    var node = el;
+    while (node) {
+      var cs = getComputedStyle(node);
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') return { backgroundImage: true };
+      if (!isTransparent(cs.backgroundColor)) return { color: cs.backgroundColor };
+      node = node.parentElement;
+    }
+    return { color: 'rgb(255, 255, 255)' };
+  }
+  function selectorFor(el) {
+    var sel = el.tagName.toLowerCase();
+    if (el.id) return sel + '#' + el.id;
+    if (el.className && typeof el.className === 'string' && el.className.trim()) {
+      sel += '.' + el.className.trim().split(/\\s+/).join('.');
+    }
+    return sel;
+  }
+
+  var results = [];
+  var els = document.querySelectorAll('body *');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    if (!hasDirectText(el) || !isVisible(el)) continue;
+    var cs = getComputedStyle(el);
+    var bg = effectiveBackground(el);
+    results.push({
+      selector: selectorFor(el),
+      text: el.textContent.trim().slice(0, 60),
+      color: cs.color,
+      backgroundColor: bg.backgroundImage ? null : bg.color,
+      backgroundImage: !!bg.backgroundImage,
+      fontSize: parseFloat(cs.fontSize),
+      fontWeight: parseInt(cs.fontWeight, 10) || 400,
+    });
+  }
+  return JSON.stringify(results);
+})()
+`;
+
+interface RawContrastEntry {
+  selector: string;
+  text: string;
+  color: string;
+  backgroundColor: string | null;
+  backgroundImage: boolean;
+  fontSize: number;
+  fontWeight: number;
+}
+
+export interface ContrastIssue {
+  selector: string;
+  text: string;
+  color: string;
+  backgroundColor: string | null;
+  ratio: number | null;
+  threshold: number | null;
+  isLarge: boolean;
+  status: 'aa-fail' | 'aaa-note' | 'unknown-background';
 }
 
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
@@ -1521,6 +1616,43 @@ export class SessionManager {
       `);
     } catch {
       return false;
+    }
+  }
+
+  async getContrastIssues(id: string): Promise<ContrastIssue[] | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    try {
+      const raw = await s.view.webContents.executeJavaScript(CONTRAST_SCAN_SCRIPT) as string;
+      const entries = JSON.parse(raw) as RawContrastEntry[];
+      const results: ContrastIssue[] = [];
+      for (const entry of entries) {
+        const base = {
+          selector: entry.selector,
+          text: entry.text,
+          color: entry.color,
+          backgroundColor: entry.backgroundColor,
+        };
+        if (entry.backgroundImage) {
+          results.push({ ...base, ratio: null, threshold: null, isLarge: false, status: 'unknown-background' });
+          continue;
+        }
+        const fg: RGB | null = parseCssColor(entry.color);
+        const bg: RGB | null = parseCssColor(entry.backgroundColor);
+        if (!fg || !bg) continue;
+        const large = isLargeText(entry.fontSize, entry.fontWeight);
+        const ratio = contrastRatio(fg, bg);
+        const aaThreshold = large ? WCAG_AA_LARGE : WCAG_AA_NORMAL;
+        const aaaThreshold = large ? WCAG_AAA_LARGE : WCAG_AAA_NORMAL;
+        if (ratio < aaThreshold) {
+          results.push({ ...base, ratio, threshold: aaThreshold, isLarge: large, status: 'aa-fail' });
+        } else if (ratio < aaaThreshold) {
+          results.push({ ...base, ratio, threshold: aaaThreshold, isLarge: large, status: 'aaa-note' });
+        }
+      }
+      return results;
+    } catch {
+      return null;
     }
   }
 

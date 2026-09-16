@@ -80,3 +80,23 @@ test('Violations view finds real axe-core issues via Refresh (#193)', async () =
   await expect(content).toContainText('duplicate-id', { timeout: 10_000 });
   await expect(content).toContainText('aria-roles');
 });
+
+test('Contrast view lists failing/unknown-background elements but not fully-passing ones (#194)', async () => {
+  const urlPath = '/accessibility/contrast.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yViewContrastBtn');
+  await window.click('#a11yRefreshBtn');
+
+  const content = window.locator('#a11yContent');
+  // Fails AA outright (~1.4:1 on white).
+  await expect(content).toContainText('Low contrast text that fails AA', { timeout: 10_000 });
+  // Text over a background-image — flagged unknown, not scored.
+  await expect(content).toContainText('Text over a background image, not a solid color');
+  // Fully passes AA and AAA — should not appear anywhere in the results.
+  await expect(content).not.toContainText('Normal contrast text that passes AA and AAA');
+});

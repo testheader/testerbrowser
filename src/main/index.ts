@@ -336,6 +336,7 @@ ipcMain.handle('a11y:getTree',        (_e, id: string) => sessionManager?.getA11
 ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
 ipcMain.handle('a11y:getViolations',  (_e, id: string) => sessionManager?.getA11yViolations(id) ?? null);
 ipcMain.handle('a11y:highlightElement', (_e, id: string, selector: string) => sessionManager?.highlightA11yElement(id, selector) ?? false);
+ipcMain.handle('a11y:getContrastIssues', (_e, id: string) => sessionManager?.getContrastIssues(id) ?? null);
 ipcMain.handle('session:captureScreenshot', (_e, id: string, opts?: { fullPage?: boolean }) => sessionManager?.captureScreenshot(id, opts) ?? null);
 ipcMain.handle('theme:get', () => themeStore.get().scheme);
 ipcMain.handle('theme:set', (_e, scheme: string) => {
