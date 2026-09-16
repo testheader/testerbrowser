@@ -17,9 +17,10 @@ test.beforeAll(async () => {
   window = await getMainWindow(app);
   await window.waitForLoadState('load');
 
-  // This file's tests are all about response/body row rendering, which the
-  // Res pill defaulting off (#176) would otherwise hide — turn it on once
-  // for the whole file rather than per test.
+  // This file's tests are all about body row rendering, which the Res pill
+  // defaulting off (#176) would otherwise hide — turn it on once for the
+  // whole file rather than per test. (Res now governs the response body row
+  // rather than a separate response-metadata row — #189.)
   await window.click('#consoleTabNetwork');
   await window.click('#networkPills .filter-pill[data-type="network-response"]');
 });
@@ -43,17 +44,9 @@ test('no event row has its own horizontal scrollbar', async () => {
   await window.click('#consoleTabNetwork');
   await window.waitForTimeout(500);
 
-  // Response rows still wrap onto a second line rather than scrolling.
-  const resRow = window.locator('.evt.network-response', { hasText: 'y'.repeat(50) });
-  await expect(resRow).toBeVisible();
-  const line2Box = await resRow.locator('.evt-line2').evaluate(el => ({
-    scrollWidth: el.scrollWidth,
-    clientWidth: el.clientWidth,
-  }));
-  expect(line2Box.scrollWidth).toBeLessThanOrEqual(line2Box.clientWidth + 1);
-
-  // Request rows (#178) take the other route to the same guarantee: single
-  // line, URL truncated with an ellipsis instead of wrapping or scrolling.
+  // Request rows (#178) are single line, URL truncated with an ellipsis
+  // instead of wrapping or scrolling — the long query string in the URL
+  // never grows the row's scrollWidth past its own visible width.
   const reqRow = window.locator('.evt.network-request', { hasText: 'y'.repeat(50) });
   await expect(reqRow).toBeVisible();
   const reqBox = await reqRow.evaluate(el => ({
@@ -85,35 +78,35 @@ test('a long request URL truncates with an ellipsis instead of wrapping', async 
   await expect(urlSpan).toHaveCSS('white-space', 'nowrap');
 });
 
-test('a row renders as two visual lines: line 1 has timestamp/method/status, line 2 has the URL', async () => {
+test('a request row renders as a single line with timestamp/method/status and the URL all inline', async () => {
   await window.click('#clearNetworkBtn');
   const tab = await navigate('/network/status-codes.html');
   await window.click('#consoleTabNetwork');
   await tab.click('button:text-is("404")');
   await window.waitForTimeout(1_500);
 
-  const resRow = window.locator('.evt.network-response', { hasText: '/network/status/404' });
-  await expect(resRow).toBeVisible();
+  // Status/timing merge into the request row itself once the response
+  // arrives, rather than a separate response row (#189).
+  const reqRow = window.locator('.evt.network-request', { hasText: '/network/status/404' });
+  await expect(reqRow).toBeVisible();
 
-  await expect(resRow.locator('.evt-line1')).toBeVisible();
-  await expect(resRow.locator('.evt-line1 .evt-ts')).toBeVisible();
-  await expect(resRow.locator('.evt-line1 .evt-method')).toHaveText('GET');
-  await expect(resRow.locator('.evt-line1 .evt-status')).toHaveText('404');
-  await expect(resRow.locator('.evt-line2')).toContainText('/network/status/404');
+  await expect(reqRow.locator('.evt-line1')).toBeVisible();
+  await expect(reqRow.locator('.evt-line1 .evt-ts')).toBeVisible();
+  await expect(reqRow.locator('.evt-line1 .evt-method')).toHaveText('GET');
+  await expect(reqRow.locator('.evt-line1 .evt-status')).toHaveText('404');
+  await expect(reqRow.locator('.evt-inline-url')).toContainText('/network/status/404');
 
-  // Line 1 and line 2 are genuinely on different visual lines.
-  const line1Box = await resRow.locator('.evt-line1').boundingBox();
-  const line2Box = await resRow.locator('.evt-line2').boundingBox();
-  expect(line2Box!.y).toBeGreaterThan(line1Box!.y);
+  // Single line: unlike a body/failed row, a request row never gets a line2.
+  await expect(reqRow.locator('.evt-line2')).toHaveCount(0);
 });
 
-test('line 2 begins at the same horizontal column as the method on line 1', async () => {
+test('a BODY row\'s line 2 begins at the same horizontal column as the method on line 1', async () => {
   const tab = await navigate('/network/status-codes.html');
   await window.click('#consoleTabNetwork');
   await tab.click('button:text-is("200")');
   await window.waitForTimeout(1_500);
 
-  const row = window.locator('.evt.network-response', { hasText: '/network/status/200' }).first();
+  const row = window.locator('.evt.network-body').first();
   await expect(row).toBeVisible();
 
   const methodX = await row.locator('.evt-line1-rest').evaluate(el => el.getBoundingClientRect().left);
@@ -151,16 +144,16 @@ test('a BODY row shows "BODY" as its method (not the underlying request method) 
   await expect(bodyRow.locator('.evt-line2')).toContainText('"ok":true');
 });
 
-test('a response row still shows its duration, and the panel still auto-scrolls to the newest event', async () => {
+test('a request row still shows its duration once the response lands, and the panel still auto-scrolls to the newest event', async () => {
   await window.click('#consoleTabNetwork');
   await window.click('#clearNetworkBtn');
   const tab = await navigate('/network/slow.html');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
 
-  const resRow = window.locator('.evt.network-response', { hasText: 'ms=500' });
-  await expect(resRow).toBeVisible();
-  await expect(resRow.locator('.evt-duration')).toHaveText(/^\d+ms$/);
+  const reqRow = window.locator('.evt.network-request', { hasText: 'ms=500' });
+  await expect(reqRow).toBeVisible();
+  await expect(reqRow.locator('.evt-duration')).toHaveText(/^\d+ms$/);
 
   const panel = window.locator('#timelinePanel');
   const atBottom = await panel.evaluate(el => el.scrollTop + el.clientHeight >= el.scrollHeight - 5);

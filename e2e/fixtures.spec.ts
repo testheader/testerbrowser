@@ -153,7 +153,7 @@ test('a request with a very long URL neither wraps nor scrolls horizontally — 
   // the URL, and never gains a horizontal scrollbar either — the URL just
   // truncates with an ellipsis. (#166's original regression this guarded —
   // wrapping onto additional lines — no longer applies to this row kind;
-  // see e2e/timeline-layout.spec.ts for the response-row case, which still
+  // see e2e/timeline-layout.spec.ts for the body-row case, which still
   // wraps as #166 intended.)
   const box = await row.evaluate(el => ({
     height: el.getBoundingClientRect().height,
@@ -190,16 +190,17 @@ test('network/status-codes.html: Res and Err pills default off, hiding those row
   // Captured (the pill count reflects everything in the buffer)...
   const resPillCount = resPillBtn.locator('.pill-count');
   await expect(resPillCount).not.toHaveText('');
-  // ...but not rendered while the pill is off.
-  await expect(window.locator('.evt.network-response')).toHaveCount(0);
+  // ...but not rendered while the pill is off — Res now governs the response
+  // body row, not a separate response-metadata row (#189).
+  await expect(window.locator('.evt.network-body')).toHaveCount(0);
 
   // Toggling it on shows the rows already in the buffer — nothing was dropped.
   await resPillBtn.click();
-  await expect(window.locator('.evt.network-response', { hasText: '/network/status/404' })).toBeVisible();
+  await expect(window.locator('.evt.network-body', { hasText: '404' })).toBeVisible();
 
   // Toggling back off round-trips cleanly.
   await resPillBtn.click();
-  await expect(window.locator('.evt.network-response')).toHaveCount(0);
+  await expect(window.locator('.evt.network-body')).toHaveCount(0);
 });
 
 test('network/status-codes.html: timeline rows show a time-only, date-free timestamp', async () => {
@@ -209,10 +210,10 @@ test('network/status-codes.html: timeline rows show a time-only, date-free times
   await tab.click('button:text-is("404")');
   await window.waitForTimeout(1_500);
 
-  const resRow = window.locator('.evt.network-response', { hasText: '/network/status/404' }).first();
-  await expect(resRow).toBeVisible();
-  await expect(resRow.locator('.evt-ts')).toHaveText(/^\[\d{2}:\d{2}:\d{2}\]$/);
-  await expect(resRow.locator('.evt-ts-date')).toHaveCount(0);
+  const bodyRow = window.locator('.evt.network-body', { hasText: '404' }).first();
+  await expect(bodyRow).toBeVisible();
+  await expect(bodyRow.locator('.evt-ts')).toHaveText(/^\[\d{2}:\d{2}:\d{2}\]$/);
+  await expect(bodyRow.locator('.evt-ts-date')).toHaveCount(0);
 });
 
 test('network/status-codes.html: Clear button empties the log and it stays empty on the next poll', async () => {
@@ -225,31 +226,30 @@ test('network/status-codes.html: Clear button empties the log and it stays empty
   await expect(resPill).not.toHaveText('');
 
   await window.click('#clearNetworkBtn');
-  await expect(window.locator('.evt.network-request, .evt.network-response')).toHaveCount(0);
+  await expect(window.locator('.evt.network-request, .evt.network-body')).toHaveCount(0);
   await expect(resPill).toHaveText('');
 
   // pollTimeline runs every 1s — the bug re-fetched everything from the
   // backend ring buffer on the next tick because Clear reset the polling
   // cursor back to 0, dropping the `since` filter.
   await window.waitForTimeout(1_500);
-  await expect(window.locator('.evt.network-request, .evt.network-response')).toHaveCount(0);
+  await expect(window.locator('.evt.network-request, .evt.network-body')).toHaveCount(0);
   await expect(resPill).toHaveText('');
 });
 
 test('network/slow.html: free-text filter also matches payload content not present in the summary line', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
-  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
 
-  const row = window.locator('.evt.network-response', { hasText: 'ms=500' });
+  const row = window.locator('.evt.network-request', { hasText: 'ms=500' });
   await expect(row).toBeVisible();
 
-  // "text/plain" is the response's content-type header — present in the
-  // recorded payload JSON, but not in the row's rendered summary text.
-  await window.fill('#networkFilterText', 'text/plain');
+  // "frameId" is a CDP request payload field recorded with every request —
+  // present in the row's underlying JSON but never rendered in the row itself.
+  await window.fill('#networkFilterText', 'frameid');
   await expect(row).toBeVisible();
 
   await window.fill('#networkFilterText', 'no-such-substring-anywhere');
@@ -258,79 +258,66 @@ test('network/slow.html: free-text filter also matches payload content not prese
   await window.fill('#networkFilterText', '');
 });
 
-test('network/slow.html: min-duration filter hides fast responses but keeps slow ones', async () => {
+test('network/slow.html: min-duration filter hides fast requests but keeps slow ones', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
-  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
   await tab.click('button[data-ms="2000"]');
   await window.waitForTimeout(2500);
 
-  const row500  = window.locator('.evt.network-response', { hasText: 'ms=500'  });
-  const row2000 = window.locator('.evt.network-response', { hasText: 'ms=2000' });
+  const row500  = window.locator('.evt.network-request', { hasText: 'ms=500'  });
+  const row2000 = window.locator('.evt.network-request', { hasText: 'ms=2000' });
   await expect(row500).toBeVisible();
   await expect(row2000).toBeVisible();
 
-  // Only network-response rows carry a duration — the request row for the
-  // 500ms call must stay visible even while its response is filtered out.
+  // Duration now lives on the request row itself, merged in once its
+  // response arrives (#189) — filtering by it hides the whole row.
   await window.fill('#networkMinDuration', '1000');
   await expect(row500).toHaveCount(0);
   await expect(row2000).toBeVisible();
-  await expect(window.locator('.evt.network-request', { hasText: 'ms=500' })).toBeVisible();
 
   await window.fill('#networkMinDuration', '');
   await expect(row500).toBeVisible();
 });
 
-test('network/slow.html: response rows show a duration column that stays visible without scrolling', async () => {
+test('network/slow.html: request rows show a duration column once the response lands, staying visible without scrolling', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
-  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
 
-  const resRow = window.locator('.evt.network-response', { hasText: 'ms=500' });
-  await expect(resRow).toBeVisible();
-  await expect(resRow.locator('.evt-duration')).toHaveText(/^\d+ms$/);
+  const reqRow = window.locator('.evt.network-request', { hasText: 'ms=500' });
+  await expect(reqRow).toBeVisible();
+  await expect(reqRow.locator('.evt-duration')).toHaveText(/^\d+ms$/);
 
   // The duration cell sits outside the row's scrollable text region, so its
   // right edge stays within the panel's own visible width — no scrolling
   // needed to see it, even though the row's text can overflow further left.
   const panelWidth = await window.locator('#timelinePanel').evaluate(el => el.clientWidth);
-  const durationRight = await resRow.locator('.evt-duration').evaluate(el => el.getBoundingClientRect().right);
+  const durationRight = await reqRow.locator('.evt-duration').evaluate(el => el.getBoundingClientRect().right);
   const panelLeft = await window.locator('#timelinePanel').evaluate(el => el.getBoundingClientRect().left);
   expect(durationRight - panelLeft).toBeLessThanOrEqual(panelWidth);
-
-  // Non-network rows (and network-request rows, which don't know their own
-  // duration until the response arrives) show nothing in that column.
-  const reqRow = window.locator('.evt.network-request', { hasText: 'ms=500' });
-  await expect(reqRow.locator('.evt-duration')).toHaveCount(0);
 });
 
-test('network/slow.html: method filter hides both the request and response rows for that method', async () => {
+test('network/slow.html: method filter hides the request row for that method', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
-  await ensureResPillOn();
   await window.click('#clearNetworkBtn');
   await tab.click('button[data-ms="500"]');
   await window.waitForTimeout(700);
 
-  const reqRow = window.locator('.evt.network-request',  { hasText: 'ms=500' });
-  const resRow = window.locator('.evt.network-response', { hasText: 'ms=500' });
+  const reqRow = window.locator('.evt.network-request', { hasText: 'ms=500' });
   await expect(reqRow).toBeVisible();
-  await expect(resRow).toBeVisible();
 
   const getPill = window.locator('#networkMethodPills .filter-pill[data-method="GET"]');
   await getPill.click(); // turn GET off — the fixture only issues GET requests
   await expect(reqRow).toHaveCount(0);
-  await expect(resRow).toHaveCount(0);
 
   await getPill.click(); // back on
   await expect(reqRow).toBeVisible();
-  await expect(resRow).toBeVisible();
 });
 
 test('performance/network-flood.html: burst of 50 requests all get recorded', async () => {
