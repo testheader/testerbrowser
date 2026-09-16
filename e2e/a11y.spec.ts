@@ -183,3 +183,38 @@ test('Focus order overlay computes tab order (positive tabindex first) and flags
   await window.click('#a11yFocusOrderBtn');
   await expect(window.locator('#a11yFocusOrderBtn')).not.toHaveClass(/on/);
 });
+
+test('Focus trap detector flags a deliberate trap and names the trapped elements (#198)', async () => {
+  const urlPath = '/accessibility/focus-trap.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yFocusTrapBtn');
+
+  const content = window.locator('#a11yContent');
+  // The walk sends real, sequential CDP key events (up to 2×N per
+  // direction) — give it real time to finish rather than the usual 10s.
+  await expect(content).toContainText('Focus trap', { timeout: 20_000 });
+  await expect(content).toContainText('button#a11yTrapA');
+  await expect(content).toContainText('button#a11yTrapB');
+  await expect(content).toContainText('button#a11yTrapC');
+});
+
+test('Focus trap detector reports no trap on a clean page (#198)', async () => {
+  const urlPath = '/accessibility/index.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yFocusTrapBtn');
+
+  const content = window.locator('#a11yContent');
+  await expect(content).toContainText('No focus trap detected', { timeout: 20_000 });
+  // Both directions (Forward and Backward) should report clean, not just one.
+  await expect(content.locator('.a11y-empty', { hasText: 'No focus trap detected' })).toHaveCount(2);
+});

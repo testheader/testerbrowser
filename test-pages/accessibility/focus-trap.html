@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility focus trap fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / accessibility / focus-trap</nav>
+<h1>Accessibility focus trap fixture</h1>
+<p>A deliberate focus trap: pressing Tab or Shift+Tab inside the trap below
+never reaches the "after" button, because the container's own keydown
+handler intercepts the real key and manually cycles focus among its three
+buttons.</p>
+
+<div id="a11yTrap" data-testid="a11y-trap">
+  <button type="button" id="a11yTrapA" data-testid="a11y-trap-a">Trap A</button>
+  <button type="button" id="a11yTrapB" data-testid="a11y-trap-b">Trap B</button>
+  <button type="button" id="a11yTrapC" data-testid="a11y-trap-c">Trap C</button>
+</div>
+
+<button type="button" id="a11yAfterTrap" data-testid="a11y-after-trap">After the trap</button>
+
+<script>
+  var trapButtons = ['a11yTrapA', 'a11yTrapB', 'a11yTrapC'];
+  document.getElementById('a11yTrap').addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    e.preventDefault();
+    var current = trapButtons.indexOf(document.activeElement.id);
+    var delta = e.shiftKey ? -1 : 1;
+    var next = (current + delta + trapButtons.length) % trapButtons.length;
+    document.getElementById(trapButtons[next]).focus();
+  });
+</script>
+</body>
+</html>

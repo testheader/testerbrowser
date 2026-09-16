@@ -41,6 +41,7 @@ export function initA11y() {
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
       <button class="a11y-btn" id="a11yFocusOrderBtn" title="Show a numbered tab-order overlay on the page">Focus order</button>
+      <button class="a11y-btn" id="a11yFocusTrapBtn" title="Check whether Tab/Shift+Tab can reach every part of the page">Focus trap</button>
       <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
     </div>
     <div class="a11y-content" id="a11yContent">
@@ -64,6 +65,7 @@ export function initA11y() {
       enableA11yFocusOrder();
     }
   });
+  document.getElementById('a11yFocusTrapBtn').addEventListener('click', () => runA11yFocusTrapCheck());
   for (const view of Object.keys(VIEWS)) {
     document.getElementById(VIEWS[view].btnId).addEventListener('click', () => switchA11yView(view));
   }
@@ -897,4 +899,73 @@ function buildLabelIssueRow(field) {
   li.appendChild(nameEl);
 
   return li;
+}
+
+// ── Focus trap detector ──────────────────────────────────────────────────
+// A one-shot check, not a toggle like Focus order — it dispatches real Tab/
+// Shift+Tab key presses (briefly moving the page's own focus around) and
+// reports directly into the shared content area, the same way a view's
+// Refresh does.
+
+async function runA11yFocusTrapCheck() {
+  const id = getActiveId();
+  if (!id) return;
+  const content = document.getElementById('a11yContent');
+  if (content) content.innerHTML = '<div class="a11y-loading">Checking for focus traps (dispatching real Tab key presses)…</div>';
+  try {
+    const result = await testerBrowser.a11y.detectFocusTrap(id);
+    if (content) renderA11yFocusTrap(content, result);
+  } catch (e) {
+    if (content) content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+  }
+}
+
+function renderA11yFocusTrap(panel, result) {
+  if (!result) {
+    panel.innerHTML = '<div class="a11y-empty">Could not run the focus trap check for this page.</div>';
+    return;
+  }
+  panel.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'a11y-structure';
+  wrap.appendChild(buildFocusTrapSection('Forward (Tab)', result.forward));
+  wrap.appendChild(buildFocusTrapSection('Backward (Shift+Tab)', result.backward));
+  panel.appendChild(wrap);
+}
+
+function buildFocusTrapSection(title, direction) {
+  const section = document.createElement('div');
+  section.className = 'a11y-structure-section';
+  section.appendChild(sectionHeading(title));
+  if (direction.passed) {
+    section.appendChild(emptyNote('No focus trap detected.'));
+    return section;
+  }
+  section.appendChild(flagNote(focusTrapMessage(direction)));
+  if (direction.trappedElements.length > 0) {
+    const list = document.createElement('ul');
+    list.className = 'a11y-structure-list';
+    for (const selector of direction.trappedElements) list.appendChild(buildFocusTrapElementRow(selector));
+    section.appendChild(list);
+  }
+  return section;
+}
+
+function buildFocusTrapElementRow(selector) {
+  const li = document.createElement('li');
+  li.className = 'a11y-structure-row a11y-structure-row-clickable';
+  li.title = 'Click to highlight this element on the page';
+  li.textContent = selector;
+  li.addEventListener('click', () => highlightA11yNode(selector));
+  return li;
+}
+
+function focusTrapMessage(direction) {
+  if (direction.kind === 'cycle') {
+    return `Focus trap: cycles among ${direction.trappedElements.length} elements without ever reaching the rest of the page.`;
+  }
+  if (direction.kind === 'dead-end') {
+    return 'Focus trap: focus stopped advancing partway through the page (dead end).';
+  }
+  return "Focus trap check didn't complete — couldn't confirm the walk reached the end of the page.";
 }

@@ -275,19 +275,14 @@ export interface FocusOrderItem {
   noVisibleIndicator: boolean;
 }
 
-// Guarded by window.__a11yFocusSetup, same idiom as __a11yHoverSetup in
-// setA11yInspect below. Computes tab order, draws a numbered badge per
-// element (in a single overlay root appended to <body>, cleared entirely by
-// the disable script), then focuses each element in turn to diff its
-// computed outline/box-shadow/border against the unfocused state — an
-// element with no detectable change is flagged as having no visible focus
-// indicator. Runs synchronously (no CDP awaitPromise needed) and returns the
-// list directly as the Runtime.evaluate result.
-const FOCUS_OVERLAY_ENABLE_SCRIPT = `
-(function() {
-  if (window.__a11yFocusSetup) return JSON.stringify(window.__a11yFocusOrderList || []);
-  window.__a11yFocusSetup = true;
-
+// Shared by FOCUS_OVERLAY_ENABLE_SCRIPT (#197) and FOCUS_CANDIDATES_LIST_SCRIPT
+// (#198, which needs the same element count and ordering to know the
+// expected trap-free traversal length and terminal element) — defines
+// isFocusable/computeFocusCandidates as plain functions, interpolated
+// verbatim into each injected script's own IIFE rather than composed at the
+// Node level, since there's no way to share an actual JS module with page-
+// injected script text.
+const FOCUS_CANDIDATES_JS = `
   function isVisible(el) {
     var cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') return false;
@@ -308,19 +303,46 @@ const FOCUS_OVERLAY_ENABLE_SCRIPT = `
       el.tabIndex >= 0;
   }
 
-  var all = Array.prototype.slice.call(document.querySelectorAll('*'));
-  var candidates = [];
-  for (var i = 0; i < all.length; i++) {
-    if (!isFocusable(all[i])) continue;
-    var attr = all[i].getAttribute('tabindex');
-    candidates.push({ el: all[i], tabindex: attr !== null ? parseInt(attr, 10) : 0, domIndex: candidates.length });
+  function computeFocusCandidates() {
+    var all = Array.prototype.slice.call(document.querySelectorAll('*'));
+    var candidates = [];
+    for (var i = 0; i < all.length; i++) {
+      if (!isFocusable(all[i])) continue;
+      var attr = all[i].getAttribute('tabindex');
+      candidates.push({ el: all[i], tabindex: attr !== null ? parseInt(attr, 10) : 0, domIndex: candidates.length });
+    }
+    candidates.sort(function(a, b) {
+      var aPos = a.tabindex > 0 ? a.tabindex : Infinity;
+      var bPos = b.tabindex > 0 ? b.tabindex : Infinity;
+      if (aPos !== bPos) return aPos - bPos;
+      return a.domIndex - b.domIndex;
+    });
+    return candidates;
   }
-  candidates.sort(function(a, b) {
-    var aPos = a.tabindex > 0 ? a.tabindex : Infinity;
-    var bPos = b.tabindex > 0 ? b.tabindex : Infinity;
-    if (aPos !== bPos) return aPos - bPos;
-    return a.domIndex - b.domIndex;
-  });
+
+  function selectorForFocusable(el) {
+    var sel = el.tagName.toLowerCase();
+    if (el.id) sel += '#' + el.id;
+    return sel;
+  }
+`;
+
+// Guarded by window.__a11yFocusSetup, same idiom as __a11yHoverSetup in
+// setA11yInspect below. Computes tab order, draws a numbered badge per
+// element (in a single overlay root appended to <body>, cleared entirely by
+// the disable script), then focuses each element in turn to diff its
+// computed outline/box-shadow/border against the unfocused state — an
+// element with no detectable change is flagged as having no visible focus
+// indicator. Runs synchronously (no CDP awaitPromise needed) and returns the
+// list directly as the Runtime.evaluate result.
+const FOCUS_OVERLAY_ENABLE_SCRIPT = `
+(function() {
+  if (window.__a11yFocusSetup) return JSON.stringify(window.__a11yFocusOrderList || []);
+  window.__a11yFocusSetup = true;
+
+  ${FOCUS_CANDIDATES_JS}
+
+  var candidates = computeFocusCandidates();
 
   var overlayRoot = document.createElement('div');
   overlayRoot.id = '__a11yFocusOverlayRoot';
@@ -347,10 +369,8 @@ const FOCUS_OVERLAY_ENABLE_SCRIPT = `
       'text-align:center;padding:0 3px;box-shadow:0 0 0 1px #fff;';
     overlayRoot.appendChild(badge);
 
-    var sel = el.tagName.toLowerCase();
-    if (el.id) sel += '#' + el.id;
     results.push({
-      selector: sel,
+      selector: selectorForFocusable(el),
       order: idx + 1,
       tabindex: candidates[idx].tabindex,
       text: (el.textContent || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 60),
@@ -374,6 +394,77 @@ const FOCUS_OVERLAY_DISABLE_SCRIPT = `
   if (root) root.remove();
 })()
 `;
+
+// #198's focus-trap walk needs to know N (the expected element count) and
+// the expected first/last selectors, computed the same way as #197's
+// overlay, without drawing badges or doing the focus/style diff pass.
+const FOCUS_CANDIDATES_LIST_SCRIPT = `
+(function() {
+  ${FOCUS_CANDIDATES_JS}
+  var candidates = computeFocusCandidates();
+  return JSON.stringify(candidates.map(function(c) { return selectorForFocusable(c.el); }));
+})()
+`;
+
+// Reads document.activeElement as the same kind of short selector descriptor
+// FOCUS_CANDIDATES_LIST_SCRIPT produces, so a step in the observed traversal
+// sequence can be compared directly against the expected candidate list.
+// document.body itself (nothing meaningfully focused) reads as ''.
+const READ_ACTIVE_ELEMENT_SCRIPT = `
+(function() {
+  var el = document.activeElement;
+  if (!el || el === document.body) return '';
+  var sel = el.tagName.toLowerCase();
+  if (el.id) sel += '#' + el.id;
+  return sel;
+})()
+`;
+
+export interface FocusTrapDirectionResult {
+  passed: boolean;
+  kind: 'pass' | 'cycle' | 'dead-end' | 'incomplete';
+  trappedElements: string[];
+  sequence: string[];
+}
+
+export interface FocusTrapResult {
+  forward: FocusTrapDirectionResult;
+  backward: FocusTrapDirectionResult;
+}
+
+// Pure classification over an already-observed traversal sequence (real Tab/
+// Shift+Tab presses, dispatched and read by detectA11yFocusTrap below) — the
+// CDP round-trips that produce `sequence` aren't unit-testable, but this
+// judgment call is.
+//
+// A repeat found before `expectedTerminal` is ever reached is a genuine trap
+// (focus never escapes to the intended end of the page): a repeat of a
+// single element is a dead end, a repeat of more than one is a cycle,
+// reported as the deduplicated set of elements between the repeat and its
+// first occurrence. Reaching `expectedTerminal` at any point is a pass even
+// if the sequence wraps around afterward — normal browsers wrap Tab from the
+// last focusable element back toward the first, which is not itself a trap.
+export function classifyFocusTrapSequence(sequence: string[], expectedTerminal: string): FocusTrapDirectionResult {
+  if (sequence.length === 0) {
+    return { passed: false, kind: 'incomplete', trappedElements: [], sequence };
+  }
+  const terminalIndex = sequence.indexOf(expectedTerminal);
+  const seen = new Map<string, number>();
+  const searchEnd = terminalIndex === -1 ? sequence.length : terminalIndex;
+  for (let i = 0; i < searchEnd; i++) {
+    const el = sequence[i];
+    if (seen.has(el)) {
+      const cycleStart = seen.get(el) as number;
+      const trapped = Array.from(new Set(sequence.slice(cycleStart, i)));
+      return { passed: false, kind: trapped.length === 1 ? 'dead-end' : 'cycle', trappedElements: trapped, sequence };
+    }
+    seen.set(el, i);
+  }
+  if (terminalIndex !== -1) {
+    return { passed: true, kind: 'pass', trappedElements: [], sequence };
+  }
+  return { passed: false, kind: 'incomplete', trappedElements: [], sequence };
+}
 
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
 
@@ -1777,6 +1868,86 @@ export class SessionManager {
       }) as { result?: { value?: string }; exceptionDetails?: unknown };
       if (result.exceptionDetails || typeof result.result?.value !== 'string') return null;
       return JSON.parse(result.result.value) as FocusOrderItem[];
+    } catch {
+      return null;
+    }
+  }
+
+  // Dispatches a trusted Tab/Shift+Tab key press through CDP, exactly as a
+  // real keyboard would — unlike a page-side dispatchEvent(new
+  // KeyboardEvent(...)), this is untrusted and neither advances native
+  // focus nor reaches a listener's preventDefault() the way a real Tab
+  // press would, which is the whole point of this check (catching a
+  // handler that intercepts the real event to build a trap).
+  private async dispatchTabKey(dbg: Electron.Debugger, shift: boolean): Promise<void> {
+    const modifiers = shift ? 8 : 0; // CDP Input modifiers bitmask: Shift=8
+    const common = { windowsVirtualKeyCode: 9, key: 'Tab', code: 'Tab', modifiers };
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...common });
+    await dbg.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', ...common });
+  }
+
+  private async readActiveElement(s: TestSession): Promise<string> {
+    try {
+      return await s.view.webContents.executeJavaScript(READ_ACTIVE_ELEMENT_SCRIPT) as string;
+    } catch {
+      return '';
+    }
+  }
+
+  private async focusElementBySelector(s: TestSession, selector: string): Promise<void> {
+    try {
+      await s.view.webContents.executeJavaScript(`
+        (function(sel) {
+          var el = document.querySelector(sel);
+          if (el) el.focus({ preventScroll: true });
+        })(${JSON.stringify(selector)})
+      `);
+    } catch {}
+  }
+
+  // Walks forward (or, in reverse, Shift+Tab backward) for up to 2×N steps,
+  // reading document.activeElement between each dispatched key so a broken
+  // handler that preventDefault()s the real Tab keydown shows up as the
+  // active element simply never advancing. Stops early once the same
+  // element is observed twice in a row — a self-stall that classify below
+  // would report as a dead end regardless, so there's no point spending the
+  // remaining CDP round trips confirming it further.
+  private async walkFocusTrap(
+    s: TestSession, dbg: Electron.Debugger, n: number, reverse: boolean, expectedTerminal: string
+  ): Promise<FocusTrapDirectionResult> {
+    const maxSteps = 2 * n;
+    const sequence: string[] = [];
+    // The starting focus position (unfocused for a forward walk, the last
+    // element for a reverse one) is set up by the caller before this runs.
+    let prevDescriptor: string | null = null;
+    for (let step = 0; step < maxSteps; step++) {
+      await this.dispatchTabKey(dbg, reverse);
+      const descriptor = await this.readActiveElement(s);
+      sequence.push(descriptor);
+      if (descriptor === prevDescriptor) break; // stopped changing — a dead end classify() will report
+      prevDescriptor = descriptor;
+    }
+    return classifyFocusTrapSequence(sequence, expectedTerminal);
+  }
+
+  async detectA11yFocusTrap(id: string): Promise<FocusTrapResult | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    const dbg = s.view.webContents.debugger;
+    try {
+      const raw = await s.view.webContents.executeJavaScript(FOCUS_CANDIDATES_LIST_SCRIPT) as string;
+      const selectors = JSON.parse(raw) as string[];
+      const n = selectors.length;
+      const empty: FocusTrapDirectionResult = { passed: true, kind: 'pass', trappedElements: [], sequence: [] };
+      if (n === 0) return { forward: empty, backward: empty };
+
+      try { await s.view.webContents.executeJavaScript('document.activeElement && document.activeElement.blur();'); } catch {}
+      const forward = await this.walkFocusTrap(s, dbg, n, false, selectors[n - 1]);
+
+      await this.focusElementBySelector(s, selectors[n - 1]);
+      const backward = await this.walkFocusTrap(s, dbg, n, true, selectors[0]);
+
+      return { forward, backward };
     } catch {
       return null;
     }

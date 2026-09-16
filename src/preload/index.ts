@@ -158,6 +158,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     highlightNode: (id: string, backendDOMNodeId: number) => ipcRenderer.invoke('a11y:highlightNode', id, backendDOMNodeId),
     getAltLabelIssues: (id: string) => ipcRenderer.invoke('a11y:getAltLabelIssues', id),
     setFocusOverlay: (id: string, enabled: boolean) => ipcRenderer.invoke('a11y:setFocusOverlay', id, enabled),
+    detectFocusTrap: (id: string) => ipcRenderer.invoke('a11y:detectFocusTrap', id),
     onNodeHovered: (cb: (node: unknown) => void) => {
       ipcRenderer.removeAllListeners('a11y:nodeHovered');
       ipcRenderer.on('a11y:nodeHovered', (_e, node) => cb(node));
