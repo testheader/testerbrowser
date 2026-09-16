@@ -26,6 +26,10 @@ const requestMeta = new Map(); // requestId -> { method, url }
 // requestMeta, populated the same way from network-response events as they
 // arrive.
 const responseMeta = new Map(); // requestId -> { status, durationMs }
+// Which rule (if any) intercepted/altered a call, keyed by requestId — the
+// Mock/Resilience pills need this for kinds like network-body whose own
+// payload never carries mockRuleId/resilienceRuleId directly.
+const tagMeta = new Map(); // requestId -> 'mock' | 'resilience'
 const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
 
 // Rows whose level falls outside these five pills (e.g. CDP Log's 'verbose',
@@ -82,6 +86,21 @@ function getEventDuration(e) {
       const durationMs = responseMeta.get(p.requestId)?.durationMs;
       return typeof durationMs === 'number' ? durationMs : null;
     }
+  } catch {}
+  return null;
+}
+
+// The Mock/Resilience pill filter's tag for a row: its own payload for
+// request/response/failed rows (tagRequest patches mockRuleId/
+// resilienceRuleId onto those directly), falling back to tagMeta for kinds
+// like network-body that only carry a requestId.
+function getEventTag(e) {
+  if (!e.payload) return null;
+  try {
+    const p = JSON.parse(e.payload);
+    if (p.mockRuleId) return 'mock';
+    if (p.resilienceRuleId) return 'resilience';
+    if (p.requestId) return tagMeta.get(p.requestId) ?? null;
   } catch {}
   return null;
 }
@@ -182,6 +201,14 @@ export function renderTimeline() {
         if (typeof durationMs !== 'number' || durationMs < minDuration) return false;
       }
 
+      const mockOn       = activeTypes.has('mock');
+      const resilienceOn = activeTypes.has('resilience');
+      if (mockOn || resilienceOn) {
+        const tag = getEventTag(e);
+        const tagVisible = (mockOn && tag === 'mock') || (resilienceOn && tag === 'resilience');
+        if (!tagVisible) return false;
+      }
+
       if (fromTs !== null && e.ts < fromTs) return false;
       if (toTs !== null && e.ts > toTs) return false;
 
@@ -207,6 +234,15 @@ export function renderTimeline() {
   // The Res pill's count reflects what it actually filters now (body rows),
   // not the network-response events merged into the Req row.
   kindCounts['network-response'] = kindCounts['network-body'] || 0;
+  // Mock/Resilience counts are per call (one request each), not per event
+  // kind, so they're tallied off the network-request rows only.
+  kindCounts['mock'] = 0;
+  kindCounts['resilience'] = 0;
+  for (const e of timelineEvents) {
+    if (e.kind !== 'network-request') continue;
+    const tag = getEventTag(e);
+    if (tag === 'mock' || tag === 'resilience') kindCounts[tag]++;
+  }
   document.querySelectorAll('#networkPills .filter-pill').forEach(btn => {
     const n    = kindCounts[btn.dataset.type] || 0;
     const span = btn.querySelector('.pill-count');
@@ -384,13 +420,23 @@ async function fetchTimeline() {
           if (p.requestId && p.request?.method) {
             requestMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
           }
+          if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
+          else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
         } catch {}
       } else if (e.kind === 'network-response') {
         try {
           const p = JSON.parse(e.payload);
           if (p.requestId) {
             responseMeta.set(p.requestId, { status: p.response?.status ?? null, durationMs: p.durationMs });
+            if (p.mockRuleId) tagMeta.set(p.requestId, 'mock');
+            else if (p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
           }
+        } catch {}
+      } else if (e.kind === 'network-failed') {
+        try {
+          const p = JSON.parse(e.payload);
+          if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
+          else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
         } catch {}
       }
     }
@@ -422,6 +468,7 @@ export function resetTimelineForNewSession() {
   lastTs = 0;
   requestMeta.clear();
   responseMeta.clear();
+  tagMeta.clear();
   document.getElementById('timelinePanel').innerHTML = '';
 }
 
@@ -458,6 +505,7 @@ export function initTimeline() {
     // entirely, so the next poll re-fetches everything Clear just wiped.
     requestMeta.clear();
     responseMeta.clear();
+    tagMeta.clear();
     timelinePanel.innerHTML = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     autoScroll = true;

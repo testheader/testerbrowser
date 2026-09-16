@@ -391,6 +391,8 @@ body.light-mode #networkFromTs, body.light-mode #networkToTs { color-scheme: lig
 .filter-pill[data-type="network-response"].on { color: var(--success-strong); border-color: var(--success-border); background: rgba(143,220,143,0.07); }
 .filter-pill[data-type="network-failed"].on   { color: var(--error-strong); border-color: var(--error-border); background: rgba(255,128,128,0.07); }
 .filter-pill[data-type="console"].on          { color: var(--warn-strong); border-color: var(--warn-border); background: rgba(224,192,96,0.07); }
+.filter-pill[data-type="mock"].on             { color: var(--info-strong); border-color: var(--info-border); background: var(--info-surface); }
+.filter-pill[data-type="resilience"].on       { color: var(--warn-strong); border-color: var(--warn-border); background: var(--warn-surface); }
 .filter-pill[data-type="log"].on              { color: var(--text-secondary); border-color: var(--border-color); background: rgba(176,176,176,0.07); }
 .filter-pill[data-level="error"].on { color: var(--error-strong); border-color: var(--error-border); background: rgba(255,128,128,0.07); }
 .filter-pill[data-level="warn"].on  { color: var(--warn-strong);  border-color: var(--warn-border);  background: rgba(224,192,96,0.07); }
