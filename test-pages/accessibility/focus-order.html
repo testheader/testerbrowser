@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility focus order fixture</title>
+<link rel="stylesheet" href="../shared.css">
+<style>
+  #a11yNoOutline:focus { outline: none; box-shadow: none; }
+</style>
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / accessibility / focus-order</nav>
+<h1>Accessibility focus order fixture</h1>
+<p>Deliberately out-of-DOM-order tabindex values, plus one element with no
+visible focus indicator, for exercising the A11y tab's Focus order overlay.</p>
+
+<button type="button" id="a11yTabindex2" tabindex="2" data-testid="a11y-tabindex-2">Second in tab order (tabindex=2)</button>
+<button type="button" id="a11yTabindex1" tabindex="1" data-testid="a11y-tabindex-1">First in tab order (tabindex=1)</button>
+<button type="button" id="a11yNoOutline" data-testid="a11y-no-outline">Plain DOM-order button, no focus style</button>
+</body>
+</html>

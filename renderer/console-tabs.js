@@ -1,5 +1,5 @@
 import { loadStoragePanel } from './storage.js';
-import { initA11y, disableA11yHover } from './a11y.js';
+import { initA11y, disableA11yHover, disableA11yFocusOrder } from './a11y.js';
 import { initDiff } from './diff.js';
 import { initVR, refreshVR } from './visual-regression.js';
 import { initSpoof, refreshSpoofStatus } from './emulation.js';
@@ -22,7 +22,7 @@ export function getActiveConsoleTab() { return activeConsoleTab; }
 export function switchConsoleTab(tab) {
   const prevTab = activeConsoleTab;
   activeConsoleTab = tab;
-  if (prevTab === 'a11y' && tab !== 'a11y') disableA11yHover();
+  if (prevTab === 'a11y' && tab !== 'a11y') { disableA11yHover(); disableA11yFocusOrder(); }
   document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
   document.getElementById('consoleTabNetwork').classList.toggle('active', tab === 'network');
   document.getElementById('consoleTabStorage').classList.toggle('active', tab === 'storage');

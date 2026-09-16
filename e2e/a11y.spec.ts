@@ -151,3 +151,35 @@ test('Alt & Labels view flags exactly the missing-alt image and the bare input (
   await expect(content).not.toContainText('a11yInputArialabel');
   await expect(content).not.toContainText('a11yInputLabelledby');
 });
+
+test('Focus order overlay computes tab order (positive tabindex first) and flags a missing focus indicator (#197)', async () => {
+  const urlPath = '/accessibility/focus-order.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yFocusOrderBtn');
+
+  const content = window.locator('#a11yContent');
+  await expect(content).toContainText('First in tab order', { timeout: 10_000 });
+
+  // Relative order, not absolute numbers — the shared fixture-nav crumb link
+  // is also naturally focusable and sorts in with tabindex=0 elements.
+  const rows = content.locator('.a11y-structure-row');
+  const rowTexts = await rows.allTextContents();
+  const idx1 = rowTexts.findIndex(t => t.includes('First in tab order'));
+  const idx2 = rowTexts.findIndex(t => t.includes('Second in tab order'));
+  const idxNoOutline = rowTexts.findIndex(t => t.includes('no focus style'));
+  expect(idx1).toBeGreaterThanOrEqual(0);
+  expect(idx2).toBeGreaterThan(idx1);
+  expect(idxNoOutline).toBeGreaterThan(idx2);
+
+  await expect(rows.nth(idxNoOutline)).toContainText('no visible focus indicator');
+  await expect(rows.nth(idx1)).not.toContainText('no visible focus indicator');
+  await expect(rows.nth(idx2)).not.toContainText('no visible focus indicator');
+
+  await window.click('#a11yFocusOrderBtn');
+  await expect(window.locator('#a11yFocusOrderBtn')).not.toHaveClass(/on/);
+});

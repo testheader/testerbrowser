@@ -6,6 +6,7 @@ const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
 let hoveredRow = null;
 let selectedRow = null;
 let inspecting = false;
+let focusOverlayOn = false;
 let activeView = 'tree'; // 'tree' | 'violations' | 'contrast' | 'structure' | 'altlabels'
 
 // One entry per view: its toolbar button id, empty-state message, whether
@@ -39,6 +40,7 @@ export function initA11y() {
       </div>
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
+      <button class="a11y-btn" id="a11yFocusOrderBtn" title="Show a numbered tab-order overlay on the page">Focus order</button>
       <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
     </div>
     <div class="a11y-content" id="a11yContent">
@@ -50,6 +52,17 @@ export function initA11y() {
   });
   document.getElementById('a11yInspectBtn').addEventListener('click', () => {
     if (inspecting) disableA11yHover(); else enableA11yHover();
+  });
+  document.getElementById('a11yFocusOrderBtn').addEventListener('click', () => {
+    if (focusOverlayOn) {
+      disableA11yFocusOrder();
+      // Restore whatever the currently active view would show on its own.
+      const content = document.getElementById('a11yContent');
+      if (content) content.innerHTML = `<div class="a11y-empty">${VIEWS[activeView].emptyMsg}</div>`;
+      if (VIEWS[activeView].loaded) VIEWS[activeView].load();
+    } else {
+      enableA11yFocusOrder();
+    }
   });
   for (const view of Object.keys(VIEWS)) {
     document.getElementById(VIEWS[view].btnId).addEventListener('click', () => switchA11yView(view));
@@ -65,6 +78,10 @@ function switchA11yView(view) {
   const inspectBtn = document.getElementById('a11yInspectBtn');
   if (inspectBtn) inspectBtn.style.display = view === 'tree' ? '' : 'none';
   if (view !== 'tree' && inspecting) disableA11yHover();
+  // The focus overlay renders its list into the shared content area, same
+  // as any view's Refresh — switching views would otherwise leave stale
+  // badges on the page while showing the new view's (unrelated) content.
+  if (focusOverlayOn) disableA11yFocusOrder();
   const content = document.getElementById('a11yContent');
   if (content) content.innerHTML = `<div class="a11y-empty">${VIEWS[view].emptyMsg}</div>`;
 }
@@ -120,6 +137,77 @@ export function disableA11yHover() {
   testerBrowser.a11y.offNodeHovered();
   testerBrowser.a11y.offNodeClicked();
   if (hoveredRow) { hoveredRow.classList.remove('a11y-hovered'); hoveredRow = null; }
+}
+
+async function enableA11yFocusOrder() {
+  const id = getActiveId();
+  if (!id) return;
+  focusOverlayOn = true;
+  document.getElementById('a11yFocusOrderBtn')?.classList.add('on');
+  const content = document.getElementById('a11yContent');
+  if (content) content.innerHTML = '<div class="a11y-loading">Computing tab order…</div>';
+  try {
+    const items = await testerBrowser.a11y.setFocusOverlay(id, true);
+    if (content) renderA11yFocusOrder(content, items ?? []);
+  } catch (e) {
+    if (content) content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+  }
+}
+
+// Mirrors disableA11yHover's cleanup: resets the toggle, tells the backend
+// to remove the on-page badges, and stops there — the caller decides what
+// the content area shows next (either the active view's own state, on an
+// explicit toggle-off, or nothing further when it's mid-view-switch).
+export function disableA11yFocusOrder() {
+  focusOverlayOn = false;
+  document.getElementById('a11yFocusOrderBtn')?.classList.remove('on');
+  const id = getActiveId();
+  if (id) testerBrowser.a11y.setFocusOverlay(id, false).catch(() => {});
+}
+
+function renderA11yFocusOrder(panel, items) {
+  if (!items || items.length === 0) {
+    panel.innerHTML = '<div class="a11y-empty">No focusable elements found on this page.</div>';
+    return;
+  }
+  panel.innerHTML = '';
+  const list = document.createElement('ul');
+  list.className = 'a11y-structure-list';
+  for (const item of items) list.appendChild(buildFocusOrderRow(item));
+  panel.appendChild(list);
+}
+
+function buildFocusOrderRow(item) {
+  const li = document.createElement('li');
+  li.className = 'a11y-structure-row a11y-structure-row-clickable';
+  li.title = 'Click to highlight this element on the page';
+  li.addEventListener('click', () => highlightA11yNode(item.selector));
+
+  const orderEl = document.createElement('span');
+  orderEl.className = 'a11y-structure-role';
+  orderEl.textContent = String(item.order);
+  li.appendChild(orderEl);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'a11y-structure-name';
+  nameEl.textContent = item.text || item.selector;
+  li.appendChild(nameEl);
+
+  if (item.tabindex > 0) {
+    const tabindexEl = document.createElement('span');
+    tabindexEl.className = 'a11y-altlabels-hint';
+    tabindexEl.textContent = `tabindex=${item.tabindex}`;
+    li.appendChild(tabindexEl);
+  }
+
+  if (item.noVisibleIndicator) {
+    const flagEl = document.createElement('span');
+    flagEl.className = 'a11y-structure-flag-badge';
+    flagEl.textContent = 'no visible focus indicator';
+    li.appendChild(flagEl);
+  }
+
+  return li;
 }
 
 // Inspect (and hover-highlighting, which shares nodeRowMap) only work once a

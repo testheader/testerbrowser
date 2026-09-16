@@ -249,6 +249,132 @@ export interface AltLabelIssues {
   fields: LabelIssue[];
 }
 
+// Standard sequential-focus-navigation ordering: elements with a positive
+// tabindex first, ascending, ties broken by DOM order; then everything else
+// (tabindex 0 or naturally focusable) in DOM order. Pulled out as a pure
+// function so it's unit-testable — the in-page overlay script below
+// necessarily duplicates this same rule as plain JS text, since it can't
+// import a compiled module into the injected page context.
+export interface TabOrderCandidate {
+  tabindex: number;
+  domIndex: number;
+}
+
+export function compareTabOrder(a: TabOrderCandidate, b: TabOrderCandidate): number {
+  const aPos = a.tabindex > 0 ? a.tabindex : Infinity;
+  const bPos = b.tabindex > 0 ? b.tabindex : Infinity;
+  if (aPos !== bPos) return aPos - bPos;
+  return a.domIndex - b.domIndex;
+}
+
+export interface FocusOrderItem {
+  selector: string;
+  order: number;
+  tabindex: number;
+  text: string;
+  noVisibleIndicator: boolean;
+}
+
+// Guarded by window.__a11yFocusSetup, same idiom as __a11yHoverSetup in
+// setA11yInspect below. Computes tab order, draws a numbered badge per
+// element (in a single overlay root appended to <body>, cleared entirely by
+// the disable script), then focuses each element in turn to diff its
+// computed outline/box-shadow/border against the unfocused state — an
+// element with no detectable change is flagged as having no visible focus
+// indicator. Runs synchronously (no CDP awaitPromise needed) and returns the
+// list directly as the Runtime.evaluate result.
+const FOCUS_OVERLAY_ENABLE_SCRIPT = `
+(function() {
+  if (window.__a11yFocusSetup) return JSON.stringify(window.__a11yFocusOrderList || []);
+  window.__a11yFocusSetup = true;
+
+  function isVisible(el) {
+    var cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    var rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function isFocusable(el) {
+    if (el.hasAttribute('inert') || el.closest('[inert]')) return false;
+    if (el.disabled || el.hidden) return false;
+    var attr = el.getAttribute('tabindex');
+    if (attr !== null && parseInt(attr, 10) < 0) return false;
+    if (!isVisible(el)) return false;
+    var tag = el.tagName.toLowerCase();
+    return (tag === 'a' && el.hasAttribute('href')) ||
+      (tag === 'area' && el.hasAttribute('href')) ||
+      tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea' ||
+      el.tabIndex >= 0;
+  }
+
+  var all = Array.prototype.slice.call(document.querySelectorAll('*'));
+  var candidates = [];
+  for (var i = 0; i < all.length; i++) {
+    if (!isFocusable(all[i])) continue;
+    var attr = all[i].getAttribute('tabindex');
+    candidates.push({ el: all[i], tabindex: attr !== null ? parseInt(attr, 10) : 0, domIndex: candidates.length });
+  }
+  candidates.sort(function(a, b) {
+    var aPos = a.tabindex > 0 ? a.tabindex : Infinity;
+    var bPos = b.tabindex > 0 ? b.tabindex : Infinity;
+    if (aPos !== bPos) return aPos - bPos;
+    return a.domIndex - b.domIndex;
+  });
+
+  var overlayRoot = document.createElement('div');
+  overlayRoot.id = '__a11yFocusOverlayRoot';
+  overlayRoot.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;';
+  document.body.appendChild(overlayRoot);
+
+  var previouslyFocused = document.activeElement;
+  var results = [];
+  for (var idx = 0; idx < candidates.length; idx++) {
+    var el = candidates[idx].el;
+    var before = getComputedStyle(el);
+    var beforeSnapshot = [before.outlineStyle, before.outlineWidth, before.boxShadow, before.borderStyle, before.borderWidth, before.borderColor].join('|');
+    el.focus({ preventScroll: true });
+    var after = getComputedStyle(el);
+    var afterSnapshot = [after.outlineStyle, after.outlineWidth, after.boxShadow, after.borderStyle, after.borderWidth, after.borderColor].join('|');
+    el.blur();
+
+    var rect = el.getBoundingClientRect();
+    var badge = document.createElement('div');
+    badge.className = '__a11yFocusBadge';
+    badge.textContent = String(idx + 1);
+    badge.style.cssText = 'position:fixed;left:' + Math.round(rect.left) + 'px;top:' + Math.max(0, Math.round(rect.top) - 8) +
+      'px;background:#ff5252;color:#fff;font:10px/14px monospace;min-width:14px;height:14px;border-radius:7px;' +
+      'text-align:center;padding:0 3px;box-shadow:0 0 0 1px #fff;';
+    overlayRoot.appendChild(badge);
+
+    var sel = el.tagName.toLowerCase();
+    if (el.id) sel += '#' + el.id;
+    results.push({
+      selector: sel,
+      order: idx + 1,
+      tabindex: candidates[idx].tabindex,
+      text: (el.textContent || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 60),
+      noVisibleIndicator: beforeSnapshot === afterSnapshot,
+    });
+  }
+  if (previouslyFocused && previouslyFocused !== document.body && document.body.contains(previouslyFocused)) {
+    previouslyFocused.focus({ preventScroll: true });
+  }
+
+  window.__a11yFocusOrderList = results;
+  return JSON.stringify(results);
+})()
+`;
+
+const FOCUS_OVERLAY_DISABLE_SCRIPT = `
+(function() {
+  window.__a11yFocusSetup = false;
+  window.__a11yFocusOrderList = undefined;
+  var root = document.getElementById('__a11yFocusOverlayRoot');
+  if (root) root.remove();
+})()
+`;
+
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
 
 export interface ResilienceRule {
@@ -301,6 +427,7 @@ export interface TestSession {
   mockRules: MockRule[];
   resilienceRules: ResilienceRule[];
   a11yInspecting: boolean;
+  a11yFocusOverlayOn: boolean;
   emulation: EmulationOverrides | null;
   // Real UA captured at session creation, before any override — the only
   // way to restore it once webContents.setUserAgent() has been called,
@@ -625,6 +752,7 @@ export class SessionManager {
       mockRules: [],
       resilienceRules: [],
       a11yInspecting: false,
+      a11yFocusOverlayOn: false,
       emulation: null,
       defaultUserAgent: view.webContents.getUserAgent(),
     };
@@ -1624,6 +1752,33 @@ export class SessionManager {
         await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yHover' });
         await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yClick' });
       } catch {}
+    }
+  }
+
+  // Modeled on setA11yInspect above, but unlike Inspect element's live
+  // hover/click bindings, this doesn't need a Runtime.addBinding round trip:
+  // the whole scan (tab order + focus/style diff) runs synchronously in one
+  // Runtime.evaluate and its result is the list itself.
+  async setA11yFocusOverlay(id: string, enabled: boolean): Promise<FocusOrderItem[] | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    s.a11yFocusOverlayOn = enabled;
+    const dbg = s.view.webContents.debugger;
+    if (!enabled) {
+      try {
+        await dbg.sendCommand('Runtime.evaluate', { expression: FOCUS_OVERLAY_DISABLE_SCRIPT, includeCommandLineAPI: false });
+      } catch {}
+      return null;
+    }
+    try {
+      const result = await dbg.sendCommand('Runtime.evaluate', {
+        expression: FOCUS_OVERLAY_ENABLE_SCRIPT,
+        returnByValue: true,
+      }) as { result?: { value?: string }; exceptionDetails?: unknown };
+      if (result.exceptionDetails || typeof result.result?.value !== 'string') return null;
+      return JSON.parse(result.result.value) as FocusOrderItem[];
+    } catch {
+      return null;
     }
   }
 
