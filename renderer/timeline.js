@@ -164,7 +164,7 @@ export function renderTimeline() {
 
   let filtered;
   if (tab === 'network') {
-    const netFilter    = document.getElementById('networkFilterText').value.toLowerCase();
+    const netFilter    = document.getElementById('networkFilterText').value;
     const activeTypes  = activePillValues(document.getElementById('networkPills'), 'type');
     const activeMethods = activePillValues(document.getElementById('networkMethodPills'), 'method');
     const minDuration  = parseFloat(document.getElementById('networkMinDuration').value) || 0;
@@ -198,9 +198,10 @@ export function renderTimeline() {
         if (!tagVisible) return false;
       }
 
-      if (!netFilter) return true;
-      if (e.summary.toLowerCase().includes(netFilter)) return true;
-      return !!e.payload && e.payload.toLowerCase().includes(netFilter);
+      // Matches summary or payload the same way the console filter already
+      // does — space-separated terms AND together, and a `-term` excludes.
+      const searchText = e.payload ? `${e.summary}\n${e.payload}` : e.summary;
+      return matchesFreeText(searchText, netFilter);
     });
   } else {
     const filterText   = document.getElementById('filterText').value;
