@@ -488,6 +488,19 @@
     </div>
   </div>
 
+  <!-- Crash Report -->
+  <div id="crashReportOverlay">
+    <div id="crashReportModal">
+      <h2>TesterBrowser crashed</h2>
+      <p>The previous session ended unexpectedly at <strong id="crashReportTimestamp"></strong>.</p>
+      <p>Would you like to file a bug report so this can be investigated?</p>
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-secondary" id="crashReportDismissBtn">Dismiss</button>
+        <button class="btn btn-primary"   id="crashReportFileBtn">File a bug report…</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Bug Report -->
   <div id="bugReportOverlay">
     <div id="bugReportModal">

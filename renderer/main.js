@@ -15,6 +15,7 @@ import { initImageOverlay } from './image-overlay.js';
 import { initHistory } from './history.js';
 import { initSettings } from './settings.js';
 import { initBugReport } from './bugreport.js';
+import { initCrashReport } from './crash-report.js';
 import { initConsoleTabs, switchConsoleTab, getActiveConsoleTab } from './console-tabs.js';
 import { initA11y } from './a11y.js';
 import './diff.js';
@@ -62,6 +63,7 @@ initImageOverlay();
 initHistory();
 initSettings();
 initBugReport();
+initCrashReport();
 initConsoleTabs();
 // Drive the initial tab state through the same path as a click, so control
 // visibility never depends on static markup defaults.

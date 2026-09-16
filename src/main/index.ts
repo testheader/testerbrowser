@@ -22,6 +22,14 @@ function recordAppError(message: string) {
 process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
 process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
 
+// --- Crash detection ---
+// A sentinel file is written on startup and deleted on clean exit. If it still
+// exists at next launch, the previous session ended abnormally (crash).
+
+let normalQuit = false;
+let sentinelPath = '';
+let crashLogPath = '';
+
 type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
@@ -201,6 +209,28 @@ function createWindow() {
 
 app.whenReady().then(() => {
   updateLogFile = path.join(app.getPath('userData'), 'update-errors.jsonl');
+  sentinelPath  = path.join(app.getPath('userData'), 'running.sentinel');
+  crashLogPath  = path.join(app.getPath('userData'), 'crash-log.json');
+
+  // If the sentinel is still present, the previous session ended abnormally.
+  if (fs.existsSync(sentinelPath)) {
+    try {
+      const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf-8')) as { startedAt?: string };
+      const log = {
+        timestamp:      sentinel.startedAt ?? new Date().toISOString(),
+        crashedAt:      new Date().toISOString(),
+        version:        app.getVersion(),
+        electronVersion: process.versions.electron,
+        platform:       process.platform,
+        recentErrors:   recentAppErrors.slice(-5),
+        sessionUrls:    [] as string[],
+      };
+      fs.writeFileSync(crashLogPath, JSON.stringify(log));
+    } catch {}
+  }
+  // Write the sentinel for this session.
+  try { fs.writeFileSync(sentinelPath, JSON.stringify({ startedAt: new Date().toISOString() })); } catch {}
+
   createWindow();
 
   if (app.isPackaged) {
@@ -284,7 +314,30 @@ app.whenReady().then(() => {
 // feature — see #100) — quit saves persistent sessions and silently discards
 // ephemeral ones, same as closing an individual temporary tab already does.
 app.on('before-quit', () => {
+  normalQuit = true;
   sessionManager?.saveSessions();
+  // Clean exit: remove the crash sentinel and any leftover crash log.
+  try { if (sentinelPath) fs.unlinkSync(sentinelPath); } catch {}
+  try { if (crashLogPath) fs.unlinkSync(crashLogPath); } catch {}
+});
+
+// Fallback: if process exits without a clean before-quit (e.g. SIGKILL or a
+// native crash that still drains the event loop), write a crash log.
+process.on('exit', () => {
+  if (normalQuit || !sentinelPath) return;
+  try {
+    const sessions = sessionManager?.listSessions() ?? [];
+    const log = {
+      timestamp:       new Date().toISOString(),
+      version:         app.getVersion(),
+      electronVersion: process.versions.electron,
+      platform:        process.platform,
+      recentErrors:    recentAppErrors.slice(-5),
+      sessionUrls:     sessions.map((s: { url?: string }) => s.url ?? '').filter(Boolean),
+    };
+    fs.writeFileSync(crashLogPath, JSON.stringify(log));
+    fs.unlinkSync(sentinelPath);
+  } catch {}
 });
 
 app.on('window-all-closed', () => {
@@ -668,6 +721,18 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+});
+
+// --- Crash log IPC ---
+
+ipcMain.handle('crash:check', () => {
+  if (!crashLogPath) return null;
+  try { return JSON.parse(fs.readFileSync(crashLogPath, 'utf-8')); } catch { return null; }
+});
+
+ipcMain.handle('crash:clear', () => {
+  try { if (crashLogPath) fs.unlinkSync(crashLogPath); } catch {}
+  return { ok: true };
 });
 
 ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string; headers: Record<string, string>; body?: string }) => {

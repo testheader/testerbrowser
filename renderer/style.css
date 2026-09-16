@@ -780,6 +780,14 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .history-entry-failed .history-entry-url::before { content: '⚠ '; }
 
 /* ── Bug report modal ── */
+#crashReportOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+                      z-index: 110; align-items: center; justify-content: center; }
+#crashReportOverlay.open { display: flex; }
+#crashReportModal { background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px;
+                    width: 420px; min-width: 280px; padding: 28px 32px;
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+#crashReportModal h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--text-strong); }
+#crashReportModal p { margin: 0 0 8px; font-size: 13px; color: var(--text-primary); line-height: 1.5; }
 #bugReportOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
                     z-index: 100; align-items: center; justify-content: center; }
 #bugReportOverlay.open { display: flex; }

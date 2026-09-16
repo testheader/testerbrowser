@@ -247,6 +247,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     set: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),
   },
 
+  crash: {
+    check: () => ipcRenderer.invoke('crash:check'),
+    clear: () => ipcRenderer.invoke('crash:clear'),
+  },
+
   bugReport: {
     hasToken:       () => ipcRenderer.invoke('bugreport:hasToken'),
     getDiagnostics: () => ipcRenderer.invoke('bugreport:getDiagnostics'),
