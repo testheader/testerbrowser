@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility violations fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / accessibility / violations</nav>
+<h1>Accessibility violations fixture</h1>
+<p>Deliberate axe-core violations for exercising the A11y tab's Violations
+view. Neither check here overlaps color-contrast, image-alt, label,
+heading-order or the landmark/region rules — those are covered by their own
+sibling tickets and excluded from this audit.</p>
+
+<div id="dupeTarget" data-testid="a11y-dupe-id-1">First element with this id</div>
+<div id="dupeTarget" data-testid="a11y-dupe-id-2">Second element with the same id</div>
+
+<div role="bogus-role" data-testid="a11y-bogus-role">Invalid ARIA role</div>
+</body>
+</html>

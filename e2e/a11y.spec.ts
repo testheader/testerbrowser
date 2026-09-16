@@ -62,3 +62,21 @@ test('Inspect element highlights and selects the hovered/clicked page element', 
   await window.click('#a11yInspectBtn');
   await expect(window.locator('#a11yInspectBtn')).not.toHaveClass(/on/);
 });
+
+test('Violations view finds real axe-core issues via Refresh (#193)', async () => {
+  const urlPath = '/accessibility/violations.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yViewViolationsBtn');
+  await window.click('#a11yRefreshBtn');
+
+  const content = window.locator('#a11yContent');
+  // duplicate-id (the two #dupeTarget elements) and aria-roles (role="bogus-role")
+  // — neither overlaps the rules #194/#195/#196 own, so both should surface here.
+  await expect(content).toContainText('duplicate-id', { timeout: 10_000 });
+  await expect(content).toContainText('aria-roles');
+});

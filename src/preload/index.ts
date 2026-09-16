@@ -152,6 +152,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   a11y: {
     getTree: (id: string) => ipcRenderer.invoke('a11y:getTree', id),
     setInspect: (id: string, enabled: boolean) => ipcRenderer.invoke('a11y:setInspect', id, enabled),
+    getViolations: (id: string) => ipcRenderer.invoke('a11y:getViolations', id),
+    highlightElement: (id: string, selector: string) => ipcRenderer.invoke('a11y:highlightElement', id, selector),
     onNodeHovered: (cb: (node: unknown) => void) => {
       ipcRenderer.removeAllListeners('a11y:nodeHovered');
       ipcRenderer.on('a11y:nodeHovered', (_e, node) => cb(node));

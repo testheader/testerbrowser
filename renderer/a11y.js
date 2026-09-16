@@ -5,8 +5,13 @@ const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
 let hoveredRow = null;
 let selectedRow = null;
-let hasLoadedOnce = false;
+let hasLoadedTreeOnce = false;
+let hasLoadedViolationsOnce = false;
 let inspecting = false;
+let activeView = 'tree'; // 'tree' | 'violations'
+
+const TREE_EMPTY_MSG = 'Click Refresh to load the accessibility tree for this page.';
+const VIOLATIONS_EMPTY_MSG = 'Click Refresh to run an accessibility violations audit for this page.';
 
 export function initA11y() {
   const panel = document.getElementById('a11yPanel');
@@ -14,23 +19,48 @@ export function initA11y() {
   panel.dataset.initialized = '1';
   panel.innerHTML = `
     <div class="a11y-toolbar">
+      <div class="a11y-view-toggle">
+        <button class="a11y-btn on" id="a11yViewTreeBtn" data-view="tree">Tree</button>
+        <button class="a11y-btn" id="a11yViewViolationsBtn" data-view="violations">Violations</button>
+      </div>
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
       <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
     </div>
     <div class="a11y-content" id="a11yContent">
-      <div class="a11y-empty">Click Refresh to load the accessibility tree for this page.</div>
+      <div class="a11y-empty">${TREE_EMPTY_MSG}</div>
     </div>`;
-  document.getElementById('a11yRefreshBtn').addEventListener('click', loadA11yPanel);
+  document.getElementById('a11yRefreshBtn').addEventListener('click', () => {
+    if (activeView === 'tree') loadA11yTree(); else loadA11yViolations();
+  });
   document.getElementById('a11yInspectBtn').addEventListener('click', () => {
     if (inspecting) disableA11yHover(); else enableA11yHover();
   });
+  document.getElementById('a11yViewTreeBtn').addEventListener('click', () => switchA11yView('tree'));
+  document.getElementById('a11yViewViolationsBtn').addEventListener('click', () => switchA11yView('violations'));
 }
 
-// Called after navigation — only refresh if the tree has already been loaded once,
-// so the initial "Click Refresh…" empty state isn't skipped on first activation.
+function switchA11yView(view) {
+  if (view === activeView) return;
+  activeView = view;
+  document.getElementById('a11yViewTreeBtn')?.classList.toggle('on', view === 'tree');
+  document.getElementById('a11yViewViolationsBtn')?.classList.toggle('on', view === 'violations');
+  const inspectBtn = document.getElementById('a11yInspectBtn');
+  if (inspectBtn) inspectBtn.style.display = view === 'tree' ? '' : 'none';
+  if (view !== 'tree' && inspecting) disableA11yHover();
+  const content = document.getElementById('a11yContent');
+  if (content) content.innerHTML = `<div class="a11y-empty">${view === 'tree' ? TREE_EMPTY_MSG : VIOLATIONS_EMPTY_MSG}</div>`;
+}
+
+// Called after navigation — only refresh if the active view has already been
+// loaded once, so the initial "Click Refresh…" empty state isn't skipped on
+// first activation.
 export function reloadA11yIfLoaded() {
-  if (hasLoadedOnce) loadA11yPanel();
+  if (activeView === 'tree') {
+    if (hasLoadedTreeOnce) loadA11yTree();
+  } else if (hasLoadedViolationsOnce) {
+    loadA11yViolations();
+  }
 }
 
 export function enableA11yHover() {
@@ -52,7 +82,7 @@ export function enableA11yHover() {
     if (selectNode(node.nodeId)) return;
     // Not in the currently rendered tree (e.g. page changed since the last
     // snapshot) — refresh and retry once before giving up.
-    await loadA11yPanel();
+    await loadA11yTree();
     if (!selectNode(node.nodeId)) {
       showInspectMessage("Selected element isn't in the accessibility tree");
     }
@@ -110,14 +140,14 @@ function selectNode(nodeId) {
   return true;
 }
 
-export async function loadA11yPanel() {
+export async function loadA11yTree() {
   const content = document.getElementById('a11yContent');
   if (!content) return;
   if (!getActiveId()) {
     content.innerHTML = '<div class="a11y-empty">No active session.</div>';
     return;
   }
-  hasLoadedOnce = true;
+  hasLoadedTreeOnce = true;
   content.innerHTML = '<div class="a11y-loading">Loading accessibility tree…</div>';
   try {
     const nodes = await testerBrowser.a11y.getTree(getActiveId());
@@ -233,4 +263,127 @@ function buildNode(node, nodeMap) {
   }
 
   return li;
+}
+
+// ── Violations (axe-core audit) ─────────────────────────────────────────────
+
+const IMPACT_ORDER = ['critical', 'serious', 'moderate', 'minor'];
+
+async function loadA11yViolations() {
+  const content = document.getElementById('a11yContent');
+  if (!content) return;
+  if (!getActiveId()) {
+    content.innerHTML = '<div class="a11y-empty">No active session.</div>';
+    return;
+  }
+  hasLoadedViolationsOnce = true;
+  content.innerHTML = '<div class="a11y-loading">Running accessibility audit…</div>';
+  try {
+    const violations = await testerBrowser.a11y.getViolations(getActiveId());
+    renderA11yViolations(content, violations ?? []);
+  } catch (e) {
+    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+  }
+}
+
+function renderA11yViolations(panel, violations) {
+  if (!violations || violations.length === 0) {
+    panel.innerHTML = '<div class="a11y-empty">No violations found.</div>';
+    return;
+  }
+  const byImpact = new Map();
+  for (const v of violations) {
+    const impact = v.impact || 'minor';
+    if (!byImpact.has(impact)) byImpact.set(impact, []);
+    byImpact.get(impact).push(v);
+  }
+  panel.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'a11y-violations';
+  for (const impact of IMPACT_ORDER) {
+    const group = byImpact.get(impact);
+    if (!group || group.length === 0) continue;
+    const section = document.createElement('div');
+    section.className = `a11y-violation-group a11y-impact-${impact}`;
+    const heading = document.createElement('h4');
+    heading.className = 'a11y-violation-group-heading';
+    heading.textContent = `${impact} (${group.length})`;
+    section.appendChild(heading);
+    for (const v of group) section.appendChild(buildViolationRow(v));
+    wrap.appendChild(section);
+  }
+  panel.appendChild(wrap);
+}
+
+function buildViolationRow(violation) {
+  const row = document.createElement('div');
+  row.className = 'a11y-violation-row';
+
+  const header = document.createElement('div');
+  header.className = 'a11y-violation-header';
+
+  const idEl = document.createElement('span');
+  idEl.className = 'a11y-violation-id';
+  idEl.textContent = violation.id;
+  header.appendChild(idEl);
+
+  const nodeCount = violation.nodes?.length ?? 0;
+  const countEl = document.createElement('span');
+  countEl.className = 'a11y-violation-count';
+  countEl.textContent = `${nodeCount} node${nodeCount === 1 ? '' : 's'}`;
+  header.appendChild(countEl);
+  row.appendChild(header);
+
+  const descEl = document.createElement('div');
+  descEl.className = 'a11y-violation-desc';
+  descEl.textContent = violation.description || '';
+  row.appendChild(descEl);
+
+  if (violation.helpUrl) {
+    const linkEl = document.createElement('a');
+    linkEl.className = 'a11y-violation-link';
+    linkEl.href = violation.helpUrl;
+    linkEl.target = '_blank';
+    linkEl.rel = 'noopener noreferrer';
+    linkEl.textContent = 'Learn more';
+    row.appendChild(linkEl);
+  }
+
+  if (violation.nodes && violation.nodes.length > 0) {
+    const nodesList = document.createElement('ul');
+    nodesList.className = 'a11y-violation-nodes';
+    for (const node of violation.nodes) nodesList.appendChild(buildViolationNodeRow(node));
+    row.appendChild(nodesList);
+  }
+
+  return row;
+}
+
+// axe's `target` is an array of CSS selectors: a single-element array is the
+// ordinary single-frame case (clickable-to-highlight below); more than one
+// element means a shadow-DOM host path, and a nested array means the target
+// is inside an iframe — both listed for visibility but not clickable, since
+// there's no single querySelector that resolves them from the top document.
+function buildViolationNodeRow(node) {
+  const li = document.createElement('li');
+  li.className = 'a11y-violation-node';
+  const target = node.target;
+  const simpleSelector = Array.isArray(target) && target.length === 1 && typeof target[0] === 'string'
+    ? target[0] : null;
+  const displayText = Array.isArray(target)
+    ? target.map(t => Array.isArray(t) ? t.join(' > ') : t).join(' » ')
+    : String(target ?? '(unable to resolve target)');
+  li.textContent = displayText;
+  if (simpleSelector) {
+    li.classList.add('a11y-violation-node-clickable');
+    li.title = 'Click to highlight this element on the page';
+    li.addEventListener('click', () => highlightA11yNode(simpleSelector));
+  }
+  return li;
+}
+
+function highlightA11yNode(selector) {
+  const id = getActiveId();
+  if (!id) return;
+  testerBrowser.a11y.highlightElement(id, selector).catch(() => {});
 }

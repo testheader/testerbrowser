@@ -48,6 +48,35 @@ export function applyMockRulePatch(rule: MockRule, patch: Partial<MockRule>): Mo
   return { ...rule, ...safePatch };
 }
 
+// Rule IDs owned by sibling A11y tab tickets, disabled in the axe-core run
+// so results never duplicate what's already surfaced elsewhere in the panel:
+// color-contrast (#194), image-alt/label (#196), heading-order and the full
+// landmark-*/region family (#195). Verified against axe-core 4.13.0's own
+// axe.getRules() — re-check this list against future axe-core upgrades, the
+// landmark rule set in particular has grown across releases.
+export const A11Y_VIOLATIONS_EXCLUDED_RULES = [
+  'color-contrast',
+  'image-alt',
+  'label',
+  'heading-order',
+  'landmark-banner-is-top-level',
+  'landmark-complementary-is-top-level',
+  'landmark-contentinfo-is-top-level',
+  'landmark-main-is-top-level',
+  'landmark-no-duplicate-banner',
+  'landmark-no-duplicate-contentinfo',
+  'landmark-no-duplicate-main',
+  'landmark-one-main',
+  'landmark-unique',
+  'region',
+];
+
+export function buildAxeRuleConfig(): Record<string, { enabled: boolean }> {
+  const config: Record<string, { enabled: boolean }> = {};
+  for (const id of A11Y_VIOLATIONS_EXCLUDED_RULES) config[id] = { enabled: false };
+  return config;
+}
+
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
 
 export interface ResilienceRule {
@@ -360,6 +389,10 @@ export class SessionManager {
   private dateOverrideScripts = new Map<string, string>();
   // Per-session navigation history, newest entry last — cleared on destroy.
   private sessionHistory = new Map<string, HistoryEntry[]>();
+  // Lazily-read, cached contents of the vendored axe-core bundle — read once
+  // per app run rather than on every violations scan. '' (not null) marks a
+  // failed read so we don't retry the disk hit on every call.
+  private axeSource: string | null = null;
   private recordFeatureError: (message: string) => void;
 
   constructor(win: BrowserWindow, getRedactHeaders: () => boolean, recordFeatureError: (message: string) => void = () => {}) {
@@ -1419,6 +1452,75 @@ export class SessionManager {
         await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yHover' });
         await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yClick' });
       } catch {}
+    }
+  }
+
+  // Vendored under renderer/ (rather than read from node_modules/axe-core at
+  // runtime) so the packaged NSIS build is guaranteed to contain it — that
+  // directory is unambiguously covered by build.files' `renderer/**/*` entry,
+  // unlike node_modules, whose inclusion for a given production dependency
+  // isn't something to assume without confirming the actual packaged build.
+  private getAxeSource(): string {
+    if (this.axeSource === null) {
+      try {
+        this.axeSource = fs.readFileSync(
+          path.join(__dirname, '..', '..', 'renderer', 'vendor', 'axe.min.js'), 'utf8'
+        );
+      } catch {
+        this.axeSource = '';
+      }
+    }
+    return this.axeSource;
+  }
+
+  async getA11yViolations(id: string): Promise<object[] | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    const axeSource = this.getAxeSource();
+    if (!axeSource) return null;
+    const dbg = s.view.webContents.debugger;
+    try {
+      // Same isolated-world-free injection technique as setA11yInspect's
+      // hover/click bindings above: run axe-core directly in the page's own
+      // main world, since it needs to read live computed styles/DOM state.
+      await dbg.sendCommand('Runtime.evaluate', { expression: axeSource, includeCommandLineAPI: false });
+      const runExpression =
+        `JSON.stringify((await axe.run(document, { rules: ${JSON.stringify(buildAxeRuleConfig())} })).violations)`;
+      const result = await dbg.sendCommand('Runtime.evaluate', {
+        expression: runExpression,
+        awaitPromise: true,
+        returnByValue: true,
+      }) as { result?: { value?: string }; exceptionDetails?: unknown };
+      if (result.exceptionDetails || typeof result.result?.value !== 'string') return [];
+      return JSON.parse(result.result.value);
+    } catch {
+      return null;
+    }
+  }
+
+  // Scrolls to and briefly outlines the element a violation node points at.
+  // Selector comes from axe's own `target` array — single-frame, single-
+  // selector targets only (see renderer/a11y.js for the multi-frame/shadow-
+  // DOM cases this deliberately doesn't handle).
+  async highlightA11yElement(id: string, selector: string): Promise<boolean> {
+    const s = this.sessions.get(id);
+    if (!s) return false;
+    try {
+      return await s.view.webContents.executeJavaScript(`
+        (function(sel) {
+          try {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            el.style.outline = '3px solid #ff5252';
+            el.style.outlineOffset = '2px';
+            setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 2000);
+            return true;
+          } catch { return false; }
+        })(${JSON.stringify(selector)})
+      `);
+    } catch {
+      return false;
     }
   }
 

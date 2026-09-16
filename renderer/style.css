@@ -839,6 +839,32 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .a11y-state { background: var(--info-surface); color: var(--info-strong); border-radius: 3px;
               padding: 0 4px; font-size: 10px; margin-left: 2px; }
 
+.a11y-view-toggle { display: flex; gap: 4px; }
+
+.a11y-violations { display: flex; flex-direction: column; gap: 14px; }
+.a11y-violation-group-heading { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+                                 letter-spacing: 0.04em; }
+.a11y-impact-critical .a11y-violation-group-heading { color: var(--error-strong); }
+.a11y-impact-serious  .a11y-violation-group-heading { color: var(--warn-strong); }
+.a11y-impact-moderate .a11y-violation-group-heading { color: var(--info-strong); }
+.a11y-impact-minor    .a11y-violation-group-heading { color: var(--text-muted); }
+.a11y-violation-row { border: 1px solid var(--border-color); border-radius: 4px; padding: 8px 10px;
+                      margin-bottom: 8px; font-size: 12px; }
+.a11y-impact-critical .a11y-violation-row { border-left: 3px solid var(--error-border); }
+.a11y-impact-serious  .a11y-violation-row { border-left: 3px solid var(--warn-border); }
+.a11y-impact-moderate .a11y-violation-row { border-left: 3px solid var(--info-border); }
+.a11y-violation-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.a11y-violation-id { font-family: monospace; font-weight: 600; }
+.a11y-violation-count { font-size: 10px; color: var(--text-muted); background: var(--bg-hover);
+                        border-radius: 3px; padding: 0 5px; }
+.a11y-violation-desc { color: var(--text-secondary); margin-bottom: 4px; }
+.a11y-violation-link { font-size: 11px; }
+.a11y-violation-nodes { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.a11y-violation-node { font-family: monospace; font-size: 11px; color: var(--text-muted);
+                       padding: 2px 4px; border-radius: 3px; word-break: break-all; }
+.a11y-violation-node-clickable { cursor: pointer; color: var(--accent-text); }
+.a11y-violation-node-clickable:hover { background: var(--bg-hover); }
+
 /* ── Diff panel ── */
 #diffPanel { flex: 1; overflow: hidden; display: none; flex-direction: column; }
 .diff-toolbar { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
