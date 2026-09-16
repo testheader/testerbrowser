@@ -1579,8 +1579,15 @@ export class SessionManager {
       // hover/click bindings above: run axe-core directly in the page's own
       // main world, since it needs to read live computed styles/DOM state.
       await dbg.sendCommand('Runtime.evaluate', { expression: axeSource, includeCommandLineAPI: false });
+      // Wrapped in an async IIFE rather than a bare top-level `await` — CDP's
+      // Runtime.evaluate treats the expression as an ordinary (non-module,
+      // non-REPL) script, where a top-level `await` is a SyntaxError; the
+      // exception it throws was being silently swallowed into an empty
+      // violations list below. An async IIFE's own returned promise is what
+      // awaitPromise actually awaits, which is the portable way to run async
+      // code through this API regardless of REPL-mode support.
       const runExpression =
-        `JSON.stringify((await axe.run(document, { rules: ${JSON.stringify(buildAxeRuleConfig())} })).violations)`;
+        `(async () => JSON.stringify((await axe.run(document, { rules: ${JSON.stringify(buildAxeRuleConfig())} })).violations))()`;
       const result = await dbg.sendCommand('Runtime.evaluate', {
         expression: runExpression,
         awaitPromise: true,

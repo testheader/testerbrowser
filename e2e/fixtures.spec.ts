@@ -196,7 +196,7 @@ test('network/status-codes.html: Res and Err pills default off, hiding those row
 
   // Toggling it on shows the rows already in the buffer — nothing was dropped.
   await resPillBtn.click();
-  await expect(window.locator('.evt.network-body', { hasText: '404' })).toBeVisible();
+  await expect(window.locator('.evt.network-body', { hasText: '"status":404' })).toBeVisible();
 
   // Toggling back off round-trips cleanly.
   await resPillBtn.click();
@@ -210,7 +210,7 @@ test('network/status-codes.html: timeline rows show a time-only, date-free times
   await tab.click('button:text-is("404")');
   await window.waitForTimeout(1_500);
 
-  const bodyRow = window.locator('.evt.network-body', { hasText: '404' }).first();
+  const bodyRow = window.locator('.evt.network-body', { hasText: '"status":404' }).first();
   await expect(bodyRow).toBeVisible();
   await expect(bodyRow.locator('.evt-ts')).toHaveText(/^\[\d{2}:\d{2}:\d{2}\]$/);
   await expect(bodyRow.locator('.evt-ts-date')).toHaveCount(0);
