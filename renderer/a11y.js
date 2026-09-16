@@ -6,7 +6,7 @@ const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
 let hoveredRow = null;
 let selectedRow = null;
 let inspecting = false;
-let activeView = 'tree'; // 'tree' | 'violations' | 'contrast' | 'structure'
+let activeView = 'tree'; // 'tree' | 'violations' | 'contrast' | 'structure' | 'altlabels'
 
 // One entry per view: its toolbar button id, empty-state message, whether
 // it's been manually refreshed at least once (gates reloadA11yIfLoaded the
@@ -20,6 +20,8 @@ const VIEWS = {
                 loaded: false, load: () => loadA11yContrast() },
   structure:  { btnId: 'a11yViewStructureBtn',  emptyMsg: 'Click Refresh to list headings and landmarks for this page.',
                 loaded: false, load: () => loadA11yStructure() },
+  altlabels:  { btnId: 'a11yViewAltLabelsBtn',  emptyMsg: 'Click Refresh to check image alt text and form labels for this page.',
+                loaded: false, load: () => loadA11yAltLabels() },
 };
 
 export function initA11y() {
@@ -33,6 +35,7 @@ export function initA11y() {
         <button class="a11y-btn" id="a11yViewViolationsBtn" data-view="violations">Violations</button>
         <button class="a11y-btn" id="a11yViewContrastBtn" data-view="contrast">Contrast</button>
         <button class="a11y-btn" id="a11yViewStructureBtn" data-view="structure">Structure</button>
+        <button class="a11y-btn" id="a11yViewAltLabelsBtn" data-view="altlabels">Alt &amp; Labels</button>
       </div>
       <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
       <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
@@ -708,4 +711,102 @@ function attachHighlightHandler(row, backendDOMNodeId) {
     if (!id) return;
     testerBrowser.a11y.highlightNode(id, backendDOMNodeId).catch(() => {});
   });
+}
+
+// ── Alt & Labels (image alt-text & form label audit) ────────────────────────
+
+async function loadA11yAltLabels() {
+  const content = document.getElementById('a11yContent');
+  if (!content) return;
+  if (!getActiveId()) {
+    content.innerHTML = '<div class="a11y-empty">No active session.</div>';
+    return;
+  }
+  content.innerHTML = '<div class="a11y-loading">Checking image alt text and form labels…</div>';
+  try {
+    const issues = await testerBrowser.a11y.getAltLabelIssues(getActiveId());
+    renderA11yAltLabels(content, issues ?? { images: [], fields: [] });
+  } catch (e) {
+    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+  }
+}
+
+function renderA11yAltLabels(panel, issues) {
+  panel.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'a11y-altlabels';
+
+  const imgSection = document.createElement('div');
+  imgSection.className = 'a11y-structure-section';
+  imgSection.appendChild(sectionHeading('Images missing alt text'));
+  if (issues.images.length === 0) {
+    imgSection.appendChild(emptyNote('No images missing alt text found.'));
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'a11y-structure-list';
+    for (const img of issues.images) list.appendChild(buildAltIssueRow(img));
+    imgSection.appendChild(list);
+  }
+  wrap.appendChild(imgSection);
+
+  const fieldSection = document.createElement('div');
+  fieldSection.className = 'a11y-structure-section';
+  fieldSection.appendChild(sectionHeading('Unlabeled form fields'));
+  if (issues.fields.length === 0) {
+    fieldSection.appendChild(emptyNote('No unlabeled form fields found.'));
+  } else {
+    const list = document.createElement('ul');
+    list.className = 'a11y-structure-list';
+    for (const field of issues.fields) list.appendChild(buildLabelIssueRow(field));
+    fieldSection.appendChild(list);
+  }
+  wrap.appendChild(fieldSection);
+
+  panel.appendChild(wrap);
+}
+
+function buildAltIssueRow(img) {
+  const li = document.createElement('li');
+  li.className = 'a11y-structure-row a11y-structure-row-clickable';
+  li.title = 'Click to highlight this element on the page';
+  li.addEventListener('click', () => highlightA11yNode(img.selector));
+
+  const roleEl = document.createElement('span');
+  roleEl.className = 'a11y-structure-role';
+  roleEl.textContent = 'img';
+  li.appendChild(roleEl);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'a11y-structure-name';
+  nameEl.textContent = img.src || img.selector;
+  li.appendChild(nameEl);
+
+  if (img.likelyDecorative) {
+    const hintEl = document.createElement('span');
+    hintEl.className = 'a11y-altlabels-hint';
+    hintEl.textContent = 'likely decorative';
+    hintEl.title = 'Heuristic only (role="presentation"/"none" or a tiny image) — not a guarantee';
+    li.appendChild(hintEl);
+  }
+
+  return li;
+}
+
+function buildLabelIssueRow(field) {
+  const li = document.createElement('li');
+  li.className = 'a11y-structure-row a11y-structure-row-clickable';
+  li.title = 'Click to highlight this element on the page';
+  li.addEventListener('click', () => highlightA11yNode(field.selector));
+
+  const roleEl = document.createElement('span');
+  roleEl.className = 'a11y-structure-role';
+  roleEl.textContent = field.type;
+  li.appendChild(roleEl);
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'a11y-structure-name';
+  nameEl.textContent = field.selector;
+  li.appendChild(nameEl);
+
+  return li;
 }

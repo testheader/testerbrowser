@@ -75,9 +75,12 @@ test('Violations view finds real axe-core issues via Refresh (#193)', async () =
   await window.click('#a11yRefreshBtn');
 
   const content = window.locator('#a11yContent');
-  // duplicate-id (the two #dupeTarget elements) and aria-roles (role="bogus-role")
-  // — neither overlaps the rules #194/#195/#196 own, so both should surface here.
-  await expect(content).toContainText('duplicate-id', { timeout: 10_000 });
+  // button-name (the empty <button>) and aria-roles (role="bogus-role") —
+  // neither overlaps the rules #194/#195/#196 own, so both should surface
+  // here. (duplicate-id was tried first, but axe-core 4.13 deprecated it —
+  // disabled by default — so it never actually fired; button-name is on by
+  // default and unrelated to any excluded rule.)
+  await expect(content).toContainText('button-name', { timeout: 10_000 });
   await expect(content).toContainText('aria-roles');
 });
 
@@ -123,4 +126,28 @@ test('Structure view lists headings/landmarks in document order and flags a head
   await expect(content).toContainText('contentinfo');
   // …but there's deliberately no <main>, which should be flagged.
   await expect(content).toContainText('No <main> landmark found');
+});
+
+test('Alt & Labels view flags exactly the missing-alt image and the bare input (#196)', async () => {
+  const urlPath = '/accessibility/alt-labels.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yViewAltLabelsBtn');
+  await window.click('#a11yRefreshBtn');
+
+  const content = window.locator('#a11yContent');
+  await expect(content).toContainText('missing-alt.png', { timeout: 10_000 });
+  await expect(content).toContainText('input#a11yInputBare');
+
+  // The five labeled/excluded cases never appear anywhere in the results.
+  await expect(content).not.toContainText('decorative.png');
+  await expect(content).not.toContainText('logo.png');
+  await expect(content).not.toContainText('a11yInputWrapped');
+  await expect(content).not.toContainText('a11yInputFor');
+  await expect(content).not.toContainText('a11yInputArialabel');
+  await expect(content).not.toContainText('a11yInputLabelledby');
 });

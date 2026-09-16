@@ -172,6 +172,83 @@ export interface ContrastIssue {
   status: 'aa-fail' | 'aaa-note' | 'unknown-background';
 }
 
+// Runs entirely in-page via executeJavaScript (same pattern as
+// getLocalStorage/CONTRAST_SCAN_SCRIPT) — the label-association rules
+// (label[for], wrapping label, aria-label, aria-labelledby) all need live
+// DOM queries (querySelector, closest, getElementById), so unlike the
+// contrast checker's ratio math there's no DOM-free part worth pulling out
+// into a separately unit-tested module; this ticket's test plan explicitly
+// allows relying on e2e coverage instead for that reason.
+const ALT_LABEL_SCAN_SCRIPT = `
+(function() {
+  function selectorFor(el) {
+    var sel = el.tagName.toLowerCase();
+    if (el.id) return sel + '#' + el.id;
+    if (el.className && typeof el.className === 'string' && el.className.trim()) {
+      sel += '.' + el.className.trim().split(/\\s+/).join('.');
+    }
+    return sel;
+  }
+
+  var images = [];
+  var imgEls = document.querySelectorAll('img');
+  for (var i = 0; i < imgEls.length; i++) {
+    var img = imgEls[i];
+    if (img.hasAttribute('alt')) continue; // alt="" is a valid, deliberate "decorative" marker — not flagged
+    var rect = img.getBoundingClientRect();
+    var role = (img.getAttribute('role') || '').toLowerCase();
+    var likelyDecorative = role === 'presentation' || role === 'none' || (rect.width <= 2 && rect.height <= 2);
+    images.push({ selector: selectorFor(img), src: img.getAttribute('src') || '', likelyDecorative: likelyDecorative });
+  }
+
+  function hasAccessibleLabel(el) {
+    if (el.id && document.querySelector('label[for="' + CSS.escape(el.id) + '"]')) return true;
+    if (el.closest('label')) return true;
+    var ariaLabel = el.getAttribute('aria-label');
+    if (ariaLabel && ariaLabel.trim()) return true;
+    var labelledBy = el.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      var ids = labelledBy.split(/\\s+/).filter(Boolean);
+      for (var j = 0; j < ids.length; j++) {
+        var ref = document.getElementById(ids[j]);
+        if (ref && ref.textContent.trim()) return true;
+      }
+    }
+    return false;
+  }
+
+  var EXCLUDED_INPUT_TYPES = ['hidden', 'button', 'submit', 'reset', 'image'];
+  var fields = [];
+  var fieldEls = document.querySelectorAll('input, select, textarea');
+  for (var k = 0; k < fieldEls.length; k++) {
+    var el = fieldEls[k];
+    if (el.tagName === 'INPUT') {
+      var type = (el.getAttribute('type') || 'text').toLowerCase();
+      if (EXCLUDED_INPUT_TYPES.indexOf(type) !== -1) continue;
+    }
+    if (!hasAccessibleLabel(el)) fields.push({ selector: selectorFor(el), type: el.tagName.toLowerCase() });
+  }
+
+  return JSON.stringify({ images: images, fields: fields });
+})()
+`;
+
+export interface AltIssue {
+  selector: string;
+  src: string;
+  likelyDecorative: boolean;
+}
+
+export interface LabelIssue {
+  selector: string;
+  type: string;
+}
+
+export interface AltLabelIssues {
+  images: AltIssue[];
+  fields: LabelIssue[];
+}
+
 export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
 
 export interface ResilienceRule {
@@ -1687,6 +1764,17 @@ export class SessionManager {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async getAltLabelIssues(id: string): Promise<AltLabelIssues | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    try {
+      const raw = await s.view.webContents.executeJavaScript(ALT_LABEL_SCAN_SCRIPT) as string;
+      return JSON.parse(raw) as AltLabelIssues;
+    } catch {
+      return null;
     }
   }
 

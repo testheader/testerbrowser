@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accessibility alt-text & label fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / accessibility / alt-labels</nav>
+<h1>Accessibility alt-text &amp; label fixture</h1>
+<p>Deliberate alt-text and form-label cases for exercising the A11y tab's Alt &amp; Labels view.</p>
+
+<p>
+  <img src="../assets/missing-alt.png" data-testid="a11y-img-missing-alt">
+  <img src="../assets/decorative.png" alt="" data-testid="a11y-img-empty-alt">
+  <img src="../assets/logo.png" alt="Descriptive text" data-testid="a11y-img-with-alt">
+</p>
+
+<p>
+  <input type="text" id="a11yInputBare" data-testid="a11y-input-bare">
+</p>
+<p>
+  <label>Wrapped
+    <input type="text" id="a11yInputWrapped" data-testid="a11y-input-wrapped">
+  </label>
+</p>
+<p>
+  <label for="a11yInputFor">Labeled via for</label>
+  <input type="text" id="a11yInputFor" data-testid="a11y-input-for">
+</p>
+<p>
+  <input type="text" id="a11yInputArialabel" aria-label="Labeled via aria-label" data-testid="a11y-input-arialabel">
+</p>
+<p>
+  <span id="a11yLabelledBySpan">Labelled by this span</span>
+  <input type="text" id="a11yInputLabelledby" aria-labelledby="a11yLabelledBySpan" data-testid="a11y-input-labelledby">
+</p>
+</body>
+</html>
