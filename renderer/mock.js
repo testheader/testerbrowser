@@ -163,7 +163,13 @@ export function initMock() {
   loadRules();
   // Hit counts change as traffic flows without the user re-opening this tab;
   // keep them fresh while the Mock tab is the one being looked at.
-  setInterval(() => { if (getActiveConsoleTab() === 'mock') loadRules(); }, 1500);
+  // Skip auto-refresh while a rule is being edited — the re-render would
+  // replace the edit row with a read-only row, discarding in-progress edits.
+  setInterval(() => {
+    if (getActiveConsoleTab() !== 'mock') return;
+    if (document.querySelector('#mockRules .mock-rule-row-editing')) return;
+    loadRules();
+  }, 1500);
 }
 
 async function loadRules() {
