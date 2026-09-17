@@ -37,11 +37,28 @@ export async function openSettings() {
 async function refreshGithubAuthStatus() {
   const hasToken = await testerBrowser.bugReport.hasToken();
   const status = document.getElementById('githubTokenStatus');
-  status.textContent = hasToken ? 'Signed in ✓' : 'Not signed in';
-  status.style.color = hasToken ? 'var(--ok,#4caf50)' : '';
-  document.getElementById('githubSignInBtn').hidden = hasToken;
-  document.getElementById('githubSignOutBtn').hidden = !hasToken;
   document.getElementById('githubOAuthPending').hidden = true;
+  if (!hasToken) {
+    status.textContent = 'Not signed in';
+    status.style.color = '';
+    document.getElementById('githubSignInBtn').hidden = false;
+    document.getElementById('githubSignOutBtn').hidden = true;
+    return;
+  }
+  status.textContent = 'Checking…';
+  status.style.color = '';
+  document.getElementById('githubSignInBtn').hidden = true;
+  document.getElementById('githubSignOutBtn').hidden = true;
+  const { valid } = await testerBrowser.bugReport.checkToken();
+  if (valid) {
+    status.textContent = 'Signed in ✓';
+    status.style.color = 'var(--ok,#4caf50)';
+    document.getElementById('githubSignOutBtn').hidden = false;
+  } else {
+    status.textContent = 'Token expired — please sign in again';
+    status.style.color = 'var(--err,#f44336)';
+    document.getElementById('githubSignInBtn').hidden = false;
+  }
 }
 
 function switchSettingsTab(pane) {

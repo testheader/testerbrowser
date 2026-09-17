@@ -562,7 +562,22 @@ ipcMain.handle('bugreport:signOut', () => {
   return { ok: true };
 });
 
-ipcMain.handle('bugreport:hasToken', () => !!bugReportStore.get().tokenEnc);
+ipcMain.handle('bugreport:hasToken', () => !!getGithubToken());
+
+ipcMain.handle('bugreport:checkToken', async () => {
+  const token = getGithubToken();
+  if (!token) return { valid: false };
+  try {
+    const res = await net.fetch('https://api.github.com/user', {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'TesterBrowser-BugReporter' },
+    });
+    if (res.status === 401) {
+      bugReportStore.set({ tokenEnc: null });
+      return { valid: false };
+    }
+    return { valid: res.ok };
+  } catch { return { valid: false }; }
+});
 
 ipcMain.handle('bugreport:saveToken', (_e, token: string) => {
   const trimmed = (token ?? '').trim();
@@ -672,7 +687,13 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
       body: JSON.stringify({ title, body, labels: ['status-ready'] }),
     });
     const data = await res.json() as Record<string, unknown>;
-    if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
+    if (!res.ok) {
+      if (res.status === 401) {
+        bugReportStore.set({ tokenEnc: null });
+        return { ok: false, error: 'GitHub token is invalid or expired. Please sign in again in Settings.' };
+      }
+      return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
+    }
 
     let screenshotAttached = false;
     let screenshotError: string | null = null;

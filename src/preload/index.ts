@@ -254,6 +254,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
 
   bugReport: {
     hasToken:       () => ipcRenderer.invoke('bugreport:hasToken'),
+    checkToken:     () => ipcRenderer.invoke('bugreport:checkToken'),
     getDiagnostics: () => ipcRenderer.invoke('bugreport:getDiagnostics'),
     captureScreenshot: () => ipcRenderer.invoke('app:captureScreenshot'),
     submit: (payload: { area: string; description: string; diagnostics?: string; screenshotB64?: string | null }) =>
