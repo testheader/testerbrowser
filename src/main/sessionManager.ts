@@ -346,7 +346,7 @@ const FOCUS_OVERLAY_ENABLE_SCRIPT = `
 
   var overlayRoot = document.createElement('div');
   overlayRoot.id = '__a11yFocusOverlayRoot';
-  overlayRoot.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;';
+  overlayRoot.style.cssText = 'position:absolute;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;';
   document.body.appendChild(overlayRoot);
 
   var previouslyFocused = document.activeElement;
@@ -364,7 +364,7 @@ const FOCUS_OVERLAY_ENABLE_SCRIPT = `
     var badge = document.createElement('div');
     badge.className = '__a11yFocusBadge';
     badge.textContent = String(idx + 1);
-    badge.style.cssText = 'position:fixed;left:' + Math.round(rect.left) + 'px;top:' + Math.max(0, Math.round(rect.top) - 8) +
+    badge.style.cssText = 'position:absolute;left:' + Math.round(rect.left + window.scrollX) + 'px;top:' + Math.max(0, Math.round(rect.top + window.scrollY) - 8) +
       'px;background:#ff5252;color:#fff;font:10px/14px monospace;min-width:14px;height:14px;border-radius:7px;' +
       'text-align:center;padding:0 3px;box-shadow:0 0 0 1px #fff;';
     overlayRoot.appendChild(badge);
