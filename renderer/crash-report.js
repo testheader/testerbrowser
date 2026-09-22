@@ -13,24 +13,31 @@ async function checkForCrash() {
   const log = await testerBrowser.crash.check();
   if (!log) return;
   pendingCrashLog = log;
-  showModal(log);
+  await showModal(log);
 }
 
-function showModal(log) {
+// The active tab is a WebContentsView, which paints as a native layer above
+// the renderer's own HTML — an HTML modal alone renders underneath it, not
+// over it. A crash always leaves a tab view attached (initTabs() runs before
+// initCrashReport()'s checkForCrash()), so the modal must hide the view
+// first, same as bugreport.js's openBugReport()/replay.js's openReplay().
+async function showModal(log) {
   const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : 'unknown time';
   document.getElementById('crashReportTimestamp').textContent = ts;
+  await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('crashReportOverlay').classList.add('open');
 }
 
-function dismissCrash() {
+async function dismissCrash() {
   document.getElementById('crashReportOverlay').classList.remove('open');
+  await testerBrowser.layout.setViewerVisible(true);
   testerBrowser.crash.clear();
   pendingCrashLog = null;
 }
 
 async function fileIssue() {
   const log = pendingCrashLog;
-  dismissCrash();
+  await dismissCrash(); // restores the view; openBugReport() below hides it again itself
   await openBugReport();
   if (log) {
     document.getElementById('bugReportDesc').value = formatCrashForIssue(log);
