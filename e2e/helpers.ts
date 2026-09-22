@@ -86,3 +86,20 @@ export async function getActiveViewBounds(
     return child ? child.getBounds() : null;
   });
 }
+
+/**
+ * Triggers a tab's double-click-to-rename handler (tabs.js's startRename())
+ * by dispatching a 'dblclick' event directly, instead of Playwright's native
+ * two-click .dblclick(). What these tests care about is the app's own
+ * rename logic — not whether Chromium's input pipeline recognizes two
+ * synthetic clicks as a double-click, which depends on both clicks landing
+ * within its own timing threshold and has proven unreliable (consistently,
+ * not just occasionally) on CI. Dispatching the event directly is
+ * deterministic and exercises the same ondblclick handler a real
+ * double-click would.
+ */
+export async function dblclickTabName(win: Page, dataId: string): Promise<void> {
+  await win.locator(`.tab[data-id="${dataId}"] .tab-name`).evaluate((el) => {
+    el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  });
+}

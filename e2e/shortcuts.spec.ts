@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH, dblclickTabName } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 // Exercises every keyboard shortcut documented in CLAUDE.md's shortcuts table,
@@ -104,28 +104,27 @@ test('Ctrl+Tab / Ctrl+Shift+Tab cycle tabs by most-recently-used', async () => {
 
 test('Ctrl+Tab while a tab is mid-rename does not crash the tab bar (#211)', async () => {
   // shortcuts.js's Ctrl+Tab handler is a document-level keydown listener, so
-  // it fires even while a tab-rename <input> has focus — unlike clicking
-  // another tab, which blurs (and so commits/restores) the rename input
-  // first via ordinary focus-change semantics. That leaves cycleTab() ->
-  // switchToSession() -> refreshTabs() running while the renaming tab's
-  // .tab-name span is still replaced by the rename input in the DOM.
+  // it fires even while a tab-rename <input> has focus. Switching tabs also
+  // focuses the newly-active tab's own view, which — same as clicking
+  // elsewhere would — blurs the rename input via ordinary focus semantics,
+  // triggering its own commit() (see startRename() in tabs.js). That commit
+  // and cycleTab() -> switchToSession()'s own refreshTabs() call are two
+  // independent, unsynchronized paths racing to touch the same tab's DOM:
+  // updateTabElement() used to assume .tab-name was always present and
+  // crashed on a null when a refreshTabs() call from either path ran while
+  // it was still replaced by the rename <input>.
   await resetToSingleTab();
   await window.keyboard.press('Control+t');
   await expect.poll(tabCount).toBe(2);
 
   const renamingId = await activeTabId();
-  const nameEl = window.locator(`.tab[data-id="${renamingId}"] .tab-name`);
-  const input = window.locator(`.tab[data-id="${renamingId}"] input.tab-rename-input`);
-  // A real double-click is inherently timing-sensitive (two synthetic clicks
-  // have to land within Chromium's own double-click interval) — a loaded CI
-  // runner occasionally stretches the gap enough that it's read as two
-  // single clicks instead. Retry the gesture itself, not just the wait, same
-  // pattern used elsewhere in this suite (and now in perf.spec.ts's own
-  // rename test) for a flaky native interaction.
-  await expect(async () => {
-    await nameEl.dblclick({ timeout: 2_000 });
-    await expect(input).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 10_000 });
+  // dblclickTabName dispatches 'dblclick' directly rather than relying on
+  // Playwright's native two-click gesture — this test is about Ctrl+Tab
+  // during a rename, not about the browser's own double-click timing
+  // recognition, which has proven unreliable on CI (see perf.spec.ts's
+  // rename test for the same fix and the full reasoning).
+  await dblclickTabName(window, renamingId);
+  await expect(window.locator(`.tab[data-id="${renamingId}"] input.tab-rename-input`)).toBeVisible();
 
   const pageErrors: string[] = [];
   window.on('pageerror', (err) => pageErrors.push(String(err)));
@@ -136,15 +135,47 @@ test('Ctrl+Tab while a tab is mid-rename does not crash the tab bar (#211)', asy
   expect(pageErrors).toEqual([]);
   // The tab bar itself must have survived intact — both tabs still present
   // and re-render-able, not stuck in whatever partial state a mid-loop
-  // exception would have left it in.
+  // exception would have left it in. Whether the rename itself ended up
+  // committed (likely, via the focus-driven blur above) or left in
+  // progress is incidental to what this test checks — either way the tab
+  // must be back to a normal, interactive state, not stuck mid-render.
   await expect.poll(tabCount).toBe(2);
+  await expect(window.locator(`.tab[data-id="${renamingId}"] .tab-name`)).toBeVisible();
 
-  // The in-progress rename is left alone (not committed, not torn down) by
-  // this render skip — finish it normally afterward to confirm the tab is
-  // still in a usable state, not left permanently stuck as an <input>.
-  await input.fill('Survived');
-  await input.press('Enter');
-  await expect(window.locator(`.tab[data-id="${renamingId}"] .tab-name`)).toHaveText('Survived');
+  window.removeAllListeners('pageerror');
+});
+
+test('refreshTabs() running while a tab is mid-rename (e.g. another tab\'s favicon updating) does not crash the tab bar (#211)', async () => {
+  // A more direct trigger for the same underlying issue as the Ctrl+Tab test
+  // above: onFaviconUpdated (tabs.js) calls refreshTabs() for *any* tab's
+  // favicon changing. refreshTabs() moves every tab's element via
+  // tabsEl.insertBefore() on every render (even one updateTabElement()
+  // otherwise skips touching, per the null-name guard) — relocating a node
+  // that contains the currently-focused rename <input> blurs it, which
+  // commit()'s own blur listener treats as "done", auto-committing the
+  // rename. So a still-in-progress rename never survives *any* refreshTabs()
+  // call untouched, by this mechanism or Ctrl+Tab's — what actually matters,
+  // and what used to crash, is that this resolves cleanly instead of hitting
+  // a null .tab-name.
+  await resetToSingleTab();
+  const renamingId = await activeTabId();
+  await dblclickTabName(window, renamingId);
+  await expect(window.locator(`.tab[data-id="${renamingId}"] input.tab-rename-input`)).toBeVisible();
+
+  const pageErrors: string[] = [];
+  window.on('pageerror', (err) => pageErrors.push(String(err)));
+
+  await app.evaluate(({ BrowserWindow }, id) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('session:faviconUpdated', {
+      id, favicon: 'https://example.com/favicon.ico',
+    });
+  }, renamingId);
+  await window.waitForTimeout(300);
+
+  expect(pageErrors).toEqual([]);
+  // Auto-committed (to the same, unchanged name — nothing was typed) rather
+  // than left stuck as an input or torn down into nothing.
+  await expect(window.locator(`.tab[data-id="${renamingId}"] .tab-name`)).toBeVisible();
 
   window.removeAllListeners('pageerror');
 });

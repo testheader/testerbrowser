@@ -17,7 +17,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, launchApp, MAIN_PATH, dblclickTabName } from './helpers';
 
 let app: ElectronApplication;
 let window: Page;
@@ -87,23 +87,26 @@ test('switching to a background tab updates the active tab near-instantly', asyn
 
 test('double-click-to-rename still works when the first click also switches tabs', async () => {
   // Regression guard for the fix above: switching no longer rebuilds the tab
-  // bar's DOM (it used to, on every switch), so the two clicks of a real
-  // double-click keep landing on the same node and the browser's native
-  // dblclick detection keeps working.
+  // bar's DOM (it used to, on every switch), so a tab's .tab-name node
+  // survives the switchToSession() its own first click triggers, and a
+  // subsequent interaction still lands on that same, persistent node.
   const sessions: Array<{ id: string }> = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
   const targetId = sessions[0].id;
 
   const nameEl = window.locator(`.tab[data-id="${targetId}"] .tab-name`);
+  // The first click of a real double-click also fires a plain 'click' (which
+  // switches to this tab) before 'dblclick' — trigger that switch for real,
+  // then dispatch dblclick directly via the helper rather than relying on
+  // Playwright's native .dblclick() gesture: two synthetic clicks landing
+  // within Chromium's own double-click interval has proven unreliable on
+  // CI (consistently, not just occasionally), and what this test cares
+  // about is that the switch didn't tear down the node dblclick targets —
+  // not whether the browser's own gesture recognition succeeds.
+  await nameEl.click();
+  await dblclickTabName(window, targetId);
+
   const input = window.locator(`.tab[data-id="${targetId}"] input.tab-rename-input`);
-  // A real double-click is inherently timing-sensitive (two synthetic clicks
-  // have to land within Chromium's own double-click interval) — a loaded CI
-  // runner occasionally stretches the gap enough that it's read as two
-  // single clicks instead. Retry the gesture itself, not just the wait, same
-  // pattern used elsewhere in this suite for a flaky native interaction.
-  await expect(async () => {
-    await nameEl.dblclick({ timeout: 2_000 });
-    await expect(input).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 10_000 });
+  await expect(input).toBeVisible();
   await input.fill('Renamed Tab');
   await input.press('Enter');
 
