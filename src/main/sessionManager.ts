@@ -515,6 +515,40 @@ export function resilienceRuleMatchesRequest(rule: ResilienceRule, request: { me
   return (!rule.method || rule.method === '*' || rule.method === request.method) && matchesGlob(rule.urlPattern, request.url);
 }
 
+// A rolling per-tab cap on how many Fetch.requestPaused events get full rule
+// matching + recorder tagging per second, regardless of how narrow or broad
+// the active rules' urlPattern strings look. _applyFetch()'s hasWildcard
+// check only special-cases a *literal* '*'/'' pattern — a pattern like
+// '*ad*' takes the normal "scoped" path but still matches nearly every
+// resource on a real page (any URL containing "ad" as a substring — "load",
+// "header", "admin", ...), which can flood the CDP channel exactly the way
+// a bare '*' pattern did before #199's fix, just without tripping that
+// string check (#210). Investigated but not conclusively reproduced as an
+// app crash in this environment (synthetic bursts up to 3000 concurrent
+// requests, mid-navigation refresh + immediate tab switch, and the two
+// real sites named in the bug reports all stayed responsive) — this cap is
+// added regardless, as cheap, unconditionally-safe insurance: past the
+// threshold, a paused request is let straight through via
+// Fetch.continueRequest, unmatched and untagged, rather than adding to a
+// growing backlog of synchronous rule-matching + SQLite writes.
+export const FETCH_PAUSE_RATE_LIMIT = 300;
+export const FETCH_PAUSE_RATE_WINDOW_MS = 1000;
+
+export interface FetchPauseRateState { windowStart: number; count: number; }
+
+// Mutates `state` in place (a per-tab counter) and returns whether this call
+// is over the cap for its current window. Pulled out pure so the windowing
+// behavior is unit-testable without the CDP debugger/session plumbing
+// around it — same pattern as matchesGlob/resilienceRuleMatchesRequest above.
+export function shouldRateLimitFetchPause(state: FetchPauseRateState, now: number): boolean {
+  if (now - state.windowStart >= FETCH_PAUSE_RATE_WINDOW_MS) {
+    state.windowStart = now;
+    state.count = 0;
+  }
+  state.count++;
+  return state.count > FETCH_PAUSE_RATE_LIMIT;
+}
+
 export interface TestSession {
   id: string;
   name: string;
@@ -881,6 +915,7 @@ export class SessionManager {
       defaultUserAgent: view.webContents.getUserAgent(),
       devToolsOpen: false,
     };
+    const fetchPauseRateState: FetchPauseRateState = { windowStart: 0, count: 0 };
 
     // Handle CDP events: Fetch.requestPaused for mock/resilience rules, Runtime.bindingCalled for a11y hover
     view.webContents.debugger.on('message', (_e: unknown, method: string, params: Record<string, unknown>) => {
@@ -918,13 +953,24 @@ export class SessionManager {
       }
       if (method !== 'Fetch.requestPaused') return;
       const { requestId, request, networkId } = params as { requestId: string; request: { url: string; method: string }; networkId?: string };
+      const dbg = view.webContents.debugger;
+      // Safety cap (#210): a rule pattern that's broad in effect (e.g. '*ad*'
+      // matching any URL containing "ad") can flood this handler with paused
+      // requests the same way a literal '*' pattern used to, pre-#199, just
+      // without _applyFetch()'s exact-string hasWildcard check catching it.
+      // Past the cap, skip rule matching/tagging entirely and let the
+      // request straight through, bounding worst-case load regardless of
+      // pattern text.
+      if (shouldRateLimitFetchPause(fetchPauseRateState, Date.now())) {
+        dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+        return;
+      }
       // Fetch.requestPaused's requestId is a Fetch-domain id, distinct from the
       // Network-domain requestId the recorder's Network.* events key off of —
       // tag the request under networkId (falling back to requestId when no
       // correlated network event exists) so the recorded response/failure
       // event actually carries the mock/resilience tag.
       const tagId = networkId || requestId;
-      const dbg = view.webContents.debugger;
       const mockRules = this.mockRulesByPartition.get(testSession.partition) ?? [];
       const rule = mockRules.find(r =>
         r.enabled && (r.method === '*' || r.method === request.method) && matchesGlob(r.urlPattern, request.url)
@@ -969,6 +1015,18 @@ export class SessionManager {
         }
         return;
       }
+      // Every branch above resolves the paused request via some Fetch.*
+      // command, with rejections swallowed rather than left to hang — this
+      // is deliberate, not just terseness: a page refresh (did-navigate)
+      // cancels the outgoing document's in-flight loaders on Chromium's
+      // side, including ones currently paused via the Fetch domain, so a
+      // resolution command sent for a since-cancelled requestId is expected
+      // to reject (the pause no longer exists to resolve) rather than hang
+      // indefinitely (#210's acceptance criterion re: an unanswered paused
+      // request surviving a refresh — investigated, no such path found: the
+      // debugger itself is attached once per WebContentsView at creation and
+      // stays attached across navigations, so there's no re-attach window
+      // either).
       dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
     });
     this.sessions.set(id, testSession);

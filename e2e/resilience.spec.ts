@@ -150,3 +150,43 @@ test('sending a captured POST request to Resilience scopes the rule to that meth
   await expect(editRow.locator('.res-provenance-body')).toHaveText('{"x":1}');
   await editRow.locator('.res-cancel-btn').click();
 });
+
+test('a broad-but-not-wildcard rule pattern under a heavy request burst, refresh and tab switch, does not crash the app (#210)', async () => {
+  test.setTimeout(30_000);
+
+  // "*ad*" is not the literal '*' _applyFetch()'s hasWildcard check
+  // special-cases, but matches any URL containing "ad" as a substring —
+  // this is the pattern shared by all three bug reports behind #210.
+  await window.click('#consoleTabResilience');
+  await window.selectOption('#resType', 'error500');
+  await window.fill('#resUrl', '*ad*');
+  await window.fill('#resProb', '100');
+  await window.click('.res-add-btn');
+  await expect(window.locator('.res-rule-row', { hasText: '*ad*' })).toBeVisible();
+
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/performance/network-flood.html'));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, 'network-flood.html');
+  await tab.waitForLoadState('load');
+
+  // Fire without awaiting completion, so the refresh below lands mid-flight —
+  // the "refresh tears down CDP targets while a burst is still in flight"
+  // half of #210's hypothesis, alongside the immediate tab switch.
+  tab.evaluate(() => {
+    document.querySelector('button[data-ad="1"]').click();
+  }).catch(() => {});
+  await window.waitForTimeout(50);
+
+  await window.click('#reloadBtn');
+  await window.waitForTimeout(50);
+  await window.click('#newSessionBtn');
+  await window.waitForTimeout(2_000);
+
+  // The app process is still alive and IPC-responsive — not just that
+  // `window` didn't throw, but that a real round-trip to the main process
+  // still completes.
+  const sessionCount = await window.evaluate(() => (window as any).testerBrowser.sessions.list().then((s: unknown[]) => s.length));
+  expect(sessionCount).toBeGreaterThan(0);
+  await expect(window.locator('#appName')).toBeVisible();
+});

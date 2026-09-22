@@ -16,6 +16,10 @@ Console tab's Network sub-view under high request volume.</p>
   <button data-n="50">50 concurrent requests</button>
   <button data-n="200">200 concurrent requests</button>
   <button data-n="500">500 concurrent requests</button>
+  <!-- Every request URL below contains the substring "ad" (via the adBurst
+       query param) — for exercising a Resilience rule pattern like "*ad*"
+       that's broad in effect without being the literal wildcard '*' (#210). -->
+  <button data-n="3000" data-ad="1">3000 concurrent requests (URL contains "ad")</button>
 </div>
 <p id="status">(idle)</p>
 
@@ -24,10 +28,11 @@ Console tab's Network sub-view under high request volume.</p>
   document.querySelectorAll('button[data-n]').forEach(btn => {
     btn.onclick = async () => {
       const n = Number(btn.dataset.n);
+      const param = btn.dataset.ad ? 'adBurst' : 'i';
       status.textContent = `firing ${n} requests...`;
       const start = performance.now();
       const results = await Promise.allSettled(
-        Array.from({ length: n }, (_, i) => fetch('/perf/echo?i=' + i))
+        Array.from({ length: n }, (_, i) => fetch(`/perf/echo?${param}=` + i))
       );
       const ok = results.filter(r => r.status === 'fulfilled').length;
       status.textContent = `${ok}/${n} succeeded in ${Math.round(performance.now() - start)}ms`;
