@@ -102,6 +102,45 @@ test('Ctrl+Tab / Ctrl+Shift+Tab cycle tabs by most-recently-used', async () => {
   await expect.poll(activeTabId).toBe(a);
 });
 
+test('Ctrl+Tab while a tab is mid-rename does not crash the tab bar (#211)', async () => {
+  // shortcuts.js's Ctrl+Tab handler is a document-level keydown listener, so
+  // it fires even while a tab-rename <input> has focus — unlike clicking
+  // another tab, which blurs (and so commits/restores) the rename input
+  // first via ordinary focus-change semantics. That leaves cycleTab() ->
+  // switchToSession() -> refreshTabs() running while the renaming tab's
+  // .tab-name span is still replaced by the rename input in the DOM.
+  await resetToSingleTab();
+  await window.keyboard.press('Control+t');
+  await expect.poll(tabCount).toBe(2);
+
+  const renamingId = await activeTabId();
+  const nameEl = window.locator(`.tab[data-id="${renamingId}"] .tab-name`);
+  await nameEl.dblclick();
+  const input = window.locator(`.tab[data-id="${renamingId}"] input.tab-rename-input`);
+  await expect(input).toBeVisible();
+
+  const pageErrors: string[] = [];
+  window.on('pageerror', (err) => pageErrors.push(String(err)));
+
+  await window.keyboard.press('Control+Tab');
+  await window.waitForTimeout(300);
+
+  expect(pageErrors).toEqual([]);
+  // The tab bar itself must have survived intact — both tabs still present
+  // and re-render-able, not stuck in whatever partial state a mid-loop
+  // exception would have left it in.
+  await expect.poll(tabCount).toBe(2);
+
+  // The in-progress rename is left alone (not committed, not torn down) by
+  // this render skip — finish it normally afterward to confirm the tab is
+  // still in a usable state, not left permanently stuck as an <input>.
+  await input.fill('Survived');
+  await input.press('Enter');
+  await expect(window.locator(`.tab[data-id="${renamingId}"] .tab-name`)).toHaveText('Survived');
+
+  window.removeAllListeners('pageerror');
+});
+
 test('Ctrl+1 and Ctrl+9 switch tabs by position', async () => {
   // Start clean, then open two more tabs so position 1 and position 9 (last) differ.
   await resetToSingleTab();

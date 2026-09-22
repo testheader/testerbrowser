@@ -185,6 +185,18 @@ function updateTabElement(tab, s) {
   }
 
   const name = tab.querySelector('.tab-name');
+  if (!name) {
+    // Mid-rename (see startRename()): its <input class="tab-rename-input">
+    // has replaced .tab-name in the DOM until the user commits or cancels.
+    // refreshTabs() can run in the meantime for reasons that have nothing to
+    // do with this rename — onFaviconUpdated fires for any tab's favicon
+    // change, a drag-reorder drop, another tab's own switchToSession() — so
+    // don't assume .tab-name is always there; leave name/pin/close alone
+    // this render and let the rename's own commit()/cancel() (which restore
+    // the node directly, then call refreshTabs()) catch these up once it
+    // settles.
+    return;
+  }
   let pin = tab.querySelector('.tab-pin');
   if (s.pinned && !pin) {
     pin = document.createElement('span');
