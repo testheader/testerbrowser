@@ -255,6 +255,51 @@ test('a network request\'s detail panel offers Replay, Mock and Resilience, in t
   await expect(window.locator('#resUrl')).toBeFocused();
 });
 
+test('a mock rule on one tab is visible from, and intercepted by, a new tab in the same session (#209)', async () => {
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab1 = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabMock');
+  await window.fill('#mockUrl', '*/api/session-scope');
+  await window.fill('#mockStatus', '202');
+  await window.fill('#mockBody', '{"scoped":true}');
+  await window.click('.mock-add-btn');
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/session-scope' })).toBeVisible();
+
+  // "New tab in this session" — the '+' at the end of the tab's same-partition
+  // group (renderer/tabs.js), which calls sessions.create() with that same
+  // partition. This tab's rules are a property of the partition (#209), not
+  // of the TestSession object created for tab1, so they should carry over.
+  await window.locator('.tab-group-add').first().click();
+
+  // The new tab starts on the newtab page — navigate it to the same fixture
+  // so it has #apiFetchBtn to exercise interception from.
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab2 = await getTabPage(app, urlPath, tab1);
+
+  // mock.js's Mock panel refreshes every 1.5s while the tab is active
+  // (loadRules() keyed off the now-current getActiveId()) — the new tab is
+  // a different id but the same partition, so the same rule set shows.
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/session-scope' })).toBeVisible({ timeout: 3_000 });
+
+  await tab2.fill('#apiPath', '/api/session-scope');
+  await tab2.click('#apiFetchBtn');
+  await expect(tab2.locator('#apiOut')).toContainText('"status":202', { timeout: 5_000 });
+  const out = JSON.parse((await tab2.locator('#apiOut').textContent()) || '{}');
+  expect(out.body).toContain('"scoped":true');
+
+  // The hit just came from tab2, but the rule (and its updated hit count) is
+  // the same partition-scoped one tab1's panel already showed — confirms
+  // there's exactly one shared rule set, not two racing copies.
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/session-scope' }).locator('.mock-hits-badge'))
+    .toHaveText('Hits: 1', { timeout: 3_000 });
+});
+
 test('console rows show no Replay/Mock/Resilience action row', async () => {
   await window.click('#consoleTabConsole');
   const urlPath = '/console/logs.html';

@@ -527,8 +527,6 @@ export interface TestSession {
   recorder: SessionRecorder;
   createdAt: number;
   loadedDomains: Set<string>;
-  mockRules: MockRule[];
-  resilienceRules: ResilienceRule[];
   a11yInspecting: boolean;
   devToolsOpen: boolean;
   a11yFocusOverlayOn: boolean;
@@ -792,6 +790,15 @@ export class SessionManager {
   private dateOverrideScripts = new Map<string, string>();
   // Per-session navigation history, newest entry last — cleared on destroy.
   private sessionHistory = new Map<string, HistoryEntry[]>();
+  // Mock/Resilience rules are a property of the session *partition* (cookies,
+  // storage, cache — the thing "isolated sessions" actually means), not of
+  // any one TestSession/tab object representing it — keyed by partition so
+  // rules survive that tab being destroyed and a new one created for the
+  // same partition (reopen, "New tab in this session"). Never cleared in
+  // destroySession(): another open tab, or a future reopen, may still need
+  // the entry. Not persisted to disk (see #209's "Out of scope").
+  private mockRulesByPartition = new Map<string, MockRule[]>();
+  private resilienceRulesByPartition = new Map<string, ResilienceRule[]>();
   // Lazily-read, cached contents of the vendored axe-core bundle — read once
   // per app run rather than on every violations scan. '' (not null) marks a
   // failed read so we don't retry the disk hit on every call.
@@ -837,6 +844,11 @@ export class SessionManager {
   ): TestSession {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
+    // Seed the rule buckets for this partition if this is the first tab ever
+    // to represent it — a partition passed in explicitly (reopen, "New tab
+    // in this session") may already have an entry, which must be left alone.
+    if (!this.mockRulesByPartition.has(partition)) this.mockRulesByPartition.set(partition, []);
+    if (!this.resilienceRulesByPartition.has(partition)) this.resilienceRulesByPartition.set(partition, []);
     const ses = electronSession.fromPartition(partition);
 
     this.downloadManager.attach(ses);
@@ -863,8 +875,6 @@ export class SessionManager {
       view, recorder,
       createdAt: Date.now(),
       loadedDomains: new Set<string>(),
-      mockRules: [],
-      resilienceRules: [],
       a11yInspecting: false,
       a11yFocusOverlayOn: false,
       emulation: null,
@@ -915,7 +925,8 @@ export class SessionManager {
       // event actually carries the mock/resilience tag.
       const tagId = networkId || requestId;
       const dbg = view.webContents.debugger;
-      const rule = testSession.mockRules.find(r =>
+      const mockRules = this.mockRulesByPartition.get(testSession.partition) ?? [];
+      const rule = mockRules.find(r =>
         r.enabled && (r.method === '*' || r.method === request.method) && matchesGlob(r.urlPattern, request.url)
       );
       if (rule) {
@@ -925,7 +936,8 @@ export class SessionManager {
         dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule) }).catch(() => {});
         return;
       }
-      const res = testSession.resilienceRules.find(r => r.enabled && resilienceRuleMatchesRequest(r, request));
+      const resilienceRules = this.resilienceRulesByPartition.get(testSession.partition) ?? [];
+      const res = resilienceRules.find(r => r.enabled && resilienceRuleMatchesRequest(r, request));
       if (res && Math.random() < res.probability) {
         res.hitCount = (res.hitCount || 0) + 1;
         res.lastHitAt = Date.now();
@@ -961,6 +973,12 @@ export class SessionManager {
     });
     this.sessions.set(id, testSession);
     this.onSessionsChanged();
+    // This tab's own CDP debugger has never had Fetch.enable called on it —
+    // if the partition it was seeded for already has active mock/resilience
+    // rules (reopen, "New tab in this session"), those rules should actually
+    // intercept requests from this tab too, not just the tab that originally
+    // added them.
+    this._applyFetch(id);
 
     ses.webRequest.onCompleted((details) => {
       try {
@@ -1415,6 +1433,17 @@ export class SessionManager {
     const src = this.sessions.get(sourceId);
     if (!src) return null;
     const dest = this.createSession(newName, { persistent: src.persistent });
+    // A clone is an independent copy of the source session as it currently
+    // is — cookies below, and mock/resilience rules here, the same way.
+    // createSession() already seeded dest.partition with []; overwrite with
+    // a deep copy so editing either side afterward doesn't affect the other.
+    this.mockRulesByPartition.set(dest.partition, structuredClone(this.mockRulesByPartition.get(src.partition) ?? []));
+    this.resilienceRulesByPartition.set(dest.partition, structuredClone(this.resilienceRulesByPartition.get(src.partition) ?? []));
+    // createSession() already called _applyFetch(dest.id) once, against the
+    // empty rule set it seeded dest.partition with — re-apply now that the
+    // copied rules above are in place, so the clone's own CDP debugger
+    // actually gets Fetch.enable for them.
+    this._applyFetch(dest.id);
     const cookies = await src.view.webContents.session.cookies.get({});
     for (const c of cookies) {
       const url = `${c.secure ? 'https' : 'http'}://${c.domain?.replace(/^\./, '')}${c.path}`;
@@ -2214,28 +2243,50 @@ export class SessionManager {
     await s.view.webContents.executeJavaScript('void localStorage.clear()').catch(() => {});
   }
 
+  // Mock/Resilience rules live in mockRulesByPartition/resilienceRulesByPartition
+  // (see field comment), keyed by the session's stable partition rather than
+  // the per-tab id these methods still take from the renderer — these two
+  // resolve id → partition once so every method below reads/writes the one
+  // rule set shared by every tab open on that partition.
+  private mockRulesForId(id: string): MockRule[] | null {
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return null;
+    let rules = this.mockRulesByPartition.get(partition);
+    if (!rules) { rules = []; this.mockRulesByPartition.set(partition, rules); }
+    return rules;
+  }
+
+  private resilienceRulesForId(id: string): ResilienceRule[] | null {
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return null;
+    let rules = this.resilienceRulesByPartition.get(partition);
+    if (!rules) { rules = []; this.resilienceRulesByPartition.set(partition, rules); }
+    return rules;
+  }
+
   getMockRules(id: string): MockRule[] {
-    return this.sessions.get(id)?.mockRules ?? [];
+    return this.mockRulesForId(id) ?? [];
   }
 
   addMockRule(id: string, rule: MockRule): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    s.mockRules.push({ ...rule, responseHeaders: rule.responseHeaders || {}, hitCount: 0, lastHitAt: null });
+    const rules = this.mockRulesForId(id);
+    if (!rules) return;
+    rules.push({ ...rule, responseHeaders: rule.responseHeaders || {}, hitCount: 0, lastHitAt: null });
     this._applyMocks(id);
   }
 
   removeMockRule(id: string, ruleId: string): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    s.mockRules = s.mockRules.filter(r => r.id !== ruleId);
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    const rules = (this.mockRulesByPartition.get(partition) ?? []).filter(r => r.id !== ruleId);
+    this.mockRulesByPartition.set(partition, rules);
     this._applyMocks(id);
   }
 
   toggleMockRule(id: string, ruleId: string, enabled: boolean): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    const rule = s.mockRules.find(r => r.id === ruleId);
+    const rules = this.mockRulesForId(id);
+    if (!rules) return;
+    const rule = rules.find(r => r.id === ruleId);
     if (rule) rule.enabled = enabled;
     this._applyMocks(id);
   }
@@ -2243,11 +2294,11 @@ export class SessionManager {
   // A ruleId that doesn't match any rule is a no-op (nothing to update,
   // nothing to re-apply).
   updateMockRule(id: string, ruleId: string, patch: Partial<MockRule>): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    const idx = s.mockRules.findIndex(r => r.id === ruleId);
+    const rules = this.mockRulesForId(id);
+    if (!rules) return;
+    const idx = rules.findIndex(r => r.id === ruleId);
     if (idx === -1) return;
-    s.mockRules[idx] = applyMockRulePatch(s.mockRules[idx], patch);
+    rules[idx] = applyMockRulePatch(rules[idx], patch);
     this._applyMocks(id);
   }
 
@@ -2255,8 +2306,8 @@ export class SessionManager {
     const s = this.sessions.get(id);
     if (!s) return;
     const dbg = s.view.webContents.debugger;
-    const activeMocks = s.mockRules.filter(r => r.enabled);
-    const activeRes = s.resilienceRules.filter(r => r.enabled);
+    const activeMocks = (this.mockRulesByPartition.get(s.partition) ?? []).filter(r => r.enabled);
+    const activeRes = (this.resilienceRulesByPartition.get(s.partition) ?? []).filter(r => r.enabled);
     if (activeMocks.length === 0 && activeRes.length === 0) {
       dbg.sendCommand('Fetch.disable').catch(() => {});
     } else {
@@ -2280,34 +2331,35 @@ export class SessionManager {
   private _applyMocks(id: string): void { this._applyFetch(id); }
 
   getResilienceRules(id: string): ResilienceRule[] {
-    return this.sessions.get(id)?.resilienceRules ?? [];
+    return this.resilienceRulesForId(id) ?? [];
   }
 
   addResilienceRule(id: string, rule: ResilienceRule): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    s.resilienceRules.push({ ...rule, method: rule.method || '*', hitCount: 0, lastHitAt: null });
+    const rules = this.resilienceRulesForId(id);
+    if (!rules) return;
+    rules.push({ ...rule, method: rule.method || '*', hitCount: 0, lastHitAt: null });
     this._applyFetch(id);
   }
 
   removeResilienceRule(id: string, ruleId: string): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    s.resilienceRules = s.resilienceRules.filter(r => r.id !== ruleId);
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    const rules = (this.resilienceRulesByPartition.get(partition) ?? []).filter(r => r.id !== ruleId);
+    this.resilienceRulesByPartition.set(partition, rules);
     this._applyFetch(id);
   }
 
   toggleResilienceRule(id: string, ruleId: string, enabled: boolean): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    const rule = s.resilienceRules.find(r => r.id === ruleId);
+    const rules = this.resilienceRulesForId(id);
+    if (!rules) return;
+    const rule = rules.find(r => r.id === ruleId);
     if (rule) { rule.enabled = enabled; this._applyFetch(id); }
   }
 
   updateResilienceRule(id: string, ruleId: string, patch: Partial<ResilienceRule>): void {
-    const s = this.sessions.get(id);
-    if (!s) return;
-    const rule = s.resilienceRules.find(r => r.id === ruleId);
+    const rules = this.resilienceRulesForId(id);
+    if (!rules) return;
+    const rule = rules.find(r => r.id === ruleId);
     if (rule) { Object.assign(rule, patch); this._applyFetch(id); }
   }
 
