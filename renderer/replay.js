@@ -1,5 +1,13 @@
 /* global testerBrowser */
 import { escHtml, cookieMatchesDomain } from './utils.js';
+import { openMockFromRequest } from './mock.js';
+import { openResilienceFromRequest } from './resilience.js';
+
+// Last successful ("ok") response from this Replay session's Send ↵, used to
+// prefill status/response headers/body when handing off to Mock. Reset on
+// every openReplay() so a stale response from a previous request never leaks
+// into a hand-off for a different one.
+let lastReplayResult = null;
 
 function formatXml(xml) {
   let indent = 0;
@@ -72,6 +80,18 @@ function readCookiesTable() {
   return pairs.join('; ');
 }
 
+// Live header state from the editor's kv-row tables, folding the separate
+// cookie table into a Cookie header the same way sendReplayBtn's handler
+// does — shared by Send and the Mock/Resilience hand-off buttons so all
+// three act on what the tester currently has typed, not the original
+// captured request.
+function getEditorRequestHeaders() {
+  const headers   = readKvTable(document.getElementById('replayHeadersTable'));
+  const cookieVal = readCookiesTable();
+  if (cookieVal) headers['Cookie'] = cookieVal;
+  return headers;
+}
+
 export async function openReplay(evt) {
   let reqData = {};
   try { reqData = JSON.parse(evt.payload ?? '{}'); } catch {}
@@ -87,6 +107,7 @@ export async function openReplay(evt) {
   document.getElementById('replayBody').value   = req.postData || '';
   document.getElementById('replayResponse').innerHTML = '';
   document.getElementById('replaySpinner').classList.remove('visible');
+  lastReplayResult = null;
 
   const hdrTable = document.getElementById('replayHeadersTable');
   const ckTable  = document.getElementById('replayCookiesTable');
@@ -168,9 +189,7 @@ export function initReplay() {
     const body   = document.getElementById('replayBody').value;
     if (!url) return;
 
-    const headers  = readKvTable(document.getElementById('replayHeadersTable'));
-    const cookieVal = readCookiesTable();
-    if (cookieVal) headers['Cookie'] = cookieVal;
+    const headers = getEditorRequestHeaders();
 
     const spinner = document.getElementById('replaySpinner');
     const resArea = document.getElementById('replayResponse');
@@ -184,6 +203,8 @@ export function initReplay() {
       resArea.innerHTML = `<div class="replay-res-status err">Error: ${escHtml(result.error || 'Unknown error')}</div>`;
       return;
     }
+
+    lastReplayResult = result;
 
     const sc = result.status >= 200 && result.status < 300 ? 'ok' : 'err';
     const statusLine = document.createElement('div');
@@ -234,6 +255,36 @@ export function initReplay() {
       }
       resArea.appendChild(bodyOut);
     }
+  };
+
+  document.getElementById('replayToMockBtn').onclick = () => {
+    const method  = document.getElementById('replayMethod').value;
+    const url     = document.getElementById('replayUrl').value.trim();
+    const headers = getEditorRequestHeaders();
+    closeReplay();
+    if (lastReplayResult) {
+      const binary = !!lastReplayResult.bodyBase64;
+      openMockFromRequest(method, url, lastReplayResult.status, binary ? undefined : lastReplayResult.body, {
+        requestHeaders:  headers,
+        responseHeaders: lastReplayResult.headers || {},
+        bodyUnavailable: binary,
+      });
+    } else {
+      openMockFromRequest(method, url, undefined, undefined, {
+        requestHeaders:  headers,
+        responseHeaders: {},
+        bodyUnavailable: true,
+      });
+    }
+  };
+
+  document.getElementById('replayToResilienceBtn').onclick = () => {
+    const method  = document.getElementById('replayMethod').value;
+    const url     = document.getElementById('replayUrl').value.trim();
+    const headers = getEditorRequestHeaders();
+    const body    = document.getElementById('replayBody').value;
+    closeReplay();
+    openResilienceFromRequest(method, url, headers, body || null);
   };
 
 }

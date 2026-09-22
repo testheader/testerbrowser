@@ -264,6 +264,45 @@ test('replay cookie session picker shows each session\'s own cookies independent
   await window.click('#closeReplayBtn');
 });
 
+test('replay-actions: ⇒ Resilience carries the edited URL to the Resilience tab', async () => {
+  await openReplayOverlay(window, testPort);
+
+  const editedUrl = `http://127.0.0.1:${testPort}/edited-by-tester`;
+  await window.fill('#replayUrl', editedUrl);
+  await window.click('#replayToResilienceBtn');
+
+  await expect(window.locator('#replayOverlay')).not.toHaveClass(/open/);
+  await expect(window.locator('#consoleTabResilience')).toHaveClass(/active/);
+  await expect(window.locator('#resUrl')).toHaveValue(editedUrl);
+});
+
+test('replay-actions: ⇒ Mock after Send ↵ carries the replay response to the Mock tab', async () => {
+  await openReplayOverlay(window, testPort);
+
+  // The test server (beforeAll above) returns the same fixed 200 HTML page
+  // for every path, so the response body/status are deterministic without
+  // needing a specific route.
+  await window.click('#sendReplayBtn');
+  await expect(window.locator('.replay-res-status')).toHaveClass(/ok/, { timeout: 5_000 });
+
+  await window.click('#replayToMockBtn');
+
+  await expect(window.locator('#replayOverlay')).not.toHaveClass(/open/);
+  await expect(window.locator('#consoleTabMock')).toHaveClass(/active/);
+  await expect(window.locator('#mockStatus')).toHaveValue('200');
+  await expect(window.locator('#mockBody')).toHaveValue('<html><body><h1>TesterBrowser test page</h1></body></html>');
+  await expect(window.locator('#mockBodyNote')).toBeHidden();
+});
+
+test('replay-actions: ⇒ Mock before any Send ↵ shows the "no response" note', async () => {
+  await openReplayOverlay(window, testPort);
+
+  await window.click('#replayToMockBtn');
+
+  await expect(window.locator('#consoleTabMock')).toHaveClass(/active/);
+  await expect(window.locator('#mockBodyNote')).toBeVisible();
+});
+
 // ── Storage panel ─────────────────────────────────────────────────────────────
 
 // Navigate to the test URL, switch to the Storage tab, and wait for it to load.
