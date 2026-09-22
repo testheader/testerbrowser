@@ -12,12 +12,29 @@ import { getMainWindow, getActiveViewBounds, MAIN_PATH } from './helpers';
 // running.sentinel file into a fresh userData dir *before* launching — the
 // same file app.whenReady() itself writes on every normal startup and only
 // fails to clean up when the app doesn't exit normally.
-async function launchWithSimulatedCrash(): Promise<ElectronApplication> {
+//
+// A *hard* crash (renderer killed, OOM, native crash) never runs any of this
+// process's own cleanup code, so the only way its errors/session URLs can
+// reach the next launch's crash log is if they were already write-through'd
+// to disk before it died — src/main/index.ts's recordAppError()/
+// persistSessionUrls() do this into app-errors.json/session-urls.json
+// (errorLog.ts's writeAppErrors() for the former). Seed those same files
+// here to simulate that write-through having already happened.
+async function launchWithSimulatedCrash(durableState?: {
+  errors?: { ts: number; message: string }[];
+  sessionUrls?: string[];
+}): Promise<ElectronApplication> {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-crash-'));
   fs.writeFileSync(
     path.join(userDataDir, 'running.sentinel'),
     JSON.stringify({ startedAt: new Date(Date.now() - 60_000).toISOString() }),
   );
+  if (durableState?.errors) {
+    fs.writeFileSync(path.join(userDataDir, 'app-errors.json'), JSON.stringify(durableState.errors));
+  }
+  if (durableState?.sessionUrls) {
+    fs.writeFileSync(path.join(userDataDir, 'session-urls.json'), JSON.stringify(durableState.sessionUrls));
+  }
   return electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
 }
 
@@ -85,5 +102,50 @@ test.describe('crash modal file-a-bug-report handoff', () => {
     if (timestampText) {
       await expect(window.locator('#bugReportDesc')).toHaveValue(new RegExp(timestampText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
+  });
+});
+
+// #206 only proved the modal itself becomes visible; it explicitly left the
+// log's *content* out of scope. These cover that content is actually
+// populated for a hard crash — the scenario the sentinel mechanism exists
+// for, where nothing but a prior write-through to disk survives.
+test.describe('crash log content after a hard crash', () => {
+  let app: ElectronApplication;
+  let window: Page;
+
+  const seededErrors = [
+    { ts: 1735732800000, message: 'Uncaught exception: something in the crashed process' },
+    { ts: 1735732801000, message: 'Chrome UI render process gone: crashed' },
+  ];
+  const seededSessionUrls = ['https://example.com/crashed-tab', 'https://example.org/other-tab'];
+
+  test.beforeAll(async () => {
+    app = await launchWithSimulatedCrash({ errors: seededErrors, sessionUrls: seededSessionUrls });
+    window = await getMainWindow(app);
+    await window.waitForLoadState('load');
+  });
+
+  test.afterAll(async () => {
+    await app.close();
+  });
+
+  test('crash-log.json carries over the crashed process\'s recentErrors and sessionUrls, not empty ones', async () => {
+    await expect(window.locator('#crashReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+    const log = await window.evaluate(() => (window as any).testerBrowser.crash.check());
+    expect(log.recentErrors).toEqual(seededErrors);
+    expect(log.sessionUrls).toEqual(seededSessionUrls);
+  });
+
+  test('the pre-filled bug report renders the recovered "Active tabs" and "Recent errors" sections', async () => {
+    await window.click('#crashReportFileBtn');
+    await expect(window.locator('#bugReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+
+    const desc = await window.locator('#bugReportDesc').inputValue();
+    expect(desc).toContain('**Active tabs at crash time:**');
+    expect(desc).toContain('https://example.com/crashed-tab');
+    expect(desc).toContain('https://example.org/other-tab');
+    expect(desc).toContain('**Recent errors before crash:**');
+    expect(desc).toContain('Uncaught exception: something in the crashed process');
+    expect(desc).toContain('Chrome UI render process gone: crashed');
   });
 });

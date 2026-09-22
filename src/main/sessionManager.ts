@@ -797,12 +797,22 @@ export class SessionManager {
   // failed read so we don't retry the disk hit on every call.
   private axeSource: string | null = null;
   private recordFeatureError: (message: string) => void;
+  // Notifies the caller whenever a session is created/destroyed or navigates
+  // — index.ts write-throughs the current URL list to disk on this so a hard
+  // crash's next launch can recover what was open (see persistSessionUrls()).
+  private onSessionsChanged: () => void;
 
-  constructor(win: BrowserWindow, getRedactHeaders: () => boolean, recordFeatureError: (message: string) => void = () => {}) {
+  constructor(
+    win: BrowserWindow,
+    getRedactHeaders: () => boolean,
+    recordFeatureError: (message: string) => void = () => {},
+    onSessionsChanged: () => void = () => {}
+  ) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
     this.getRedactHeaders = getRedactHeaders;
     this.recordFeatureError = recordFeatureError;
+    this.onSessionsChanged = onSessionsChanged;
     this.downloadManager = new DownloadManager(win);
     this.permissionManager = new PermissionManager(win);
     this.win.on('resize', () => this.layoutActive());
@@ -950,6 +960,7 @@ export class SessionManager {
       dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
     });
     this.sessions.set(id, testSession);
+    this.onSessionsChanged();
 
     ses.webRequest.onCompleted((details) => {
       try {
@@ -972,6 +983,7 @@ export class SessionManager {
       if (displayUrl) this.addHistoryEntry(id, displayUrl);
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
+      this.onSessionsChanged();
     });
     view.webContents.on('did-navigate-in-page', (_e, url) => {
       const displayUrl = isNewtabUrl(url) ? '' : url;
@@ -979,6 +991,7 @@ export class SessionManager {
       if (displayUrl) this.addHistoryEntry(id, displayUrl);
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
+      this.onSessionsChanged();
     });
     view.webContents.on('page-title-updated', (_e, title) => {
       this.win.webContents.send('session:titleUpdated', { id, title });
@@ -2314,6 +2327,7 @@ export class SessionManager {
     this.recordingBuffers.delete(id);
     this.dateOverrideScripts.delete(id);
     this.sessionHistory.delete(id);
+    this.onSessionsChanged();
   }
 
   // Reads the page's live in-progress steps and merges them (by id) into the
