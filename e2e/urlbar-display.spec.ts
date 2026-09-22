@@ -75,21 +75,29 @@ test('#urlbarDisplay reflects the just-submitted URL immediately, without waitin
   // proving the display doesn't depend on that round-trip to show the right
   // URL.
   const slowUrl = fixtures.url('/network/slow?ms=2000');
+  const historyBefore: string | undefined = await window.evaluate(
+    () => (window as any).testerBrowser.urlHistory.get().then((h: string[]) => h[0])
+  );
   await window.click('#urlbar');
   await window.fill('#urlbar', slowUrl);
   await window.press('#urlbar', 'Enter');
 
-  // testerBrowser.sessions.navigate() is a fire-and-forget loadURL() — it
-  // resolves well before the page finishes loading. Wait only for the
-  // keydown handler's own blur() (which runs right after its
-  // navigate()/urlHistory awaits settle), then read the display's content
-  // with no further retrying: at that instant, with the slow response still
-  // 2s away, it must already hold the just-submitted URL, not the previous
-  // page's URL left over until the much-later navigation event arrives.
+  // toolbar.js's keydown handler runs `await sessions.navigate(...)`, `await
+  // urlHistory.add(...)`, then — synchronously, no further await —
+  // `updateUrlbarSecurity(navigatedUrl)` and `e.target.blur()`. press()
+  // itself only dispatches the keydown event and returns before that async
+  // chain settles (same caveat urlbar-search.spec.ts's topHistoryUrl() poll
+  // documents), so wait on urlHistory's top entry changing rather than on
+  // activeElement — a focus-based proxy that can resolve `true` for reasons
+  // unrelated to this handler's own blur() and was flaky in CI. The instant
+  // the history entry lands, updateUrlbarSecurity()+blur() have already run
+  // too (same tick), so reading displayText right after, with no further
+  // retrying, still verifies it didn't wait on the — here, still 2s away —
+  // 'session:navigated' round-trip.
   await expect.poll(
-    () => window.evaluate(() => document.activeElement === document.getElementById('urlbar')),
-    { timeout: 2_000 },
-  ).toBe(false);
+    () => window.evaluate(() => (window as any).testerBrowser.urlHistory.get().then((h: string[]) => h[0])),
+    { timeout: 5_000 },
+  ).not.toBe(historyBefore);
   const displayText = await window.locator('#urlbarDisplay').textContent();
   expect(displayText).toContain('/network/slow');
 
