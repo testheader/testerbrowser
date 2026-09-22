@@ -115,9 +115,17 @@ test('Ctrl+Tab while a tab is mid-rename does not crash the tab bar (#211)', asy
 
   const renamingId = await activeTabId();
   const nameEl = window.locator(`.tab[data-id="${renamingId}"] .tab-name`);
-  await nameEl.dblclick();
   const input = window.locator(`.tab[data-id="${renamingId}"] input.tab-rename-input`);
-  await expect(input).toBeVisible();
+  // A real double-click is inherently timing-sensitive (two synthetic clicks
+  // have to land within Chromium's own double-click interval) — a loaded CI
+  // runner occasionally stretches the gap enough that it's read as two
+  // single clicks instead. Retry the gesture itself, not just the wait, same
+  // pattern used elsewhere in this suite (and now in perf.spec.ts's own
+  // rename test) for a flaky native interaction.
+  await expect(async () => {
+    await nameEl.dblclick({ timeout: 2_000 });
+    await expect(input).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
 
   const pageErrors: string[] = [];
   window.on('pageerror', (err) => pageErrors.push(String(err)));
