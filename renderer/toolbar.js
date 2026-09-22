@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { getActiveId, isTabLoading } from './tabs.js';
 import { looksLikeUrl, buildSearchUrl } from './utils.js';
+import { updateUrlbarSecurity } from './urlbar-security.js';
 
 // navState (per-tab back/forward availability) and urlHistory (the URL bar's
 // autocomplete list) are both toolbar-only concerns — nothing outside this
@@ -61,6 +62,11 @@ export function initToolbar() {
       await testerBrowser.sessions.navigate(getActiveId(), navigatedUrl);
       urlHistory = await testerBrowser.urlHistory.add(navigatedUrl);
       refreshUrlDatalist();
+      // Update #urlbarDisplay with what was just submitted before blurring —
+      // blur() makes it visible immediately, while the 'session:navigated'
+      // event that would otherwise refresh it only arrives once the actual
+      // navigation completes, leaving the previous URL showing until then.
+      updateUrlbarSecurity(navigatedUrl);
       e.target.blur();
     }
     if (e.key === 'Escape') e.target.blur();

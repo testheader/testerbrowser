@@ -202,7 +202,11 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #urlbarLock.insecure{ color: var(--error-strong); }
 #urlbarLock.neutral { color: var(--text-faint); }
 #urlbarLock:empty { display: none; }
-#urlbarDisplay { position: absolute; left: 28px; right: 10px; top: 0; bottom: 0; display: flex;
+/* left/right match #urlbar's padding *plus* its 1px border, so this layer's
+   text starts at the exact same pixel as the input's own text would — the
+   two must always agree since which one is visible can flip on any
+   focus/blur transition. */
+#urlbarDisplay { position: absolute; left: 29px; right: 11px; top: 0; bottom: 0; display: flex;
                  align-items: center; pointer-events: none; font-size: 14px; color: var(--text-primary);
                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #urlbarDisplay .url-proto { color: var(--text-faint); }
