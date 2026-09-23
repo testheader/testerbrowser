@@ -8,7 +8,7 @@ import { DebugLogStore } from '../debugLogStore';
 // sees the same rows — unlike recorder.test.ts's mock, which is fine giving each
 // `new Database()` call a fresh store since SessionRecorder never reopens one.
 jest.mock('better-sqlite3', () => {
-  interface Row { id: number; ts: number; message: string; }
+  interface Row { id: number; ts: number; message: string; level: string; }
   const dbs = new Map<string, { rows: Row[]; nextId: number }>();
 
   return jest.fn().mockImplementation((dbPath: string) => {
@@ -18,9 +18,9 @@ jest.mock('better-sqlite3', () => {
     const makeStmt = (sql: string) => {
       if (/INSERT INTO entries/.test(sql)) {
         return {
-          run: jest.fn((ts: number, message: string) => {
+          run: jest.fn((ts: number, message: string, level: string) => {
             const id = state.nextId++;
-            state.rows.push({ id, ts, message });
+            state.rows.push({ id, ts, message, level });
             return { lastInsertRowid: id };
           }),
         };
@@ -52,7 +52,7 @@ jest.mock('better-sqlite3', () => {
               .slice()
               .sort((a, b) => b.ts - a.ts)
               .slice(0, limit)
-              .map((r) => ({ ts: r.ts, message: r.message }))
+              .map((r) => ({ ts: r.ts, message: r.message, level: r.level }))
           ),
         };
       }
@@ -76,22 +76,33 @@ describe('DebugLogStore', () => {
   it('survives being closed and reopened (simulated app restart)', () => {
     const dbPath = tmpDbPath('restart');
     let store = new DebugLogStore(dbPath);
-    store.insert({ ts: 1000, message: 'first' });
-    store.insert({ ts: 2000, message: 'second' });
+    store.insert({ ts: 1000, message: 'first', level: 'error' });
+    store.insert({ ts: 2000, message: 'second', level: 'warn' });
     store.close();
 
     store = new DebugLogStore(dbPath);
     expect(store.getEntries()).toEqual([
-      { ts: 1000, message: 'first' },
-      { ts: 2000, message: 'second' },
+      { ts: 1000, message: 'first', level: 'error' },
+      { ts: 2000, message: 'second', level: 'warn' },
     ]);
+  });
+
+  it('round-trips each entry\'s level alongside its message', () => {
+    const dbPath = tmpDbPath('levels');
+    const store = new DebugLogStore(dbPath);
+    store.insert({ ts: 1, message: 'a', level: 'debug' });
+    store.insert({ ts: 2, message: 'b', level: 'info' });
+    store.insert({ ts: 3, message: 'c', level: 'warn' });
+    store.insert({ ts: 4, message: 'd', level: 'error' });
+
+    expect(store.getEntries().map((e) => e.level)).toEqual(['debug', 'info', 'warn', 'error']);
   });
 
   it('evicts the oldest entries first once past the row-count cap', () => {
     const dbPath = tmpDbPath('count');
     const store = new DebugLogStore(dbPath, { maxEntries: 3, trimEveryNInserts: 1 });
     const now = Date.now();
-    for (let i = 0; i < 5; i++) store.insert({ ts: now + i, message: `msg-${i}` });
+    for (let i = 0; i < 5; i++) store.insert({ ts: now + i, message: `msg-${i}`, level: 'error' });
 
     expect(store.getEntries().map((e) => e.message)).toEqual(['msg-2', 'msg-3', 'msg-4']);
   });
@@ -100,8 +111,8 @@ describe('DebugLogStore', () => {
     const dbPath = tmpDbPath('age');
     const store = new DebugLogStore(dbPath, { maxAgeMs: 1000, trimEveryNInserts: 1 });
     const now = Date.now();
-    store.insert({ ts: now - 5000, message: 'old' });
-    store.insert({ ts: now, message: 'fresh' });
+    store.insert({ ts: now - 5000, message: 'old', level: 'error' });
+    store.insert({ ts: now, message: 'fresh', level: 'error' });
 
     expect(store.getEntries().map((e) => e.message)).toEqual(['fresh']);
   });
@@ -110,13 +121,13 @@ describe('DebugLogStore', () => {
     const dbPath = tmpDbPath('trim-interval');
     const store = new DebugLogStore(dbPath, { maxEntries: 1, trimEveryNInserts: 3 });
     const now = Date.now();
-    store.insert({ ts: now, message: 'a' });
-    store.insert({ ts: now + 1, message: 'b' });
+    store.insert({ ts: now, message: 'a', level: 'error' });
+    store.insert({ ts: now + 1, message: 'b', level: 'error' });
     // Cap is 1, but only 2 inserts have happened and trim runs every 3rd —
     // both entries should still be present.
     expect(store.getEntries()).toHaveLength(2);
 
-    store.insert({ ts: now + 2, message: 'c' });
+    store.insert({ ts: now + 2, message: 'c', level: 'error' });
     // Third insert triggers the trim check — now capped down to 1.
     expect(store.getEntries().map((e) => e.message)).toEqual(['c']);
   });

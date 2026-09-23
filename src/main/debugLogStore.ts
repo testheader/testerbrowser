@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { AppLogLevel } from './errorLog';
 
 /**
  * App-wide, disk-backed store for TesterBrowser's own debug-log entries
@@ -13,6 +14,7 @@ import fs from 'fs';
 export interface DebugLogEntry {
   ts: number;
   message: string;
+  level: AppLogLevel;
 }
 
 export interface DebugLogStoreOptions {
@@ -49,11 +51,17 @@ export class DebugLogStore {
       CREATE TABLE IF NOT EXISTS entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts INTEGER NOT NULL,
-        message TEXT NOT NULL
+        message TEXT NOT NULL,
+        level TEXT NOT NULL DEFAULT 'error'
       );
       CREATE INDEX IF NOT EXISTS idx_entries_ts ON entries(ts);
     `);
-    this.insertStmt = this.db.prepare(`INSERT INTO entries (ts, message) VALUES (?, ?)`);
+    // A store created by a pre-#213 build has no level column yet — add it
+    // (existing rows backfill to 'error', same as their implicit level was
+    // before levels existed). Throws (harmlessly) if the column is already
+    // there, which the CREATE TABLE above already ensures for a fresh store.
+    try { this.db.exec(`ALTER TABLE entries ADD COLUMN level TEXT NOT NULL DEFAULT 'error'`); } catch {}
+    this.insertStmt = this.db.prepare(`INSERT INTO entries (ts, message, level) VALUES (?, ?, ?)`);
     this.countStmt = this.db.prepare(`SELECT COUNT(*) as c FROM entries`);
     this.trimCountStmt = this.db.prepare(
       `DELETE FROM entries WHERE id IN (SELECT id FROM entries ORDER BY id ASC LIMIT ?)`
@@ -62,7 +70,7 @@ export class DebugLogStore {
   }
 
   insert(entry: DebugLogEntry): void {
-    this.insertStmt.run(entry.ts, entry.message);
+    this.insertStmt.run(entry.ts, entry.message, entry.level);
     this.trimIfNeeded();
   }
 
@@ -85,7 +93,7 @@ export class DebugLogStore {
     const limit = opts.limit ?? 500;
     return (
       this.db
-        .prepare(`SELECT ts, message FROM entries ORDER BY ts DESC LIMIT ?`)
+        .prepare(`SELECT ts, message, level FROM entries ORDER BY ts DESC LIMIT ?`)
         .all(limit) as DebugLogEntry[]
     ).reverse();
   }

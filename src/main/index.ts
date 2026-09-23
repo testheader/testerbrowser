@@ -6,7 +6,7 @@ import { autoUpdater } from 'electron-updater';
 import { SessionManager, TestStep, MockRule, ResilienceRule } from './sessionManager';
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
 import { upsertById } from './upsert';
-import { writeAppErrors, readAppErrors, AppErrorEntry } from './errorLog';
+import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
 
 let win: BrowserWindow | null = null;
@@ -32,13 +32,18 @@ let appErrorsPath = '';
 // practice — nothing calls recordAppError until after whenReady()) are only
 // captured in the in-memory/write-through array, not persisted.
 let debugLogStore: DebugLogStore | null = null;
-function recordAppError(message: string) {
+// level defaults to 'error' since every existing call site (uncaught
+// exceptions, unhandled rejections, a crashed/unresponsive renderer, and the
+// renderer's own app:reportError) is reporting an actual error; nothing yet
+// calls this at 'warn'/'info'/'debug' — that wider tracing is left to a
+// follow-up (see #213's own scope note on the ~28 silent `catch {}` blocks).
+function recordAppError(message: string, level: AppLogLevel = 'error') {
   const ts = Date.now();
   const trimmed = String(message).slice(0, 2000);
-  recentAppErrors.push({ ts, message: trimmed });
+  recentAppErrors.push({ ts, message: trimmed, level });
   if (recentAppErrors.length > MAX_APP_ERRORS) recentAppErrors.shift();
   if (appErrorsPath) writeAppErrors(appErrorsPath, recentAppErrors);
-  debugLogStore?.insert({ ts, message: trimmed });
+  debugLogStore?.insert({ ts, message: trimmed, level });
 }
 process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
 process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));

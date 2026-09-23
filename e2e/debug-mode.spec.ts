@@ -58,6 +58,33 @@ test('Debug Log tab lists a reported error when debug mode is on', async () => {
   await page.click('#consoleTabDebugLog');
 
   await expect(page.locator('#debugLogList')).toContainText('debug-mode-test-marker', { timeout: 5_000 });
+  // app:reportError always logs at 'error' — the row shows that level.
+  await expect(page.locator('.debuglog-row', { hasText: 'debug-mode-test-marker' }).locator('.debuglog-level'))
+    .toHaveText('error');
+
+  // Reset for later specs.
+  await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
+});
+
+test('Debug Log level pills filter entries by level', async () => {
+  await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: true }));
+  await page.evaluate(() => (window as any).testerBrowser.app.reportError('pill-filter-test-marker'));
+  await page.click('#consoleTabConsole');
+  await page.click('#consoleTabDebugLog');
+  await expect(page.locator('#debugLogList')).toContainText('pill-filter-test-marker', { timeout: 5_000 });
+
+  // Turning off the Error pill hides an error-level entry.
+  await page.click('#debugLogLevelPills [data-level="error"]');
+  await expect(page.locator('#debugLogList')).not.toContainText('pill-filter-test-marker');
+
+  // Turning it back on shows it again.
+  await page.click('#debugLogLevelPills [data-level="error"]');
+  await expect(page.locator('#debugLogList')).toContainText('pill-filter-test-marker');
+
+  // The free-text filter also applies.
+  await page.fill('#debugLogFilterText', 'no-such-marker-xyz');
+  await expect(page.locator('#debugLogList')).not.toContainText('pill-filter-test-marker');
+  await page.fill('#debugLogFilterText', '');
 
   // Reset for later specs.
   await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));

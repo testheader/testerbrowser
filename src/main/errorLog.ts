@@ -1,6 +1,11 @@
 import fs from 'fs';
 
-export interface AppErrorEntry { ts: number; message: string; }
+export type AppLogLevel = 'error' | 'warn' | 'info' | 'debug';
+
+// level is optional so entries written by a pre-#213 build (or read back from
+// an older app-errors.json on disk) still deserialize — every entry recordAppError()
+// itself produces from here on always sets it explicitly.
+export interface AppErrorEntry { ts: number; message: string; level?: AppLogLevel; }
 
 // Write-through for index.ts's recentAppErrors — a hard crash (renderer
 // killed, OOM, native crash) never drains the event loop far enough for the
