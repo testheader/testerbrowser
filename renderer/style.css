@@ -1198,6 +1198,14 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .jira-error { font-size: 12px; color: var(--error-strong); }
 .jira-not-configured { font-size: 12px; color: var(--text-faint); padding: 8px 0; }
 
+/* Debug Log panel */
+#debugLogPanel { flex: 1; overflow: auto; display: none; flex-direction: column; }
+.debuglog-wrap { padding: 8px 16px; }
+.debuglog-empty { font-size: 12px; color: var(--text-faint); padding: 8px 0; line-height: 1.5; }
+.debuglog-row { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--border-color); font-size: 12px; }
+.debuglog-ts { color: var(--text-muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.debuglog-msg { color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
+
 /* ── Resilience panel ── */
 #resiliencePanel { flex: 1; overflow: auto; display: none; flex-direction: column; }
 /* Two columns where there's room — guide + form left, live rules right — falling

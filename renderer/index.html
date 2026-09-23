@@ -121,6 +121,7 @@
         <button class="console-tab" id="consoleTabJira">Jira</button>
         <button class="console-tab" id="consoleTabTests">Record Playback</button>
         <button class="console-tab" id="consoleTabFollow">Follow Along</button>
+        <button class="console-tab" id="consoleTabDebugLog">Debug Log</button>
       </div>
       <button class="console-tabs-chevron" id="consoleTabsNextBtn" title="Scroll tabs right" hidden>&#8250;</button>
       </div>
@@ -186,6 +187,7 @@
       <div id="jiraPanel"></div>
       <div id="testsPanel"></div>
       <div id="followPanel"></div>
+      <div id="debugLogPanel"></div>
       <div id="detailPanelResizeHandle"></div>
       <div id="detailPanel">
         <div id="detailPanelTabBar"></div>
@@ -239,6 +241,17 @@
               </div>
               <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
                 <input type="checkbox" id="redactHeadersToggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">Debug mode</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">Shows TesterBrowser's own internal logs (main process, IPC, recorder) — not this page's console, which is on the Console tab.</div>
+              </div>
+              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
+                <input type="checkbox" id="debugModeToggle" />
                 <span class="toggle-slider"></span>
               </label>
             </div>

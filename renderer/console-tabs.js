@@ -11,6 +11,7 @@ import { initRecordPlayback } from './record-playback.js';
 import { initFollow, refreshFollowPickers } from './followalong.js';
 import { renderTimeline } from './timeline.js';
 import { getDetailTabsCount } from './detail-panel.js';
+import { initDebugLog, stopDebugLogPolling } from './debuglog.js';
 
 // The only external readers of activeConsoleTab (many — find, timeline,
 // detail-panel, bugreport, mock, resilience, ipc-events, main) go through
@@ -23,6 +24,7 @@ export function switchConsoleTab(tab) {
   const prevTab = activeConsoleTab;
   activeConsoleTab = tab;
   if (prevTab === 'a11y' && tab !== 'a11y') { disableA11yHover(); disableA11yFocusOrder(); }
+  if (prevTab === 'debuglog' && tab !== 'debuglog') stopDebugLogPolling();
   document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
   document.getElementById('consoleTabNetwork').classList.toggle('active', tab === 'network');
   document.getElementById('consoleTabStorage').classList.toggle('active', tab === 'storage');
@@ -36,6 +38,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('consoleTabJira').classList.toggle('active', tab === 'jira');
   document.getElementById('consoleTabTests').classList.toggle('active', tab === 'tests');
   document.getElementById('consoleTabFollow').classList.toggle('active', tab === 'follow');
+  document.getElementById('consoleTabDebugLog').classList.toggle('active', tab === 'debuglog');
   const timelineVisible = tab === 'console' || tab === 'network';
   document.getElementById('consoleControls').style.display      = tab === 'console'  ? ''      : 'none';
   document.getElementById('networkControls').style.display      = tab === 'network'  ? 'flex'  : 'none';
@@ -53,6 +56,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('jiraPanel').style.display            = tab === 'jira'       ? 'flex'  : 'none';
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
   document.getElementById('followPanel').style.display          = tab === 'follow'     ? 'flex'  : 'none';
+  document.getElementById('debugLogPanel').style.display        = tab === 'debuglog'   ? 'flex'  : 'none';
   const hasDetailTabs = getDetailTabsCount() > 0 && (timelineVisible || tab === 'security');
   document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? 'block' : 'none';
@@ -66,6 +70,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'jira') initJira();
   if (tab === 'tests') initRecordPlayback();
   if (tab === 'follow') { initFollow(); refreshFollowPickers(); }
+  if (tab === 'debuglog') initDebugLog();
 }
 
 export function initConsoleTabs() {
@@ -82,6 +87,7 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabJira').addEventListener('click', () => { switchConsoleTab('jira'); initJira(); });
   document.getElementById('consoleTabTests').addEventListener('click', () => switchConsoleTab('tests'));
   document.getElementById('consoleTabFollow').addEventListener('click', () => switchConsoleTab('follow'));
+  document.getElementById('consoleTabDebugLog').addEventListener('click', () => switchConsoleTab('debuglog'));
 
   initTabOverflow();
 }

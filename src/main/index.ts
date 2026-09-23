@@ -139,6 +139,10 @@ interface AppSettings {
   // (an old settings.json, or a corrupt one) fall back to these defaults
   // rather than a 0-width or negative column.
   recordPlaybackColumnWidths: { record: number; saved: number };
+  // Shows TesterBrowser's own internal logs (main/IPC/recorder) in the
+  // Debug Log console tab — unrelated to the per-session Console tab, which
+  // always records the tested page's own console/network regardless of this.
+  debugMode: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -146,6 +150,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   securityRuleOverrides: {},
   searchEngine: 'google',
   recordPlaybackColumnWidths: { record: 220, saved: 420 },
+  debugMode: false,
 };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
@@ -928,6 +933,7 @@ ipcMain.handle('app:openExternal', (_e, url: string) => {
   if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
 });
 ipcMain.handle('app:reportError', (_e, message: string) => recordAppError(String(message)));
+ipcMain.handle('app:debugLog', () => recentAppErrors);
 
 // Tests (record-playback) IPC
 ipcMain.handle('tests:list', () => testsStore.get());
