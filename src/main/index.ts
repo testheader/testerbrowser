@@ -7,6 +7,7 @@ import { SessionManager, TestStep, MockRule, ResilienceRule } from './sessionMan
 import { writeUpdateLog, readUpdateLog } from './updateLogger';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry } from './errorLog';
+import { DebugLogStore } from './debugLogStore';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -25,10 +26,19 @@ const recentAppErrors: AppErrorEntry[] = [];
 // recover what the crashed process actually saw, instead of reading its own
 // empty array.
 let appErrorsPath = '';
+// Durable, unbounded (up to its own row/age caps) history behind recentAppErrors
+// above — see debugLogStore.ts. Resolved inside whenReady() alongside the other
+// app-lifecycle file paths, so entries recorded before then (there are none in
+// practice — nothing calls recordAppError until after whenReady()) are only
+// captured in the in-memory/write-through array, not persisted.
+let debugLogStore: DebugLogStore | null = null;
 function recordAppError(message: string) {
-  recentAppErrors.push({ ts: Date.now(), message: String(message).slice(0, 2000) });
+  const ts = Date.now();
+  const trimmed = String(message).slice(0, 2000);
+  recentAppErrors.push({ ts, message: trimmed });
   if (recentAppErrors.length > MAX_APP_ERRORS) recentAppErrors.shift();
   if (appErrorsPath) writeAppErrors(appErrorsPath, recentAppErrors);
+  debugLogStore?.insert({ ts, message: trimmed });
 }
 process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
 process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
@@ -267,6 +277,7 @@ app.whenReady().then(() => {
   crashLogPath    = path.join(app.getPath('userData'), 'crash-log.json');
   appErrorsPath   = path.join(app.getPath('userData'), 'app-errors.json');
   sessionUrlsPath = path.join(app.getPath('userData'), 'session-urls.json');
+  debugLogStore   = new DebugLogStore(path.join(app.getPath('userData'), 'debug-log.sqlite'));
 
   // If the sentinel is still present, the previous session ended abnormally.
   // Its errors/session URLs only survive if that process wrote them through
@@ -381,6 +392,9 @@ app.on('before-quit', () => {
   try { if (crashLogPath) fs.unlinkSync(crashLogPath); } catch {}
   try { if (appErrorsPath) fs.unlinkSync(appErrorsPath); } catch {}
   try { if (sessionUrlsPath) fs.unlinkSync(sessionUrlsPath); } catch {}
+  // Unlike the files above, debug-log.sqlite is meant to survive a restart —
+  // only close the handle, don't delete it.
+  try { debugLogStore?.close(); } catch {}
 });
 
 // Fallback: if process exits without a clean before-quit (e.g. SIGKILL or a
@@ -933,7 +947,7 @@ ipcMain.handle('app:openExternal', (_e, url: string) => {
   if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
 });
 ipcMain.handle('app:reportError', (_e, message: string) => recordAppError(String(message)));
-ipcMain.handle('app:debugLog', () => recentAppErrors);
+ipcMain.handle('app:debugLog', () => debugLogStore?.getEntries({ limit: 500 }) ?? recentAppErrors);
 
 // Tests (record-playback) IPC
 ipcMain.handle('tests:list', () => testsStore.get());
