@@ -129,8 +129,12 @@ const testsStore = new JsonStore<SavedTest[]>('tests.json', []);
 
 // GitHub token for the in-app bug reporter is encrypted at rest via OS-level
 // safeStorage (DPAPI / Keychain / libsecret) — only the ciphertext touches disk.
-interface BugReportSettings { tokenEnc: string | null; }
-const DEFAULT_BUGREPORT: BugReportSettings = { tokenEnc: null };
+// refreshTokenEnc is only populated when the GitHub OAuth App has "token
+// expiration" enabled, in which case access tokens are short-lived (~8h) and
+// must be renewed via the refresh token (itself valid ~6 months) instead of
+// forcing the user back through the device-flow sign-in.
+interface BugReportSettings { tokenEnc: string | null; refreshTokenEnc: string | null; refreshExpiresAt: number | null; }
+const DEFAULT_BUGREPORT: BugReportSettings = { tokenEnc: null, refreshTokenEnc: null, refreshExpiresAt: null };
 const bugReportStore = new JsonStore<BugReportSettings>('bugreport-settings.json', DEFAULT_BUGREPORT,
   (raw) => ({ ...DEFAULT_BUGREPORT, ...(raw as Partial<BugReportSettings>) }));
 
@@ -138,6 +142,16 @@ function getGithubToken(): string | null {
   const s = bugReportStore.get();
   if (!s.tokenEnc || !safeStorage.isEncryptionAvailable()) return null;
   try { return safeStorage.decryptString(Buffer.from(s.tokenEnc, 'base64')); } catch { return null; }
+}
+
+function getGithubRefreshToken(): string | null {
+  const s = bugReportStore.get();
+  if (!s.refreshTokenEnc || !safeStorage.isEncryptionAvailable()) return null;
+  try { return safeStorage.decryptString(Buffer.from(s.refreshTokenEnc, 'base64')); } catch { return null; }
+}
+
+function clearGithubTokens(): void {
+  bugReportStore.set({ tokenEnc: null, refreshTokenEnc: null, refreshExpiresAt: null });
 }
 
 // ---
@@ -497,10 +511,47 @@ const OAUTH_CLIENT_ID = 'Ov23licgMtABkVvMJiem';
 
 let oauthPollAbort: AbortController | null = null;
 
-function saveGithubToken(token: string): boolean {
+function saveGithubToken(token: string, refreshToken?: string | null, refreshExpiresIn?: number | null): boolean {
   if (!safeStorage.isEncryptionAvailable()) return false;
-  bugReportStore.set({ tokenEnc: safeStorage.encryptString(token).toString('base64') });
+  const current = bugReportStore.get();
+  bugReportStore.set({
+    tokenEnc: safeStorage.encryptString(token).toString('base64'),
+    refreshTokenEnc: refreshToken
+      ? safeStorage.encryptString(refreshToken).toString('base64')
+      : current.refreshTokenEnc,
+    refreshExpiresAt: refreshExpiresIn ? Date.now() + refreshExpiresIn * 1000 : current.refreshExpiresAt,
+  });
   return true;
+}
+
+// Renews the access token via the refresh token instead of forcing the user
+// back through the device-flow sign-in. Returns the new access token, or
+// null if there's no refresh token, it's expired, or GitHub rejects it —
+// in which case stored tokens are cleared so the UI falls back to sign-in.
+async function refreshGithubToken(): Promise<string | null> {
+  const refreshToken = getGithubRefreshToken();
+  const { refreshExpiresAt } = bugReportStore.get();
+  if (!refreshToken || (refreshExpiresAt && Date.now() >= refreshExpiresAt)) {
+    clearGithubTokens();
+    return null;
+  }
+  try {
+    const res = await net.fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'TesterBrowser-BugReporter' },
+      body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, grant_type: 'refresh_token', refresh_token: refreshToken }),
+    });
+    const data = await res.json() as { access_token?: string; refresh_token?: string; refresh_token_expires_in?: number; error?: string };
+    if (!data.access_token) {
+      clearGithubTokens();
+      return null;
+    }
+    // GitHub rotates the refresh token on every use — persist the new one, falling back to the old.
+    saveGithubToken(data.access_token, data.refresh_token ?? refreshToken, data.refresh_token_expires_in ?? null);
+    return data.access_token;
+  } catch {
+    return null;
+  }
 }
 
 async function pollDeviceFlow(deviceCode: string, intervalSecs: number, expiresAt: number, signal: AbortSignal) {
@@ -517,9 +568,12 @@ async function pollDeviceFlow(deviceCode: string, intervalSecs: number, expiresA
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'TesterBrowser-BugReporter' },
         body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
       });
-      const data = await res.json() as { access_token?: string; error?: string; interval?: number };
+      const data = await res.json() as {
+        access_token?: string; error?: string; interval?: number;
+        refresh_token?: string; refresh_token_expires_in?: number;
+      };
       if (data.access_token) {
-        saveGithubToken(data.access_token);
+        saveGithubToken(data.access_token, data.refresh_token ?? null, data.refresh_token_expires_in ?? null);
         win?.webContents.send('bugreport:oauthDone', { ok: true });
         return;
       }
@@ -558,22 +612,25 @@ ipcMain.handle('bugreport:startOAuth', async () => {
 ipcMain.handle('bugreport:signOut', () => {
   oauthPollAbort?.abort();
   oauthPollAbort = null;
-  bugReportStore.set({ tokenEnc: null });
+  clearGithubTokens();
   return { ok: true };
 });
 
 ipcMain.handle('bugreport:hasToken', () => !!getGithubToken());
 
 ipcMain.handle('bugreport:checkToken', async () => {
-  const token = getGithubToken();
+  let token = getGithubToken();
   if (!token) return { valid: false };
+  const probe = (t: string) => net.fetch('https://api.github.com/user', {
+    headers: { 'Authorization': `Bearer ${t}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'TesterBrowser-BugReporter' },
+  });
   try {
-    const res = await net.fetch('https://api.github.com/user', {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'TesterBrowser-BugReporter' },
-    });
+    let res = await probe(token);
     if (res.status === 401) {
-      bugReportStore.set({ tokenEnc: null });
-      return { valid: false };
+      token = await refreshGithubToken();
+      if (!token) return { valid: false };
+      res = await probe(token);
+      if (res.status === 401) { clearGithubTokens(); return { valid: false }; }
     }
     return { valid: res.ok };
   } catch { return { valid: false }; }
@@ -581,11 +638,16 @@ ipcMain.handle('bugreport:checkToken', async () => {
 
 ipcMain.handle('bugreport:saveToken', (_e, token: string) => {
   const trimmed = (token ?? '').trim();
-  if (!trimmed) { bugReportStore.set({ tokenEnc: null }); return { ok: true }; }
+  if (!trimmed) { clearGithubTokens(); return { ok: true }; }
   if (!safeStorage.isEncryptionAvailable()) {
     return { ok: false, error: 'OS-level secure storage is unavailable on this system — cannot store the token safely.' };
   }
-  bugReportStore.set({ tokenEnc: safeStorage.encryptString(trimmed).toString('base64') });
+  // A manually-pasted token replaces any device-flow tokens; it has no refresh token of its own.
+  bugReportStore.set({
+    tokenEnc: safeStorage.encryptString(trimmed).toString('base64'),
+    refreshTokenEnc: null,
+    refreshExpiresAt: null,
+  });
   return { ok: true };
 });
 
@@ -667,7 +729,7 @@ async function addIssueToProjectBoard(token: string, issueNodeId: string): Promi
 }
 
 ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; description: string; diagnostics?: string; screenshotB64?: string | null }) => {
-  const token = getGithubToken();
+  let token = getGithubToken();
   if (!token) return { ok: false, error: 'No GitHub token configured. Add one in Settings.' };
   if (!payload?.description?.trim()) return { ok: false, error: 'Description is required.' };
 
@@ -676,20 +738,27 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
   const body = `${payload.description.trim()}\n\n${wrapDiagnosticsMarkdown(payload.area, diagnosticsText)}`;
 
   try {
-    const res = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues`, {
+    const createIssue = (t: string) => net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${t}`,
         'Accept': 'application/vnd.github+json',
         'Content-Type': 'application/json',
         'User-Agent': 'TesterBrowser-BugReporter',
       },
       body: JSON.stringify({ title, body, labels: ['status-ready'] }),
     });
+    let res = await createIssue(token);
+    if (res.status === 401) {
+      const refreshed = await refreshGithubToken();
+      if (!refreshed) return { ok: false, error: 'GitHub token is invalid or expired. Please sign in again in Settings.' };
+      token = refreshed;
+      res = await createIssue(token);
+    }
     const data = await res.json() as Record<string, unknown>;
     if (!res.ok) {
       if (res.status === 401) {
-        bugReportStore.set({ tokenEnc: null });
+        clearGithubTokens();
         return { ok: false, error: 'GitHub token is invalid or expired. Please sign in again in Settings.' };
       }
       return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
