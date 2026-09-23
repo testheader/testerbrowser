@@ -24,7 +24,12 @@ test('Debug mode toggle exists in Settings and flipping it persists through sett
   await page.click('#appMenuSettings');
   await expect(page.locator('#settingsOverlay')).toHaveClass(/open/);
   await expect(page.locator('#debugModeToggle')).not.toBeChecked();
-  await page.locator('#debugModeToggle').check();
+  // The checkbox itself is visually hidden by .toggle-switch (opacity/size
+  // zeroed out — only the sibling .toggle-slider is rendered), so Playwright
+  // won't treat it as clickable; click the visible slider instead, same as a
+  // real user would.
+  await page.locator('#debugModeToggle + .toggle-slider').click();
+  await expect(page.locator('#debugModeToggle')).toBeChecked();
 
   // Persisted immediately via settings:set, same round-trip security.spec.ts
   // uses to prove securityRuleOverrides persistence.
