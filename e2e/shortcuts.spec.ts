@@ -185,8 +185,8 @@ test('Ctrl+1 and Ctrl+9 switch tabs by position', async () => {
   await resetToSingleTab();
   await window.keyboard.press('Control+t');
   await window.keyboard.press('Control+t');
+  await expect(window.locator('.tab')).toHaveCount(3);
   const ids = await window.locator('.tab').evaluateAll(els => els.map(el => el.getAttribute('data-id')));
-  expect(ids.length).toBe(3);
 
   await window.keyboard.press('Control+1');
   await expect.poll(activeTabId).toBe(ids[0]);
