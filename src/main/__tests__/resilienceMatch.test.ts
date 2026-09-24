@@ -44,3 +44,33 @@ describe('resilienceRuleMatchesRequest (#181 — method scoping)', () => {
     expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://x/api/other' })).toBe(false);
   });
 });
+
+describe('matchesGlob via resilienceRuleMatchesRequest (#219 — "?" is a CDP glob wildcard, not a regex quantifier)', () => {
+  it('an exact URL with a query string matches itself', () => {
+    const rule = makeRule({ urlPattern: 'https://api.test/items?page=2' });
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://api.test/items?page=2' })).toBe(true);
+  });
+
+  it('"?" matches exactly one character, not zero', () => {
+    const rule = makeRule({ urlPattern: 'https://api.test/items?page=2' });
+    // Missing the character '?' stands in for — no match.
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://api.test/itemspage=2' })).toBe(false);
+    // A different single character in that position still matches.
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://api.test/items&page=2' })).toBe(true);
+    // Two characters where '?' should match exactly one — no match.
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://api.test/itemsXXpage=2' })).toBe(false);
+  });
+
+  it('"*" still matches zero or more characters, unaffected by the "?" fix', () => {
+    const rule = makeRule({ urlPattern: '*/api/*' });
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://x/api/widgets?a=1&b=2' })).toBe(true);
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://x/api/' })).toBe(true);
+  });
+
+  it('other regex metacharacters — "(", "+", "$" — match literally', () => {
+    const rule = makeRule({ urlPattern: 'https://x/api/widgets(v2)+$' });
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://x/api/widgets(v2)+$' })).toBe(true);
+    // Not treated as a regex group/quantifier/anchor.
+    expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://x/api/widgetsv2v2' })).toBe(false);
+  });
+});

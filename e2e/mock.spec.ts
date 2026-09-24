@@ -345,3 +345,33 @@ test('a rule with a quote/HTML-bearing URL pattern and body renders safely, and 
   expect(savedRule?.urlPattern).toBe(evilPattern);
   expect(savedRule?.body).toBe(evilBody);
 });
+
+test('a mock rule for a URL containing "?" actually matches and intercepts that exact URL (#219)', async () => {
+  // Earlier tests in this file (#209, #218) leave multiple tabs open,
+  // including more than one already on /network/api.html — reduce to a
+  // single tab first so getTabPage's URL-substring match below is
+  // unambiguous.
+  for (let i = 0; i < 10 && (await window.locator('.tab').count()) > 1; i++) {
+    await window.keyboard.press('Control+w');
+  }
+  await expect.poll(() => window.locator('.tab').count()).toBe(1);
+
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabMock');
+  await window.fill('#mockUrl', '*/api/items?page=2');
+  await window.fill('#mockStatus', '200');
+  await window.fill('#mockBody', '{"mocked":true}');
+  await window.click('.mock-add-btn');
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/items' })).toBeVisible();
+
+  await tab.fill('#apiPath', '/api/items?page=2');
+  await tab.click('#apiFetchBtn');
+  await expect(tab.locator('#apiOut')).toContainText('"status":200', { timeout: 5_000 });
+  const out = JSON.parse((await tab.locator('#apiOut').textContent()) || '{}');
+  expect(out.body).toContain('"mocked":true');
+});
