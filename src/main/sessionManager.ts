@@ -819,6 +819,7 @@ export class SessionManager {
   private sessionNotes = new Map<string, string>();
   private colorIndex = 0;
   private downloadManager: DownloadManager;
+  private hookedPartitions = new Set<string>();
   private permissionManager: PermissionManager;
   private getRedactHeaders: () => boolean;
   private recordingHandlers = new Map<string, () => void>();
@@ -1045,12 +1046,20 @@ export class SessionManager {
     // added them.
     this._applyFetch(id);
 
-    ses.webRequest.onCompleted((details) => {
-      try {
-        const host = new URL(details.url).hostname;
-        if (host) testSession.loadedDomains.add(host);
-      } catch {}
-    });
+    // webRequest allows one listener per event, so register it once per
+    // partition and route by the requesting webContents.
+    if (!this.hookedPartitions.has(partition)) {
+      this.hookedPartitions.add(partition);
+      ses.webRequest.onCompleted((details) => {
+        try {
+          const host = new URL(details.url).hostname;
+          if (!host) return;
+          for (const s of this.sessions.values()) {
+            if (s.view.webContents.id === details.webContentsId) { s.loadedDomains.add(host); break; }
+          }
+        } catch {}
+      });
+    }
 
     if (opts.startUrl) {
       view.webContents.loadURL(opts.startUrl);

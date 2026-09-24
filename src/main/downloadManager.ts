@@ -22,7 +22,12 @@ export class DownloadManager {
     this.win = win;
   }
 
+  private attached = new WeakSet<Electron.Session>();
+
   attach(ses: Electron.Session) {
+    // Several tabs can share one partition; hook will-download only once.
+    if (this.attached.has(ses)) return;
+    this.attached.add(ses);
     ses.on('will-download', (_event, item) => {
       const dlId = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       // path.basename strips any directory traversal from server-supplied filenames
