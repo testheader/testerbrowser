@@ -162,17 +162,23 @@ test.describe('crash log content after a hard crash', () => {
 // #226: writeCrashLog()'s logTail/logTailTruncated, formatted by
 // formatCrashForIssue() -> formatAppLogBlock() (renderer/utils.js), and the
 // crash modal's new "Open log folder" button.
+// Each test below needs its own fresh crash: clicking "File a bug report…"
+// dismisses the crash modal and clears the crash log (crash-report.js's
+// fileIssue() -> dismissCrash() -> testerBrowser.crash.clear()), so a shared
+// beforeAll app instance would leave #crashReportOverlay's "open" class
+// removed for any test running after the first one. Give each test its own
+// app, same as every other describe block in this file.
 test.describe('crash modal app log (#226)', () => {
   let app: ElectronApplication;
   let window: Page;
 
-  test.beforeAll(async () => {
+  test.beforeEach(async () => {
     app = await launchWithSimulatedCrash({ logLines: ['some earlier line', 'crash-log-tail-marker', 'last line before crash'] });
     window = await getMainWindow(app);
     await window.waitForLoadState('load');
   });
 
-  test.afterAll(async () => {
+  test.afterEach(async () => {
     await app.close();
   });
 
