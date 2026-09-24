@@ -21,7 +21,7 @@ export interface RecorderOptions {
   redactSensitiveHeaders?: boolean;
 }
 
-const SENSITIVE_HEADERS = new Set([
+export const SENSITIVE_HEADERS = new Set([
   'authorization', 'cookie', 'set-cookie', 'x-api-key', 'x-auth-token',
   'x-csrf-token', 'proxy-authorization', 'x-access-token', 'x-session-token',
   'www-authenticate', 'x-forwarded-authorization',

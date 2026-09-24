@@ -23,6 +23,11 @@ Electron desktop app purpose-built for software testers. Two core features:
 src/main/index.ts          Main process: BrowserWindow, IPC handlers, app menu, autoUpdater
 src/main/sessionManager.ts BrowserView lifecycle, tab mgmt, CDP forwarding, downloads, permissions
 src/main/recorder.ts       CDP debugger → SQLite ring buffer (20 000 events/session cap)
+src/main/appLogger.ts      Central app logger: log.error/warn/info/debug() fan out to the
+                           in-memory ring + app-errors.json, DebugLogStore, and a rotating
+                           plain-text userData/logs/main.log. Redacts URLs/tokens/sensitive
+                           headers before anything is written. recordAppError() in index.ts
+                           is a thin wrapper over it.
 src/preload/index.ts       contextBridge → window.testerBrowser (full API surface)
 renderer/index.html        HTML shell; renderer/style.css holds the styling
 renderer/*.js              Renderer logic, split into ES modules (main.js is the entry point):

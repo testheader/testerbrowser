@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
+import type { ElectronApplication } from 'playwright';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
 
 let app: Awaited<ReturnType<typeof electron.launch>>;
@@ -88,4 +92,67 @@ test('Debug Log level pills filter entries by level', async () => {
 
   // Reset for later specs.
   await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
+});
+
+// #225: the central app logger's plain-text file, independent of the Debug
+// Log console panel above (which reads DebugLogStore, not main.log).
+test.describe('main.log (#225)', () => {
+  test('exists after launch with a header line, and reportError() writes a redacted entry', async () => {
+    const userDataDir = await app.evaluate(({ app: electronApp }) => electronApp.getPath('userData'));
+    const logPath = path.join(userDataDir, 'logs', 'main.log');
+
+    await expect(async () => {
+      expect(fs.existsSync(logPath)).toBe(true);
+    }).toPass({ timeout: 5_000 });
+
+    const firstLine = fs.readFileSync(logPath, 'utf-8').split('\n')[0];
+    expect(firstLine).toMatch(/^=== TesterBrowser .+ \| Electron .+ \| .+ \| pid \d+ ===$/);
+
+    await page.evaluate(() => (window as any).testerBrowser.app.reportError('e2e-marker ?secret=1'));
+
+    await expect(async () => {
+      expect(fs.readFileSync(logPath, 'utf-8')).toContain('e2e-marker');
+    }).toPass({ timeout: 5_000 });
+
+    expect(fs.readFileSync(logPath, 'utf-8')).not.toContain('secret=1');
+  });
+});
+
+test.describe('main.log survives a hard kill (#225)', () => {
+  test('a line logged right before SIGKILL is present in main.log on the next launch', async () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-hardkill-'));
+    let killedApp: ElectronApplication | undefined;
+    try {
+      killedApp = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+      const win = await getMainWindow(killedApp);
+      await win.waitForLoadState('domcontentloaded');
+
+      await win.evaluate(() => (window as any).testerBrowser.app.reportError('before-kill'));
+      // reportError() writes main.log synchronously (fs.appendFileSync), so
+      // the line is on disk before this call resolves — no wait needed
+      // beyond the IPC round trip itself.
+
+      const pid = killedApp.process().pid;
+      expect(pid).toBeDefined();
+      process.kill(pid as number, 'SIGKILL');
+      // No app.close() — the process is already dead; closing would error.
+      killedApp = undefined;
+
+      // Relaunch against the SAME user-data dir, as a real restart after a
+      // crash would.
+      const relaunched = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+      try {
+        const relaunchedWin = await getMainWindow(relaunched);
+        await relaunchedWin.waitForLoadState('domcontentloaded');
+
+        const logPath = path.join(userDataDir, 'logs', 'main.log');
+        const content = fs.readFileSync(logPath, 'utf-8');
+        expect(content).toContain('before-kill');
+      } finally {
+        await relaunched.close();
+      }
+    } finally {
+      if (killedApp) await killedApp.close();
+    }
+  });
 });

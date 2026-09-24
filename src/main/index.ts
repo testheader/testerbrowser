@@ -8,6 +8,7 @@ import { writeUpdateLog, readUpdateLog } from './updateLogger';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
+import { log, initLogger, getRecentErrors } from './appLogger';
 import { applySettingsPatch, AppSettings } from './settingsPatch';
 
 let win: BrowserWindow | null = null;
@@ -15,36 +16,32 @@ let sessionManager: SessionManager | null = null;
 
 // --- App-level error log (for bug reports — main process errors, not site console errors) ---
 
-const MAX_APP_ERRORS = 20;
-const recentAppErrors: AppErrorEntry[] = [];
-// recordAppError() only appends to the in-memory array above, which lives in
+// recordAppError() only appends to appLogger's in-memory ring, which lives in
 // this process and is gone the instant it dies. A hard crash (renderer
 // killed, OOM, native crash) never drains the event loop far enough for
 // before-quit or process.on('exit') to run, so the *next* process's sentinel
 // branch (below) is often the only code that ever runs afterward — and it
-// starts with a fresh, empty recentAppErrors of its own. Write-through to
+// starts with a fresh, empty ring of its own. appLogger write-throughs to
 // disk on every call (writeAppErrors, from errorLog.ts) so that branch can
 // recover what the crashed process actually saw, instead of reading its own
-// empty array.
+// empty ring.
 let appErrorsPath = '';
-// Durable, unbounded (up to its own row/age caps) history behind recentAppErrors
-// above — see debugLogStore.ts. Resolved inside whenReady() alongside the other
-// app-lifecycle file paths, so entries recorded before then (there are none in
-// practice — nothing calls recordAppError until after whenReady()) are only
-// captured in the in-memory/write-through array, not persisted.
+// Durable, unbounded (up to its own row/age caps) history behind the ring
+// above — see debugLogStore.ts. Resolved inside whenReady() alongside the
+// other app-lifecycle file paths, so entries recorded before then (there are
+// none in practice — nothing calls recordAppError until after whenReady())
+// are only captured in the in-memory/write-through ring, not persisted.
 let debugLogStore: DebugLogStore | null = null;
 // level defaults to 'error' since every existing call site (uncaught
 // exceptions, unhandled rejections, a crashed/unresponsive renderer, and the
 // renderer's own app:reportError) is reporting an actual error; nothing yet
 // calls this at 'warn'/'info'/'debug' — that wider tracing is left to a
 // follow-up (see #213's own scope note on the ~28 silent `catch {}` blocks).
+// Thin wrapper over appLogger's log[level]() (#225) — source is always
+// 'app' here since this call site can't tell which subsystem raised it;
+// callers that can (e.g. the updater) call log[level]() directly instead.
 function recordAppError(message: string, level: AppLogLevel = 'error') {
-  const ts = Date.now();
-  const trimmed = String(message).slice(0, 2000);
-  recentAppErrors.push({ ts, message: trimmed, level });
-  if (recentAppErrors.length > MAX_APP_ERRORS) recentAppErrors.shift();
-  if (appErrorsPath) writeAppErrors(appErrorsPath, recentAppErrors);
-  debugLogStore?.insert({ ts, message: trimmed, level });
+  log[level]('app', message);
 }
 process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
 process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
@@ -324,12 +321,18 @@ app.whenReady().then(() => {
   appErrorsPath   = path.join(app.getPath('userData'), 'app-errors.json');
   sessionUrlsPath = path.join(app.getPath('userData'), 'session-urls.json');
   debugLogStore   = new DebugLogStore(path.join(app.getPath('userData'), 'debug-log.sqlite'));
+  initLogger({
+    dir: path.join(app.getPath('userData'), 'logs'),
+    debugMode: () => settingsStore.get().debugMode,
+    debugLogStore,
+    appErrorsPath,
+  });
 
   // If the sentinel is still present, the previous session ended abnormally.
   // Its errors/session URLs only survive if that process wrote them through
   // to disk as they happened (recordAppError()/persistSessionUrls()) — the
-  // in-memory recentAppErrors here belongs to *this* fresh process and is
-  // always empty at this point.
+  // in-memory ring here belongs to *this* fresh process and is always empty
+  // at this point.
   if (fs.existsSync(sentinelPath)) {
     try {
       const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf-8')) as { startedAt?: string };
@@ -409,6 +412,7 @@ app.whenReady().then(() => {
           latestVersion: null,
         });
       } catch {}
+      log.error('updater', fullMsg);
       // Strip verbose prefix and show only the first line, capped at 120 chars
       latestVersion = fullMsg
         .replace(/^Cannot check for updates:\s*(Error:\s*)?/, '')
@@ -445,7 +449,7 @@ app.on('before-quit', () => {
 
 // Fallback: if process exits without a clean before-quit (e.g. SIGKILL or a
 // native crash that still drains the event loop), write a crash log. Runs
-// inside the still-alive crashing process, so recentAppErrors/listSessions()
+// inside the still-alive crashing process, so appLogger's ring/listSessions()
 // are this process's own live state — more current than what it last wrote
 // through to appErrorsPath/sessionUrlsPath, though writeCrashLog() below
 // builds the same shape the sentinel branch does from that written-through
@@ -455,7 +459,7 @@ process.on('exit', () => {
   try {
     const sessions = sessionManager?.listSessions() ?? [];
     const sessionUrls = sessions.map((s: { url?: string }) => s.url ?? '').filter(Boolean);
-    writeCrashLog(sessionStartedAt || new Date().toISOString(), recentAppErrors, sessionUrls);
+    writeCrashLog(sessionStartedAt || new Date().toISOString(), getRecentErrors(), sessionUrls);
     fs.unlinkSync(sentinelPath);
   } catch {}
 });
@@ -767,7 +771,7 @@ function getDiagnosticsData() {
     platform: process.platform,
     arch: process.arch,
     osRelease: os.release(),
-    recentErrors: recentAppErrors.slice(-10),
+    recentErrors: getRecentErrors().slice(-10),
   };
 }
 
@@ -1054,7 +1058,7 @@ ipcMain.handle('app:openExternal', (_e, url: string) => {
   if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
 });
 ipcMain.handle('app:reportError', (_e, message: string) => recordAppError(String(message)));
-ipcMain.handle('app:debugLog', () => debugLogStore?.getEntries({ limit: 500 }) ?? recentAppErrors);
+ipcMain.handle('app:debugLog', () => debugLogStore?.getEntries({ limit: 500 }) ?? getRecentErrors());
 
 // Tests (record-playback) IPC
 ipcMain.handle('tests:list', () => testsStore.get());
