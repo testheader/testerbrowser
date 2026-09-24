@@ -84,6 +84,56 @@ test('Violations view finds real axe-core issues via Refresh (#193)', async () =
   await expect(content).toContainText('aria-roles');
 });
 
+test('Violations view shows an error, not "No violations found", when the audit fails to run (#222)', async () => {
+  // CDP's Runtime.evaluate (what the Violations audit's axe-core injection
+  // uses) isn't itself subject to the page's own CSP — DevTools evaluation
+  // needs to keep working regardless of what a page's CSP forbids — so a
+  // strict-CSP fixture page can't actually reproduce a failed audit here.
+  // contextBridge-exposed APIs are frozen too (see shortcuts.spec.ts's F3
+  // test), so patching window.testerBrowser.a11y.getViolations from the
+  // renderer side is out as well. Patch the real main-process CDP debugger
+  // instead — the same technique that test uses for webContents.findInPage
+  // — so this exercises the actual getA11yViolations() catch branch, the
+  // real IPC round trip, and the real renderer, not a fake response.
+  const urlPath = '/accessibility/index.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  const patched = await app.evaluate(({ webContents }, url) => {
+    const wc = webContents.getAllWebContents().find(w => w.getURL() === url);
+    if (!wc) return false;
+    const original = wc.debugger.sendCommand.bind(wc.debugger);
+    (wc as unknown as { __origSendCommand: unknown }).__origSendCommand = original;
+    (wc.debugger as unknown as { sendCommand: unknown }).sendCommand = (method: string, params: unknown) => {
+      if (method === 'Runtime.evaluate') return Promise.reject(new Error('Simulated CDP failure (e2e stub)'));
+      return original(method, params);
+    };
+    return true;
+  }, tab.url());
+  expect(patched).toBe(true);
+
+  try {
+    await window.click('#consoleTabA11y');
+    await window.click('#a11yViewViolationsBtn');
+    await window.click('#a11yRefreshBtn');
+
+    const content = window.locator('#a11yContent');
+    await expect(content).toContainText('Accessibility audit failed: Simulated CDP failure (e2e stub)', { timeout: 10_000 });
+    await expect(content).not.toContainText('No violations found');
+  } finally {
+    // Restore the real debugger for later tests in this file.
+    await app.evaluate(({ webContents }, url) => {
+      const wc = webContents.getAllWebContents().find(w => w.getURL() === url);
+      if (!wc) return;
+      const original = (wc as unknown as { __origSendCommand: unknown }).__origSendCommand;
+      (wc.debugger as unknown as { sendCommand: unknown }).sendCommand = original;
+    }, tab.url());
+  }
+});
+
 test('Contrast view lists failing/unknown-background elements but not fully-passing ones (#194)', async () => {
   const urlPath = '/accessibility/contrast.html';
   await window.click('#urlbar');

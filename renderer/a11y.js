@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
+import { escHtml } from './utils.js';
 
 const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
@@ -381,10 +382,17 @@ async function loadA11yViolations() {
   }
   content.innerHTML = '<div class="a11y-loading">Running accessibility audit…</div>';
   try {
-    const violations = await testerBrowser.a11y.getViolations(getActiveId());
-    renderA11yViolations(content, violations ?? []);
+    const result = await testerBrowser.a11y.getViolations(getActiveId());
+    if (result && result.ok === false) {
+      // A failed audit (CSP blocking eval, a page exception, a missing
+      // vendored axe bundle, a detached debugger) must never render as the
+      // same "No violations found" state a real, clean pass gets — see #222.
+      content.innerHTML = `<div class="a11y-empty a11y-error">Accessibility audit failed: ${escHtml(result.error ?? 'unknown')}</div>`;
+      return;
+    }
+    renderA11yViolations(content, result?.violations ?? []);
   } catch (e) {
-    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    content.innerHTML = `<div class="a11y-empty a11y-error">Accessibility audit failed: ${escHtml(e?.message ?? 'unknown')}</div>`;
   }
 }
 

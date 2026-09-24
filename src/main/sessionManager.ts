@@ -444,6 +444,19 @@ export interface FocusTrapResult {
   backward: FocusTrapDirectionResult;
 }
 
+// #222 — a discriminated result so a failed audit (CSP blocking eval, a page
+// exception, a missing vendored axe.min.js, a detached debugger) can never
+// be mistaken by the renderer for "ran cleanly, zero violations".
+export type A11yViolationsResult =
+  | { ok: true; violations: object[] }
+  | { ok: false; error: string };
+
+// The subset of CDP's Runtime.ExceptionDetails this file actually reads.
+interface A11yExceptionDetails {
+  text?: string;
+  exception?: { description?: string };
+}
+
 // Pure classification over an already-observed traversal sequence (real Tab/
 // Shift+Tab presses, dispatched and read by detectA11yFocusTrap below) — the
 // CDP round-trips that produce `sequence` aren't unit-testable, but this
@@ -2120,11 +2133,19 @@ export class SessionManager {
     return this.axeSource;
   }
 
-  async getA11yViolations(id: string): Promise<object[] | null> {
+  async getA11yViolations(id: string): Promise<A11yViolationsResult> {
     const s = this.sessions.get(id);
-    if (!s) return null;
+    if (!s) {
+      const error = `No such session: ${id}`;
+      this.recordFeatureError(`A11y violations audit failed: ${error}`);
+      return { ok: false, error };
+    }
     const axeSource = this.getAxeSource();
-    if (!axeSource) return null;
+    if (!axeSource) {
+      const error = 'axe-core bundle could not be loaded';
+      this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+      return { ok: false, error };
+    }
     const dbg = s.view.webContents.debugger;
     try {
       // Same isolated-world-free injection technique as setA11yInspect's
@@ -2144,11 +2165,24 @@ export class SessionManager {
         expression: runExpression,
         awaitPromise: true,
         returnByValue: true,
-      }) as { result?: { value?: string }; exceptionDetails?: unknown };
-      if (result.exceptionDetails || typeof result.result?.value !== 'string') return [];
-      return JSON.parse(result.result.value);
-    } catch {
-      return null;
+      }) as { result?: { value?: string }; exceptionDetails?: A11yExceptionDetails };
+      if (result.exceptionDetails) {
+        const error = result.exceptionDetails.exception?.description
+          ?? result.exceptionDetails.text
+          ?? 'axe-core threw while running in the page';
+        this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+        return { ok: false, error };
+      }
+      if (typeof result.result?.value !== 'string') {
+        const error = 'axe-core returned no result';
+        this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+        return { ok: false, error };
+      }
+      return { ok: true, violations: JSON.parse(result.result.value) };
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+      return { ok: false, error };
     }
   }
 
