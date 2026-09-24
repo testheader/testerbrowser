@@ -206,10 +206,10 @@ function buildMockRuleRow(rule) {
       <input type="checkbox" class="mock-enable" ${rule.enabled ? 'checked' : ''} />
       <span class="mock-toggle-label"></span>
     </label>
-    <span class="mock-rule-method mock-badge">${rule.method}</span>
-    <span class="mock-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
+    <span class="mock-rule-method mock-badge">${escHtml(rule.method)}</span>
+    <span class="mock-rule-url" title="${escHtml(rule.urlPattern)}">${escHtml(rule.urlPattern)}</span>
     <span class="mock-badge mock-status-badge">${rule.statusCode}</span>
-    <span class="mock-rule-body" title="${rule.body}">${rule.body.slice(0, 40)}${rule.body.length > 40 ? '…' : ''}</span>
+    <span class="mock-rule-body" title="${escHtml(rule.body)}">${escHtml(rule.body.slice(0, 40))}${rule.body.length > 40 ? '…' : ''}</span>
     ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
     <span class="mock-badge mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
     <button class="mock-btn mock-edit-btn" title="Edit rule">✎</button>
@@ -235,7 +235,7 @@ function buildMockEditRow(rule) {
   row.dataset.id = rule.id;
   row.innerHTML = `
     <div class="mock-form-row">
-      <input class="mock-input mock-edit-url" type="text" value="${rule.urlPattern}" spellcheck="false" />
+      <input class="mock-input mock-edit-url" type="text" value="${escHtml(rule.urlPattern)}" spellcheck="false" />
       <select class="mock-select mock-edit-method">
         ${MOCK_METHODS.map(m => `<option value="${m}" ${m === rule.method ? 'selected' : ''}>${m === '*' ? 'Any method' : m}</option>`).join('')}
       </select>

@@ -315,3 +315,33 @@ test('console rows show no Replay/Mock/Resilience action row', async () => {
   await expect(window.locator('.detail-tab.active')).toBeVisible();
   await expect(window.locator('.detail-actions')).toHaveCount(0);
 });
+
+test('a rule with a quote/HTML-bearing URL pattern and body renders safely, and round-trips through IPC unchanged (#218)', async () => {
+  const evilPattern = '*/q?x="a"&y=<b>';
+  const evilBody = '<b>bold</b>"quote"';
+
+  await window.click('#consoleTabMock');
+  await window.fill('#mockUrl', evilPattern);
+  await window.fill('#mockStatus', '200');
+  await window.fill('#mockBody', evilBody);
+  await window.click('.mock-add-btn');
+
+  const row = window.locator('.mock-rule-row', { hasText: '/q?x=' });
+  await expect(row.locator('.mock-rule-url')).toHaveText(evilPattern);
+  await expect(row.locator('.mock-rule-url')).toHaveAttribute('title', evilPattern);
+  // Rendered as text, not markup — no real <b> element from the pattern/body leaking in.
+  await expect(row.locator('b')).toHaveCount(0);
+
+  await row.locator('.mock-edit-btn').click();
+  const editRow = window.locator('.mock-rule-row-editing');
+  await expect(editRow.locator('.mock-edit-url')).toHaveValue(evilPattern);
+  await editRow.locator('.mock-save-btn').click();
+
+  const activeId = await window.locator('.tab.active').getAttribute('data-id');
+  const rules: { urlPattern: string; body: string }[] = await window.evaluate(
+    (id) => (window as any).testerBrowser.mock.getRules(id), activeId);
+  const savedRule = rules.find(r => r.urlPattern === evilPattern);
+  expect(savedRule).toBeTruthy();
+  expect(savedRule?.urlPattern).toBe(evilPattern);
+  expect(savedRule?.body).toBe(evilBody);
+});

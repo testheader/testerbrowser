@@ -190,3 +190,30 @@ test('a broad-but-not-wildcard rule pattern under a heavy request burst, refresh
   expect(sessionCount).toBeGreaterThan(0);
   await expect(window.locator('#appName')).toBeVisible();
 });
+
+test('a rule with a quote/HTML-bearing URL pattern renders safely, and round-trips through IPC unchanged (#218)', async () => {
+  const evilPattern = '*/q?x="a"&y=<b>';
+
+  await window.click('#consoleTabResilience');
+  await window.selectOption('#resType', 'error500');
+  await window.fill('#resUrl', evilPattern);
+  await window.fill('#resProb', '100');
+  await window.click('.res-add-btn');
+
+  const row = window.locator('.res-rule-row', { hasText: '/q?x=' });
+  await expect(row.locator('.res-rule-url')).toHaveText(evilPattern);
+  await expect(row.locator('.res-rule-url')).toHaveAttribute('title', evilPattern);
+  await expect(row.locator('b')).toHaveCount(0);
+
+  await row.locator('.res-edit-btn').click();
+  const editRow = window.locator('.res-rule-row-editing');
+  await expect(editRow.locator('.res-edit-url')).toHaveValue(evilPattern);
+  await editRow.locator('.res-save-btn').click();
+
+  const activeId = await window.locator('.tab.active').getAttribute('data-id');
+  const rules: { urlPattern: string }[] = await window.evaluate(
+    (id) => (window as any).testerBrowser.resilience.getRules(id), activeId);
+  const savedRule = rules.find(r => r.urlPattern === evilPattern);
+  expect(savedRule).toBeTruthy();
+  expect(savedRule?.urlPattern).toBe(evilPattern);
+});

@@ -175,7 +175,7 @@ function buildRuleRow(rule) {
     </label>
     <span class="res-rule-type res-badge">${typeLabel}${extra}</span>
     ${methodBadge}
-    <span class="res-rule-url" title="${rule.urlPattern}">${rule.urlPattern}</span>
+    <span class="res-rule-url" title="${escHtml(rule.urlPattern)}">${escHtml(rule.urlPattern)}</span>
     <span class="res-badge res-prob-badge">${probLabel}</span>
     ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
     <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
@@ -225,7 +225,7 @@ function buildEditRow(rule) {
     <select class="res-select res-edit-type">
       ${TYPES.map(t => `<option value="${t.value}" ${t.value === rule.type ? 'selected' : ''}>${t.label}</option>`).join('')}
     </select>
-    <input class="res-input res-edit-url" type="text" value="${rule.urlPattern}" spellcheck="false" />
+    <input class="res-input res-edit-url" type="text" value="${escHtml(rule.urlPattern)}" spellcheck="false" />
     <input class="res-input res-edit-prob" type="number" min="1" max="100" value="${Math.round(rule.probability * 100)}" title="Probability %" />
     <input class="res-input res-edit-latency${rule.type === 'latency' ? '' : ' res-hidden'}" type="number" min="0" value="${rule.latencyMs ?? 2000}" title="Delay ms" />
     <button class="res-btn res-save-btn" title="Save">Save</button>

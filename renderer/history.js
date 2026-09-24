@@ -1,13 +1,10 @@
 /* global testerBrowser */
 import { switchToSession } from './tabs.js';
+import { escHtml } from './utils.js';
 
 // historySessionId (which session's history overlay is open, if any) is
 // entirely private to this file — nothing else reads or writes it.
 let historySessionId = null;
-
-function escHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 export async function openHistory(id) {
   historySessionId = id;
