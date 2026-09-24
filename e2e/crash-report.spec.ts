@@ -23,6 +23,11 @@ import { getMainWindow, getActiveViewBounds, MAIN_PATH } from './helpers';
 async function launchWithSimulatedCrash(durableState?: {
   errors?: { ts: number; message: string }[];
   sessionUrls?: string[];
+  // #226: writeCrashLog() reads its main.log tail from disk (readLogTail),
+  // same as the sentinel/app-errors/session-urls state above — seed it the
+  // same way to simulate the crashed process having already written these
+  // lines through before it died.
+  logLines?: string[];
 }): Promise<ElectronApplication> {
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-crash-'));
   fs.writeFileSync(
@@ -34,6 +39,10 @@ async function launchWithSimulatedCrash(durableState?: {
   }
   if (durableState?.sessionUrls) {
     fs.writeFileSync(path.join(userDataDir, 'session-urls.json'), JSON.stringify(durableState.sessionUrls));
+  }
+  if (durableState?.logLines) {
+    fs.mkdirSync(path.join(userDataDir, 'logs'), { recursive: true });
+    fs.writeFileSync(path.join(userDataDir, 'logs', 'main.log'), durableState.logLines.join('\n') + '\n');
   }
   return electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
 }
@@ -147,5 +156,56 @@ test.describe('crash log content after a hard crash', () => {
     expect(desc).toContain('**Recent errors before crash:**');
     expect(desc).toContain('Uncaught exception: something in the crashed process');
     expect(desc).toContain('Chrome UI render process gone: crashed');
+  });
+});
+
+// #226: writeCrashLog()'s logTail/logTailTruncated, formatted by
+// formatCrashForIssue() -> formatAppLogBlock() (renderer/utils.js), and the
+// crash modal's new "Open log folder" button.
+test.describe('crash modal app log (#226)', () => {
+  let app: ElectronApplication;
+  let window: Page;
+
+  test.beforeAll(async () => {
+    app = await launchWithSimulatedCrash({ logLines: ['some earlier line', 'crash-log-tail-marker', 'last line before crash'] });
+    window = await getMainWindow(app);
+    await window.waitForLoadState('load');
+  });
+
+  test.afterAll(async () => {
+    await app.close();
+  });
+
+  test('"File a bug report…" includes the seeded main.log line inside an App log block', async () => {
+    await expect(window.locator('#crashReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+    await window.click('#crashReportFileBtn');
+    await expect(window.locator('#bugReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+
+    const desc = await window.locator('#bugReportDesc').inputValue();
+    expect(desc).toContain('App log');
+    expect(desc).toContain('crash-log-tail-marker');
+  });
+
+  test('"Open log folder" is visible and reveals main.log', async () => {
+    await expect(window.locator('#crashReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+    await expect(window.locator('#crashReportLogFolderBtn')).toBeVisible();
+
+    // shell.showItemInFolder() opens the OS file explorer — not something a
+    // headless/CI e2e run should actually trigger. Replace it in the main
+    // process (rather than delegating to the real implementation) and assert
+    // it was invoked with a path ending in main.log instead.
+    await app.evaluate(({ shell }) => {
+      (globalThis as any).__revealedPaths = [];
+      (shell as any).showItemInFolder = (p: string) => {
+        (globalThis as any).__revealedPaths.push(p);
+      };
+    });
+
+    await window.click('#crashReportLogFolderBtn');
+
+    await expect(async () => {
+      const revealed: string[] = await app.evaluate(() => (globalThis as any).__revealedPaths ?? []);
+      expect(revealed.some((p) => p.endsWith('main.log'))).toBe(true);
+    }).toPass({ timeout: 5_000 });
   });
 });

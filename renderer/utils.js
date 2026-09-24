@@ -98,6 +98,16 @@ export function mergeRecordedSteps(localSteps, remoteSteps, receivedCount) {
   return [...localSteps, ...remoteSteps.slice(receivedCount)];
 }
 
+// #226: shared by crash-report.js's formatCrashForIssue and bugreport.js's
+// formatDiagnostics, so the markdown wrapper isn't duplicated between them.
+// appLog is { text, truncated } — already capped to 30,000 chars server-side
+// (src/main/logTail.ts's capLogBlock), so this only formats the wrapper.
+export function formatAppLogBlock(appLog) {
+  const lineCount = appLog.text ? appLog.text.split('\n').length : 0;
+  const summary = `App log (last ${lineCount} lines${appLog.truncated ? ', truncated' : ''})`;
+  return `<details><summary>${summary}</summary>\n\n\`\`\`\n${appLog.text}\n\`\`\`\n</details>`;
+}
+
 export function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');

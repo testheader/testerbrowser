@@ -252,6 +252,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     clear: () => ipcRenderer.invoke('crash:clear'),
   },
 
+  appLog: {
+    tail: (lines: number) => ipcRenderer.invoke('applog:tail', lines),
+    revealFolder: () => ipcRenderer.invoke('applog:revealFolder'),
+  },
+
   bugReport: {
     hasToken:       () => ipcRenderer.invoke('bugreport:hasToken'),
     checkToken:     () => ipcRenderer.invoke('bugreport:checkToken'),

@@ -9,6 +9,7 @@ import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
+import { readLogTail, capLogBlock, capIssueBody } from './logTail';
 import { applySettingsPatch, AppSettings } from './settingsPatch';
 
 let win: BrowserWindow | null = null;
@@ -79,6 +80,10 @@ let normalQuit = false;
 let sentinelPath = '';
 let crashLogPath = '';
 let sessionUrlsPath = '';
+// #225's log directory — resolved once in whenReady(), same as the paths
+// above, so writeCrashLog()/the applog:* IPC handlers can read/report on
+// main.log without each recomputing app.getPath('userData').
+let logsDir = '';
 // This session's own startedAt, mirroring what gets written into sentinelPath
 // below — reused by the process.on('exit') fallback so it and the sentinel
 // branch build the crash log the same way instead of diverging.
@@ -91,6 +96,11 @@ let sessionStartedAt = '';
 // function keeps the written shape identical either way.
 function writeCrashLog(startedAt: string, recentErrors: AppErrorEntry[], sessionUrls: string[]) {
   try {
+    // #226: the tail is read here — before whenReady()'s sentinel branch
+    // returns and #225's initLogger() appends *this* launch's startup
+    // header — so it ends with the crashed process's own last lines, not
+    // this fresh one's.
+    const capped = capLogBlock(readLogTail(logsDir, 200), 30_000);
     const log = {
       timestamp:       startedAt,
       crashedAt:       new Date().toISOString(),
@@ -99,6 +109,8 @@ function writeCrashLog(startedAt: string, recentErrors: AppErrorEntry[], session
       platform:        process.platform,
       recentErrors:    recentErrors.slice(-5),
       sessionUrls,
+      logTail:          capped.text ? capped.text.split('\n') : [],
+      logTailTruncated: capped.truncated,
     };
     fs.writeFileSync(crashLogPath, JSON.stringify(log));
   } catch {}
@@ -320,19 +332,17 @@ app.whenReady().then(() => {
   crashLogPath    = path.join(app.getPath('userData'), 'crash-log.json');
   appErrorsPath   = path.join(app.getPath('userData'), 'app-errors.json');
   sessionUrlsPath = path.join(app.getPath('userData'), 'session-urls.json');
+  logsDir         = path.join(app.getPath('userData'), 'logs');
   debugLogStore   = new DebugLogStore(path.join(app.getPath('userData'), 'debug-log.sqlite'));
-  initLogger({
-    dir: path.join(app.getPath('userData'), 'logs'),
-    debugMode: () => settingsStore.get().debugMode,
-    debugLogStore,
-    appErrorsPath,
-  });
 
   // If the sentinel is still present, the previous session ended abnormally.
   // Its errors/session URLs only survive if that process wrote them through
   // to disk as they happened (recordAppError()/persistSessionUrls()) — the
   // in-memory ring here belongs to *this* fresh process and is always empty
-  // at this point.
+  // at this point. This must run — and so must writeCrashLog()'s own
+  // main.log tail read (#226) — before initLogger() below appends this
+  // fresh launch's own startup header, or the crash tail would end with
+  // *this* session's header line instead of the crashed one's last lines.
   if (fs.existsSync(sentinelPath)) {
     try {
       const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf-8')) as { startedAt?: string };
@@ -349,6 +359,13 @@ app.whenReady().then(() => {
   // Write the sentinel for this session.
   sessionStartedAt = new Date().toISOString();
   try { fs.writeFileSync(sentinelPath, JSON.stringify({ startedAt: sessionStartedAt })); } catch {}
+
+  initLogger({
+    dir: logsDir,
+    debugMode: () => settingsStore.get().debugMode,
+    debugLogStore,
+    appErrorsPath,
+  });
 
   createWindow();
 
@@ -762,6 +779,13 @@ ipcMain.handle('bugreport:saveToken', (_e, token: string) => {
   return { ok: true };
 });
 
+// #226: shared by getDiagnosticsData() (bug-report path, below) and the
+// applog:tail IPC handler — the same underlying tail the bug report's
+// "App log" block is built from.
+function getCappedAppLog(): { text: string; truncated: boolean } {
+  return capLogBlock(readLogTail(logsDir, 200), 30_000);
+}
+
 function getDiagnosticsData() {
   return {
     version: app.getVersion(),
@@ -772,12 +796,32 @@ function getDiagnosticsData() {
     arch: process.arch,
     osRelease: os.release(),
     recentErrors: getRecentErrors().slice(-10),
+    appLog: getCappedAppLog(),
   };
 }
 
 ipcMain.handle('bugreport:getDiagnostics', () => getDiagnosticsData());
 
 ipcMain.handle('app:captureScreenshot', () => sessionManager?.captureAppScreenshot() ?? null);
+
+ipcMain.handle('applog:tail', (_e, lines: number) => {
+  const n = Math.min(Math.max(1, Math.floor(Number(lines)) || 0), 500);
+  return readLogTail(logsDir, n);
+});
+
+ipcMain.handle('applog:revealFolder', () => {
+  try { shell.showItemInFolder(path.join(logsDir, 'main.log')); } catch {}
+});
+
+// #226: same <details> wrapper shape as renderer/utils.js's
+// formatAppLogBlock() — kept as a separate TS copy since the renderer can't
+// import this module, but both wrap the already-capped { text, truncated }
+// the main process hands them identically.
+function formatAppLogBlockText(appLog: { text: string; truncated: boolean }): string {
+  const lineCount = appLog.text ? appLog.text.split('\n').length : 0;
+  const summary = `App log (last ${lineCount} lines${appLog.truncated ? ', truncated' : ''})`;
+  return `<details><summary>${summary}</summary>\n\n\`\`\`\n${appLog.text}\n\`\`\`\n</details>`;
+}
 
 // Default diagnostics text — mirrors renderer/bugreport.js's own preview formatting
 // exactly, so what the user sees (and can edit) matches what gets posted verbatim.
@@ -791,6 +835,8 @@ function defaultDiagnosticsText(): string {
     d.recentErrors.length
       ? `Recent app errors:\n${d.recentErrors.map(e => `[${new Date(e.ts).toLocaleTimeString()}] ${e.message}`).join('\n')}`
       : 'No recent app errors recorded.',
+    '',
+    formatAppLogBlockText(d.appLog),
   ];
   return lines.join('\n');
 }
@@ -846,7 +892,10 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
 
   const title = `[${payload.area}] ${payload.description.trim().split('\n')[0].slice(0, 80)}`;
   const diagnosticsText = payload.diagnostics?.trim() || defaultDiagnosticsText();
-  const body = `${payload.description.trim()}\n\n${wrapDiagnosticsMarkdown(payload.area, diagnosticsText)}`;
+  // #226: caps the final body at 60,000 chars, truncating diagnostics (which
+  // carries the app-log block at its own tail) rather than the user's
+  // description — never the other way around.
+  const body = capIssueBody(payload.description.trim(), wrapDiagnosticsMarkdown(payload.area, diagnosticsText), 60_000);
 
   try {
     const createIssue = (t: string) => net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues`, {

@@ -1,11 +1,13 @@
 /* global testerBrowser */
 import { openBugReport } from './bugreport.js';
+import { formatAppLogBlock } from './utils.js';
 
 let pendingCrashLog = null;
 
 export function initCrashReport() {
   document.getElementById('crashReportDismissBtn').onclick = dismissCrash;
   document.getElementById('crashReportFileBtn').onclick = fileIssue;
+  document.getElementById('crashReportLogFolderBtn').onclick = () => testerBrowser.appLog.revealFolder();
   checkForCrash();
 }
 
@@ -61,6 +63,10 @@ function formatCrashForIssue(log) {
     for (const e of log.recentErrors) {
       lines.push(`- [${new Date(e.ts).toLocaleTimeString()}] ${e.message}`);
     }
+    lines.push('');
+  }
+  if (log.logTail?.length) {
+    lines.push(formatAppLogBlock({ text: log.logTail.join('\n'), truncated: !!log.logTailTruncated }));
     lines.push('');
   }
   lines.push('**Steps to reproduce:**');

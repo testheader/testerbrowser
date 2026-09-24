@@ -73,3 +73,16 @@ test('a renderer-side error shows up in the next bug report diagnostics preview'
   await openBugReportModal();
   await expect(window.locator('#bugReportDiagPreview')).toHaveValue(/e2e-injected renderer error/, { timeout: 5_000 });
 });
+
+// #226: getDiagnosticsData()'s appLog field, formatted into the preview by
+// formatDiagnostics() -> formatAppLogBlock() (renderer/utils.js).
+test('the diagnostics preview includes an App log block with a reported error', async () => {
+  await window.keyboard.press('Escape'); // close the modal left open by the previous test
+
+  await window.evaluate(() => (window as any).testerBrowser.app.reportError('diag-marker'));
+
+  await openBugReportModal();
+  const preview = await window.locator('#bugReportDiagPreview').inputValue();
+  expect(preview).toContain('App log');
+  expect(preview).toContain('diag-marker');
+});

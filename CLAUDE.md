@@ -28,6 +28,9 @@ src/main/appLogger.ts      Central app logger: log.error/warn/info/debug() fan o
                            plain-text userData/logs/main.log. Redacts URLs/tokens/sensitive
                            headers before anything is written. recordAppError() in index.ts
                            is a thin wrapper over it.
+src/main/logTail.ts        Pure helpers behind the crash log's/bug report's "App log" tail:
+                           readLogTail (main.log + main.log.1), capLogBlock (30k-char cap,
+                           drops oldest lines), capIssueBody (60k-char issue body cap).
 src/preload/index.ts       contextBridge → window.testerBrowser (full API surface)
 renderer/index.html        HTML shell; renderer/style.css holds the styling
 renderer/*.js              Renderer logic, split into ES modules (main.js is the entry point):
@@ -95,6 +98,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `layout:endPageOverlay` | R→M | reattach the view once the dropdown closes |
 | `download:list/open/reveal/cancel/clear` | R→M | download management |
 | `permission:respond` | R→M | grant/deny browser permission request |
+| `applog:tail` | R→M | last N (max 500) lines of `main.log` |
+| `applog:revealFolder` | R→M | `shell.showItemInFolder()` on `main.log` |
 | `bookmarks:list/add/remove` | R→M | bookmark persistence |
 | `urlHistory:get/add` | R→M | URL autocomplete history |
 | `app:versionInfo` | R→M | current + latest version + update status |

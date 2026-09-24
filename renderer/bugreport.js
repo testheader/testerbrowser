@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { getActiveConsoleTab } from './console-tabs.js';
+import { formatAppLogBlock } from './utils.js';
 
 let screenshotB64 = null;
 
@@ -76,6 +77,7 @@ function formatDiagnostics(d) {
   } else {
     lines.push('', 'No recent app errors recorded.');
   }
+  if (d.appLog) lines.push('', formatAppLogBlock(d.appLog));
   return lines.join('\n');
 }
 
