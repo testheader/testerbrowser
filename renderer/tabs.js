@@ -34,6 +34,13 @@ export function getTabOrder() { return tabOrder; }
 export function getTabTitle(id) { return tabTitles[id]; }
 export function isTabLoading(id) { return !!tabLoading[id]; }
 export function setTabLoading(id, loading) { tabLoading[id] = loading; }
+// Reads the pinned state live off the DOM (see the middle-click handler
+// below, which does the same) rather than off any in-memory session object,
+// so it can never go stale relative to what the tab strip is actually
+// showing — same rationale as that handler's own comment.
+export function isPinned(id) {
+  return document.querySelector(`.tab[data-id="${id}"]`)?.dataset.pinned === '1';
+}
 
 export async function insertAfterActive(id) {
   const sessions   = await testerBrowser.sessions.list();

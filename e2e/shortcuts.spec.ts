@@ -397,6 +397,56 @@ test('Middle-click on a tab closes it, but not when the tab is pinned', async ()
   await expect.poll(tabCount).toBe(beforePinned); // unchanged — still open
 });
 
+test('Ctrl+W does not close a pinned tab, from the chrome UI or from the page itself, but does once unpinned (#223)', async () => {
+  // Not resetToSingleTab()'d — this test only checks counts relative to its
+  // own captured `before` snapshots, and a leftover pinned tab from the
+  // Middle-click test above is exactly the kind of state Ctrl+W's own guard
+  // (what this test verifies) would now make resetToSingleTab's repeated
+  // Ctrl+W presses unable to clear anyway.
+  await window.keyboard.press('Control+t');
+  const pinnedId = await activeTabId();
+  const urlPath = '/console/logs.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.pin(id, true), pinnedId);
+  // Pinning alone only updates backend state — the tab strip's data-pinned
+  // attribute is refreshed the next time refreshTabs() runs (see the
+  // middle-click test above) — switch away and back to pick it up.
+  await window.keyboard.press('Control+t');
+  await window.locator(`.tab[data-id="${pinnedId}"]`).click();
+  await expect(window.locator(`.tab[data-id="${pinnedId}"]`)).toHaveAttribute('data-pinned', '1');
+  await expect.poll(activeTabId).toBe(pinnedId);
+
+  const beforeChrome = await tabCount();
+  await window.keyboard.press('Control+w');
+  await expect.poll(tabCount).toBe(beforeChrome); // unchanged — chrome-focused Ctrl+W path
+
+  // Same shortcut, but with keyboard focus inside the pinned tab's own page
+  // — the app:shortcut IPC path (sessionManager.ts's before-input-event),
+  // not the chrome window's own keydown listener.
+  await tab.click('body');
+  const beforePage = await tabCount();
+  await tab.keyboard.press('Control+w');
+  await window.waitForTimeout(200); // app:shortcut is a fire-and-forget IPC round trip
+  await expect.poll(tabCount).toBe(beforePage); // still unchanged
+
+  // Unpin and confirm Ctrl+W now closes it.
+  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.pin(id, false), pinnedId);
+  await window.keyboard.press('Control+t');
+  await window.locator(`.tab[data-id="${pinnedId}"]`).click();
+  await expect(window.locator(`.tab[data-id="${pinnedId}"]`)).toHaveAttribute('data-pinned', '');
+  await expect.poll(activeTabId).toBe(pinnedId);
+
+  const beforeUnpinned = await tabCount();
+  await window.keyboard.press('Control+w');
+  await expect.poll(tabCount).toBe(beforeUnpinned - 1);
+  await expect(window.locator(`.tab[data-id="${pinnedId}"]`)).toHaveCount(0);
+});
+
 test('Middle-click on a link opens it in a new tab with the same session partition and colour', async () => {
   const urlPath = '/windows/popup.html';
   await window.click('#urlbar');

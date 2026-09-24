@@ -120,7 +120,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | Keys | Behaviour |
 |---|---|
 | `Ctrl+T` | New tab |
-| `Ctrl+W` | Close tab |
+| `Ctrl+W` | Close tab (pinned tabs protected) |
 | `Ctrl+Shift+T` | Reopen last closed tab |
 | `Ctrl+Tab / Ctrl+Shift+Tab` | Cycle tabs by MRU |
 | `Ctrl+1–9` | Switch to tab by position (9 = last) |

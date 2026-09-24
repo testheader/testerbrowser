@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { closeTab, reopenTab, switchToSession, cycleTab, getActiveId, getTabOrder, isTabLoading } from './tabs.js';
+import { closeTab, reopenTab, switchToSession, cycleTab, getActiveId, getTabOrder, isTabLoading, isPinned } from './tabs.js';
 import { openFind, closeFind, doFind } from './find.js';
 import { toggleBookmark, toggleBookmarksBar } from './bookmarks.js';
 import { isFindOpen } from './layout.js';
@@ -8,7 +8,11 @@ function handleShortcut(key) {
   const activeId = getActiveId();
   switch (key) {
     case 'newTab':             document.getElementById('newSessionBtn').onclick(); break;
-    case 'closeTab':           if (activeId) closeTab(activeId); break;
+    // Guarded here, at the shortcut call site, rather than inside closeTab()
+    // itself — the tab context menu's own Close item calls closeTab()
+    // directly and is an explicit user choice that should still work on a
+    // pinned tab (see #223's "out of scope").
+    case 'closeTab':           if (activeId && !isPinned(activeId)) closeTab(activeId); break;
     case 'reopenTab':          reopenTab(); break;
     case 'focusUrl':           { const u = document.getElementById('urlbar'); u.focus(); u.select(); } break;
     case 'reload':             if (activeId) testerBrowser.sessions.reload(activeId); break;
