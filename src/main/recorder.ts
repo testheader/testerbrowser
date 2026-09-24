@@ -260,18 +260,27 @@ export class SessionRecorder {
   }
 
   /** Query the merged timeline, most recent last. */
-  getTimeline(opts: { limit?: number; since?: number } = {}): EventRow[] {
+  getTimeline(opts: { limit?: number; since?: number; sinceId?: number } = {}): EventRow[] {
     const limit = opts.limit ?? 500;
+    // id cursor: ids are unique and monotonic, so events sharing a
+    // millisecond are never skipped or reordered.
+    if (typeof opts.sinceId === 'number') {
+      return this.db
+        .prepare(
+          `SELECT * FROM events WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT ?`
+        )
+        .all(this.sessionId, opts.sinceId, limit) as EventRow[];
+    }
     if (opts.since) {
       return this.db
         .prepare(
-          `SELECT * FROM events WHERE session_id = ? AND ts > ? ORDER BY ts ASC LIMIT ?`
+          `SELECT * FROM events WHERE session_id = ? AND ts > ? ORDER BY ts ASC, id ASC LIMIT ?`
         )
         .all(this.sessionId, opts.since, limit) as EventRow[];
     }
     return (
       this.db
-        .prepare(`SELECT * FROM events WHERE session_id = ? ORDER BY ts DESC LIMIT ?`)
+        .prepare(`SELECT * FROM events WHERE session_id = ? ORDER BY id DESC LIMIT ?`)
         .all(this.sessionId, limit) as EventRow[]
     ).reverse();
   }

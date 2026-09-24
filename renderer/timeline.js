@@ -6,11 +6,12 @@ import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 
 // timeline.js owns the recording ring buffer (timelineEvents), the polling
-// cursor (lastTs) and the console panel's auto-scroll flag — nothing else
+// cursor (lastId) and the console panel's auto-scroll flag — nothing else
 // reads or writes these directly. detail-panel.js reads the buffer through
 // getTimelineEvents() to render a request/response's detail tab.
 const timelineEvents = []; // ring buffer, max TIMELINE_MAX entries
-let lastTs          = 0;
+let lastId          = 0;
+let inflightFetch   = null; // single-flight guard for fetchTimeline
 let autoScroll       = true;
 
 // Only network-request payloads carry `request.method`/`request.url`
@@ -403,11 +404,38 @@ export function renderTimeline() {
   if (autoScroll) panel.scrollTop = panel.scrollHeight;
 }
 
-async function fetchTimeline() {
+const TIMELINE_PAGE = 200;
+
+// Single-flight: a refresh while a poll is running reuses its promise, so the
+// same cursor is never fetched twice concurrently (no duplicate rows).
+function fetchTimeline() {
+  // A fetch for a tab we've since switched away from discards its results, so
+  // it must not be reused for the new tab.
+  if (!inflightFetch || inflightFetch.tabId !== getActiveId()) {
+    const run = { tabId: getActiveId() };
+    run.promise = fetchTimelinePages().finally(() => {
+      if (inflightFetch === run) inflightFetch = null;
+    });
+    inflightFetch = run;
+  }
+  return inflightFetch.promise;
+}
+
+async function fetchTimelinePages() {
   const activeId = getActiveId();
   if (!activeId) return;
-  const events = await testerBrowser.recording.timeline(activeId, { since: lastTs || undefined, limit: 200 });
-  if (events.length > 0) {
+  for (;;) {
+    const events = await testerBrowser.recording.timeline(activeId, { sinceId: lastId, limit: TIMELINE_PAGE });
+    // The tab changed while the request was in flight: drop the results.
+    if (getActiveId() !== activeId) return;
+    if (events.length === 0) return;
+    ingestEvents(events);
+    if (events.length < TIMELINE_PAGE) return;
+  }
+}
+
+function ingestEvents(events) {
+  {
     for (const e of events) {
       if (!e.payload) continue;
       if (e.kind === 'network-request') {
@@ -440,7 +468,7 @@ async function fetchTimeline() {
     if (timelineEvents.length > TIMELINE_MAX) {
       timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
     }
-    lastTs = Math.max(lastTs, ...events.map(e => e.ts));
+    for (const e of events) if (e.id > lastId) lastId = e.id;
     renderTimeline();
   }
 }
@@ -461,7 +489,7 @@ export function refreshTimelineNow() {
 // are per-tab, so a switch discards whatever the previous tab had recorded.
 export function resetTimelineForNewSession() {
   timelineEvents.length = 0;
-  lastTs = 0;
+  lastId = 0;
   requestMeta.clear();
   responseMeta.clear();
   tagMeta.clear();
@@ -493,10 +521,10 @@ export function initTimeline() {
 
   function clearTimeline() {
     timelineEvents.length = 0;
-    // lastTs is intentionally left alone: it's the polling high-water mark
+    // lastId is intentionally left alone: it's the polling high-water mark
     // against the backend's SQLite ring buffer, which Clear doesn't touch.
-    // Resetting it to 0 makes `since: lastTs || undefined` drop the filter
-    // entirely, so the next poll re-fetches everything Clear just wiped.
+    // Resetting it to 0 would make the next poll re-fetch everything Clear
+    // just wiped.
     requestMeta.clear();
     responseMeta.clear();
     tagMeta.clear();

@@ -58,6 +58,16 @@ jest.mock('better-sqlite3', () => {
           }),
         };
       }
+      if (/id > \?/.test(sql)) {
+        return {
+          all: jest.fn((session_id: string, sinceId: number, limit: number) =>
+            rows
+              .filter(r => r.session_id === session_id && r.id > sinceId)
+              .sort((a, b) => a.id - b.id)
+              .slice(0, limit)
+          ),
+        };
+      }
       if (/ts > \?/.test(sql)) {
         return {
           all: jest.fn((session_id: string, since: number, limit: number) =>
@@ -68,12 +78,12 @@ jest.mock('better-sqlite3', () => {
           ),
         };
       }
-      if (/ORDER BY ts DESC/.test(sql)) {
+      if (/ORDER BY id DESC/.test(sql)) {
         return {
           all: jest.fn((session_id: string, limit: number) =>
             rows
               .filter(r => r.session_id === session_id)
-              .sort((a, b) => b.ts - a.ts)
+              .sort((a, b) => b.id - a.id)
               .slice(0, limit)
           ),
         };
@@ -464,6 +474,31 @@ describe('SessionRecorder', () => {
 
     it('returns an empty array when nothing has been recorded', () => {
       expect(recorder.getTimeline()).toHaveLength(0);
+    });
+
+    it('pages 450 same-ts events via sinceId without loss or duplicates', () => {
+      const spy = jest.spyOn(Date, 'now').mockReturnValue(1000);
+      for (let i = 0; i < 450; i++) {
+        emit('Log.entryAdded', { entry: { level: 'info', text: `msg-${i}` } });
+      }
+      const seen: number[] = [];
+      let cursor = 0;
+      for (;;) {
+        const page = recorder.getTimeline({ sinceId: cursor, limit: 200 });
+        seen.push(...page.map(r => r.id as number));
+        if (page.length < 200) break;
+        cursor = page[page.length - 1].id as number;
+      }
+      expect(seen).toHaveLength(450);
+      expect(new Set(seen).size).toBe(450);
+      expect([...seen].sort((a, b) => a - b)).toEqual(seen);
+
+      // A late write with the same ts is still returned after the cursor.
+      emit('Log.entryAdded', { entry: { level: 'info', text: 'late' } });
+      const late = recorder.getTimeline({ sinceId: seen[seen.length - 1] });
+      expect(late).toHaveLength(1);
+      expect(late[0].summary).toContain('late');
+      spy.mockRestore();
     });
 
     it('tags each event with the session_id', () => {

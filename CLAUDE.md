@@ -82,7 +82,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `sessions:contextMenu` | R→M | show tab right-click menu |
 | `devtools:toggle` | R→M | open/close DevTools for session |
 | `find:start/stop` | R→M | findInPage / stopFindInPage |
-| `recording:timeline` | R→M | query events (optional `since` timestamp, `limit`) |
+| `recording:timeline` | R→M | query events (optional `sinceId` id cursor, `since` timestamp, `limit`) |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |

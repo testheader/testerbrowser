@@ -1537,7 +1537,7 @@ export class SessionManager {
     s.view.webContents.loadURL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
   }
 
-  getTimeline(id: string, opts?: { limit?: number; since?: number }) {
+  getTimeline(id: string, opts?: { limit?: number; since?: number; sinceId?: number }) {
     return this.sessions.get(id)?.recorder.getTimeline(opts) ?? [];
   }
 
