@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
                  ipcRenderer.invoke('recording:timeline', id, opts),
     replay: (req: { method: string; url: string; headers: Record<string, string>; body?: string }) =>
               ipcRenderer.invoke('recording:replay', req),
+    status: (id: string) => ipcRenderer.invoke('recording:status', id),
   },
 
   downloads: {

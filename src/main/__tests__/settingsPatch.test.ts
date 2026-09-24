@@ -1,4 +1,4 @@
-import { applySettingsPatch, AppSettings } from '../settingsPatch';
+import { applySettingsPatch, AppSettings, clampNumberSetting } from '../settingsPatch';
 
 const BASE: AppSettings = {
   redactSensitiveHeaders: false,
@@ -6,6 +6,8 @@ const BASE: AppSettings = {
   searchEngine: 'google',
   recordPlaybackColumnWidths: { record: 220, saved: 420 },
   debugMode: false,
+  recorderMaxEvents: 20000,
+  recordingRetentionDays: 30,
 };
 
 describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
@@ -67,5 +69,71 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
     const copy = { ...BASE, securityRuleOverrides: { ...BASE.securityRuleOverrides } };
     applySettingsPatch(BASE, { redactSensitiveHeaders: true, securityRuleOverrides: { x: true } });
     expect(BASE).toEqual(copy);
+  });
+
+  // #229
+  describe('recorderMaxEvents / recordingRetentionDays', () => {
+    it('accepts an in-range value for both', () => {
+      const result = applySettingsPatch(BASE, { recorderMaxEvents: 50000, recordingRetentionDays: 14 });
+      expect(result.recorderMaxEvents).toBe(50000);
+      expect(result.recordingRetentionDays).toBe(14);
+    });
+
+    it('clamps recorderMaxEvents below the 1,000 floor up to it', () => {
+      expect(applySettingsPatch(BASE, { recorderMaxEvents: 50 }).recorderMaxEvents).toBe(1000);
+    });
+
+    it('clamps recorderMaxEvents above the 200,000 cap down to it', () => {
+      expect(applySettingsPatch(BASE, { recorderMaxEvents: 999_999 }).recorderMaxEvents).toBe(200000);
+    });
+
+    it('clamps recordingRetentionDays below the 1-day floor up to it', () => {
+      expect(applySettingsPatch(BASE, { recordingRetentionDays: 0 }).recordingRetentionDays).toBe(1);
+    });
+
+    it('clamps recordingRetentionDays above the 365-day cap down to it', () => {
+      expect(applySettingsPatch(BASE, { recordingRetentionDays: 1000 }).recordingRetentionDays).toBe(365);
+    });
+
+    it('falls back to the current value for a non-number (including NaN)', () => {
+      expect(applySettingsPatch(BASE, { recorderMaxEvents: 'lots' }).recorderMaxEvents).toBe(BASE.recorderMaxEvents);
+      expect(applySettingsPatch(BASE, { recorderMaxEvents: NaN }).recorderMaxEvents).toBe(BASE.recorderMaxEvents);
+      expect(applySettingsPatch(BASE, { recordingRetentionDays: null }).recordingRetentionDays).toBe(BASE.recordingRetentionDays);
+    });
+
+    it('leaves the current value alone when the key is absent from the patch', () => {
+      const withCustom = { ...BASE, recorderMaxEvents: 75000 };
+      expect(applySettingsPatch(withCustom, { debugMode: true }).recorderMaxEvents).toBe(75000);
+    });
+  });
+});
+
+describe('clampNumberSetting (#229)', () => {
+  it('passes an in-range value through unchanged', () => {
+    expect(clampNumberSetting(500, 100, 1000, 200)).toBe(500);
+  });
+
+  it('clamps a below-range value up to the minimum', () => {
+    expect(clampNumberSetting(1, 100, 1000, 200)).toBe(100);
+  });
+
+  it('clamps an above-range value down to the maximum', () => {
+    expect(clampNumberSetting(9999, 100, 1000, 200)).toBe(1000);
+  });
+
+  it('falls back to the given fallback for a non-number', () => {
+    expect(clampNumberSetting('nope', 100, 1000, 200)).toBe(200);
+    expect(clampNumberSetting(undefined, 100, 1000, 200)).toBe(200);
+    expect(clampNumberSetting(null, 100, 1000, 200)).toBe(200);
+  });
+
+  it('falls back to the given fallback for NaN and non-finite numbers', () => {
+    expect(clampNumberSetting(NaN, 100, 1000, 200)).toBe(200);
+    expect(clampNumberSetting(Infinity, 100, 1000, 200)).toBe(200);
+    expect(clampNumberSetting(-Infinity, 100, 1000, 200)).toBe(200);
+  });
+
+  it('rounds a fractional in-range value', () => {
+    expect(clampNumberSetting(500.6, 100, 1000, 200)).toBe(501);
   });
 });

@@ -13,6 +13,11 @@ const timelineEvents = []; // ring buffer, max TIMELINE_MAX entries
 let lastId          = 0;
 let inflightFetch   = null; // single-flight guard for fetchTimeline
 let autoScroll       = true;
+// #229: { cap, evictedAt, evictedCount } | null for the active tab's
+// recorder, once its cap has actually evicted something — polled alongside
+// the timeline itself until evictedAt is set, then left alone (a recorder
+// never "un-evicts").
+let evictionStatus = null;
 
 // Only network-request payloads carry `request.method`/`request.url`
 // directly; response/failed/body payloads only share the request's
@@ -260,6 +265,14 @@ export function renderTimeline() {
   const visible = filtered.slice(-TIMELINE_DOM_MAX);
   panel.innerHTML = '';
 
+  if (evictionStatus?.evictedAt) {
+    const banner = document.createElement('div');
+    banner.className = 'timeline-eviction-banner';
+    banner.textContent =
+      `Older events were evicted — this tab keeps the most recent ${evictionStatus.cap} events (Settings → Recording).`;
+    panel.appendChild(banner);
+  }
+
   if (getActiveId() && timelineEvents.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'timeline-empty';
@@ -473,8 +486,24 @@ function ingestEvents(events) {
   }
 }
 
+// #229: fire-and-forget alongside the timeline's own poll — once evictedAt
+// is set for the active tab, there's nothing left to learn, so it stops
+// polling (a recorder never "un-evicts").
+async function pollRecordingStatus() {
+  if (evictionStatus?.evictedAt) return;
+  const activeId = getActiveId();
+  if (!activeId) return;
+  const status = await testerBrowser.recording.status(activeId);
+  if (getActiveId() !== activeId) return; // switched tabs while the call was in flight
+  if (status?.evictedAt) {
+    evictionStatus = status;
+    renderTimeline();
+  }
+}
+
 export async function pollTimeline() {
   await fetchTimeline();
+  pollRecordingStatus();
   setTimeout(pollTimeline, 1000);
 }
 
@@ -490,6 +519,7 @@ export function refreshTimelineNow() {
 export function resetTimelineForNewSession() {
   timelineEvents.length = 0;
   lastId = 0;
+  evictionStatus = null;
   requestMeta.clear();
   responseMeta.clear();
   tagMeta.clear();

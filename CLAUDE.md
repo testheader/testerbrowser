@@ -91,6 +91,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `devtools:toggle` | R→M | open/close DevTools for session |
 | `find:start/stop` | R→M | findInPage / stopFindInPage |
 | `recording:timeline` | R→M | query events (optional `sinceId` id cursor, `since` timestamp, `limit`) |
+| `recording:status` | R→M | `{ cap, evictedAt, evictedCount }` — recorder ring-buffer cap/eviction state |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |

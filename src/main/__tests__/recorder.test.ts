@@ -1,4 +1,6 @@
 import os from 'os';
+import fs from 'fs';
+import path from 'path';
 import { SessionRecorder } from '../recorder';
 
 // better-sqlite3 is compiled against Electron's ABI via electron-rebuild, which
@@ -55,6 +57,7 @@ jest.mock('better-sqlite3', () => {
               const i = rows.findIndex(r => r.id === id);
               if (i >= 0) rows.splice(i, 1);
             }
+            return { changes: toDelete.length };
           }),
         };
       }
@@ -424,6 +427,99 @@ describe('SessionRecorder', () => {
 
       // trimCounter=99, never hit a multiple of 100 yet
       expect(rec.getTimeline({ limit: 200 })).toHaveLength(99);
+
+      rec.destroy();
+    });
+
+    // #229
+    it('sets evictedAt/evictedCount and reports them via getStatus() once the cap is exceeded', () => {
+      const { wc, emit: e } = makeMockWc();
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'evict-session',
+        dbDir: os.tmpdir(),
+        maxEventsPerSession: 1000,
+      });
+
+      expect(rec.getStatus()).toEqual({ cap: 1000, evictedAt: null, evictedCount: 0 });
+
+      for (let i = 0; i < 1500; i++) {
+        e('Log.entryAdded', { entry: { level: 'info', text: `event-${i}` } });
+      }
+
+      expect(rec.getTimeline({ limit: 5000 })).toHaveLength(1000);
+      const status = rec.getStatus();
+      expect(status.cap).toBe(1000);
+      expect(status.evictedAt).toEqual(expect.any(Number));
+      expect(status.evictedCount).toBe(500);
+
+      rec.destroy();
+    });
+
+    // #229
+    it('only sets evictedAt on the first eviction, not every subsequent trim', () => {
+      const { wc, emit: e } = makeMockWc();
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'evict-once-session',
+        dbDir: os.tmpdir(),
+        maxEventsPerSession: 100,
+      });
+
+      for (let i = 0; i < 300; i++) {
+        e('Log.entryAdded', { entry: { level: 'info', text: `event-${i}` } });
+      }
+
+      const firstEvictedAt = rec.getStatus().evictedAt;
+      expect(firstEvictedAt).not.toBeNull();
+
+      for (let i = 300; i < 500; i++) {
+        e('Log.entryAdded', { entry: { level: 'info', text: `event-${i}` } });
+      }
+
+      expect(rec.getStatus().evictedAt).toBe(firstEvictedAt);
+      expect(rec.getStatus().evictedCount).toBeGreaterThan(200);
+
+      rec.destroy();
+    });
+  });
+
+  // ── inMemory (#229) ─────────────────────────────────────────────────────────
+
+  describe('inMemory temp-tab recording', () => {
+    it('opens the database with :memory: rather than a file path when inMemory is true', () => {
+      // better-sqlite3 is mocked (see top of file) and never touches real
+      // disk regardless of the path it's given, so what's actually
+      // verifiable here is the argument recorder.ts passes to `new
+      // Database(...)` — the real driver (#252's job to test against) is
+      // what would turn a file path into an on-disk .sqlite file.
+      const Database = require('better-sqlite3');
+      Database.mockClear();
+      const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-inmemory-test-'));
+      const { wc, emit: e } = makeMockWc();
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'temp-session',
+        dbDir,
+        inMemory: true,
+      });
+
+      e('Log.entryAdded', { entry: { level: 'info', text: 'hello' } });
+      expect(rec.getTimeline()).toHaveLength(1);
+      expect(Database).toHaveBeenCalledWith(':memory:');
+      // dbDir (used only for persistent, on-disk recorders) is never even
+      // created for an in-memory one.
+      expect(fs.existsSync(dbDir)).toBe(true); // mkdtempSync itself created it
+      expect(fs.readdirSync(dbDir)).toEqual([]);
+
+      rec.destroy();
+    });
+
+    it('opens the database with a file path under dbDir when inMemory is false/omitted', () => {
+      const Database = require('better-sqlite3');
+      Database.mockClear();
+      const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-persistent-test-'));
+      const { wc } = makeMockWc();
+      const rec = new SessionRecorder(wc, { sessionId: 'persist-session', dbDir });
+
+      expect(Database).toHaveBeenCalledWith(path.join(dbDir, 'persist-session.sqlite'));
 
       rec.destroy();
     });

@@ -29,6 +29,8 @@ export async function openSettings() {
   document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
   document.getElementById('debugModeToggle').checked = !!settings.debugMode;
   document.getElementById('searchEngineSelect').value = settings.searchEngine || 'google';
+  document.getElementById('recorderMaxEventsInput').value = settings.recorderMaxEvents ?? 20000;
+  document.getElementById('recordingRetentionDaysInput').value = settings.recordingRetentionDays ?? 30;
 
   document.getElementById('themeSelect').value = getStoredScheme();
 
@@ -119,6 +121,18 @@ export function initSettings() {
 
   document.getElementById('searchEngineSelect').addEventListener('change', (e) => {
     testerBrowser.settings.set({ searchEngine: e.target.value });
+  });
+
+  document.getElementById('recorderMaxEventsInput').addEventListener('change', async (e) => {
+    const updated = await testerBrowser.settings.set({ recorderMaxEvents: Number(e.target.value) });
+    // The main process clamps out-of-range values — reflect whatever it
+    // actually stored, not necessarily what was typed.
+    e.target.value = updated.recorderMaxEvents;
+  });
+
+  document.getElementById('recordingRetentionDaysInput').addEventListener('change', async (e) => {
+    const updated = await testerBrowser.settings.set({ recordingRetentionDays: Number(e.target.value) });
+    e.target.value = updated.recordingRetentionDays;
   });
 
   document.getElementById('themeSelect').addEventListener('change', (e) => {

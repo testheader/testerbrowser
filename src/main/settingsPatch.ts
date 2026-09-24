@@ -12,9 +12,26 @@ export interface AppSettings {
   searchEngine: 'google' | 'duckduckgo';
   recordPlaybackColumnWidths: { record: number; saved: number };
   debugMode: boolean;
+  recorderMaxEvents: number;
+  recordingRetentionDays: number;
 }
 
 const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
+
+export const RECORDER_MAX_EVENTS_MIN = 1000;
+export const RECORDER_MAX_EVENTS_MAX = 200000;
+export const RECORDING_RETENTION_DAYS_MIN = 1;
+export const RECORDING_RETENTION_DAYS_MAX = 365;
+
+// #229: shared by the JsonStore load path (a hand-edited or stale
+// settings.json) and applySettingsPatch() below (settings:set) — a
+// non-number (including NaN) falls back to `fallback` rather than being
+// forced into range, since there's no sensible in-range value to clamp it
+// to; a number outside [min, max] is clamped, not rejected.
+export function clampNumberSetting(value: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -52,6 +69,18 @@ export function applySettingsPatch(current: AppSettings, patch: unknown): AppSet
       saved: typeof w.saved === 'number' && Number.isFinite(w.saved)
         ? w.saved : current.recordPlaybackColumnWidths.saved,
     };
+  }
+
+  if (patch.recorderMaxEvents !== undefined) {
+    next.recorderMaxEvents = clampNumberSetting(
+      patch.recorderMaxEvents, RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX, current.recorderMaxEvents
+    );
+  }
+
+  if (patch.recordingRetentionDays !== undefined) {
+    next.recordingRetentionDays = clampNumberSetting(
+      patch.recordingRetentionDays, RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX, current.recordingRetentionDays
+    );
   }
 
   return next;

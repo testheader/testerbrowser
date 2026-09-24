@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { WebContents } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { log } from './appLogger';
 
 /**
  * Recorder attaches to a WebContents' CDP debugger as soon as a session is
@@ -19,6 +20,9 @@ export interface RecorderOptions {
   dbDir: string;
   maxEventsPerSession?: number;
   redactSensitiveHeaders?: boolean;
+  // #229: temp (non-persistent) tabs record in-memory only — no traffic,
+  // including bodies, ever touches disk for them.
+  inMemory?: boolean;
 }
 
 export const SENSITIVE_HEADERS = new Set([
@@ -61,6 +65,11 @@ export class SessionRecorder {
   private requestRowId = new Map<string, number>();
   private updatePayloadStmt!: Database.Statement;
   private redact: boolean;
+  // #229: set the first time trimIfNeeded() evicts rows for this session —
+  // null until then. Exposed via getStatus() for the recording:status IPC
+  // and the timeline's eviction banner.
+  evictedAt: number | null = null;
+  evictedCount = 0;
 
   constructor(wc: WebContents, opts: RecorderOptions) {
     this.wc = wc;
@@ -68,10 +77,12 @@ export class SessionRecorder {
     this.maxEvents = opts.maxEventsPerSession ?? 20000;
     this.redact = opts.redactSensitiveHeaders ?? false;
 
-    if (!fs.existsSync(opts.dbDir)) fs.mkdirSync(opts.dbDir, { recursive: true });
-    const dbPath = path.join(opts.dbDir, `${this.sessionId}.sqlite`);
+    const dbPath = opts.inMemory ? ':memory:' : path.join(opts.dbDir, `${this.sessionId}.sqlite`);
+    if (!opts.inMemory) {
+      if (!fs.existsSync(opts.dbDir)) fs.mkdirSync(opts.dbDir, { recursive: true });
+    }
     this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
+    if (!opts.inMemory) this.db.pragma('journal_mode = WAL');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,8 +266,20 @@ export class SessionRecorder {
     if (this.trimCounter % 100 !== 0) return;
     const countRow = this.countStmt.get(this.sessionId) as { c: number };
     if (countRow.c > this.maxEvents) {
-      this.trimStmt.run(this.sessionId, countRow.c - this.maxEvents);
+      const info = this.trimStmt.run(this.sessionId, countRow.c - this.maxEvents);
+      if (info.changes > 0) {
+        if (this.evictedAt === null) {
+          this.evictedAt = Date.now();
+          log.info('recorder', `Recorder cap (${this.maxEvents}) reached — evicting oldest events`, { sessionId: this.sessionId });
+        }
+        this.evictedCount += info.changes;
+      }
     }
+  }
+
+  /** For the recording:status IPC / the timeline's eviction banner. */
+  getStatus(): { cap: number; evictedAt: number | null; evictedCount: number } {
+    return { cap: this.maxEvents, evictedAt: this.evictedAt, evictedCount: this.evictedCount };
   }
 
   /** Query the merged timeline, most recent last. */

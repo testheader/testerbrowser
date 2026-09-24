@@ -414,6 +414,9 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .timeline-empty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error-strong); flex-shrink: 0;
                        animation: pulse-dot 1.4s ease-in-out infinite; }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+.timeline-eviction-banner { padding: 8px 12px; margin-bottom: 4px; color: var(--warn-strong);
+                             background: var(--warn-surface); border-bottom: 1px solid var(--warn-border);
+                             font-size: 12px; }
 
 /* ── Storage panel ── */
 #storagePanel { flex: 1; display: none; flex-direction: column; min-height: 0; }

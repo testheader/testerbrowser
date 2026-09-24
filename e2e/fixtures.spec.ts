@@ -333,6 +333,34 @@ test('performance/network-flood.html: burst of 50 requests all get recorded', as
   expect(Number(reqPillText)).toBeGreaterThanOrEqual(50);
 });
 
+// #229: the recorder cap only applies to tabs opened after a settings
+// change (out of scope: re-capping an already-open tab), so this opens its
+// own fresh tab via #newSessionBtn rather than reusing navigate()'s shared
+// one — every other test in this file navigates that one shared tab.
+test('performance/console-flood.html: exceeding a low recorder cap shows the timeline eviction banner', async () => {
+  await window.evaluate(() => (window as any).testerBrowser.settings.set({ recorderMaxEvents: 1000 }));
+
+  await window.click('#newSessionBtn');
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/performance/console-flood.html'));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, '/performance/console-flood.html');
+
+  await tab.click('button:text("10,000 logs")');
+
+  // pollRecordingStatus() polls recording:status every 1s independent of
+  // the timeline's own (much slower, for 10k rows) event replication — the
+  // banner shows as soon as the backend cap is first exceeded, not once the
+  // renderer has caught up on every event.
+  await expect(window.locator('.timeline-eviction-banner')).toContainText(
+    'Older events were evicted', { timeout: 15_000 }
+  );
+  await expect(window.locator('.timeline-eviction-banner')).toContainText('1000 events');
+
+  // Reset for later tests in this file.
+  await window.evaluate(() => (window as any).testerBrowser.settings.set({ recorderMaxEvents: 20000 }));
+});
+
 // ── Downloads ────────────────────────────────────────────────────────────────
 
 test('downloads/index.html: generated file download appears in the downloads list', async () => {

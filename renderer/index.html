@@ -256,6 +256,25 @@
               </label>
             </div>
 
+            <h3 class="feature-group-title">Recording</h3>
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">Max events per tab</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">Network/console events kept per tab before the oldest are evicted (1,000&ndash;200,000). Applies to tabs opened after the change.</div>
+              </div>
+              <input type="number" id="recorderMaxEventsInput" min="1000" max="200000" step="1000"
+                     style="margin-left:auto;width:90px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
+            </div>
+
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">Recording retention (days)</div>
+                <div style="font-size:11px;color:#555;margin-top:3px">How long a closed tab's recording is kept on disk before automatic cleanup (1&ndash;365).</div>
+              </div>
+              <input type="number" id="recordingRetentionDaysInput" min="1" max="365" step="1"
+                     style="margin-left:auto;width:90px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
+            </div>
+
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">GitHub (bug reporter)</div>

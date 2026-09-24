@@ -872,18 +872,24 @@ export class SessionManager {
   // — index.ts write-throughs the current URL list to disk on this so a hard
   // crash's next launch can recover what was open (see persistSessionUrls()).
   private onSessionsChanged: () => void;
+  // #229: read fresh on every createSession() call (not cached at
+  // construction) so a Settings change takes effect for the next tab opened,
+  // without needing to reconstruct SessionManager itself.
+  private getRecorderMaxEvents: () => number;
 
   constructor(
     win: BrowserWindow,
     getRedactHeaders: () => boolean,
     logger: AppLog = NOOP_LOG,
-    onSessionsChanged: () => void = () => {}
+    onSessionsChanged: () => void = () => {},
+    getRecorderMaxEvents: () => number = () => 20000
   ) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
     this.getRedactHeaders = getRedactHeaders;
     this.log = logger;
     this.onSessionsChanged = onSessionsChanged;
+    this.getRecorderMaxEvents = getRecorderMaxEvents;
     this.downloadManager = new DownloadManager(win);
     this.permissionManager = new PermissionManager(win);
     this.win.on('resize', () => this.layoutActive());
@@ -915,6 +921,7 @@ export class SessionManager {
   ): TestSession {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
+    const persistent = !!opts.persistent || partition.startsWith('persist:');
     // Seed the rule buckets for this partition if this is the first tab ever
     // to represent it — a partition passed in explicitly (reopen, "New tab
     // in this session") may already have an entry, which must be left alone.
@@ -933,12 +940,17 @@ export class SessionManager {
       sessionId: id,
       dbDir: this.dbDir,
       redactSensitiveHeaders: this.getRedactHeaders(),
+      maxEventsPerSession: this.getRecorderMaxEvents(),
+      // #229: a temp tab's traffic (including bodies) never touches disk —
+      // only its session partition is in-memory before this, not its
+      // recording.
+      inMemory: !persistent,
     });
 
     const color = opts.color ?? TAB_COLORS[this.colorIndex++ % TAB_COLORS.length];
     const testSession: TestSession = {
       id, name,
-      persistent: !!opts.persistent || partition.startsWith('persist:'),
+      persistent,
       partition,
       currentUrl: opts.startUrl || '',
       pinned: false,
@@ -1433,12 +1445,14 @@ export class SessionManager {
       }
       const first = this.sessions.values().next().value as TestSession | undefined;
       if (first) this.switchTo(first.id);
-      this.cleanupOldRecordings().catch(() => {}); // silent: cleanupOldRecordings() never rejects — its own try/catch below logs failures itself
       return true;
     } catch { return false; }
   }
 
-  private async cleanupOldRecordings(maxAgeDays = 30) {
+  // #229: public and called unconditionally by index.ts on every startup
+  // (previously only ran from inside loadAndRestoreSessions(), so a user who
+  // started with no saved tabs never got old recordings cleaned up).
+  async cleanupOldRecordings(maxAgeDays = 30) {
     const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
     const openIds = new Set(Array.from(this.sessions.keys()));
     try {
@@ -1450,13 +1464,25 @@ export class SessionManager {
         const fp = path.join(this.dbDir, f);
         try {
           const stat = await fs.promises.stat(fp);
-          if (stat.mtimeMs < cutoff) await fs.promises.unlink(fp);
+          if (stat.mtimeMs < cutoff) {
+            // The base file plus its WAL/SHM siblings (present only while
+            // the DB was open in WAL mode) — a sibling that never existed
+            // or was already checkpointed away is expected, not an error.
+            for (const suffix of ['', '-wal', '-shm']) {
+              try { await fs.promises.unlink(`${fp}${suffix}`); } catch {}
+            }
+          }
         // silent: stat/unlink race on one stale recording file among possibly many — not worth a warn per file
         } catch {}
       }
     } catch (e) {
       this.log.warn('sessions', 'Failed to clean up old recordings', { error: String(e) });
     }
+  }
+
+  /** For the recording:status IPC / the timeline's eviction banner. */
+  getRecordingStatus(id: string): { cap: number; evictedAt: number | null; evictedCount: number } | null {
+    return this.sessions.get(id)?.recorder.getStatus() ?? null;
   }
 
   // --- Layout ---

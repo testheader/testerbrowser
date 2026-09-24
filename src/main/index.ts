@@ -9,7 +9,11 @@ import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './err
 import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
 import { readLogTail, capLogBlock, capIssueBody } from './logTail';
-import { applySettingsPatch, AppSettings } from './settingsPatch';
+import {
+  applySettingsPatch, AppSettings, clampNumberSetting,
+  RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX,
+  RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX,
+} from './settingsPatch';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -204,6 +208,12 @@ interface SpeedDialTile { id: string; url: string; title: string; }
 //   Shows TesterBrowser's own internal logs (main/IPC/recorder) in the
 //   Debug Log console tab — unrelated to the per-session Console tab, which
 //   always records the tested page's own console/network regardless of this.
+// - recorderMaxEvents / recordingRetentionDays
+//   SessionRecorder's per-tab ring-buffer cap and cleanupOldRecordings()'s
+//   age cutoff (#229). Only applies to tabs opened after the change — an
+//   already-open tab's recorder was already constructed with the old cap.
+//   Clamped via clampNumberSetting() both on load (a hand-edited or stale
+//   settings.json) and in applySettingsPatch() (settings:set).
 
 const DEFAULT_SETTINGS: AppSettings = {
   redactSensitiveHeaders: false,
@@ -211,6 +221,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   searchEngine: 'google',
   recordPlaybackColumnWidths: { record: 220, saved: 420 },
   debugMode: false,
+  recorderMaxEvents: 20000,
+  recordingRetentionDays: 30,
 };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
@@ -230,8 +242,18 @@ const urlHistoryStore = new JsonStore<string[]>('url-history.json', []);
 const speedDialStore  = new JsonStore<SpeedDialTile[]>('speed-dial.json', DEFAULT_SPEED_DIAL);
 // Mirrors the shell's theme choice so newtab views can read it on load.
 const themeStore      = new JsonStore<{ scheme: string }>('theme.json', { scheme: 'dark' });
-const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETTINGS,
-  (raw) => ({ ...DEFAULT_SETTINGS, ...(raw as Partial<AppSettings>) }));
+const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETTINGS, (raw) => {
+  const merged = { ...DEFAULT_SETTINGS, ...(raw as Partial<AppSettings>) };
+  // #229: a hand-edited or stale settings.json could carry an out-of-range
+  // or malformed value — clamp on load the same way settings:set does.
+  merged.recorderMaxEvents = clampNumberSetting(
+    merged.recorderMaxEvents, RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX, DEFAULT_SETTINGS.recorderMaxEvents
+  );
+  merged.recordingRetentionDays = clampNumberSetting(
+    merged.recordingRetentionDays, RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX, DEFAULT_SETTINGS.recordingRetentionDays
+  );
+  return merged;
+});
 
 interface JiraSettings { baseUrl: string; email: string; apiToken: string; projectKey: string; }
 const DEFAULT_JIRA: JiraSettings = { baseUrl: '', email: '', apiToken: '', projectKey: '' };
@@ -305,13 +327,21 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  sessionManager = new SessionManager(win, () => settingsStore.get().redactSensitiveHeaders, log, persistSessionUrls);
+  sessionManager = new SessionManager(
+    win, () => settingsStore.get().redactSensitiveHeaders, log, persistSessionUrls,
+    () => settingsStore.get().recorderMaxEvents
+  );
 
   const restored = sessionManager.loadAndRestoreSessions();
   if (!restored) {
     const first = sessionManager.createSession('Default', { persistent: true });
     sessionManager.switchTo(first.id);
   }
+  // #229: runs on every startup regardless of whether a restore happened —
+  // previously only ran from inside loadAndRestoreSessions(), so a user who
+  // started with no saved tabs never got old recordings cleaned up.
+  sessionManager.cleanupOldRecordings(settingsStore.get().recordingRetentionDays)
+    .catch((e) => log.warn('sessions', 'Failed to clean up old recordings on startup', { error: String(e) }));
 
   const menu = Menu.buildFromTemplate([
     {
@@ -557,6 +587,7 @@ ipcMain.handle('sessions:notes:set', (_e, id: string, notes: string) => sessionM
 ipcMain.handle('sessions:contextMenu', (_e, id: string) => sessionManager?.showContextMenu(id));
 
 ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
+ipcMain.handle('recording:status',    (_e, id: string) => sessionManager?.getRecordingStatus(id) ?? null);
 ipcMain.handle('a11y:getTree',        (_e, id: string) => sessionManager?.getA11yTree(id) ?? null);
 ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
 ipcMain.handle('a11y:getViolations',  (_e, id: string) => sessionManager?.getA11yViolations(id) ?? { ok: false, error: 'No session manager' });

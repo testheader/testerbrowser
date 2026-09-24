@@ -45,6 +45,36 @@ test('Debug mode toggle exists in Settings and flipping it persists through sett
   await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
 });
 
+// #229
+test('Recording settings inputs exist, set via the modal reach settings:get, and an out-of-range value is clamped', async () => {
+  await page.evaluate(() => (window as any).testerBrowser.settings.set({ recorderMaxEvents: 20000, recordingRetentionDays: 30 }));
+
+  await page.click('#appName');
+  await page.click('#appMenuSettings');
+  await expect(page.locator('#settingsOverlay')).toHaveClass(/open/);
+  await expect(page.locator('#recorderMaxEventsInput')).toHaveValue('20000');
+  await expect(page.locator('#recordingRetentionDaysInput')).toHaveValue('30');
+
+  await page.fill('#recorderMaxEventsInput', '75000');
+  await page.locator('#recorderMaxEventsInput').blur();
+  await expect(async () => {
+    const settings = await page.evaluate(() => (window as any).testerBrowser.settings.get());
+    expect(settings.recorderMaxEvents).toBe(75000);
+  }).toPass({ timeout: 5_000 });
+
+  // A value below the 1,000 floor is clamped up to it, both in the stored
+  // setting and reflected back into the input itself.
+  await page.fill('#recorderMaxEventsInput', '50');
+  await page.locator('#recorderMaxEventsInput').blur();
+  await expect(page.locator('#recorderMaxEventsInput')).toHaveValue('1000', { timeout: 5_000 });
+  const clamped = await page.evaluate(() => (window as any).testerBrowser.settings.get());
+  expect(clamped.recorderMaxEvents).toBe(1000);
+
+  await page.locator('#settingsCloseXBtn').click();
+  // Reset for later tests in this file.
+  await page.evaluate(() => (window as any).testerBrowser.settings.set({ recorderMaxEvents: 20000, recordingRetentionDays: 30 }));
+});
+
 test('Debug Log tab shows the disabled empty state when debug mode is off', async () => {
   await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
   await page.click('#consoleTabDebugLog');
