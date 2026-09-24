@@ -16,3 +16,4 @@ export function cookieMatchesDomain(cookie: { domain?: string }, hostname: strin
 export function matchesFreeText(text: string, filterText: string): boolean;
 export function looksLikeUrl(v: string): boolean;
 export function buildSearchUrl(engine: string, query: string): string;
+export function mergeRecordedSteps<T>(localSteps: T[], remoteSteps: T[], receivedCount: number): T[];

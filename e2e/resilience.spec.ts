@@ -85,6 +85,27 @@ test('an existing rule can be edited in place', async () => {
   await expect(window.locator('.res-rule-row').first().locator('.res-prob-badge')).toHaveText('42%');
 });
 
+test('the 1.5s auto-refresh does not wipe an in-progress edit (#224)', async () => {
+  await window.click('#consoleTabResilience');
+  const row = window.locator('.res-rule-row').first();
+  await row.locator('.res-edit-btn').click();
+
+  const editRow = window.locator('.res-rule-row-editing');
+  await expect(editRow).toBeVisible();
+  const urlField = editRow.locator('.res-edit-url');
+  await urlField.fill('*/api/still-editing');
+
+  // Auto-refresh polls every 1.5s — wait past two ticks and confirm the
+  // edit row (and the typed value) is still there, not replaced by a
+  // freshly re-rendered read-only row.
+  await window.waitForTimeout(3_500);
+  await expect(window.locator('.res-rule-row-editing')).toHaveCount(1);
+  await expect(urlField).toHaveValue('*/api/still-editing');
+
+  await editRow.locator('.res-cancel-btn').click();
+  await expect(window.locator('.res-rule-row-editing')).toHaveCount(0);
+});
+
 test('the "View in Network" button on a rule filters the Network tab to its pattern', async () => {
   await window.click('#consoleTabResilience');
   await window.locator('.res-rule-row').first().locator('.res-network-btn').click();

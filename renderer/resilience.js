@@ -133,7 +133,14 @@ export function initResilience() {
   loadRules();
   // Hit counts change as traffic flows without the user re-opening this tab;
   // keep them fresh while the Resilience tab is the one being looked at.
-  setInterval(() => { if (getActiveConsoleTab() === 'resilience') loadRules(); }, 1500);
+  // Skip auto-refresh while a rule is being edited — the re-render would
+  // replace the edit row with a read-only row, discarding in-progress edits
+  // (same guard mock.js already has — #224).
+  setInterval(() => {
+    if (getActiveConsoleTab() !== 'resilience') return;
+    if (document.querySelector('#resRules .res-rule-row-editing')) return;
+    loadRules();
+  }, 1500);
 }
 
 export async function loadRules() {

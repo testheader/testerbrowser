@@ -427,10 +427,17 @@ test('Ctrl+W does not close a pinned tab, from the chrome UI or from the page it
 
   // Same shortcut, but with keyboard focus inside the pinned tab's own page
   // — the app:shortcut IPC path (sessionManager.ts's before-input-event),
-  // not the chrome window's own keydown listener.
-  await tab.click('body');
+  // not the chrome window's own keydown listener. Retried: under a loaded
+  // CI runner, the initial `tab` handle can occasionally report "target
+  // closed" for a click that lands right as the view settles after the
+  // tab-switch above — re-fetching the page handle and retrying clears it,
+  // same rationale as mock.spec.ts's retried detail-panel row click.
   const beforePage = await tabCount();
-  await tab.keyboard.press('Control+w');
+  await expect(async () => {
+    const freshTab = await getTabPage(app, urlPath);
+    await freshTab.click('body', { timeout: 2_000 });
+    await freshTab.keyboard.press('Control+w');
+  }).toPass({ timeout: 15_000 });
   await window.waitForTimeout(200); // app:shortcut is a fire-and-forget IPC round trip
   await expect.poll(tabCount).toBe(beforePage); // still unchanged
 

@@ -87,6 +87,17 @@ export function matchesFreeText(text, filterText) {
   return true;
 }
 
+// Merges newly-polled recorded steps into the tester's local, possibly
+// hand-edited list (a step removed with × in record-playback.js, or an
+// assertion inserted via the context menu) without discarding those edits.
+// The main-process buffer (sessionManager.ts's pollRecordingSteps ->
+// getBufferedSteps) returns everything accumulated so far on every poll —
+// receivedCount is how many of those had already been merged in as of the
+// previous call, so only the tail past that point is genuinely new.
+export function mergeRecordedSteps(localSteps, remoteSteps, receivedCount) {
+  return [...localSteps, ...remoteSteps.slice(receivedCount)];
+}
+
 export function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');

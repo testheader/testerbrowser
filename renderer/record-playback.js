@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
-import { escHtml } from './utils.js';
+import { escHtml, mergeRecordedSteps } from './utils.js';
 import { openImageOverlay } from './image-overlay.js';
 
 let initialized = false;
@@ -8,6 +8,15 @@ let isRecording = false;
 let pollInterval = null;
 let currentSteps = [];
 let savedTests = [];
+// The session a recording is actually running on, captured once at Start —
+// not re-read from getActiveId() on every poll/stop, so switching tabs
+// mid-recording doesn't silently start polling/stopping a different session
+// than the one the recording is actually attached to (#224).
+let recordingSessionId = null;
+// How many of the main process's accumulated steps (pollRecordingSteps'
+// return value, which is the *full* list every time, not just new ones)
+// have already been merged into currentSteps — see mergeRecordedSteps().
+let receivedCount = 0;
 
 // Step-by-step playback: when a run is paused after a step, stepAdvance
 // resolves to 'next' or 'stop' via the Next/Stop buttons below.
@@ -181,15 +190,18 @@ function showFormStatus(msg, isError) {
 
 async function startRecording() {
   if (!getActiveId()) { showFormStatus('No active session', true); return; }
+  recordingSessionId = getActiveId();
   isRecording = true;
   currentSteps = [];
+  receivedCount = 0;
   setRecordBtns(true);
   renderLiveSteps();
-  await testerBrowser.tests.startRecording(getActiveId());
+  await testerBrowser.tests.startRecording(recordingSessionId);
   pollInterval = setInterval(async () => {
     if (!isRecording) return;
-    const steps = await testerBrowser.tests.pollRecordingSteps(getActiveId());
-    currentSteps = steps || [];
+    const steps = await testerBrowser.tests.pollRecordingSteps(recordingSessionId) || [];
+    currentSteps = mergeRecordedSteps(currentSteps, steps, receivedCount);
+    receivedCount = steps.length;
     renderLiveSteps();
   }, 600);
 }
@@ -197,14 +209,16 @@ async function startRecording() {
 async function stopRecording() {
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   isRecording = false;
-  const steps = await testerBrowser.tests.stopRecording(getActiveId());
-  currentSteps = steps || [];
+  const steps = await testerBrowser.tests.stopRecording(recordingSessionId) || [];
+  currentSteps = mergeRecordedSteps(currentSteps, steps, receivedCount);
+  receivedCount = steps.length;
   setRecordBtns(false);
   renderLiveSteps();
 }
 
 function discardRecording() {
   currentSteps = [];
+  receivedCount = 0;
   isRecording = false;
   if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
   setRecordBtns(false);
@@ -223,6 +237,7 @@ async function saveRecordedTest() {
   };
   await testerBrowser.tests.save(test);
   currentSteps = [];
+  receivedCount = 0;
   document.getElementById('rpTestName').value = '';
   setRecordBtns(false);
   renderLiveSteps();

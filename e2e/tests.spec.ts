@@ -80,6 +80,92 @@ test('recording a fill + click and running it back actually replays successfully
   await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
 });
 
+// ── #224: the 600ms poll must merge, not replace, currentSteps ─────────────
+
+test('deleting a step mid-recording keeps it removed as new steps keep arriving (#224)', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'merge test');
+  await window.click('#rpStartBtn');
+
+  // Three distinct actions: fill, click, fill again — a click in between
+  // keeps the two fills from coalescing into one step.
+  await tab.fill('[data-testid="rp-input"]', 'Ada');
+  await tab.click('[data-testid="rp-btn"]');
+  await tab.fill('[data-testid="rp-input"]', 'Bob');
+
+  const liveSteps = window.locator('.rp-live-step');
+  await expect.poll(() => liveSteps.count(), { timeout: 5_000 }).toBe(3);
+
+  // Delete step index 1 — the click — leaving the two fills.
+  await window.locator('.rp-del-step[data-idx="1"]').click();
+  await expect(liveSteps).toHaveCount(2);
+  const typesAfterDelete = await liveSteps.locator('.rp-step-type').allTextContents();
+  expect(typesAfterDelete).toEqual(['fill', 'fill']);
+
+  // One more action while still recording — the next poll tick must append
+  // only this new step, not resurrect the deleted click by replacing
+  // currentSteps wholesale with the main process's full (still 3-item, now
+  // 4-item) buffer.
+  await tab.click('[data-testid="rp-btn"]');
+  await expect.poll(() => liveSteps.count(), { timeout: 5_000 }).toBe(3);
+
+  const typesFinal = await liveSteps.locator('.rp-step-type').allTextContents();
+  expect(typesFinal).toEqual(['fill', 'fill', 'click']);
+
+  await window.click('#rpStopBtn');
+  await window.click('#rpDiscardBtn');
+});
+
+test('a recording started on one tab keeps polling and stops on that tab, even if another tab is active at Stop (#224)', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tabA = await getTabPage(app, urlPath);
+
+  const tabAId = await window.locator('.tab.active').getAttribute('data-id');
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'wrong tab test');
+  await window.click('#rpStartBtn');
+
+  await tabA.fill('[data-testid="rp-input"]', 'FromTabA');
+  await tabA.click('[data-testid="rp-btn"]');
+  await expect.poll(() => window.locator('.rp-live-step').count(), { timeout: 5_000 }).toBe(2);
+
+  // Switch to a different tab (tab B) while the recording keeps running.
+  await window.keyboard.press('Control+t');
+  await window.waitForTimeout(200);
+  const tabBId = await window.locator('.tab.active').getAttribute('data-id');
+
+  // One more real action on tab A — proves the poll is still tracking A,
+  // not silently stuck because getActiveId() now points at B.
+  await tabA.fill('[data-testid="rp-input"]', 'StillTabA');
+  await expect.poll(() => window.locator('.rp-live-step').count(), { timeout: 5_000 }).toBe(3);
+
+  await window.click('#rpStopBtn');
+  const finalSteps = window.locator('.rp-live-step');
+  await expect(finalSteps).toHaveCount(3);
+  const values = await finalSteps.locator('.rp-step-val').allTextContents();
+  expect(values).toContain('FromTabA');
+  expect(values).toContain('StillTabA');
+
+  await window.click('#rpDiscardBtn');
+
+  // Close tab B and restore tab A as active — otherwise this test leaves an
+  // extra tab open (and B, not A, active), which makes getTabPage's
+  // URL-substring match ambiguous for every test after this one in the file.
+  await window.locator(`.tab[data-id="${tabBId}"]`).click();
+  await window.keyboard.press('Control+w');
+  await window.locator(`.tab[data-id="${tabAId}"]`).click();
+});
+
 // ── assert-attr: field-name bug (step.attrValue vs step.value) ──────────────
 
 // Dispatches a synthetic contextmenu event at a fixed, known-on-screen
