@@ -166,7 +166,7 @@ function writeEntry(level: AppLogLevel, source: string, message: string, ctx?: R
   ring.push({ ts, message: trimmedMessage, level });
   if (ring.length > MAX_RING) ring.shift();
   if (state.appErrorsPath) writeAppErrors(state.appErrorsPath, ring);
-  state.debugLogStore?.insert({ ts, message: trimmedMessage, level });
+  state.debugLogStore?.insert({ ts, message: trimmedMessage, level, source, sessionId, ctx: redactedCtx });
 
   appendLine(formatLine({ ts, level, source, message: trimmedMessage, sessionId, ctx: redactedCtx }));
 }

@@ -4,10 +4,9 @@ import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, TestStep, MockRule, ResilienceRule } from './sessionManager';
-import { writeUpdateLog, readUpdateLog } from './updateLogger';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
-import { DebugLogStore } from './debugLogStore';
+import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
 import { readLogTail, capLogBlock, capIssueBody } from './logTail';
 import { applySettingsPatch, AppSettings } from './settingsPatch';
@@ -137,7 +136,6 @@ function persistSessionUrls() {
 type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
-let updateLogFile: string;
 
 // Compares two "x.y.z"-style version strings. Returns true if `a` is strictly newer than `b`.
 function isVersionNewer(a: string, b: string): boolean {
@@ -338,7 +336,6 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  updateLogFile   = path.join(app.getPath('userData'), 'update-errors.jsonl');
   sentinelPath    = path.join(app.getPath('userData'), 'running.sentinel');
   crashLogPath    = path.join(app.getPath('userData'), 'crash-log.json');
   appErrorsPath   = path.join(app.getPath('userData'), 'app-errors.json');
@@ -453,17 +450,10 @@ app.whenReady().then(() => {
         }
       }
       updateStatus = 'error';
-      try {
-        writeUpdateLog(updateLogFile, {
-          timestamp: new Date().toISOString(),
-          status: 'error',
-          message: fullMsg,
-          currentVersion: app.getVersion(),
-          latestVersion: null,
-        });
-      // silent: writeUpdateLog is the legacy update-errors.jsonl sink — the real failure is captured via log.error('updater', ...) just below
-      } catch {}
-      log.error('updater', fullMsg);
+      // #228: ctx here is the update log's data source (app:getUpdateLog
+      // reconstructs { timestamp, status, message, currentVersion,
+      // latestVersion } from source='updater' rows via toUpdateLogEntry()).
+      log.error('updater', fullMsg, { status: 'error', currentVersion: app.getVersion(), latestVersion: null });
       // Strip verbose prefix and show only the first line, capped at 120 chars
       latestVersion = fullMsg
         .replace(/^Cannot check for updates:\s*(Error:\s*)?/, '')
@@ -1154,7 +1144,7 @@ ipcMain.handle('app:openExternal', (_e, url: string) => {
   if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
 });
 ipcMain.handle('app:reportError', (_e, message: string) => recordAppError(String(message)));
-ipcMain.handle('app:debugLog', () => debugLogStore?.getEntries({ limit: 500 }) ?? getRecentErrors());
+ipcMain.handle('app:debugLog', (_e, afterId?: number) => debugLogStore?.getEntries({ afterId }) ?? getRecentErrors());
 
 // Tests (record-playback) IPC
 ipcMain.handle('tests:list', () => testsStore.get());
@@ -1183,5 +1173,11 @@ ipcMain.handle('settings:set', (e, patch: unknown) => {
   return settingsStore.update(s => applySettingsPatch(s, patch));
 });
 
-// Update log IPC
-ipcMain.handle('app:getUpdateLog', () => updateLogFile ? readUpdateLog(updateLogFile) : []);
+// Update log IPC — #228: the updater's own log.error('updater', …) calls
+// (source='updater', ctx carrying status/currentVersion/latestVersion) are
+// now the data source, replacing the old update-errors.jsonl file.
+ipcMain.handle('app:getUpdateLog', () =>
+  (debugLogStore?.getEntriesBySource('updater') ?? [])
+    .filter(e => e.level === 'error')
+    .map(toUpdateLogEntry)
+);

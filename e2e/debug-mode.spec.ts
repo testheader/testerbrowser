@@ -112,6 +112,64 @@ test('Debug Log tab shows an info row when a new tab is created', async () => {
   await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
 });
 
+// #228: structured entries (source/session/ctx) + incremental, non-destructive polling.
+test.describe('Debug Log panel structure and incremental polling (#228)', () => {
+  test('polling appends new rows without disturbing an in-progress text selection', async () => {
+    await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: true }));
+    await page.evaluate(() => (window as any).testerBrowser.app.reportError('select-marker-1'));
+    await page.click('#consoleTabConsole');
+    await page.click('#consoleTabDebugLog');
+    await expect(page.locator('#debugLogList')).toContainText('select-marker-1', { timeout: 5_000 });
+
+    // Select the text of that row's message span, the way a user copying a
+    // single line would.
+    const selectedText = await page.evaluate(() => {
+      const row = [...document.querySelectorAll('.debuglog-row')].find((r) => r.textContent?.includes('select-marker-1'));
+      const msgEl = row?.querySelector('.debuglog-msg');
+      if (!msgEl) return null;
+      const range = document.createRange();
+      range.selectNodeContents(msgEl);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      return window.getSelection()?.toString() ?? null;
+    });
+    expect(selectedText).toContain('select-marker-1');
+
+    // Trigger a second entry and wait for its row — proves at least one 1s
+    // poll tick has happened and appended it — then assert the earlier
+    // selection is still exactly what it was (a destructive innerHTML
+    // rebuild on that tick would have cleared it).
+    await page.evaluate(() => (window as any).testerBrowser.app.reportError('select-marker-2'));
+    await expect(page.locator('#debugLogList')).toContainText('select-marker-2', { timeout: 5_000 });
+
+    const selectionAfterPoll = await page.evaluate(() => window.getSelection()?.toString() ?? null);
+    expect(selectionAfterPoll).toBe(selectedText);
+
+    await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
+  });
+
+  test('the Source select filters entries down to one source', async () => {
+    await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: true }));
+    await page.evaluate(() => (window as any).testerBrowser.app.reportError('source-filter-app-marker'));
+    await page.click('#newSessionBtn'); // logs 'Session created' from source 'sessions'
+    await page.click('#consoleTabConsole');
+    await page.click('#consoleTabDebugLog');
+
+    await expect(page.locator('#debugLogList')).toContainText('source-filter-app-marker', { timeout: 5_000 });
+    await expect(page.locator('#debugLogList')).toContainText('Session created', { timeout: 5_000 });
+
+    await page.selectOption('#debugLogSourceFilter', 'sessions');
+    await expect(page.locator('#debugLogList')).toContainText('Session created');
+    await expect(page.locator('#debugLogList')).not.toContainText('source-filter-app-marker');
+
+    await page.selectOption('#debugLogSourceFilter', '');
+    await expect(page.locator('#debugLogList')).toContainText('source-filter-app-marker');
+
+    await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
+  });
+});
+
 // #225: the central app logger's plain-text file, independent of the Debug
 // Log console panel above (which reads DebugLogStore, not main.log).
 test.describe('main.log (#225)', () => {
