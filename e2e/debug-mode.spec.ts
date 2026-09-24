@@ -94,6 +94,24 @@ test('Debug Log level pills filter entries by level', async () => {
   await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
 });
 
+// #227: SessionManager's own info breadcrumbs (session create/destroy, …)
+// reach DebugLogStore the same way app:reportError's error-level entries do
+// — writeEntry() fans out to every sink regardless of level.
+test('Debug Log tab shows an info row when a new tab is created', async () => {
+  await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: true }));
+  await page.click('#newSessionBtn');
+
+  await page.click('#consoleTabConsole');
+  await page.click('#consoleTabDebugLog');
+
+  await expect(page.locator('#debugLogList')).toContainText('Session created', { timeout: 5_000 });
+  await expect(page.locator('.debuglog-row', { hasText: 'Session created' }).first().locator('.debuglog-level'))
+    .toHaveText('info');
+
+  // Reset for later specs.
+  await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
+});
+
 // #225: the central app logger's plain-text file, independent of the Debug
 // Log console panel above (which reads DebugLogStore, not main.log).
 test.describe('main.log (#225)', () => {

@@ -178,6 +178,10 @@ export const log = {
   debug: (source: string, message: string, ctx?: Record<string, unknown>) => writeEntry('debug', source, message, ctx),
 };
 
+// #227: lets SessionManager (and anything else taking a logger by
+// injection) accept exactly this shape without importing the whole module.
+export type AppLog = typeof log;
+
 /** The same ring recordAppError() used to keep in index.ts, now owned here. */
 export function getRecentErrors(): AppErrorEntry[] {
   return ring.slice();

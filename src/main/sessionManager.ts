@@ -5,6 +5,7 @@ import { app } from 'electron';
 import { SessionRecorder } from './recorder';
 import { DownloadManager } from './downloadManager';
 import { PermissionManager } from './permissionManager';
+import { AppLog } from './appLogger';
 
 import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
 import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
@@ -14,6 +15,10 @@ import {
 } from './a11yContrast';
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// #227: SessionManager's default logger when none is injected (existing unit
+// tests construct it directly without one).
+const NOOP_LOG: AppLog = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} };
 
 export interface MockRule {
   id: string;
@@ -858,7 +863,11 @@ export class SessionManager {
   // per app run rather than on every violations scan. '' (not null) marks a
   // failed read so we don't retry the disk hit on every call.
   private axeSource: string | null = null;
-  private recordFeatureError: (message: string) => void;
+  // #227: replaces the old recordFeatureError(message) callback — every call
+  // site now names its own source ('sessions' for nearly all of them) and
+  // can attach a sessionId/ctx. Defaults to a no-op so existing unit tests
+  // that construct SessionManager without a logger don't need updating.
+  private log: AppLog;
   // Notifies the caller whenever a session is created/destroyed or navigates
   // — index.ts write-throughs the current URL list to disk on this so a hard
   // crash's next launch can recover what was open (see persistSessionUrls()).
@@ -867,17 +876,24 @@ export class SessionManager {
   constructor(
     win: BrowserWindow,
     getRedactHeaders: () => boolean,
-    recordFeatureError: (message: string) => void = () => {},
+    logger: AppLog = NOOP_LOG,
     onSessionsChanged: () => void = () => {}
   ) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
     this.getRedactHeaders = getRedactHeaders;
-    this.recordFeatureError = recordFeatureError;
+    this.log = logger;
     this.onSessionsChanged = onSessionsChanged;
     this.downloadManager = new DownloadManager(win);
     this.permissionManager = new PermissionManager(win);
     this.win.on('resize', () => this.layoutActive());
+  }
+
+  // #227: shared by the many `dbg.sendCommand(...).catch(...)` call sites
+  // below that were previously silent — a rejected CDP command means an
+  // override, mock response or cleanup step silently never took effect.
+  private warnCdpFailure(sessionId: string, command: string, e: unknown) {
+    this.log.warn('sessions', `CDP command '${command}' failed`, { sessionId, error: String(e) });
   }
 
   listSessions() {
@@ -951,8 +967,9 @@ export class SessionManager {
               const ax = await dbg.sendCommand('Accessibility.queryAXTree', { backendNodeId: loc.backendNodeId }) as { nodes?: unknown[] };
               const node = ax.nodes?.[0];
               if (node) this.win.webContents.send('a11y:nodeHovered', node);
-            })().catch(() => {});
+            })().catch(() => {}); // silent: fires per mousemove while a11y inspect is on — too high-frequency to log
           }
+        // silent: fires per mousemove while a11y inspect is on — too high-frequency to log
         } catch {}
         return;
       }
@@ -967,8 +984,9 @@ export class SessionManager {
               const ax = await dbg.sendCommand('Accessibility.queryAXTree', { backendNodeId: loc.backendNodeId }) as { nodes?: unknown[] };
               const node = ax.nodes?.[0];
               if (node) this.win.webContents.send('a11y:nodeClicked', node);
-            })().catch(() => {});
+            })().catch(() => {}); // silent: CDP event handler (a11y click binding) — too high-frequency to log
           }
+        // silent: CDP event handler (a11y click binding) — too high-frequency to log
         } catch {}
         return;
       }
@@ -983,7 +1001,7 @@ export class SessionManager {
       // request straight through, bounding worst-case load regardless of
       // pattern text.
       if (shouldRateLimitFetchPause(fetchPauseRateState, Date.now())) {
-        dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+        dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
         return;
       }
       // Fetch.requestPaused's requestId is a Fetch-domain id, distinct from the
@@ -1000,7 +1018,7 @@ export class SessionManager {
         rule.hitCount = (rule.hitCount || 0) + 1;
         rule.lastHitAt = Date.now();
         testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
-        dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule) }).catch(() => {});
+        dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule) }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
         return;
       }
       const resilienceRules = this.resilienceRulesByPartition.get(testSession.partition) ?? [];
@@ -1009,30 +1027,33 @@ export class SessionManager {
         res.hitCount = (res.hitCount || 0) + 1;
         res.lastHitAt = Date.now();
         testSession.recorder.tagRequest(tagId, { resilienceRuleId: res.id, resilienceType: res.type });
+        // Every command below is silent: Fetch.requestPaused fires per
+        // request, too high-frequency to log per failure (each case still
+        // gets its own marker so the empty-catch triage grep is satisfied).
         switch (res.type) {
           case 'error500':
           case 'random500':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 500, body: Buffer.from('Internal Server Error').toString('base64') }).catch(() => {});
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 500, body: Buffer.from('Internal Server Error').toString('base64') }).catch(() => {}); // silent: see comment above switch
             break;
           case 'timeout':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 504, body: Buffer.from('Gateway Timeout').toString('base64') }).catch(() => {});
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 504, body: Buffer.from('Gateway Timeout').toString('base64') }).catch(() => {}); // silent: see comment above switch
             break;
           case 'offline':
-            dbg.sendCommand('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' }).catch(() => {});
+            dbg.sendCommand('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' }).catch(() => {}); // silent: see comment above switch
             break;
           case 'missing':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 404, body: Buffer.from('Not Found').toString('base64') }).catch(() => {});
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 404, body: Buffer.from('Not Found').toString('base64') }).catch(() => {}); // silent: see comment above switch
             break;
           case 'corrupt':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 200, body: Buffer.from('\x00\x01\x02\xff\xfe' + 'x'.repeat(20)).toString('base64') }).catch(() => {});
+            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 200, body: Buffer.from('\x00\x01\x02\xff\xfe' + 'x'.repeat(20)).toString('base64') }).catch(() => {}); // silent: see comment above switch
             break;
           case 'latency':
             setTimeout(() => {
-              dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+              dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {}); // silent: see comment above switch
             }, res.latencyMs || 2000);
             break;
           default:
-            dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
+            dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {}); // silent: see comment above switch
         }
         return;
       }
@@ -1048,6 +1069,7 @@ export class SessionManager {
       // debugger itself is attached once per WebContentsView at creation and
       // stays attached across navigations, so there's no re-attach window
       // either).
+      // silent: also fires per request, same as the branches above — too high-frequency to log
       dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
     });
     this.sessions.set(id, testSession);
@@ -1070,6 +1092,7 @@ export class SessionManager {
           for (const s of this.sessions.values()) {
             if (s.view.webContents.id === details.webContentsId) { s.loadedDomains.add(host); break; }
           }
+        // silent: fires per completed network request — too high-frequency to log
         } catch {}
       });
     }
@@ -1084,7 +1107,7 @@ export class SessionManager {
       const displayUrl = isNewtabUrl(url) ? '' : url;
       testSession.currentUrl = displayUrl;
       testSession.loadedDomains = new Set<string>();
-      try { if (displayUrl) testSession.loadedDomains.add(new URL(displayUrl).hostname); } catch {}
+      try { if (displayUrl) testSession.loadedDomains.add(new URL(displayUrl).hostname); } catch {} // silent: displayUrl is Electron's own just-navigated-to URL
       if (displayUrl) this.addHistoryEntry(id, displayUrl);
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
@@ -1128,6 +1151,17 @@ export class SessionManager {
       if (!isMainFrame || errorCode === -3) return; // ignore subframe failures and user-aborted
       if (validatedURL) this.addHistoryEntry(id, validatedURL, true);
       this.win.webContents.send('session:loadFailed', { id, errorCode, errorDescription, url: validatedURL });
+      this.log.warn('sessions', `Main-frame load failed: ${errorDescription} (${errorCode})`, { sessionId: id });
+    });
+
+    // #227: unlike the chrome window's own render-process-gone/unresponsive
+    // handlers in index.ts, nothing previously listened for a tab's own page
+    // process dying or hanging — it just silently stopped responding.
+    view.webContents.on('render-process-gone', (_e, details) => {
+      this.log.error('sessions', `Tab render process gone: ${details.reason}`, { sessionId: id });
+    });
+    view.webContents.on('unresponsive', () => {
+      this.log.error('sessions', 'Tab became unresponsive', { sessionId: id });
     });
 
     // Right-click context menu on page
@@ -1236,6 +1270,7 @@ export class SessionManager {
       return { action: 'deny' };
     });
 
+    this.log.info('sessions', 'Session created', { sessionId: id });
     return testSession;
   }
 
@@ -1374,7 +1409,9 @@ export class SessionManager {
         if (s.emulation) emulation[s.partition] = s.emulation;
       }
       fs.writeFileSync(this.sessionsFile, JSON.stringify({ sessions, notes, emulation }));
-    } catch {}
+    } catch (e) {
+      this.log.warn('sessions', 'Failed to save sessions to disk', { error: String(e) });
+    }
   }
 
   loadAndRestoreSessions(): boolean {
@@ -1390,12 +1427,13 @@ export class SessionManager {
         // genuinely in force on the newly-created target, not merely
         // remembered by the panel.
         if (emulation?.[s.partition]) {
-          this.setEmulation(sess.id, emulation[s.partition]).catch(() => {});
+          this.setEmulation(sess.id, emulation[s.partition])
+            .catch((e) => this.log.warn('sessions', 'Failed to restore emulation override on load', { sessionId: sess.id, error: String(e) }));
         }
       }
       const first = this.sessions.values().next().value as TestSession | undefined;
       if (first) this.switchTo(first.id);
-      this.cleanupOldRecordings().catch(() => {});
+      this.cleanupOldRecordings().catch(() => {}); // silent: cleanupOldRecordings() never rejects — its own try/catch below logs failures itself
       return true;
     } catch { return false; }
   }
@@ -1413,9 +1451,12 @@ export class SessionManager {
         try {
           const stat = await fs.promises.stat(fp);
           if (stat.mtimeMs < cutoff) await fs.promises.unlink(fp);
+        // silent: stat/unlink race on one stale recording file among possibly many — not worth a warn per file
         } catch {}
       }
-    } catch {}
+    } catch (e) {
+      this.log.warn('sessions', 'Failed to clean up old recordings', { error: String(e) });
+    }
   }
 
   // --- Layout ---
@@ -1539,8 +1580,11 @@ export class SessionManager {
           url, name: c.name, value: c.value, domain: c.domain, path: c.path,
           secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate,
         });
-      } catch {}
+      } catch (e) {
+        this.log.warn('sessions', `Failed to copy cookie '${c.name}' while cloning`, { sessionId: dest.id, error: String(e) });
+      }
     }
+    this.log.info('sessions', `Session cloned from ${sourceId}`, { sessionId: dest.id });
     return dest;
   }
 
@@ -1694,6 +1738,7 @@ export class SessionManager {
     if (!result.canceled && result.filePath) {
       fs.writeFileSync(result.filePath, JSON.stringify(snap, null, 2));
       this.showSnapshotWarnings('Export snapshot', snap.warnings);
+      this.log.info('snapshot', 'Snapshot exported', { sessionId: id });
     }
   }
 
@@ -1710,8 +1755,10 @@ export class SessionManager {
       const warnings = await this.restoreSnapshot(id, snap);
       this.win.webContents.send('tab:action', { action: 'refresh' });
       this.showSnapshotWarnings('Import snapshot', warnings);
-    } catch {
+      this.log.info('snapshot', 'Snapshot imported', { sessionId: id });
+    } catch (e) {
       dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
+      this.log.warn('snapshot', 'Snapshot import failed', { sessionId: id, error: String(e) });
     }
   }
 
@@ -1776,7 +1823,7 @@ export class SessionManager {
         el.dispatchEvent(new Event('input',{bubbles:true}));
         el.dispatchEvent(new Event('change',{bubbles:true}));
       })();
-    `).catch(() => {});
+    `).catch((e) => this.log.warn('sessions', 'Failed to inject test data', { error: String(e) }));
   }
 
   applyTemplate(id: string, template: string) {
@@ -1790,14 +1837,14 @@ export class SessionManager {
     if (!s) return;
     const dbg = s.view.webContents.debugger;
     if (opts.clear) {
-      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: '' }).catch(() => {});
-      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: '' }).catch(() => {});
-      await dbg.sendCommand('Emulation.clearGeolocationOverride').catch(() => {});
+      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: '' }).catch((e) => this.warnCdpFailure(id, 'Emulation.setTimezoneOverride', e));
+      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: '' }).catch((e) => this.warnCdpFailure(id, 'Emulation.setLocaleOverride', e));
+      await dbg.sendCommand('Emulation.clearGeolocationOverride').catch((e) => this.warnCdpFailure(id, 'Emulation.clearGeolocationOverride', e));
       s.view.webContents.setUserAgent(s.defaultUserAgent);
-      await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch(() => {});
+      await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch((e) => this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e));
       const existingScriptId = this.dateOverrideScripts.get(id);
       if (existingScriptId) {
-        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch(() => {});
+        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
         this.dateOverrideScripts.delete(id);
       }
       s.emulation = null;
@@ -1805,15 +1852,15 @@ export class SessionManager {
     }
     const applied: EmulationOverrides = { ...(s.emulation ?? {}) };
     if (opts.timezone !== undefined) {
-      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone }).catch(() => {});
+      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone }).catch((e) => this.warnCdpFailure(id, 'Emulation.setTimezoneOverride', e));
       applied.timezone = opts.timezone;
     }
     if (opts.locale !== undefined) {
-      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale }).catch(() => {});
+      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale }).catch((e) => this.warnCdpFailure(id, 'Emulation.setLocaleOverride', e));
       applied.locale = opts.locale;
     }
     if (opts.latitude !== undefined && opts.longitude !== undefined) {
-      await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude: opts.latitude, longitude: opts.longitude, accuracy: opts.accuracy ?? 10 }).catch(() => {});
+      await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude: opts.latitude, longitude: opts.longitude, accuracy: opts.accuracy ?? 10 }).catch((e) => this.warnCdpFailure(id, 'Emulation.setGeolocationOverride', e));
       applied.latitude = opts.latitude;
       applied.longitude = opts.longitude;
     }
@@ -1824,24 +1871,24 @@ export class SessionManager {
       // criterion, not just the Reset button above.
       if (opts.userAgent === '') {
         s.view.webContents.setUserAgent(s.defaultUserAgent);
-        await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch(() => {});
+        await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch((e) => this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e));
         delete applied.userAgent;
       } else {
         s.view.webContents.setUserAgent(opts.userAgent);
         await dbg.sendCommand('Emulation.setUserAgentOverride', {
           userAgent: opts.userAgent,
           userAgentMetadata: buildUserAgentMetadata(opts.userAgent),
-        }).catch(() => {});
+        }).catch((e) => this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e));
         applied.userAgent = opts.userAgent;
       }
     }
     if (opts.timeOffsetMs !== undefined) {
       const existingScriptId = this.dateOverrideScripts.get(id);
       if (existingScriptId) {
-        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch(() => {});
+        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
         this.dateOverrideScripts.delete(id);
       }
-      await dbg.sendCommand('Page.enable').catch(() => {});
+      await dbg.sendCommand('Page.enable').catch((e) => this.warnCdpFailure(id, 'Page.enable', e));
       // The CDP command occasionally fails transiently under system load
       // (observed in CI) — retry once before giving up, and only report the
       // offset as applied if the script genuinely got registered, so the UI
@@ -1856,7 +1903,7 @@ export class SessionManager {
         this.dateOverrideScripts.set(id, result.identifier);
         applied.timeOffsetMs = opts.timeOffsetMs;
       } else {
-        this.recordFeatureError(`Failed to apply clock offset override for session ${id}`);
+        this.log.error('sessions', 'Failed to apply clock offset override', { sessionId: id });
       }
     }
     s.emulation = applied;
@@ -1981,7 +2028,9 @@ export class SessionManager {
           expression: `(function(){if(window.__a11yHoverSetup)return;window.__a11yHoverSetup=true;let t=0;document.addEventListener('mousemove',function(e){const n=Date.now();if(n-t<150)return;t=n;window.__a11yHover(JSON.stringify({x:Math.round(e.clientX),y:Math.round(e.clientY)}));},{passive:true});document.addEventListener('click',function(e){if(!window.__a11yHoverSetup)return;e.preventDefault();e.stopPropagation();window.__a11yClick(JSON.stringify({x:Math.round(e.clientX),y:Math.round(e.clientY)}));},{capture:true});})();`,
           includeCommandLineAPI: false,
         });
-      } catch {}
+      } catch (e) {
+        this.log.warn('sessions', 'Failed to enable a11y inspect bindings', { sessionId: id, error: String(e) });
+      }
     } else {
       try {
         await dbg.sendCommand('Runtime.evaluate', {
@@ -1990,7 +2039,9 @@ export class SessionManager {
         });
         await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yHover' });
         await dbg.sendCommand('Runtime.removeBinding', { name: '__a11yClick' });
-      } catch {}
+      } catch (e) {
+        this.log.warn('sessions', 'Failed to disable a11y inspect bindings', { sessionId: id, error: String(e) });
+      }
     }
   }
 
@@ -2006,7 +2057,9 @@ export class SessionManager {
     if (!enabled) {
       try {
         await dbg.sendCommand('Runtime.evaluate', { expression: FOCUS_OVERLAY_DISABLE_SCRIPT, includeCommandLineAPI: false });
-      } catch {}
+      } catch (e) {
+        this.log.warn('sessions', 'Failed to disable a11y focus overlay', { sessionId: id, error: String(e) });
+      }
       return null;
     }
     try {
@@ -2050,7 +2103,9 @@ export class SessionManager {
           if (el) el.focus({ preventScroll: true });
         })(${JSON.stringify(selector)})
       `);
-    } catch {}
+    } catch (e) {
+      this.log.warn('sessions', 'Failed to focus element by selector for focus-trap check', { sessionId: s.id, error: String(e) });
+    }
   }
 
   // Walks forward (or, in reverse, Shift+Tab backward) for up to 2×N steps,
@@ -2089,7 +2144,7 @@ export class SessionManager {
       const empty: FocusTrapDirectionResult = { passed: true, kind: 'pass', trappedElements: [], sequence: [] };
       if (n === 0) return { forward: empty, backward: empty };
 
-      try { await s.view.webContents.executeJavaScript('document.activeElement && document.activeElement.blur();'); } catch {}
+      try { await s.view.webContents.executeJavaScript('document.activeElement && document.activeElement.blur();'); } catch {} // silent: best-effort blur reset — nothing focused is a normal, expected case
       // Walk with index-based terminals so classifyFocusTrapSequence compares
       // unique identifiers — READ_ACTIVE_ELEMENT_SCRIPT returns the element's
       // position index from window.__a11yTrapEls, not its CSS selector, so two
@@ -2137,13 +2192,13 @@ export class SessionManager {
     const s = this.sessions.get(id);
     if (!s) {
       const error = `No such session: ${id}`;
-      this.recordFeatureError(`A11y violations audit failed: ${error}`);
+      this.log.error('sessions', `A11y violations audit failed: ${error}`, { sessionId: id });
       return { ok: false, error };
     }
     const axeSource = this.getAxeSource();
     if (!axeSource) {
       const error = 'axe-core bundle could not be loaded';
-      this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+      this.log.error('sessions', `A11y violations audit failed: ${error}`, { sessionId: id });
       return { ok: false, error };
     }
     const dbg = s.view.webContents.debugger;
@@ -2170,18 +2225,18 @@ export class SessionManager {
         const error = result.exceptionDetails.exception?.description
           ?? result.exceptionDetails.text
           ?? 'axe-core threw while running in the page';
-        this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+        this.log.error('sessions', `A11y violations audit failed: ${error}`, { sessionId: id });
         return { ok: false, error };
       }
       if (typeof result.result?.value !== 'string') {
         const error = 'axe-core returned no result';
-        this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+        this.log.error('sessions', `A11y violations audit failed: ${error}`, { sessionId: id });
         return { ok: false, error };
       }
       return { ok: true, violations: JSON.parse(result.result.value) };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      this.recordFeatureError(`A11y violations audit failed for session ${id}: ${error}`);
+      this.log.error('sessions', `A11y violations audit failed: ${error}`, { sessionId: id });
       return { ok: false, error };
     }
   }
@@ -2269,6 +2324,7 @@ export class SessionManager {
           borderColor: { r: 255, g: 82, b: 82, a: 0.8 },
         },
       });
+      // silent: best-effort highlight cleanup after a 2s delay — the session may already be gone by then
       setTimeout(() => { dbg.sendCommand('Overlay.hideHighlight').catch(() => {}); }, 2000);
       return true;
     } catch {
@@ -2315,7 +2371,8 @@ export class SessionManager {
     if (!s) return;
     const host = domain.replace(/^\./, '');
     const url = `${secure ? 'https' : 'http'}://${host}${cookiePath || '/'}`;
-    await s.view.webContents.session.cookies.remove(url, name).catch(() => {});
+    await s.view.webContents.session.cookies.remove(url, name)
+      .catch((e) => this.log.warn('sessions', `Failed to delete cookie '${name}'`, { sessionId: id, error: String(e) }));
   }
 
   async clearCookies(id: string): Promise<void> {
@@ -2325,7 +2382,8 @@ export class SessionManager {
     await Promise.all(cookies.map(c => {
       const host = (c.domain ?? '').replace(/^\./, '');
       const url = `${c.secure ? 'https' : 'http'}://${host}${c.path ?? '/'}`;
-      return s.view.webContents.session.cookies.remove(url, c.name).catch(() => {});
+      return s.view.webContents.session.cookies.remove(url, c.name)
+        .catch((e) => this.log.warn('sessions', `Failed to clear cookie '${c.name}'`, { sessionId: id, error: String(e) }));
     }));
   }
 
@@ -2334,7 +2392,7 @@ export class SessionManager {
     if (!s) return;
     await s.view.webContents.executeJavaScript(
       `void localStorage.removeItem(${JSON.stringify(key)})`
-    ).catch(() => {});
+    ).catch((e) => this.log.warn('sessions', `Failed to delete localStorage key '${key}'`, { sessionId: id, error: String(e) }));
   }
 
   async setLocalStorageKey(id: string, key: string, value: string): Promise<void> {
@@ -2342,13 +2400,14 @@ export class SessionManager {
     if (!s) return;
     await s.view.webContents.executeJavaScript(
       `void localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(value)})`
-    ).catch(() => {});
+    ).catch((e) => this.log.warn('sessions', `Failed to set localStorage key '${key}'`, { sessionId: id, error: String(e) }));
   }
 
   async clearLocalStorage(id: string): Promise<void> {
     const s = this.sessions.get(id);
     if (!s) return;
-    await s.view.webContents.executeJavaScript('void localStorage.clear()').catch(() => {});
+    await s.view.webContents.executeJavaScript('void localStorage.clear()')
+      .catch((e) => this.log.warn('sessions', 'Failed to clear localStorage', { sessionId: id, error: String(e) }));
   }
 
   // Mock/Resilience rules live in mockRulesByPartition/resilienceRulesByPartition
@@ -2381,6 +2440,7 @@ export class SessionManager {
     if (!rules) return;
     rules.push({ ...rule, responseHeaders: rule.responseHeaders || {}, hitCount: 0, lastHitAt: null });
     this._applyMocks(id);
+    this.log.info('mock', `Mock rule added: ${rule.method} ${rule.urlPattern}`, { sessionId: id });
   }
 
   removeMockRule(id: string, ruleId: string): void {
@@ -2389,6 +2449,7 @@ export class SessionManager {
     const rules = (this.mockRulesByPartition.get(partition) ?? []).filter(r => r.id !== ruleId);
     this.mockRulesByPartition.set(partition, rules);
     this._applyMocks(id);
+    this.log.info('mock', `Mock rule removed: ${ruleId}`, { sessionId: id });
   }
 
   toggleMockRule(id: string, ruleId: string, enabled: boolean): void {
@@ -2397,6 +2458,7 @@ export class SessionManager {
     const rule = rules.find(r => r.id === ruleId);
     if (rule) rule.enabled = enabled;
     this._applyMocks(id);
+    this.log.info('mock', `Mock rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
   }
 
   // A ruleId that doesn't match any rule is a no-op (nothing to update,
@@ -2417,7 +2479,7 @@ export class SessionManager {
     const activeMocks = (this.mockRulesByPartition.get(s.partition) ?? []).filter(r => r.enabled);
     const activeRes = (this.resilienceRulesByPartition.get(s.partition) ?? []).filter(r => r.enabled);
     if (activeMocks.length === 0 && activeRes.length === 0) {
-      dbg.sendCommand('Fetch.disable').catch(() => {});
+      dbg.sendCommand('Fetch.disable').catch((e) => this.warnCdpFailure(id, 'Fetch.disable', e));
     } else {
       // Use the rules' own URL patterns so Chromium only sends Fetch.requestPaused
       // for matching requests. Previously, any active resilience rule forced urlPattern:'*',
@@ -2431,7 +2493,7 @@ export class SessionManager {
         patterns: hasWildcard
           ? [{ urlPattern: '*', requestStage: 'Request' }]
           : patterns,
-      }).catch(() => {});
+      }).catch((e) => this.warnCdpFailure(id, 'Fetch.enable', e));
     }
   }
 
@@ -2447,6 +2509,7 @@ export class SessionManager {
     if (!rules) return;
     rules.push({ ...rule, method: rule.method || '*', hitCount: 0, lastHitAt: null });
     this._applyFetch(id);
+    this.log.info('resilience', `Resilience rule added: ${rule.urlPattern}`, { sessionId: id });
   }
 
   removeResilienceRule(id: string, ruleId: string): void {
@@ -2455,13 +2518,18 @@ export class SessionManager {
     const rules = (this.resilienceRulesByPartition.get(partition) ?? []).filter(r => r.id !== ruleId);
     this.resilienceRulesByPartition.set(partition, rules);
     this._applyFetch(id);
+    this.log.info('resilience', `Resilience rule removed: ${ruleId}`, { sessionId: id });
   }
 
   toggleResilienceRule(id: string, ruleId: string, enabled: boolean): void {
     const rules = this.resilienceRulesForId(id);
     if (!rules) return;
     const rule = rules.find(r => r.id === ruleId);
-    if (rule) { rule.enabled = enabled; this._applyFetch(id); }
+    if (rule) {
+      rule.enabled = enabled;
+      this._applyFetch(id);
+      this.log.info('resilience', `Resilience rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
+    }
   }
 
   updateResilienceRule(id: string, ruleId: string, patch: Partial<ResilienceRule>): void {
@@ -2476,7 +2544,10 @@ export class SessionManager {
     if (!s) return;
     for (const leaderId of Array.from(this.followPairings.keys())) {
       const p = this.followPairings.get(leaderId);
-      if (p && (p.leaderId === id || p.followerId === id)) this.stopFollowAlong(leaderId).catch(() => {});
+      if (p && (p.leaderId === id || p.followerId === id)) {
+        this.stopFollowAlong(leaderId)
+          .catch((e) => this.log.warn('sessions', 'Failed to stop Follow Along pairing during session destroy', { sessionId: id, error: String(e) }));
+      }
     }
     if (this.activeId === id) { this.win.contentView.removeChildView(s.view); this.activeId = null; }
     s.recorder.destroy();
@@ -2488,6 +2559,7 @@ export class SessionManager {
     this.dateOverrideScripts.delete(id);
     this.sessionHistory.delete(id);
     this.onSessionsChanged();
+    this.log.info('sessions', 'Session destroyed', { sessionId: id });
   }
 
   // Reads the page's live in-progress steps and merges them (by id) into the
@@ -2502,6 +2574,7 @@ export class SessionManager {
       let buf = this.recordingBuffers.get(id);
       if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
       for (const step of steps as TestStep[]) buf.set(step.id, step);
+      // silent: runs on every pollRecordingSteps() poll (~1s) and every nav while recording
     } catch {}
   }
 
@@ -2515,8 +2588,11 @@ export class SessionManager {
     const s = this.sessions.get(id);
     if (!s) return false;
     this.recordingBuffers.set(id, new Map());
-    await s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch(() => {});
-    const navHandler = () => { s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch(() => {}); };
+    await s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch((e) => this.log.warn('recording', 'Failed to inject recording script', { sessionId: id, error: String(e) }));
+    const navHandler = () => {
+      s.view.webContents.executeJavaScript(RECORDING_SCRIPT)
+        .catch((e) => this.log.warn('recording', 'Failed to re-inject recording script after navigation', { sessionId: id, error: String(e) }));
+    };
     // A full navigation destroys the outgoing page's JS context (and
     // window.__tbTestSteps with it) before did-navigate fires, so harvest
     // whatever's recorded so far while that context is still alive.
@@ -2529,6 +2605,7 @@ export class SessionManager {
       s.view.webContents.off('did-navigate', navHandler);
       s.view.webContents.off('did-navigate-in-page', navHandler);
     });
+    this.log.info('recording', 'Recording started', { sessionId: id });
     return true;
   }
 
@@ -2553,9 +2630,12 @@ export class SessionManager {
         if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
         for (const step of steps as TestStep[]) buf.set(step.id, step);
       }
-    } catch {}
+    } catch (e) {
+      this.log.warn('recording', 'Failed to harvest final recording steps on stop', { sessionId: id, error: String(e) });
+    }
     const result = this.getBufferedSteps(id);
     this.recordingBuffers.delete(id);
+    this.log.info('recording', 'Recording stopped', { sessionId: id });
     return result;
   }
 
@@ -2571,7 +2651,7 @@ export class SessionManager {
       // injected script itself failed to run — that's a genuine functionality
       // bug (Tests playback or Follow Along mirroring), not an expected
       // assertion miss, so surface it in bug-report diagnostics too.
-      this.recordFeatureError(`Playback '${step.type}'${step.selector ? ` (${step.selector})` : ''} on session ${s.name}: ${String(e)}`);
+      this.log.error('sessions', `Playback '${step.type}'${step.selector ? ` (${step.selector})` : ''} failed: ${String(e)}`, { sessionId: id });
       return { success: false, error: String(e) };
     }
   }
@@ -2656,6 +2736,7 @@ export class SessionManager {
     leader.view.webContents.on('did-navigate', navHandler);
     leader.view.webContents.on('did-navigate-in-page', navInPageHandler);
 
+    // silent: polls every 300ms while Follow Along is active — too high-frequency to log
     const pollTimer = setInterval(() => { this.relayFollowSteps(leaderId).catch(() => {}); }, 300);
 
     this.followPairings.set(leaderId, {

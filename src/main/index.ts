@@ -33,11 +33,11 @@ let appErrorsPath = '';
 // none in practice — nothing calls recordAppError until after whenReady())
 // are only captured in the in-memory/write-through ring, not persisted.
 let debugLogStore: DebugLogStore | null = null;
-// level defaults to 'error' since every existing call site (uncaught
-// exceptions, unhandled rejections, a crashed/unresponsive renderer, and the
-// renderer's own app:reportError) is reporting an actual error; nothing yet
-// calls this at 'warn'/'info'/'debug' — that wider tracing is left to a
-// follow-up (see #213's own scope note on the ~28 silent `catch {}` blocks).
+// level defaults to 'error' since most call sites (uncaught exceptions,
+// unhandled rejections, a crashed/unresponsive renderer, the renderer's own
+// app:reportError) are reporting an actual error. #227 triaged the ~28
+// previously-silent empty catches this file and sessionManager.ts had —
+// most call log.warn/info directly rather than through this wrapper.
 // Thin wrapper over appLogger's log[level]() (#225) — source is always
 // 'app' here since this call site can't tell which subsystem raised it;
 // callers that can (e.g. the updater) call log[level]() directly instead.
@@ -113,7 +113,11 @@ function writeCrashLog(startedAt: string, recentErrors: AppErrorEntry[], session
       logTailTruncated: capped.truncated,
     };
     fs.writeFileSync(crashLogPath, JSON.stringify(log));
-  } catch {}
+  } catch (e) {
+    // The `log` local above (the crash payload) is scoped to the try block
+    // only — this catch block still sees the module-level appLogger `log`.
+    log.warn('app', 'Failed to write crash-log.json', { error: String(e) });
+  }
 }
 
 // Write-through for the live session-URL list, so the sentinel branch on the
@@ -126,6 +130,7 @@ function persistSessionUrls() {
     if (!sessionUrlsPath) return;
     const urls = (sessionManager?.listSessions() ?? []).map((s: { url?: string }) => s.url ?? '').filter(Boolean);
     fs.writeFileSync(sessionUrlsPath, JSON.stringify(urls));
+  // silent: fires on every session create/destroy/navigate — too high-frequency to log; a persistent disk issue also surfaces via saveSessions()'s own warn
   } catch {}
 }
 
@@ -170,7 +175,13 @@ class JsonStore<T> {
     return this.data;
   }
 
-  private save() { try { fs.writeFileSync(this.file, JSON.stringify(this.data)); } catch {} }
+  private save() {
+    try {
+      fs.writeFileSync(this.file, JSON.stringify(this.data));
+    } catch (e) {
+      log.warn('app', `Failed to write ${path.basename(this.file)}`, { error: String(e) });
+    }
+  }
 }
 
 // --- Typed stores ---
@@ -296,7 +307,7 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  sessionManager = new SessionManager(win, () => settingsStore.get().redactSensitiveHeaders, recordAppError, persistSessionUrls);
+  sessionManager = new SessionManager(win, () => settingsStore.get().redactSensitiveHeaders, log, persistSessionUrls);
 
   const restored = sessionManager.loadAndRestoreSessions();
   if (!restored) {
@@ -348,16 +359,21 @@ app.whenReady().then(() => {
       const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf-8')) as { startedAt?: string };
       const crashedErrors = readAppErrors(appErrorsPath);
       let crashedSessionUrls: string[] = [];
+      // silent: sessionUrlsPath may not exist yet (crash occurred before the first write-through)
       try { crashedSessionUrls = JSON.parse(fs.readFileSync(sessionUrlsPath, 'utf-8')); } catch {}
       writeCrashLog(sentinel.startedAt ?? new Date().toISOString(), crashedErrors, crashedSessionUrls);
-    } catch {}
+    } catch (e) {
+      log.warn('app', 'Failed to process crash sentinel', { error: String(e) });
+    }
   }
   // Start this session's own durable state clean, so it doesn't inherit
   // whatever the crashed process (or one before it) left behind.
   writeAppErrors(appErrorsPath, []);
+  // silent: best-effort reset; a failure here just means the previous crash's already-empty state persists a bit longer
   try { fs.writeFileSync(sessionUrlsPath, JSON.stringify([])); } catch {}
   // Write the sentinel for this session.
   sessionStartedAt = new Date().toISOString();
+  // silent: best-effort; a failure here means this session's own crash detection won't fire next launch, no user-visible impact now
   try { fs.writeFileSync(sentinelPath, JSON.stringify({ startedAt: sessionStartedAt })); } catch {}
 
   initLogger({
@@ -368,6 +384,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  log.info('app', `App started: ${app.getVersion()} on ${process.platform}`);
 
   if (app.isPackaged) {
     autoUpdater.allowPrerelease = true;
@@ -375,21 +392,35 @@ app.whenReady().then(() => {
     // or a version tag mishap can fire it for the version already running. Downloading (and
     // therefore reinstalling) only proceeds once we've independently confirmed it's newer.
     autoUpdater.autoDownload = false;
-    autoUpdater.on('checking-for-update', () => { updateStatus = 'checking'; latestVersion = null; pushUpdateStatus(); });
+    autoUpdater.on('checking-for-update', () => {
+      updateStatus = 'checking'; latestVersion = null; pushUpdateStatus();
+      log.info('updater', 'Checking for update');
+    });
     autoUpdater.on('update-available', (info) => {
       latestVersion = info.version;
       if (!isVersionNewer(info.version, app.getVersion())) {
         updateStatus = 'not-available';
         pushUpdateStatus();
+        log.info('updater', `Update feed reported ${info.version}, not newer than current — ignored`);
         return;
       }
       updateStatus = 'available';
       pushUpdateStatus();
+      log.info('updater', `Update available: ${info.version}`);
       autoUpdater.downloadUpdate();
     });
+    // download-progress fires repeatedly per download (per chunk) — no
+    // breadcrumb here, same high-frequency reasoning as sessionManager.ts's
+    // CDP event handlers.
     autoUpdater.on('download-progress', () => { updateStatus = 'downloading'; pushUpdateStatus(); });
-    autoUpdater.on('update-downloaded', (info) => { updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus(); });
-    autoUpdater.on('update-not-available', (info) => { updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus(); });
+    autoUpdater.on('update-downloaded', (info) => {
+      updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus();
+      log.info('updater', `Update downloaded: ${info.version}`);
+    });
+    autoUpdater.on('update-not-available', (info) => {
+      updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus();
+      log.info('updater', `No update available (current: ${info.version})`);
+    });
     autoUpdater.on('error', async (_e, message) => {
       const fullMsg = String(message ?? 'unknown');
       // When latest.yml is missing from the newest release, try up to 3 previous
@@ -417,7 +448,9 @@ app.whenReady().then(() => {
               if (++checked >= 3) break;
             }
           }
-        } catch {}
+        } catch (e) {
+          log.warn('updater', 'Failed to scan previous releases for latest.yml', { error: String(e) });
+        }
       }
       updateStatus = 'error';
       try {
@@ -428,6 +461,7 @@ app.whenReady().then(() => {
           currentVersion: app.getVersion(),
           latestVersion: null,
         });
+      // silent: writeUpdateLog is the legacy update-errors.jsonl sink — the real failure is captured via log.error('updater', ...) just below
       } catch {}
       log.error('updater', fullMsg);
       // Strip verbose prefix and show only the first line, capped at 120 chars
@@ -452,15 +486,21 @@ app.whenReady().then(() => {
 // ephemeral ones, same as closing an individual temporary tab already does.
 app.on('before-quit', () => {
   normalQuit = true;
+  log.info('app', 'App quitting');
   sessionManager?.saveSessions();
   // Clean exit: remove the crash sentinel, any leftover crash log, and this
   // session's durable error/URL state — none of it describes a crash.
+  // silent: best-effort cleanup on quit; nothing meaningful to report during shutdown
   try { if (sentinelPath) fs.unlinkSync(sentinelPath); } catch {}
+  // silent: best-effort cleanup on quit; nothing meaningful to report during shutdown
   try { if (crashLogPath) fs.unlinkSync(crashLogPath); } catch {}
+  // silent: best-effort cleanup on quit; nothing meaningful to report during shutdown
   try { if (appErrorsPath) fs.unlinkSync(appErrorsPath); } catch {}
+  // silent: best-effort cleanup on quit; nothing meaningful to report during shutdown
   try { if (sessionUrlsPath) fs.unlinkSync(sessionUrlsPath); } catch {}
   // Unlike the files above, debug-log.sqlite is meant to survive a restart —
   // only close the handle, don't delete it.
+  // silent: best-effort cleanup on quit; nothing meaningful to report during shutdown
   try { debugLogStore?.close(); } catch {}
 });
 
@@ -478,6 +518,7 @@ process.on('exit', () => {
     const sessionUrls = sessions.map((s: { url?: string }) => s.url ?? '').filter(Boolean);
     writeCrashLog(sessionStartedAt || new Date().toISOString(), getRecentErrors(), sessionUrls);
     fs.unlinkSync(sentinelPath);
+  // silent: process is exiting — no reliable way to observe or act on a failure here
   } catch {}
 });
 
@@ -730,7 +771,8 @@ ipcMain.handle('bugreport:startOAuth', async () => {
     if (!data.device_code || !data.user_code) return { ok: false, error: 'Invalid response from GitHub' };
     shell.openExternal(data.verification_uri ?? 'https://github.com/login/device');
     const expiresAt = Date.now() + (data.expires_in ?? 900) * 1000;
-    pollDeviceFlow(data.device_code, data.interval ?? 5, expiresAt, oauthPollAbort.signal).catch(() => {});
+    pollDeviceFlow(data.device_code, data.interval ?? 5, expiresAt, oauthPollAbort.signal)
+      .catch((e) => log.warn('bugreport', 'Device flow polling failed unexpectedly', { error: String(e) }));
     return { ok: true, user_code: data.user_code, verification_uri: data.verification_uri, expires_in: data.expires_in };
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -810,6 +852,7 @@ ipcMain.handle('applog:tail', (_e, lines: number) => {
 });
 
 ipcMain.handle('applog:revealFolder', () => {
+  // silent: shell.showItemInFolder() doesn't report failures in a way there's anything useful to log
   try { shell.showItemInFolder(path.join(logsDir, 'main.log')); } catch {}
 });
 
@@ -967,9 +1010,12 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
     }
 
     const boardAdded = await addIssueToProjectBoard(token, data.node_id as string);
+    log.info('bugreport', `Bug report submitted: issue #${data.number}`);
     return { ok: true, url: data.html_url, number: data.number, boardAdded, screenshotAttached, screenshotError };
   } catch (e: unknown) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    const message = e instanceof Error ? e.message : String(e);
+    log.error('bugreport', `Bug report submission failed: ${message}`);
+    return { ok: false, error: message };
   }
 });
 
@@ -981,6 +1027,7 @@ ipcMain.handle('crash:check', () => {
 });
 
 ipcMain.handle('crash:clear', () => {
+  // silent: best-effort cleanup; ENOENT here is the common/expected case (already cleared)
   try { if (crashLogPath) fs.unlinkSync(crashLogPath); } catch {}
   return { ok: true };
 });
