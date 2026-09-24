@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, clipboard, net, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, Menu, clipboard, net, safeStorage, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -8,6 +8,7 @@ import { writeUpdateLog, readUpdateLog } from './updateLogger';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
+import { applySettingsPatch, AppSettings } from './settingsPatch';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -47,6 +48,31 @@ function recordAppError(message: string, level: AppLogLevel = 'error') {
 }
 process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
 process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
+
+// --- Privileged-IPC sender check (#217) ---
+// src/preload/newtab.ts's contextBridge APIs (speedDial, appTheme, bookmarksApi,
+// appSettings, appInfo) ride on NEWTAB_PRELOAD, which every WebContentsView uses —
+// including tabs showing a tested website, not only renderer/newtab.html. These
+// handlers read/write app-wide state (settings, bookmarks, theme), so only two
+// senders may call them: the chrome window itself (win.webContents, used by
+// renderer/*.js) and a frame actually showing the new-tab page. Everything else —
+// any site under test — is rejected. Mirrors the file:// + newtab.html check
+// speeddial:set already had.
+function isTrustedIpcSender(e: IpcMainInvokeEvent): boolean {
+  if (win && e.sender === win.webContents) return true;
+  const senderUrl = e.senderFrame?.url ?? '';
+  return senderUrl.startsWith('file://') && senderUrl.includes('newtab.html');
+}
+
+// Returns true (and logs once at warn) when the call should be rejected;
+// callers do `if (rejectUntrustedSender(e, 'channel:name')) return;`.
+function rejectUntrustedSender(e: IpcMainInvokeEvent, channel: string): boolean {
+  if (isTrustedIpcSender(e)) return false;
+  let origin = 'unknown';
+  try { origin = new URL(e.senderFrame?.url ?? '').origin; } catch { /* not a parseable URL (e.g. about:blank) */ }
+  recordAppError(`Rejected untrusted IPC call to '${channel}' from ${origin}`, 'warn');
+  return true;
+}
 
 // --- Crash detection ---
 // A sentinel file is written on startup and deleted on clean exit. If it still
@@ -143,22 +169,23 @@ class JsonStore<T> {
 interface Bookmark { url: string; title: string; addedAt: number; folderId: string | null; }
 interface BookmarkFolder { id: string; name: string; createdAt: number; }
 interface SpeedDialTile { id: string; url: string; title: string; }
-interface AppSettings {
-  redactSensitiveHeaders: boolean;
-  // A rule id absent from the map means "enabled" — new rules added later
-  // need no migration, they just aren't in anyone's map yet.
-  securityRuleOverrides: Record<string, boolean>;
-  searchEngine: 'google' | 'duckduckgo';
-  // Record/Playback tab column widths (px) — "Record new test" and "Replay
-  // tests"; the run view takes whatever's left. Missing/malformed values
-  // (an old settings.json, or a corrupt one) fall back to these defaults
-  // rather than a 0-width or negative column.
-  recordPlaybackColumnWidths: { record: number; saved: number };
-  // Shows TesterBrowser's own internal logs (main/IPC/recorder) in the
-  // Debug Log console tab — unrelated to the per-session Console tab, which
-  // always records the tested page's own console/network regardless of this.
-  debugMode: boolean;
-}
+// AppSettings itself lives in settingsPatch.ts (imported above) so the
+// whitelist merge there can be unit tested without booting Electron; this
+// comment block documents the fields for readers of this file.
+// - redactSensitiveHeaders
+//   A rule id absent from the map means "enabled" — new rules added later
+//   need no migration, they just aren't in anyone's map yet.
+// - securityRuleOverrides
+// - searchEngine
+// - recordPlaybackColumnWidths
+//   Record/Playback tab column widths (px) — "Record new test" and "Replay
+//   tests"; the run view takes whatever's left. Missing/malformed values
+//   (an old settings.json, or a corrupt one) fall back to these defaults
+//   rather than a 0-width or negative column.
+// - debugMode
+//   Shows TesterBrowser's own internal logs (main/IPC/recorder) in the
+//   Debug Log console tab — unrelated to the per-session Console tab, which
+//   always records the tested page's own console/network regardless of this.
 
 const DEFAULT_SETTINGS: AppSettings = {
   redactSensitiveHeaders: false,
@@ -488,8 +515,9 @@ ipcMain.handle('a11y:getAltLabelIssues', (_e, id: string) => sessionManager?.get
 ipcMain.handle('a11y:setFocusOverlay', (_e, id: string, enabled: boolean) => sessionManager?.setA11yFocusOverlay(id, enabled) ?? null);
 ipcMain.handle('a11y:detectFocusTrap', (_e, id: string) => sessionManager?.detectA11yFocusTrap(id) ?? null);
 ipcMain.handle('session:captureScreenshot', (_e, id: string, opts?: { fullPage?: boolean }) => sessionManager?.captureScreenshot(id, opts) ?? null);
-ipcMain.handle('theme:get', () => themeStore.get().scheme);
-ipcMain.handle('theme:set', (_e, scheme: string) => {
+ipcMain.handle('theme:get', (e) => rejectUntrustedSender(e, 'theme:get') ? undefined : themeStore.get().scheme);
+ipcMain.handle('theme:set', (e, scheme: string) => {
+  if (rejectUntrustedSender(e, 'theme:set')) return;
   const value = scheme === 'light' ? 'light' : 'dark';
   themeStore.set({ scheme: value });
   sessionManager?.broadcastTheme(value);
@@ -951,31 +979,38 @@ ipcMain.handle('permission:respond', (_e, reqId: string, granted: boolean) =>
 );
 
 // Bookmark IPC
-ipcMain.handle('bookmarks:list',   () => bookmarkStore.get());
-ipcMain.handle('bookmarks:add',    (_e, url: string, title: string) =>
-  bookmarkStore.update(bs => [{ url, title, addedAt: Date.now(), folderId: null }, ...bs.filter(b => b.url !== url)])
-);
-ipcMain.handle('bookmarks:remove', (_e, url: string) =>
-  bookmarkStore.update(bs => bs.filter(b => b.url !== url))
-);
-ipcMain.handle('bookmarks:rename', (_e, url: string, title: string) =>
-  bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, title } : b)))
-);
-ipcMain.handle('bookmarks:move', (_e, url: string, folderId: string | null) =>
-  bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, folderId } : b)))
-);
+ipcMain.handle('bookmarks:list',   (e) => rejectUntrustedSender(e, 'bookmarks:list') ? [] : bookmarkStore.get());
+ipcMain.handle('bookmarks:add',    (e, url: string, title: string) => {
+  if (rejectUntrustedSender(e, 'bookmarks:add')) return;
+  return bookmarkStore.update(bs => [{ url, title, addedAt: Date.now(), folderId: null }, ...bs.filter(b => b.url !== url)]);
+});
+ipcMain.handle('bookmarks:remove', (e, url: string) => {
+  if (rejectUntrustedSender(e, 'bookmarks:remove')) return;
+  return bookmarkStore.update(bs => bs.filter(b => b.url !== url));
+});
+ipcMain.handle('bookmarks:rename', (e, url: string, title: string) => {
+  if (rejectUntrustedSender(e, 'bookmarks:rename')) return;
+  return bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, title } : b)));
+});
+ipcMain.handle('bookmarks:move', (e, url: string, folderId: string | null) => {
+  if (rejectUntrustedSender(e, 'bookmarks:move')) return;
+  return bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, folderId } : b)));
+});
 
-ipcMain.handle('bookmarks:listFolders', () => bookmarkFoldersStore.get());
-ipcMain.handle('bookmarks:createFolder', (_e, name: string) =>
-  bookmarkFoldersStore.update(fs => [
+ipcMain.handle('bookmarks:listFolders', (e) => rejectUntrustedSender(e, 'bookmarks:listFolders') ? [] : bookmarkFoldersStore.get());
+ipcMain.handle('bookmarks:createFolder', (e, name: string) => {
+  if (rejectUntrustedSender(e, 'bookmarks:createFolder')) return;
+  return bookmarkFoldersStore.update(fs => [
     ...fs,
     { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, createdAt: Date.now() },
-  ])
-);
-ipcMain.handle('bookmarks:renameFolder', (_e, id: string, name: string) =>
-  bookmarkFoldersStore.update(fs => fs.map(f => (f.id === id ? { ...f, name } : f)))
-);
-ipcMain.handle('bookmarks:removeFolder', (_e, id: string) => {
+  ]);
+});
+ipcMain.handle('bookmarks:renameFolder', (e, id: string, name: string) => {
+  if (rejectUntrustedSender(e, 'bookmarks:renameFolder')) return;
+  return bookmarkFoldersStore.update(fs => fs.map(f => (f.id === id ? { ...f, name } : f)));
+});
+ipcMain.handle('bookmarks:removeFolder', (e, id: string) => {
+  if (rejectUntrustedSender(e, 'bookmarks:removeFolder')) return;
   // Bookmarks inside the deleted folder move back to the top level rather than being lost.
   bookmarkStore.update(bs => bs.map(b => (b.folderId === id ? { ...b, folderId: null } : b)));
   return bookmarkFoldersStore.update(fs => fs.filter(f => f.id !== id));
@@ -989,11 +1024,9 @@ ipcMain.handle('urlHistory:add', (_e, url: string) => {
 });
 
 // Speed-dial IPC
-ipcMain.handle('speeddial:get', () => speedDialStore.get());
+ipcMain.handle('speeddial:get', (e) => rejectUntrustedSender(e, 'speeddial:get') ? [] : speedDialStore.get());
 ipcMain.handle('speeddial:set', (e, tiles: unknown) => {
-  // Only the newtab page (a file:// URL) may write tiles
-  const senderUrl = e.senderFrame?.url ?? '';
-  if (!senderUrl.startsWith('file://') || !senderUrl.includes('newtab.html')) return;
+  if (rejectUntrustedSender(e, 'speeddial:set')) return;
   if (!Array.isArray(tiles) || tiles.length > 100) return;
   const sanitized: SpeedDialTile[] = (tiles as unknown[])
     .filter((t): t is Record<string, unknown> => t !== null && typeof t === 'object')
@@ -1007,7 +1040,7 @@ ipcMain.handle('speeddial:set', (e, tiles: unknown) => {
 });
 
 // App IPC
-ipcMain.handle('app:versionInfo', () => ({
+ipcMain.handle('app:versionInfo', (e) => rejectUntrustedSender(e, 'app:versionInfo') ? null : ({
   current: app.getVersion(), latest: latestVersion, status: updateStatus, isPackaged: app.isPackaged,
 }));
 ipcMain.handle('app:checkForUpdates', () => {
@@ -1044,10 +1077,11 @@ ipcMain.handle('followalong:setMirrorNavigation', (_e, leaderId: string, mirrorN
 ipcMain.handle('followalong:list', () => sessionManager?.listFollowPairings() ?? []);
 
 // Settings IPC
-ipcMain.handle('settings:get', () => settingsStore.get());
-ipcMain.handle('settings:set', (_e, patch: Partial<AppSettings>) =>
-  settingsStore.update(s => ({ ...s, ...patch }))
-);
+ipcMain.handle('settings:get', (e) => rejectUntrustedSender(e, 'settings:get') ? null : settingsStore.get());
+ipcMain.handle('settings:set', (e, patch: unknown) => {
+  if (rejectUntrustedSender(e, 'settings:set')) return;
+  return settingsStore.update(s => applySettingsPatch(s, patch));
+});
 
 // Update log IPC
 ipcMain.handle('app:getUpdateLog', () => updateLogFile ? readUpdateLog(updateLogFile) : []);
