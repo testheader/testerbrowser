@@ -81,7 +81,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `sessions:destroy` | R→M | destroy view, close SQLite |
 | `sessions:rename` | R→M | rename session |
 | `sessions:pin` | R→M | pin/unpin session |
-| `sessions:reopen` | R→M | recreate a closed session by partition |
+| `sessions:reopen` | R→M | recreate a closed session by partition, restoring pin/notes/emulation |
 | `sessions:back/forward/reload/stop` | R→M | navigation controls |
 | `sessions:setZoom/resetZoom/getZoom` | R→M | zoom factor |
 | `sessions:getCookies` | R→M | `session.cookies.get({})` for session partition |

@@ -917,7 +917,7 @@ export class SessionManager {
 
   createSession(
     name: string,
-    opts: { persistent?: boolean; startUrl?: string; partition?: string; color?: string } = {}
+    opts: { persistent?: boolean; startUrl?: string; partition?: string; color?: string; pinned?: boolean } = {}
   ): TestSession {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
@@ -953,7 +953,7 @@ export class SessionManager {
       persistent,
       partition,
       currentUrl: opts.startUrl || '',
-      pinned: false,
+      pinned: opts.pinned ?? false,
       color,
       view, recorder,
       createdAt: Date.now(),
@@ -1410,7 +1410,7 @@ export class SessionManager {
       const persistentSessions = Array.from(this.sessions.values()).filter(s => s.persistent);
       const sessions = persistentSessions
         .sort((a, b) => (orderIndex.get(a.id) ?? Infinity) - (orderIndex.get(b.id) ?? Infinity))
-        .map(s => ({ name: s.name, partition: s.partition, url: s.currentUrl, color: s.color }));
+        .map(s => ({ name: s.name, partition: s.partition, url: s.currentUrl, color: s.color, pinned: s.pinned }));
       const notes: Record<string, string> = {};
       for (const [id, note] of this.sessionNotes) {
         const s = this.sessions.get(id);
@@ -1432,7 +1432,7 @@ export class SessionManager {
       const { sessions, notes, emulation } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
       if (!sessions?.length) return false;
       for (const s of sessions) {
-        const sess = this.createSession(s.name, { partition: s.partition, startUrl: s.url, color: s.color });
+        const sess = this.createSession(s.name, { partition: s.partition, startUrl: s.url, color: s.color, pinned: s.pinned });
         if (notes?.[s.partition]) this.sessionNotes.set(sess.id, notes[s.partition]);
         // Re-apply persisted overrides through setEmulation (not just record
         // them on s.emulation) so the CDP commands / date-offset script are

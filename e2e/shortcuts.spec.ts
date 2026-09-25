@@ -78,6 +78,81 @@ test('Ctrl+Shift+T reopens the last closed tab', async () => {
   await expect.poll(tabCount).toBe(afterOpen);
 });
 
+test('closing a tab still on the new-tab page and reopening it lands back on the new-tab page, not example.com (#231)', async () => {
+  await resetToSingleTab();
+  await window.keyboard.press('Control+t');
+  await expect(window.locator('#urlbar')).toHaveValue('');
+
+  await window.keyboard.press('Control+w');
+  await window.keyboard.press('Control+Shift+T');
+  await expect.poll(tabCount).toBe(1);
+  await expect(window.locator('#urlbar')).toHaveValue('');
+});
+
+test('reopening a closed tab restores its pin state, notes and emulation (#231)', async () => {
+  const urlPath = '/console/logs.html';
+  await window.keyboard.press('Control+t');
+  const id = await activeTabId();
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.pin(id, true), id);
+  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.setNotes(id, 'reopen test notes'), id);
+  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.emulation.set(id, { locale: 'fr-FR' }), id);
+
+  const before = await tabCount();
+  await window.keyboard.press('Control+w');
+  await expect.poll(tabCount).toBe(before - 1);
+
+  await window.keyboard.press('Control+Shift+T');
+  await expect.poll(tabCount).toBe(before);
+  const reopenedId = await activeTabId();
+  await expect(window.locator(`.tab[data-id="${reopenedId}"]`)).toHaveAttribute('data-pinned', '1');
+
+  const notes = await window.evaluate(
+    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.getNotes(id), reopenedId
+  );
+  expect(notes).toBe('reopen test notes');
+
+  const emulation = await window.evaluate(
+    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.emulation.get(id), reopenedId
+  );
+  expect(emulation?.locale).toBe('fr-FR');
+
+  // Unpin so resetToSingleTab()'s repeated Ctrl+W in later tests can close it.
+  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.pin(id, false), reopenedId);
+});
+
+test('reopening 3 closed tabs in a row restores them most-recently-closed first, each with its own URL (#231)', async () => {
+  await resetToSingleTab();
+  const paths = ['/console/logs.html', '/network/basic.html', '/cookies/index.html'];
+  for (const p of paths) {
+    await window.keyboard.press('Control+t');
+    await window.click('#urlbar');
+    await window.fill('#urlbar', fixtures.url(p));
+    await window.press('#urlbar', 'Enter');
+    const tab = await getTabPage(app, p);
+    await tab.waitForLoadState('load');
+  }
+  await expect.poll(tabCount).toBe(1 + paths.length);
+
+  // Ctrl+W always closes the active tab, which is the tab just opened/navigated
+  // to above — so this closes paths[2], then paths[1], then paths[0], in that
+  // order, pushing them onto closedTabs in the same order.
+  for (let i = 0; i < paths.length; i++) await window.keyboard.press('Control+w');
+  await expect.poll(tabCount).toBe(1);
+
+  // reopenTab() pops closedTabs LIFO, so the most-recently-closed tab
+  // (paths[0], closed last above) comes back first.
+  for (const p of paths) {
+    await window.keyboard.press('Control+Shift+T');
+    await expect.poll(() => window.locator('#urlbar').inputValue()).toContain(p);
+  }
+});
+
 test('Ctrl+Tab / Ctrl+Shift+Tab cycle tabs by most-recently-used', async () => {
   // Start from exactly one tab so the MRU stack only ever contains A and B —
   // otherwise Ctrl+Shift+Tab's "least recently used" would land on whatever

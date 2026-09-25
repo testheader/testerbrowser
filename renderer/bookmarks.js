@@ -224,7 +224,7 @@ export function renderBookmarksBar() {
 }
 
 function isBookmarkableUrl(url) {
-  return !!url && url !== 'https://example.com';
+  return !!url;
 }
 
 export function updateBookmarkStar() {

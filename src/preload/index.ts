@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MockRule, ResilienceRule } from '../main/sessionManager';
+import type { MockRule, ResilienceRule, EmulationOverrides } from '../main/sessionManager';
 
 contextBridge.exposeInMainWorld('testerBrowser', {
   sessions: {
@@ -13,7 +13,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     rename:      (id: string, name: string) => ipcRenderer.invoke('sessions:rename', id, name),
     pin:         (id: string, pinned: boolean) => ipcRenderer.invoke('sessions:pin', id, pinned),
     setTabOrder: (order: string[]) => ipcRenderer.invoke('sessions:setTabOrder', order),
-    reopen:      (opts: { name: string; url: string; partition: string }) => ipcRenderer.invoke('sessions:reopen', opts),
+    reopen:      (opts: { name: string; url: string | null; partition: string; color?: string; pinned?: boolean; notes?: string; emulation?: EmulationOverrides }) =>
+                   ipcRenderer.invoke('sessions:reopen', opts),
     back:        (id: string) => ipcRenderer.invoke('sessions:back', id),
     forward:     (id: string) => ipcRenderer.invoke('sessions:forward', id),
     reload:      (id: string) => ipcRenderer.invoke('sessions:reload', id),

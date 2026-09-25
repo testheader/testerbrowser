@@ -27,7 +27,7 @@ let dragSourceId     = null;
 const tabFavicons    = {};
 const tabTitles      = {};
 const tabLoading     = {};
-const closedTabs     = []; // [{ name, url, partition, color }] — most recent last
+const closedTabs     = []; // [{ name, url, partition, color, pinned, notes, emulation }] — most recent last
 
 export function getActiveId() { return activeId; }
 export function getTabOrder() { return tabOrder; }
@@ -335,7 +335,24 @@ export async function closeTab(id) {
     }
   }
 
-  if (s) closedTabs.push({ name: s.name, url: s.url || 'https://example.com', partition: s.partition, color: s.color });
+  if (s) {
+    // Read notes/emulation now — destroySession() below (via sessions:destroy)
+    // throws away its own copies unconditionally, so the entry has to carry
+    // its own snapshot for reopenTab() to restore from.
+    const [notes, emulation] = await Promise.all([
+      testerBrowser.sessions.getNotes(id),
+      testerBrowser.emulation.get(id),
+    ]);
+    closedTabs.push({
+      name: s.name,
+      url: s.url || null,
+      partition: s.partition,
+      color: s.color,
+      pinned: s.pinned,
+      notes: notes || undefined,
+      emulation: emulation || undefined,
+    });
+  }
   if (closedTabs.length > 20) closedTabs.shift();
 
   await testerBrowser.sessions.destroy(id);
