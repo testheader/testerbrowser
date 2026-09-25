@@ -229,6 +229,12 @@ interface SpeedDialTile { id: string; url: string; title: string; }
 //   already-open tab's recorder was already constructed with the old cap.
 //   Clamped via clampNumberSetting() both on load (a hand-edited or stale
 //   settings.json) and in applySettingsPatch() (settings:set).
+// - autoOpenDownloadsPanel
+//   #247: off by default — a download triggered incidentally by a page
+//   under test no longer force-opens the downloads panel and narrows the
+//   active page mid-test. The downloads button shows an unseen-download
+//   badge instead; turning this on restores the old always-auto-open
+//   behaviour.
 
 const DEFAULT_SETTINGS: AppSettings = {
   redactSensitiveHeaders: false,
@@ -237,6 +243,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   searchEngine: 'google',
   recordPlaybackColumnWidths: { record: 220, saved: 420 },
   debugMode: false,
+  autoOpenDownloadsPanel: false,
   recorderMaxEvents: 20000,
   recordingRetentionDays: 30,
 };

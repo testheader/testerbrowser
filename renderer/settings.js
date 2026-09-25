@@ -38,6 +38,7 @@ export async function openSettings() {
   const settings = await testerBrowser.settings.get();
   document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
   document.getElementById('debugModeToggle').checked = !!settings.debugMode;
+  document.getElementById('autoOpenDownloadsPanelToggle').checked = !!settings.autoOpenDownloadsPanel;
   document.getElementById('searchEngineSelect').value = settings.searchEngine || 'google';
   document.getElementById('recorderMaxEventsInput').value = settings.recorderMaxEvents ?? 20000;
   document.getElementById('recordingRetentionDaysInput').value = settings.recordingRetentionDays ?? 30;
@@ -132,6 +133,10 @@ export function initSettings() {
 
   document.getElementById('debugModeToggle').addEventListener('change', (e) => {
     testerBrowser.settings.set({ debugMode: e.target.checked });
+  });
+
+  document.getElementById('autoOpenDownloadsPanelToggle').addEventListener('change', (e) => {
+    testerBrowser.settings.set({ autoOpenDownloadsPanel: e.target.checked });
   });
 
   document.getElementById('searchEngineSelect').addEventListener('change', (e) => {

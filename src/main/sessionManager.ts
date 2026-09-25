@@ -1180,7 +1180,7 @@ export class SessionManager {
     if (!this.resilienceRulesByPartition.has(partition)) this.resilienceRulesByPartition.set(partition, []);
     const ses = electronSession.fromPartition(partition);
 
-    this.downloadManager.attach(ses);
+    this.downloadManager.attach(ses, id);
     this.permissionManager.attach(ses, partition);
 
     const view = new WebContentsView({

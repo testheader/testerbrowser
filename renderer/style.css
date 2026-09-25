@@ -326,6 +326,9 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .dl-item:last-child { border-bottom: none; }
 .dl-name { font-size: 12px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis;
            white-space: nowrap; margin-bottom: 4px; }
+.dl-tab { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-faint);
+          margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-tab-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dl-progress { height: 4px; background: var(--bg-hover); border-radius: 2px; overflow: hidden; margin: 4px 0; }
 .dl-progress-bar { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
 .dl-info { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }

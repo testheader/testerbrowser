@@ -9,6 +9,7 @@ const BASE: AppSettings = {
   debugMode: false,
   recorderMaxEvents: 20000,
   recordingRetentionDays: 30,
+  autoOpenDownloadsPanel: false,
 };
 
 describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
@@ -51,6 +52,11 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
   it('ignores a non-object securityRuleOverrides', () => {
     const result = applySettingsPatch(BASE, { securityRuleOverrides: 'nope' });
     expect(result.securityRuleOverrides).toEqual(BASE.securityRuleOverrides);
+  });
+
+  it('applies autoOpenDownloadsPanel and ignores a wrong-typed value (#247)', () => {
+    expect(applySettingsPatch(BASE, { autoOpenDownloadsPanel: true }).autoOpenDownloadsPanel).toBe(true);
+    expect(applySettingsPatch(BASE, { autoOpenDownloadsPanel: 'yes' }).autoOpenDownloadsPanel).toBe(false);
   });
 
   it('applies securityIncludeSubresources and ignores a wrong-typed value (#240)', () => {

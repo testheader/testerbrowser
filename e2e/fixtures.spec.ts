@@ -421,15 +421,51 @@ test('performance/console-flood.html: exceeding a low recorder cap shows the tim
 
 // ── Downloads ────────────────────────────────────────────────────────────────
 
-test('downloads/index.html: generated file download appears in the downloads list', async () => {
+// #247: autoOpenDownloadsPanel defaults to false — a download no longer
+// force-opens the panel and narrows the active page mid-test. The button
+// gets an unseen-download badge instead, and the row names the tab it
+// came from once the panel is opened manually.
+test('downloads/index.html: with auto-open off (default), a download does not force-open the panel — the badge shows, and the row names the originating tab', async () => {
+  await window.evaluate(() => (window as any).testerBrowser.settings.set({ autoOpenDownloadsPanel: false }));
+  if (await window.locator('#downloadsPanel').evaluate((el) => el.classList.contains('open'))) {
+    await window.click('#downloadsBtn'); // start from closed
+  }
+
   const tab = await navigate('/downloads/index.html');
+  // Whichever tab is actually active/downloading — not assumed to be
+  // sessions[0], since earlier tests in this shared-window file may have
+  // left more than one tab open or renamed the original.
+  const activeName = await window.evaluate(() => {
+    const activeTab = document.querySelector('.tab.active');
+    return activeTab ? activeTab.querySelector('.tab-name')?.textContent ?? '' : '';
+  });
   await tab.click('a[href*="small.txt"] button');
   await window.waitForTimeout(1_500);
-  await window.click('#downloadsBtn');
 
+  await expect(window.locator('#downloadsPanel')).not.toHaveClass(/open/);
+  await expect(window.locator('#downloadsBadge')).toBeVisible();
+
+  await window.click('#downloadsBtn');
+  await expect(window.locator('#downloadsPanel')).toHaveClass(/open/);
   // Electron appends "(1)" etc. if a same-named file already exists in the
   // downloads folder, so match loosely rather than asserting the exact name.
   await expect(window.locator('#downloadsList')).toContainText(/small.*\.txt/);
+  await expect(window.locator('#downloadsList')).toContainText(activeName);
+});
+
+// #247: regression check that the old always-auto-open behavior is still
+// reachable via the setting, for testers who want it back.
+test('downloads/index.html: with auto-open on, a download does force-open the panel', async () => {
+  await window.click('#downloadsBtn'); // close the panel left open by the previous test
+  await window.evaluate(() => (window as any).testerBrowser.settings.set({ autoOpenDownloadsPanel: true }));
+
+  const tab = await navigate('/downloads/index.html');
+  await tab.click('a[href*="small.txt"] button');
+  await expect(window.locator('#downloadsPanel')).toHaveClass(/open/, { timeout: 5_000 });
+
+  // Reset for any later test in this file that assumes the default.
+  await window.evaluate(() => (window as any).testerBrowser.settings.set({ autoOpenDownloadsPanel: false }));
+  await window.click('#downloadsBtn');
 });
 
 // ── Storage ──────────────────────────────────────────────────────────────────
