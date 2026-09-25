@@ -233,11 +233,14 @@ test('a network request\'s detail panel offers Replay, Mock and Resilience, in t
     await expect(window.locator('#detailReplayBtn')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
+  // #232 added Copy as cURL / Copy as fetch to this same row.
   const actions = window.locator('.detail-actions .detail-action-btn');
-  await expect(actions).toHaveCount(3);
+  await expect(actions).toHaveCount(5);
   await expect(actions.nth(0)).toHaveText('↺ Replay');
   await expect(actions.nth(1)).toHaveText('⇒ Mock');
   await expect(actions.nth(2)).toHaveText('⇒ Resilience');
+  await expect(actions.nth(3)).toHaveText('⧉ cURL');
+  await expect(actions.nth(4)).toHaveText('⧉ fetch');
 
   // Replay: opens the modal, prefilled from this exact call.
   await window.locator('#detailReplayBtn').click();

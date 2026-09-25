@@ -16,14 +16,18 @@ test('a pinned tab is still pinned after a full app restart (#231)', async () =>
   // Two full Electron launches (each including a build's worth of startup
   // work) in one test easily exceeds the default 30s budget on a loaded CI
   // runner — every other spec file launches exactly once per test.
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-pin-'));
 
   const app1 = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
   const window1 = await getMainWindow(app1);
   await window1.waitForLoadState('load');
 
-  const tabId = await window1.locator('.tab.active').getAttribute('data-id');
+  // Explicit timeouts below: Playwright's own per-action default (30s, unset
+  // in playwright.config.ts) is a separate, tighter ceiling than this test's
+  // own test.setTimeout(90_000) above — a slow-to-render tab on a loaded CI
+  // runner can still trip the former even with the latter raised.
+  const tabId = await window1.locator('.tab.active').getAttribute('data-id', { timeout: 60_000 });
   await window1.evaluate(
     (id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.pin(id, true), tabId
   );
@@ -40,7 +44,8 @@ test('a pinned tab is still pinned after a full app restart (#231)', async () =>
   const window2 = await getMainWindow(app2);
   await window2.waitForLoadState('load');
 
-  await expect(window2.locator('.tab', { hasText: 'Pinned across restart' })).toHaveAttribute('data-pinned', '1');
+  await expect(window2.locator('.tab', { hasText: 'Pinned across restart' }))
+    .toHaveAttribute('data-pinned', '1', { timeout: 60_000 });
 
   await app2.close();
   fs.rmSync(userDataDir, { recursive: true, force: true });

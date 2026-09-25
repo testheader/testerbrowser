@@ -250,9 +250,15 @@ test('network/status-codes.html: HAR button exports a valid HAR 1.2 file with a 
   }, tmpPath);
 
   await navigate('/network/status-codes.html');
-  await window.click('#consoleTabNetwork');
   await window.waitForTimeout(1_500); // pollTimeline runs every 1s
 
+  // #harExportBtn lives in the Console sub-tab's own toolbar (#consoleControls,
+  // next to Clear), not the Network sub-tab's — recording:exportHar reads
+  // every stored row straight from the recorder regardless of which sub-tab
+  // is showing. An earlier test in this file leaves Network active, so
+  // switch back explicitly rather than assuming Console's own default.
+  await window.click('#consoleTabConsole');
+  await expect(window.locator('#harExportBtn')).toBeVisible();
   await window.click('#harExportBtn');
   await expect(window.locator('#harExportStatus')).toHaveText(/Saved/, { timeout: 10_000 });
 
