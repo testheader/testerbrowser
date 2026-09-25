@@ -237,6 +237,14 @@ export async function refreshTabs() {
   refreshFollowPickers();
   refreshVRComparePicker();
 
+  // Resolve activeId before any tab element is rendered below — on the very
+  // first refreshTabs() after a fresh load (e.g. after restoring sessions on
+  // app restart), activeId is still null, and updateTabElement() reads it to
+  // decide the .active class. Resolving it after the render loop meant no
+  // tab ever got marked active until a second, unrelated refresh happened to
+  // fire.
+  if (!activeId && sessions.length) { activeId = sessions[0].id; recordVisit(activeId); }
+
   tabOrder = tabOrder.filter((id) => sessionMap.has(id));
   for (const s of sessions) if (!tabOrder.includes(s.id)) tabOrder.push(s.id);
   testerBrowser.sessions.setTabOrder(tabOrder);
@@ -282,7 +290,6 @@ export async function refreshTabs() {
   }
 
   mruStack = mruStack.filter((id) => sessionMap.has(id));
-  if (!activeId && sessions.length) { activeId = sessions[0].id; recordVisit(activeId); }
 
   const active = sessionMap.get(activeId);
   if (active) {
