@@ -153,7 +153,7 @@ test('sessions:reopen restores a pinned tab as pinned (#231)', async () => {
 
 test('reopening 3 closed tabs in a row restores them most-recently-closed first, each with its own URL (#231)', async () => {
   await resetToSingleTab();
-  const paths = ['/console/logs.html', '/network/basic.html', '/cookies/index.html'];
+  const paths = ['/console/logs.html', '/network/status-codes.html', '/storage/cookies.html'];
   for (const p of paths) {
     await window.keyboard.press('Control+t');
     await window.click('#urlbar');
