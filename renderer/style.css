@@ -573,6 +573,14 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #replayBody:focus { outline: none; border-color: var(--accent); }
 .replay-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center;
                   padding: 10px 18px; border-top: 1px solid var(--border-color); flex-shrink: 0; }
+/* #233: pushed to the far left of the (flex-end) actions row so the buttons stay right-aligned */
+.replay-hint { font-size: 11px; color: var(--text-faint); margin-right: auto; }
+.replay-timeout-label { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+#replayTimeout { width: 52px; padding: 2px 4px; border-radius: 3px; border: 1px solid var(--border-color);
+                 background: var(--bg-deep); color: var(--text-primary); font-size: 12px; }
+.replay-redacted-note { font-size: 11px; color: var(--warn-strong); background: var(--warn-surface);
+                         border: 1px solid var(--warn-border); border-radius: 4px; padding: 6px 10px; margin-top: 8px; }
+.replay-mock-note { font-size: 11px; color: var(--accent-text); margin-bottom: 8px; }
 .replay-res-title { font-size: 10px; color: var(--accent); text-transform: uppercase;
                     letter-spacing: 0.6px; font-weight: 600; margin-bottom: 10px; }
 .replay-res-status { font-size: 14px; font-family: monospace; margin-bottom: 10px; font-weight: 700; }

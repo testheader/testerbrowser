@@ -11,12 +11,17 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createServer, Server } from 'http';
-import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
 let window: Page;
 let testServer: Server;
 let testPort: number;
+// #233: the Replay/Mock/redaction/timeout tests below need real routes
+// (/echo/headers, /network/slow) the inline testServer above doesn't have —
+// the shared fixtures server already provides them.
+let fixtures: FixtureServer;
 
 test.beforeAll(async () => {
   // Spin up a local HTTP server so navigation tests don't need internet access.
@@ -36,6 +41,7 @@ test.beforeAll(async () => {
     });
   });
 
+  fixtures = await startFixtureServer();
   app = await launchApp(MAIN_PATH);
   window = await getMainWindow(app);
   // 'load' waits until all scripts have run, ensuring the renderer has set its
@@ -46,6 +52,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app.close();
   await new Promise<void>(resolve => testServer.close(() => resolve()));
+  await fixtures.close();
 });
 
 // ── Window ───────────────────────────────────────────────────────────────────
@@ -140,14 +147,18 @@ test('timeline receives events after navigation', async () => {
 // Navigate, open a request row's detail tab, and click its Replay action
 // button (#178 moved Replay off the per-row button and into the detail
 // panel — see #detailReplayBtn in detail-panel.js).
-async function openReplayOverlay(win: Page, port: number) {
-  await win.fill('#urlbar', `http://127.0.0.1:${port}`);
+async function openReplayOverlayAt(win: Page, url: string) {
+  await win.fill('#urlbar', url);
   await win.press('#urlbar', 'Enter');
   await win.waitForTimeout(2_500);
   await win.click('#consoleTabNetwork');
   await win.locator('.evt.network-request').last().click();
   await win.locator('#detailReplayBtn').click();
   await expect(win.locator('#replayOverlay')).toHaveClass(/open/);
+}
+
+async function openReplayOverlay(win: Page, port: number) {
+  await openReplayOverlayAt(win, `http://127.0.0.1:${port}`);
 }
 
 test('replay button opens the overlay and close button dismisses it', async () => {
@@ -301,6 +312,105 @@ test('replay-actions: ⇒ Mock before any Send ↵ shows the "no response" note'
 
   await expect(window.locator('#consoleTabMock')).toHaveClass(/active/);
   await expect(window.locator('#mockBodyNote')).toBeVisible();
+});
+
+test('replay sends through the originating tab\'s own session, including its cookies (#233)', async () => {
+  // #233's whole point: replay used to go through the app's default session
+  // (net.fetch), which has none of a tab's cookies — send through this tab's
+  // partition instead, with the Cookies table's contents as the Cookie header.
+  await openReplayOverlayAt(window, fixtures.url('/echo/headers'));
+  // Simulate what a recorded Cookie header would prefill: the send handler
+  // folds the Cookies table into a Cookie header regardless of where the row
+  // came from, so this exercises the same "explicit cookies, sent through
+  // the tab's own session" path the ticket asks for.
+  await window.click('#replayAddCookie');
+  await window.locator('#replayCookiesTable .kv-key').last().fill('replay_test_cookie');
+  await window.locator('#replayCookiesTable .kv-val').last().fill('hello');
+
+  await window.click('#sendReplayBtn');
+  await expect(window.locator('.replay-res-status')).toHaveClass(/ok/, { timeout: 10_000 });
+
+  const bodyText = await window.locator('#replayBodyOut').textContent();
+  const echoed = JSON.parse(bodyText || '{}');
+  expect(echoed.cookie).toContain('replay_test_cookie=hello');
+
+  await window.click('#closeReplayBtn');
+});
+
+test('replay is intercepted by the tab\'s Mock rules instead of touching the network (#233)', async () => {
+  const sessionId = await window.locator('.tab.active').getAttribute('data-id');
+  await window.evaluate(
+    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.mock.addRule(id, {
+      id: 'replay-mock-233', urlPattern: '*/echo/headers*', method: 'GET',
+      statusCode: 200, body: '{"mocked":true}', responseHeaders: { 'content-type': 'application/json' }, enabled: true,
+    }),
+    sessionId
+  );
+
+  await openReplayOverlayAt(window, fixtures.url('/echo/headers'));
+  await window.click('#sendReplayBtn');
+  await expect(window.locator('.replay-res-status')).toHaveClass(/ok/, { timeout: 10_000 });
+  await expect(window.locator('.replay-mock-note')).toHaveText(/Served by mock rule/);
+
+  const bodyText = await window.locator('#replayBodyOut').textContent();
+  expect(JSON.parse(bodyText || '{}').mocked).toBe(true);
+
+  await window.evaluate(
+    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.mock.removeRule(id, 'replay-mock-233'),
+    sessionId
+  );
+  await window.click('#closeReplayBtn');
+});
+
+test('replay drops [REDACTED] headers from the prefill and never sends them (#233)', async () => {
+  // redactSensitiveHeaders is only read once, when a session's recorder is
+  // constructed — flip it on, then open a *new* tab so its recorder actually
+  // picks it up.
+  await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ redactSensitiveHeaders: true }));
+  await window.click('#newSessionBtn');
+  // A query string unique to this test — other tests above also navigate to
+  // /echo/headers on tabs that are still open, and getTabPage() matches by
+  // URL substring across every open tab, not just the active one.
+  const redactUrlPath = '/echo/headers?t=redact-233';
+  await window.fill('#urlbar', fixtures.url(redactUrlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, redactUrlPath, window);
+  await tab.waitForLoadState('load');
+  await tab.evaluate(
+    (url) => fetch(url, { headers: { Authorization: 'Bearer secret123' } }),
+    fixtures.url(redactUrlPath)
+  );
+  await window.waitForTimeout(1_500);
+
+  await window.click('#consoleTabNetwork');
+  await window.locator('.evt.network-request', { hasText: 'echo/headers' }).last().click();
+  await window.locator('#detailReplayBtn').click();
+  await expect(window.locator('#replayOverlay')).toHaveClass(/open/);
+
+  const headerValues = await window.locator('#replayHeadersTable .kv-val').evaluateAll(
+    (els) => (els as HTMLInputElement[]).map((el) => el.value)
+  );
+  expect(headerValues).not.toContain('[REDACTED]');
+
+  await window.click('#sendReplayBtn');
+  await expect(window.locator('.replay-res-status')).toHaveClass(/ok/, { timeout: 10_000 });
+  const bodyText = await window.locator('#replayBodyOut').textContent();
+  const echoed = JSON.parse(bodyText || '{}');
+  for (const v of Object.values(echoed)) expect(v).not.toBe('[REDACTED]');
+
+  await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ redactSensitiveHeaders: false }));
+  await window.click('#closeReplayBtn');
+});
+
+test('replay times out after the configured number of seconds (#233)', async () => {
+  await openReplayOverlayAt(window, fixtures.url('/network/status-codes.html'));
+  await window.fill('#replayUrl', fixtures.url('/network/slow?ms=5000'));
+  await window.fill('#replayTimeout', '1');
+
+  await window.click('#sendReplayBtn');
+  await expect(window.locator('.replay-res-status.err')).toHaveText(/Timed out after 1 s/, { timeout: 10_000 });
+
+  await window.click('#closeReplayBtn');
 });
 
 // ── Storage panel ─────────────────────────────────────────────────────────────

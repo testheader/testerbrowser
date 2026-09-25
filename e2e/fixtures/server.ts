@@ -59,6 +59,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/storage/set-cookie') return handleSetCookie(u, res);
   if (u.pathname === '/perf/echo') return handleEcho(u, res);
   if (u.pathname === '/echo/user-agent') return handleUserAgentEcho(req, res);
+  if (u.pathname === '/echo/headers') return handleHeadersEcho(req, res);
 
   return handleStatic(u, res);
 }
@@ -127,6 +128,19 @@ function handleEcho(u: URL, res: ServerResponse): void {
 function handleUserAgentEcho(req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ userAgent: req.headers['user-agent'] ?? '' }));
+}
+
+// #233: echoes every request header back as JSON — used by Replay's e2e
+// coverage to prove what actually left the app (cookies, no [REDACTED]
+// leaking through), not just what the overlay's UI shows.
+function handleHeadersEcho(req: IncomingMessage, res: ServerResponse): void {
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (typeof v === 'string') headers[k] = v;
+    else if (Array.isArray(v)) headers[k] = v.join(', ');
+  }
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(headers));
 }
 
 async function handleStatic(u: URL, res: ServerResponse): Promise<void> {

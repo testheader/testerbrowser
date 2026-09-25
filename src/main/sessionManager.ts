@@ -1023,10 +1023,7 @@ export class SessionManager {
       // correlated network event exists) so the recorded response/failure
       // event actually carries the mock/resilience tag.
       const tagId = networkId || requestId;
-      const mockRules = this.mockRulesByPartition.get(testSession.partition) ?? [];
-      const rule = mockRules.find(r =>
-        r.enabled && (r.method === '*' || r.method === request.method) && matchesGlob(r.urlPattern, request.url)
-      );
+      const rule = this.findMatchingMockRule(testSession.id, request.method, request.url);
       if (rule) {
         rule.hitCount = (rule.hitCount || 0) + 1;
         rule.lastHitAt = Date.now();
@@ -2492,6 +2489,19 @@ export class SessionManager {
 
   getMockRules(id: string): MockRule[] {
     return this.mockRulesForId(id) ?? [];
+  }
+
+  // #233: shared by the Fetch.requestPaused handler above and the
+  // recording:replay IPC, so a replay is intercepted by exactly the same
+  // rules (and matching semantics) a live request from that tab would be.
+  findMatchingMockRule(id: string, method: string, url: string): MockRule | null {
+    return this.getMockRules(id).find(
+      r => r.enabled && (r.method === '*' || r.method === method) && matchesGlob(r.urlPattern, url)
+    ) ?? null;
+  }
+
+  getPartition(id: string): string | null {
+    return this.sessions.get(id)?.partition ?? null;
   }
 
   addMockRule(id: string, rule: MockRule): void {

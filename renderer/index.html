@@ -444,6 +444,7 @@
           </select>
           <input id="replayUrl" placeholder="https://…" />
         </div>
+        <div id="replayRedactedNote" class="replay-redacted-note" hidden>Sensitive headers were redacted when recorded — cookies loaded from the tab; re-add Authorization manually if needed.</div>
       </div>
       <div class="replay-cols">
         <div class="replay-left">
@@ -478,6 +479,10 @@
         </div>
       </div>
       <div class="replay-actions">
+        <span class="replay-hint" title="Mock rules are applied to a replay the same way they'd apply to a live request from this tab; Resilience rules are not.">Resilience rules are not applied to replays</span>
+        <label class="replay-timeout-label" for="replayTimeout">Timeout (s)
+          <input type="number" id="replayTimeout" min="1" max="600" value="30" />
+        </label>
         <span id="replaySpinner">Sending…</span>
         <button class="detail-action-btn" id="replayToMockBtn"       title="Send this request's method, URL, headers and last response to the Mock panel">⇒ Mock</button>
         <button class="detail-action-btn" id="replayToResilienceBtn" title="Send this request's method, URL and headers to the Resilience panel">⇒ Resilience</button>

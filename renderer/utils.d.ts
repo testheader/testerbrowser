@@ -26,3 +26,4 @@ export interface CopyableRequest {
 }
 export function toCurl(req: CopyableRequest): string;
 export function toFetch(req: CopyableRequest): string;
+export function stripRedactedHeaders(headers: Record<string, string> | undefined | null): Record<string, string>;

@@ -145,6 +145,15 @@ export function toCurl(req) {
   return redactedNotice(headers, '#') + cmd;
 }
 
+// #233: with "Redact sensitive headers" on, a recorded Authorization/Cookie
+// value is the literal string '[REDACTED]' — sending that back to the
+// server is worse than useless, so both the Replay prefill and the main
+// process's own fetch (as a backstop) drop any header whose value is
+// exactly that.
+export function stripRedactedHeaders(headers) {
+  return Object.fromEntries(Object.entries(headers || {}).filter(([, v]) => v !== '[REDACTED]'));
+}
+
 export function toFetch(req) {
   const { method = 'GET', url = '', headers, postData } = req || {};
   const opts = { method: method || 'GET', headers: Object.fromEntries(nonRedactedHeaders(headers)) };

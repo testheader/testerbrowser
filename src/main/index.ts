@@ -1,9 +1,9 @@
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, Menu, clipboard, net, safeStorage, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, Menu, clipboard, net, safeStorage, shell, session as electronSession } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
-import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides } from './sessionManager';
+import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides, buildMockFulfillParams } from './sessionManager';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
@@ -1074,13 +1074,52 @@ ipcMain.handle('crash:clear', () => {
   return { ok: true };
 });
 
-ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string; headers: Record<string, string>; body?: string }) => {
+// #233: replays used to always go through net.fetch — the app's own default
+// session — so a tab's Mock/Resilience rules, cookie jar and HTTP cache
+// never applied, and a redacted [REDACTED] header value got sent to the
+// server literally. sessionId routes this through the *originating tab's*
+// partition instead, and checks its Mock rules (via the exact matcher
+// Fetch.requestPaused itself uses) before touching the network — Resilience
+// is deliberately not applied here (see the ticket's "out of scope").
+ipcMain.handle('recording:replay', async (_e, req: {
+  sessionId?: string; method: string; url: string; headers: Record<string, string>; body?: string; timeoutMs?: number;
+}) => {
+  const cleanHeaders = Object.fromEntries(Object.entries(req.headers || {}).filter(([, v]) => v !== '[REDACTED]'));
+
+  const mockRule = req.sessionId ? sessionManager?.findMatchingMockRule(req.sessionId, req.method, req.url) : null;
+  if (mockRule) {
+    const fulfill = buildMockFulfillParams(mockRule);
+    const headers: Record<string, string> = {};
+    for (const h of fulfill.responseHeaders) headers[h.name] = h.value;
+    return {
+      ok: true,
+      status: fulfill.responseCode,
+      statusText: '',
+      headers,
+      body: Buffer.from(fulfill.body, 'base64').toString('utf-8'),
+      servedBy: { mockRuleId: mockRule.id, urlPattern: mockRule.urlPattern },
+    };
+  }
+
+  // Clamped to the overlay's own 1-600s input range as a backstop against a
+  // malformed/absent value from the renderer.
+  const timeoutMs = Math.min(Math.max(Math.round((req.timeoutMs ?? 30000)), 1000), 600000);
   try {
-    const opts: RequestInit = { method: req.method, headers: req.headers };
+    const opts: RequestInit & { credentials?: 'omit' | 'same-origin' | 'include' } = {
+      method: req.method,
+      headers: cleanHeaders,
+      // Cookies stay explicit — exactly what's in the overlay's Cookies
+      // table (folded into a Cookie header by the renderer) — rather than
+      // silently also sending whatever else is in the partition's own jar.
+      credentials: 'omit',
+      signal: AbortSignal.timeout(timeoutMs),
+    };
     if (req.body && !['GET', 'HEAD'].includes(req.method.toUpperCase())) {
       opts.body = req.body;
     }
-    const res = await net.fetch(req.url, opts);
+    const partition = req.sessionId ? sessionManager?.getPartition(req.sessionId) : null;
+    const fetcher = partition ? electronSession.fromPartition(partition) : net;
+    const res = await fetcher.fetch(req.url, opts);
     const headers: Record<string, string> = {};
     res.headers.forEach((value: string, key: string) => { headers[key] = value; });
     const isImage = (headers['content-type'] || '').toLowerCase().startsWith('image/');
@@ -1091,6 +1130,9 @@ ipcMain.handle('recording:replay', async (_e, req: { method: string; url: string
     const body = await res.text();
     return { ok: true, status: res.status, statusText: res.statusText, headers, body };
   } catch (e: unknown) {
+    if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+      return { ok: false, error: `Timed out after ${Math.round(timeoutMs / 1000)} s` };
+    }
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 });

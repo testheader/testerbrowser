@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { escHtml, cookieMatchesDomain } from './utils.js';
+import { escHtml, cookieMatchesDomain, stripRedactedHeaders } from './utils.js';
 import { openMockFromRequest } from './mock.js';
 import { openResilienceFromRequest } from './resilience.js';
 
@@ -8,6 +8,11 @@ import { openResilienceFromRequest } from './resilience.js';
 // every openReplay() so a stale response from a previous request never leaks
 // into a hand-off for a different one.
 let lastReplayResult = null;
+
+// #233: the session id the currently-open request came from — recording:replay
+// sends through *this* tab's partition (its Mock rules, cookie jar, HTTP
+// cache), not the app's default session. Reset on every openReplay().
+let currentSessionId = null;
 
 function formatXml(xml) {
   let indent = 0;
@@ -92,7 +97,9 @@ function getEditorRequestHeaders() {
   return headers;
 }
 
-export async function openReplay(evt) {
+export async function openReplay(evt, sessionId) {
+  currentSessionId = sessionId ?? null;
+
   let reqData = {};
   try { reqData = JSON.parse(evt.payload ?? '{}'); } catch {}
   const req = reqData.request ?? {};
@@ -114,13 +121,40 @@ export async function openReplay(evt) {
   hdrTable.innerHTML = '';
   ckTable.innerHTML  = '';
 
+  // #233: a header recorded with "Redact sensitive headers" on is the
+  // literal string '[REDACTED]' — never prefill (or send) that. If it was
+  // specifically the Cookie header, fall back to the originating tab's own
+  // cookies for this URL instead of leaving the table empty.
   let cookieStr = '';
+  let cookieWasRedacted = false;
+  const visibleHeaders = stripRedactedHeaders(allHdrs);
   for (const [k, v] of Object.entries(allHdrs)) {
-    if (k.toLowerCase() === 'cookie') { cookieStr = v; continue; }
+    if (k.toLowerCase() === 'cookie') {
+      if (v === '[REDACTED]') cookieWasRedacted = true;
+      else cookieStr = v;
+      continue;
+    }
+  }
+  for (const [k, v] of Object.entries(visibleHeaders)) {
+    if (k.toLowerCase() === 'cookie') continue;
     addKvRow(hdrTable, k, v);
   }
   for (const [n, v] of parseCookieHeader(cookieStr)) {
     addKvRow(ckTable, n, v);
+  }
+
+  const redactedNote = document.getElementById('replayRedactedNote');
+  const headerWasRedacted = Object.values(allHdrs).some(v => v === '[REDACTED]');
+  redactedNote.hidden = !headerWasRedacted;
+
+  if (cookieWasRedacted && currentSessionId) {
+    let reqHostForCookies = '';
+    try { reqHostForCookies = new URL(url.startsWith('http') ? url : 'https://' + url).hostname; } catch {}
+    try {
+      const cookies = await testerBrowser.sessions.getCookies(currentSessionId);
+      const relevant = reqHostForCookies ? cookies.filter(c => cookieMatchesDomain(c, reqHostForCookies)) : cookies;
+      for (const c of relevant) addKvRow(ckTable, c.name, c.value);
+    } catch {}
   }
 
   const sessionPick = document.getElementById('replayCookieSessionPick');
@@ -190,13 +224,18 @@ export function initReplay() {
     if (!url) return;
 
     const headers = getEditorRequestHeaders();
+    const timeoutInput = document.getElementById('replayTimeout');
+    const timeoutS = Math.min(600, Math.max(1, parseInt(timeoutInput.value, 10) || 30));
+    timeoutInput.value = timeoutS;
 
     const spinner = document.getElementById('replaySpinner');
     const resArea = document.getElementById('replayResponse');
     spinner.classList.add('visible');
     resArea.innerHTML = '';
 
-    const result = await testerBrowser.recording.replay({ method, url, headers, body: body || undefined });
+    const result = await testerBrowser.recording.replay({
+      sessionId: currentSessionId, method, url, headers, body: body || undefined, timeoutMs: timeoutS * 1000,
+    });
     spinner.classList.remove('visible');
 
     if (!result.ok) {
@@ -205,6 +244,13 @@ export function initReplay() {
     }
 
     lastReplayResult = result;
+
+    if (result.servedBy?.mockRuleId) {
+      const mockNote = document.createElement('div');
+      mockNote.className   = 'replay-mock-note';
+      mockNote.textContent = `Served by mock rule ${result.servedBy.urlPattern}`;
+      resArea.appendChild(mockNote);
+    }
 
     const sc = result.status >= 200 && result.status < 300 ? 'ok' : 'err';
     const statusLine = document.createElement('div');

@@ -5,6 +5,7 @@ import { getActiveConsoleTab } from './console-tabs.js';
 import { openMockFromRequest } from './mock.js';
 import { openResilienceFromRequest } from './resilience.js';
 import { openReplay } from './replay.js';
+import { getActiveId } from './tabs.js';
 
 // detail-panel.js owns the set of open detail tabs and which one is active —
 // nothing outside this file touches them; console-tabs.js and timeline.js
@@ -219,7 +220,7 @@ function renderDetailContent() {
     }
     const replayBtn = document.getElementById('detailReplayBtn');
     if (replayBtn && actionReqEvt) {
-      replayBtn.onclick = () => openReplay(actionReqEvt);
+      replayBtn.onclick = () => openReplay(actionReqEvt, getActiveId());
     }
     const resilienceBtn = document.getElementById('detailResilienceBtn');
     if (resilienceBtn) {
