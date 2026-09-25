@@ -27,24 +27,71 @@ export function openResilienceFromRequest(method, url, requestHeaders, requestBo
   typeSel.value = 'error500';
   document.getElementById('resTypeDesc').textContent = TYPES[0].desc;
   document.getElementById('resLatencyField').classList.add('res-hidden');
+  document.getElementById('resReleaseField').classList.add('res-hidden');
   document.getElementById('resProb').value = '100';
 
   capturedMethod         = method || null;
   capturedRequestHeaders = requestHeaders || null;
   capturedRequestBody    = requestBody ?? null;
+  updateMethodChip();
 
   urlInput.focus();
 }
 
+// #236: the "⇒ Resilience" prefill scopes the rule to the captured call's
+// method — shown here so that scoping is visible, and removable ("clear")
+// rather than a silent, easy-to-miss constraint. Editing the URL field by
+// hand also clears it (see the resUrl input listener below): the method was
+// only ever meant to travel with the *exact* captured URL, and once the
+// tester starts changing that, keeping it scoped is more likely to
+// surprise than help.
+function updateMethodChip() {
+  const chip  = document.getElementById('resMethodChip');
+  const label = document.getElementById('resMethodChipLabel');
+  if (!chip || !label) return;
+  if (capturedMethod) {
+    label.textContent = capturedMethod;
+    chip.classList.remove('res-hidden');
+  } else {
+    chip.classList.add('res-hidden');
+  }
+}
+
 const TYPES = [
-  { value: 'error500',  label: '500 Error',           desc: 'Return HTTP 500 Internal Server Error' },
-  { value: 'timeout',   label: 'Timeout (504)',        desc: 'Return HTTP 504 Gateway Timeout' },
-  { value: 'offline',   label: 'Offline',              desc: 'Fail request as if network is disconnected' },
-  { value: 'missing',   label: '404 Missing',          desc: 'Return HTTP 404 Not Found' },
-  { value: 'corrupt',   label: 'Corrupt Response',     desc: 'Return 200 with garbled binary body' },
-  { value: 'latency',   label: 'Add Latency',          desc: 'Delay the request by the specified ms' },
+  { value: 'error500',  label: '500 Error',            desc: 'Return HTTP 500 Internal Server Error' },
+  { value: 'timeout',   label: 'Immediate 504',         desc: 'Return HTTP 504 Gateway Timeout immediately' },
+  { value: 'stall504',  label: 'Stall then 504',        desc: 'Wait, then return HTTP 504 Gateway Timeout' },
+  { value: 'hang',      label: 'Hang (no response)',    desc: 'Never respond — the page sees the request stay pending until it aborts client-side or navigates away' },
+  { value: 'offline',   label: 'Offline',               desc: 'Fail request as if network is disconnected' },
+  { value: 'missing',   label: '404 Missing',           desc: 'Return HTTP 404 Not Found' },
+  { value: 'corrupt',   label: 'Corrupt Response',      desc: 'Return 200 with garbled binary body' },
+  { value: 'latency',   label: 'Add Latency',           desc: 'Delay the request by the specified ms' },
   { value: 'random500', label: 'Random 500 (% chance)', desc: 'Randomly return 500, use probability below' },
 ];
+
+// Types that reuse the "Delay ms" field (rule.latencyMs) — 'latency' delays
+// then lets the request through, 'stall504' delays then fulfils 504; only
+// the field's label text differs between them.
+const LATENCY_FIELD_TYPES = ['latency', 'stall504'];
+const LATENCY_DEFAULT_BY_TYPE = { latency: '2000', stall504: '30000' };
+
+// Shared between the add-form's #resType change listener and each edit
+// row's own type <select> — shows/hides the latency field (reused by
+// 'latency'/'stall504', its label switching to match) and the release-after
+// field ('hang' only), and nudges the latency input to that type's sensible
+// default the first time it's relevant, without clobbering a value the
+// tester already customized.
+function applyTypeFieldVisibility(type, latencyField, latencyInput, latencyLabel, releaseField) {
+  const usesLatency = LATENCY_FIELD_TYPES.includes(type);
+  latencyField.classList.toggle('res-hidden', !usesLatency);
+  if (usesLatency) {
+    latencyLabel.textContent = type === 'stall504' ? 'Stall ms' : 'Delay ms';
+    const wanted = LATENCY_DEFAULT_BY_TYPE[type];
+    const other  = type === 'stall504' ? LATENCY_DEFAULT_BY_TYPE.latency : LATENCY_DEFAULT_BY_TYPE.stall504;
+    if (!latencyInput.value || latencyInput.value === other) latencyInput.value = wanted;
+  }
+  if (releaseField) releaseField.classList.toggle('res-hidden', type !== 'hang');
+}
 
 export function initResilience() {
   const panel = document.getElementById('resiliencePanel');
@@ -74,14 +121,19 @@ export function initResilience() {
           <div class="res-field res-field-url">
             <label class="res-field-label" for="resUrl">URL pattern</label>
             <input class="res-input res-url" id="resUrl" type="text" value="*" placeholder="URL pattern (* = all)" spellcheck="false" />
+            <span class="res-method-chip res-hidden" id="resMethodChip">Only <span id="resMethodChipLabel"></span> &middot; <button type="button" class="res-method-chip-clear" id="resMethodChipClear">clear</button></span>
           </div>
           <div class="res-field">
             <label class="res-field-label" for="resProb">Probability %</label>
             <input class="res-input res-prob" id="resProb" type="number" value="100" min="1" max="100" placeholder="%" title="Probability: 1–100%" />
           </div>
           <div class="res-field res-latency-field res-hidden" id="resLatencyField">
-            <label class="res-field-label" for="resLatency">Delay ms</label>
+            <label class="res-field-label" for="resLatency" id="resLatencyLabel">Delay ms</label>
             <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" />
+          </div>
+          <div class="res-field res-release-field res-hidden" id="resReleaseField">
+            <label class="res-field-label" for="resRelease">Release after (s)</label>
+            <input class="res-input res-release" id="resRelease" type="number" value="0" min="0" max="600" placeholder="0 = never" />
           </div>
           <button class="res-btn res-add-btn" type="submit">Add rule</button>
         </div>
@@ -101,9 +153,23 @@ export function initResilience() {
     </div>`;
 
   document.getElementById('resType').addEventListener('change', (e) => {
-    document.getElementById('resLatencyField').classList.toggle('res-hidden', e.target.value !== 'latency');
+    applyTypeFieldVisibility(e.target.value, document.getElementById('resLatencyField'),
+      document.getElementById('resLatency'), document.getElementById('resLatencyLabel'),
+      document.getElementById('resReleaseField'));
     const t = TYPES.find(t => t.value === e.target.value);
     if (t) document.getElementById('resTypeDesc').textContent = t.desc;
+  });
+
+  // Editing the URL by hand after a "⇒ Resilience" prefill means the rule
+  // is no longer scoped to the exact call it was captured from — the method
+  // scoping only made sense pinned to that call, so it resets to Any.
+  document.getElementById('resUrl').addEventListener('input', () => {
+    capturedMethod = null;
+    updateMethodChip();
+  });
+  document.getElementById('resMethodChipClear').addEventListener('click', () => {
+    capturedMethod = null;
+    updateMethodChip();
   });
 
   document.getElementById('resForm').addEventListener('submit', async (e) => {
@@ -116,9 +182,13 @@ export function initResilience() {
       urlPattern: document.getElementById('resUrl').value.trim() || '*',
       method: capturedMethod || '*',
       probability: Math.min(1, Math.max(0.01, parseInt(document.getElementById('resProb').value, 10) / 100)),
-      latencyMs: parseInt(document.getElementById('resLatency').value, 10) || 2000,
+      latencyMs: parseInt(document.getElementById('resLatency').value, 10) || (type === 'stall504' ? 30_000 : 2000),
       enabled: true,
     };
+    if (type === 'hang') {
+      const releaseSec = Math.min(600, Math.max(0, parseInt(document.getElementById('resRelease').value, 10) || 0));
+      rule.releaseAfterMs = releaseSec * 1000;
+    }
     if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
     if (capturedRequestBody !== null) rule.requestBody = capturedRequestBody;
     await testerBrowser.resilience.addRule(getActiveId(), rule);
@@ -126,6 +196,7 @@ export function initResilience() {
     capturedMethod = null;
     capturedRequestHeaders = null;
     capturedRequestBody = null;
+    updateMethodChip();
 
     await loadRules();
   });
@@ -169,7 +240,9 @@ function renderRules(rules) {
 function buildRuleRow(rule) {
   const typeLabel = TYPES.find(t => t.value === rule.type)?.label ?? rule.type;
   const probLabel = Math.round(rule.probability * 100) + '%';
-  const extra = rule.type === 'latency' ? ` ${rule.latencyMs}ms` : '';
+  const extra = LATENCY_FIELD_TYPES.includes(rule.type) ? ` ${rule.latencyMs}ms`
+    : rule.type === 'hang' && rule.releaseAfterMs ? ` (releases after ${Math.round(rule.releaseAfterMs / 1000)}s)`
+    : '';
   const row = document.createElement('div');
   row.className = `res-rule-row${rule.enabled ? '' : ' rule-row-disabled'}`;
   row.dataset.id = rule.id;
@@ -234,27 +307,36 @@ function buildEditRow(rule) {
     </select>
     <input class="res-input res-edit-url" type="text" value="${escHtml(rule.urlPattern)}" spellcheck="false" />
     <input class="res-input res-edit-prob" type="number" min="1" max="100" value="${Math.round(rule.probability * 100)}" title="Probability %" />
-    <input class="res-input res-edit-latency${rule.type === 'latency' ? '' : ' res-hidden'}" type="number" min="0" value="${rule.latencyMs ?? 2000}" title="Delay ms" />
+    <input class="res-input res-edit-latency${LATENCY_FIELD_TYPES.includes(rule.type) ? '' : ' res-hidden'}" type="number" min="0" value="${rule.latencyMs ?? (rule.type === 'stall504' ? 30_000 : 2000)}" title="${rule.type === 'stall504' ? 'Stall ms' : 'Delay ms'}" />
+    <input class="res-input res-edit-release${rule.type === 'hang' ? '' : ' res-hidden'}" type="number" min="0" max="600" value="${rule.releaseAfterMs ? Math.round(rule.releaseAfterMs / 1000) : 0}" title="Release after (s) — 0 = never" />
     <button class="res-btn res-save-btn" title="Save">Save</button>
     <button class="res-btn res-cancel-btn" title="Cancel">Cancel</button>
     ${buildProvenanceHtml(rule)}`;
 
   const typeSel = row.querySelector('.res-edit-type');
   const latencyInput = row.querySelector('.res-edit-latency');
+  const releaseInput = row.querySelector('.res-edit-release');
   typeSel.addEventListener('change', () => {
-    latencyInput.classList.toggle('res-hidden', typeSel.value !== 'latency');
+    latencyInput.classList.toggle('res-hidden', !LATENCY_FIELD_TYPES.includes(typeSel.value));
+    latencyInput.title = typeSel.value === 'stall504' ? 'Stall ms' : 'Delay ms';
+    releaseInput.classList.toggle('res-hidden', typeSel.value !== 'hang');
   });
 
   row.querySelector('.res-cancel-btn').addEventListener('click', () => {
     row.replaceWith(buildRuleRow(rule));
   });
   row.querySelector('.res-save-btn').addEventListener('click', async () => {
+    const type = typeSel.value;
     const patch = {
-      type: typeSel.value,
+      type,
       urlPattern: row.querySelector('.res-edit-url').value.trim() || '*',
       probability: Math.min(1, Math.max(0.01, parseInt(row.querySelector('.res-edit-prob').value, 10) / 100)),
-      latencyMs: parseInt(latencyInput.value, 10) || 2000,
+      latencyMs: parseInt(latencyInput.value, 10) || (type === 'stall504' ? 30_000 : 2000),
     };
+    if (type === 'hang') {
+      const releaseSec = Math.min(600, Math.max(0, parseInt(releaseInput.value, 10) || 0));
+      patch.releaseAfterMs = releaseSec * 1000;
+    }
     await testerBrowser.resilience.updateRule(getActiveId(), rule.id, patch);
     await loadRules();
   });

@@ -238,3 +238,137 @@ test('a rule with a quote/HTML-bearing URL pattern renders safely, and round-tri
   expect(savedRule).toBeTruthy();
   expect(savedRule?.urlPattern).toBe(evilPattern);
 });
+
+test('a "hang" rule leaves the request pending until the client aborts it (#236)', async () => {
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabResilience');
+  await window.selectOption('#resType', 'hang');
+  await window.fill('#resUrl', '*/api/hang-target');
+  await window.fill('#resProb', '100');
+  await window.click('.res-add-btn');
+  await expect(window.locator('.res-rule-row', { hasText: 'hang-target' })).toBeVisible();
+
+  const result = await tab.evaluate(async (url) => {
+    try {
+      await fetch(url, { signal: (AbortSignal as any).timeout(2000) });
+      return { name: null };
+    } catch (err) {
+      return { name: (err as Error).name };
+    }
+  }, fixtures.url('/api/hang-target'));
+  expect(result.name).toBe('TimeoutError');
+});
+
+test('a "hang" rule with Release after (s) eventually fails the request on its own (#236)', async () => {
+  const urlPath = '/network/api.html';
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabResilience');
+  await window.selectOption('#resType', 'hang');
+  await window.fill('#resUrl', '*/api/hang-release-target');
+  await window.fill('#resProb', '100');
+  await expect(window.locator('#resReleaseField')).toBeVisible();
+  await window.fill('#resRelease', '1');
+  await window.click('.res-add-btn');
+  await expect(window.locator('.res-rule-row', { hasText: 'hang-release-target' })).toBeVisible();
+
+  const result = await tab.evaluate(async (url) => {
+    const start = Date.now();
+    try {
+      await fetch(url);
+      return { ok: true, ms: Date.now() - start };
+    } catch (err) {
+      return { ok: false, name: (err as Error).name, ms: Date.now() - start };
+    }
+  }, fixtures.url('/api/hang-release-target'));
+  expect(result.ok).toBe(false);
+  expect(result.ms).toBeGreaterThanOrEqual(900);
+  expect(result.ms).toBeLessThan(5_000);
+});
+
+test('a "stall504" rule waits latencyMs then returns 504 (#236)', async () => {
+  const urlPath = '/network/api.html';
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabResilience');
+  await window.selectOption('#resType', 'stall504');
+  await window.fill('#resUrl', '*/api/stall-target');
+  await window.fill('#resProb', '100');
+  await window.fill('#resLatency', '1500');
+  await window.click('.res-add-btn');
+  await expect(window.locator('.res-rule-row', { hasText: 'stall-target' })).toBeVisible();
+
+  await tab.fill('#apiPath', '/api/stall-target');
+  const start = Date.now();
+  await tab.click('#apiFetchBtn');
+  await expect(tab.locator('#apiOut')).toContainText('"status":504', { timeout: 5_000 });
+  expect(Date.now() - start).toBeGreaterThanOrEqual(1_400);
+});
+
+test('fall-through: a rule whose roll misses lets a later matching rule fire on the same request (#236)', async () => {
+  const urlPath = '/network/api.html';
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabResilience');
+  await window.selectOption('#resType', 'random500');
+  await window.fill('#resUrl', '*/api/fallthrough-target');
+  await window.fill('#resProb', '1');
+  await window.click('.res-add-btn');
+
+  await window.selectOption('#resType', 'error500');
+  await window.fill('#resUrl', '*/api/fallthrough-target');
+  await window.fill('#resProb', '100');
+  await window.click('.res-add-btn');
+
+  const rows = window.locator('.res-rule-row', { hasText: 'fallthrough-target' });
+  await expect(rows).toHaveCount(2);
+  const secondRuleRow = rows.nth(1);
+
+  for (let i = 0; i < 5; i++) {
+    await tab.fill('#apiPath', '/api/fallthrough-target');
+    await tab.click('#apiFetchBtn');
+    await expect(tab.locator('#apiOut')).toContainText('"status":500', { timeout: 5_000 });
+  }
+
+  const secondHitsText = (await secondRuleRow.locator('.res-hits-badge').textContent()) || '';
+  const secondHits = parseInt(secondHitsText.replace(/\D/g, ''), 10) || 0;
+  // The 1% rule may fire rarely too, so this only asserts the 100% rule
+  // caught nearly everything, not that it caught literally every hit.
+  expect(secondHits).toBeGreaterThanOrEqual(4);
+});
+
+test('editing the URL after a "⇒ Resilience" prefill resets the method scope to Any (#236)', async () => {
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  const targetUrl = fixtures.url('/api/resilience-reset-check');
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await window.fill('#networkFilterText', '');
+  await tab.evaluate((url) => fetch(url, { method: 'POST', body: '{}' }).catch(() => {}), targetUrl);
+  await window.waitForTimeout(1_500);
+
+  const requestRow = window.locator('.evt.network-request', { hasText: '/api/resilience-reset-check' });
+  await expect(async () => {
+    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(window.locator('#detailResilienceBtn')).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await window.locator('#detailResilienceBtn').click();
+  await expect(window.locator('#resMethodChip')).toBeVisible();
+
+  await window.fill('#resUrl', '*/api/reset-elsewhere');
+  await expect(window.locator('#resMethodChip')).toBeHidden();
+
+  await window.click('.res-add-btn');
+  const newRow = window.locator('.res-rule-row', { hasText: 'reset-elsewhere' });
+  await expect(newRow).toBeVisible();
+  await expect(newRow.locator('.res-method-badge')).toHaveCount(0);
+});

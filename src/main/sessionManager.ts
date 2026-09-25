@@ -577,7 +577,7 @@ export function classifyFocusTrapSequence(sequence: string[], expectedTerminal: 
   return { passed: false, kind: 'incomplete', trappedElements: [], sequence };
 }
 
-export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt';
+export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt' | 'hang' | 'stall504';
 
 export interface ResilienceRule {
   id: string;
@@ -589,6 +589,11 @@ export interface ResilienceRule {
   method: string;
   probability: number;
   latencyMs: number;
+  // #236: only meaningful for type 'hang'. 0 (the default) means never
+  // released automatically — the request stays paused until the tester
+  // aborts it client-side or navigates away. The renderer caps entry at
+  // 600s; not re-validated here.
+  releaseAfterMs?: number;
   enabled: boolean;
   hitCount: number;
   lastHitAt: number | null;
@@ -619,6 +624,24 @@ function matchesGlob(pattern: string, url: string): boolean {
 // existed — never matched against headers or body, only method + URL.
 export function resilienceRuleMatchesRequest(rule: ResilienceRule, request: { method: string; url: string }): boolean {
   return (!rule.method || rule.method === '*' || rule.method === request.method) && matchesGlob(rule.urlPattern, request.url);
+}
+
+// #236: matching rules are tried in list order, each rolling its own
+// probability — the first whose roll succeeds is returned. A rule whose
+// roll fails is skipped, not removed from consideration entirely: it simply
+// doesn't win this request, and a later matching rule still gets its own
+// independent roll. `rand` is injectable so this is deterministically
+// testable; defaults to Math.random for real traffic.
+export function pickResilienceRule(
+  rules: ResilienceRule[],
+  request: { method: string; url: string },
+  rand: () => number = Math.random
+): ResilienceRule | null {
+  for (const rule of rules) {
+    if (!rule.enabled || !resilienceRuleMatchesRequest(rule, request)) continue;
+    if (rand() < rule.probability) return rule;
+  }
+  return null;
 }
 
 // A rolling per-tab cap on how many Fetch.requestPaused events get full rule
@@ -936,6 +959,12 @@ export class SessionManager {
   private dateOverrideScripts = new Map<string, string>();
   // Per-session navigation history, newest entry last — cleared on destroy.
   private sessionHistory = new Map<string, HistoryEntry[]>();
+  // #236: requests parked open by a `hang` Resilience rule — keyed by
+  // session id (a live CDP requestId is only meaningful for the tab whose
+  // debugger paused it), each entry its own optional release timer. Cleared
+  // (timers included) in destroySession() since a hung request's tab going
+  // away makes both the requestId and the point of releasing it moot.
+  private hungRequests = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
   // Mock/Resilience rules are a property of the session *partition* (cookies,
   // storage, cache — the thing "isolated sessions" actually means), not of
   // any one TestSession/tab object representing it — keyed by partition so
@@ -1134,8 +1163,8 @@ export class SessionManager {
         return;
       }
       const resilienceRules = this.resilienceRulesByPartition.get(testSession.partition) ?? [];
-      const res = resilienceRules.find(r => r.enabled && resilienceRuleMatchesRequest(r, request));
-      if (res && Math.random() < res.probability) {
+      const res = pickResilienceRule(resilienceRules, request);
+      if (res) {
         res.hitCount = (res.hitCount || 0) + 1;
         res.lastHitAt = Date.now();
         testSession.recorder.tagRequest(tagId, { resilienceRuleId: res.id, resilienceType: res.type });
@@ -1149,6 +1178,11 @@ export class SessionManager {
             break;
           case 'timeout':
             dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 504, body: Buffer.from('Gateway Timeout').toString('base64') }).catch(() => {}); // silent: see comment above switch
+            break;
+          case 'stall504':
+            setTimeout(() => {
+              dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 504, body: Buffer.from('Gateway Timeout').toString('base64') }).catch(() => {}); // silent: see comment above switch
+            }, res.latencyMs || 30_000);
             break;
           case 'offline':
             dbg.sendCommand('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' }).catch(() => {}); // silent: see comment above switch
@@ -1164,6 +1198,22 @@ export class SessionManager {
               dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {}); // silent: see comment above switch
             }, res.latencyMs || 2000);
             break;
+          case 'hang': {
+            // Deliberately no Fetch response at all — the paused request
+            // stays paused, so the page sees it as pending until the tester
+            // aborts client-side or navigates away. Tracked per session so
+            // destroySession() can clear the release timer (if any) rather
+            // than firing it against a tab that no longer exists.
+            const hungForSession = this.hungRequestsForSession(testSession.id);
+            const releaseTimer = res.releaseAfterMs
+              ? setTimeout(() => {
+                  hungForSession.delete(requestId);
+                  dbg.sendCommand('Fetch.failRequest', { requestId, errorReason: 'TimedOut' }).catch(() => {}); // silent: see comment above switch
+                }, res.releaseAfterMs)
+              : null;
+            hungForSession.set(requestId, releaseTimer);
+            break;
+          }
           default:
             dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {}); // silent: see comment above switch
         }
@@ -1180,7 +1230,8 @@ export class SessionManager {
       // request surviving a refresh — investigated, no such path found: the
       // debugger itself is attached once per WebContentsView at creation and
       // stays attached across navigations, so there's no re-attach window
-      // either).
+      // either) — except the 'hang' case just above, whose entire point
+      // (#236) is to leave the request genuinely unanswered on purpose.
       // silent: also fires per request, same as the branches above — too high-frequency to log
       dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
     });
@@ -2609,6 +2660,15 @@ export class SessionManager {
     return rules;
   }
 
+  // #236: unlike mock/resilience rules (a property of the partition), hung
+  // requests are a property of the *tab* whose CDP debugger actually paused
+  // them — keyed by session id, lazily created.
+  private hungRequestsForSession(id: string): Map<string, ReturnType<typeof setTimeout> | null> {
+    let map = this.hungRequests.get(id);
+    if (!map) { map = new Map(); this.hungRequests.set(id, map); }
+    return map;
+  }
+
   getMockRules(id: string): MockRule[] {
     return this.mockRulesForId(id) ?? [];
   }
@@ -2752,6 +2812,11 @@ export class SessionManager {
     this.recordingBuffers.delete(id);
     this.dateOverrideScripts.delete(id);
     this.sessionHistory.delete(id);
+    const hung = this.hungRequests.get(id);
+    if (hung) {
+      for (const timer of hung.values()) if (timer) clearTimeout(timer);
+      this.hungRequests.delete(id);
+    }
     this.onSessionsChanged();
     this.log.info('sessions', 'Session destroyed', { sessionId: id });
   }

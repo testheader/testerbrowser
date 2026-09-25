@@ -1,4 +1,4 @@
-import { resilienceRuleMatchesRequest, ResilienceRule } from '../sessionManager';
+import { resilienceRuleMatchesRequest, pickResilienceRule, ResilienceRule } from '../sessionManager';
 
 function makeRule(overrides: Partial<ResilienceRule> = {}): ResilienceRule {
   return {
@@ -72,5 +72,45 @@ describe('matchesGlob via resilienceRuleMatchesRequest (#219 — "?" is a CDP gl
     expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://x/api/widgets(v2)+$' })).toBe(true);
     // Not treated as a regex group/quantifier/anchor.
     expect(resilienceRuleMatchesRequest(rule, { method: 'GET', url: 'https://x/api/widgetsv2v2' })).toBe(false);
+  });
+});
+
+describe('pickResilienceRule (#236 — fall-through rule evaluation)', () => {
+  const req = { method: 'GET', url: 'https://x/api/widgets' };
+
+  it('a first rule whose roll fails falls through to a second rule that fires', () => {
+    const failThenSucceed = { next: 0, values: [0.9, 0.1] } as { next: number; values: number[] };
+    const rand = () => failThenSucceed.values[failThenSucceed.next++];
+    const first = makeRule({ id: 'first', probability: 0.5 });
+    const second = makeRule({ id: 'second', probability: 0.5 });
+    expect(pickResilienceRule([first, second], req, rand)).toBe(second);
+  });
+
+  it('returns null when every matching rule\'s roll fails', () => {
+    const rand = () => 0.99;
+    const rules = [makeRule({ id: 'a', probability: 0.5 }), makeRule({ id: 'b', probability: 0.5 })];
+    expect(pickResilienceRule(rules, req, rand)).toBeNull();
+  });
+
+  it('skips disabled rules entirely, regardless of their roll', () => {
+    const rand = () => 0; // would always "win" if it were even rolled
+    const disabled = makeRule({ id: 'disabled', enabled: false, probability: 1 });
+    const enabled = makeRule({ id: 'enabled', probability: 1 });
+    expect(pickResilienceRule([disabled, enabled], req, rand)).toBe(enabled);
+  });
+
+  it('respects list order — an earlier rule that also would have fired wins over a later one', () => {
+    const rand = () => 0; // both would fire
+    const first = makeRule({ id: 'first', probability: 1 });
+    const second = makeRule({ id: 'second', probability: 1 });
+    expect(pickResilienceRule([second, first], req, rand)).toBe(second);
+  });
+
+  it('a non-matching rule (method or URL) never gets a roll at all', () => {
+    let rolled = false;
+    const rand = () => { rolled = true; return 0; };
+    const nonMatching = makeRule({ id: 'nope', method: 'POST', probability: 1 });
+    expect(pickResilienceRule([nonMatching], req, rand)).toBeNull();
+    expect(rolled).toBe(false);
   });
 });

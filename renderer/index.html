@@ -363,7 +363,7 @@
             </div>
             <div class="feature-item">
               <div class="feature-name">Resilience tab</div>
-              <p>Injects network failure conditions into the active session so you can see how the app under test copes: 500 errors, timeouts (504), offline, 404s, corrupted responses, added latency, or a random-500 chance. Pick a failure type, a URL pattern and a probability %, then <b>Add rule</b> — matched responses get a RESILIENCE badge in the timeline, and each rule tracks how many times it's fired.</p>
+              <p>Injects network failure conditions into the active session so you can see how the app under test copes: 500 errors, an immediate or stalled 504, a genuine hang (no response at all, optionally released after N seconds), offline, 404s, corrupted responses, added latency, or a random-500 chance. Pick a failure type, a URL pattern and a probability %, then <b>Add rule</b> — matched responses get a RESILIENCE badge in the timeline, and each rule tracks how many times it's fired. When multiple rules match the same request, they're tried in order and the first whose probability roll succeeds wins. "⇒ Resilience" from a captured call scopes the rule to that call's method; editing the URL pattern by hand clears that scoping back to Any.</p>
             </div>
             <div class="feature-item">
               <div class="feature-name">A11y tab</div>
