@@ -43,10 +43,11 @@ export const MAIN_PATH = path.join(__dirname, '..', 'dist', 'main', 'index.js');
  * app's own chrome — surfacing as e.g. document.title reading "New Tab"
  * instead of "TesterBrowser". Wait explicitly for the chrome window instead.
  */
-export async function getMainWindow(app: ElectronApplication): Promise<Page> {
+export async function getMainWindow(app: ElectronApplication, maxWaitMs = 20_000): Promise<Page> {
   await app.firstWindow();
   const isChrome = (p: Page) => p.url().endsWith('index.html');
-  for (let i = 0; i < 200; i++) {
+  const attempts = Math.ceil(maxWaitMs / 100);
+  for (let i = 0; i < attempts; i++) {
     const found = app.windows().find(isChrome);
     if (found) return found;
     await new Promise(resolve => setTimeout(resolve, 100));
