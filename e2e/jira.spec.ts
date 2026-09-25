@@ -146,8 +146,18 @@ test('creating a bug with the evidence checkboxes checked attaches screenshot, H
   await tab.waitForLoadState('load');
   // logs.html emits console.error('error on load') plus a missing-image
   // Log.entryAdded (level error) on load — captured by the always-on
-  // recorder regardless of whether the console panel is even open.
-  await window.waitForTimeout(1_500);
+  // recorder regardless of whether the console panel is even open. Poll the
+  // recorder's own timeline (not the page) until that console event has
+  // actually landed, since the bug-report evidence below reads straight
+  // from the recorder buffer.
+  const activeId = await window.evaluate(() => document.querySelector('.tab.active')?.getAttribute('data-id'));
+  await expect.poll(async () => {
+    const events = await window.evaluate(
+      (id: string) => (window as any).testerBrowser.recording.timeline(id, { limit: 5000 }),
+      activeId
+    );
+    return events.some((e: { kind: string; summary: string }) => e.kind === 'console' && e.summary.includes('error on load'));
+  }, { timeout: 10_000 }).toBe(true);
 
   await window.click('#consoleTabJira');
   await window.click('#jiraAddBugBtn');

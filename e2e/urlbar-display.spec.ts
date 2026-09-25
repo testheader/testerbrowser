@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -101,8 +101,11 @@ test('#urlbarDisplay reflects the just-submitted URL immediately, without waitin
   const displayText = await window.locator('#urlbarDisplay').textContent();
   expect(displayText).toContain('/network/slow');
 
-  // Let the slow response land so it doesn't bleed into the next test.
-  await window.waitForTimeout(2_100);
+  // Let the slow response land so it doesn't bleed into the next test —
+  // wait on the actual tab finishing its (still in-flight, ~2s) navigation
+  // rather than a fixed sleep slightly longer than the fixture's delay.
+  const slowTab = await getTabPage(app, '/network/slow');
+  await slowTab.waitForLoadState('load');
 });
 
 test('#urlbar and #urlbarDisplay agree on exactly where their text starts', async () => {

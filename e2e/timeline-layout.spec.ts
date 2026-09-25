@@ -42,7 +42,6 @@ test('no event row has its own horizontal scrollbar', async () => {
   const longQuery = 'y'.repeat(3000);
   await navigate('/network/status-codes.html?' + longQuery);
   await window.click('#consoleTabNetwork');
-  await window.waitForTimeout(500);
 
   // Request rows (#178) are single line, URL truncated with an ellipsis
   // instead of wrapping or scrolling — the long query string in the URL
@@ -60,7 +59,6 @@ test('a long request URL truncates with an ellipsis instead of wrapping', async 
   const longQuery = 'z'.repeat(3000);
   await navigate('/network/status-codes.html?' + longQuery);
   await window.click('#consoleTabNetwork');
-  await window.waitForTimeout(500);
 
   const shortRow = window.locator('.evt.network-request').first();
   const longRow  = window.locator('.evt.network-request', { hasText: 'z'.repeat(50) });
@@ -83,7 +81,6 @@ test('a request row renders as a single line with timestamp/method/status and th
   const tab = await navigate('/network/status-codes.html');
   await window.click('#consoleTabNetwork');
   await tab.click('button:text-is("404")');
-  await window.waitForTimeout(1_500);
 
   // Status/timing merge into the request row itself once the response
   // arrives, rather than a separate response row (#189).
@@ -104,7 +101,6 @@ test('a BODY row\'s line 2 begins at the same horizontal column as the method on
   const tab = await navigate('/network/status-codes.html');
   await window.click('#consoleTabNetwork');
   await tab.click('button:text-is("200")');
-  await window.waitForTimeout(1_500);
 
   const row = window.locator('.evt.network-body').first();
   await expect(row).toBeVisible();
@@ -132,7 +128,6 @@ test('a BODY row shows "BODY" as its method (not the underlying request method) 
   await window.click('#clearNetworkBtn');
   await navigate('/performance/network-flood.html');
   await (await getTabPage(app, '/performance/network-flood.html')).click('button[data-n="50"]');
-  await window.waitForTimeout(2_000);
 
   // Network flood's own page navigation produces a network-body row for the
   // HTML document itself — filter to a row whose body is actually the JSON
@@ -149,7 +144,6 @@ test('a request row still shows its duration once the response lands, and the pa
   await window.click('#clearNetworkBtn');
   const tab = await navigate('/network/slow.html');
   await tab.click('button[data-ms="500"]');
-  await window.waitForTimeout(700);
 
   const reqRow = window.locator('.evt.network-request', { hasText: 'ms=500' });
   await expect(reqRow).toBeVisible();
@@ -165,7 +159,6 @@ test('clicking a row still opens its detail tab, and Replay still works from the
   await window.click('#clearNetworkBtn');
   const tab = await navigate('/network/status-codes.html');
   await tab.click('button:text-is("200")');
-  await window.waitForTimeout(1_500);
 
   const reqRow = window.locator('.evt.network-request', { hasText: '/network/status/200' }).first();
   await expect(reqRow).toBeVisible();

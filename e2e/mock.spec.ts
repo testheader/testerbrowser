@@ -147,7 +147,6 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   await window.fill('#urlbar', fixtures.url(urlPath));
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, urlPath)).waitForLoadState('load');
-  await window.waitForTimeout(1_500); // pollTimeline runs every 1s
 
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
@@ -225,9 +224,9 @@ test('a network request\'s detail panel offers Replay, Mock and Resilience, in t
   await window.fill('#urlbar', fixtures.url(urlPath));
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, urlPath)).waitForLoadState('load');
-  await window.waitForTimeout(1_500);
 
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
     await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
     await expect(window.locator('#detailReplayBtn')).toBeVisible({ timeout: 1_000 });
@@ -309,7 +308,6 @@ test('console rows show no Replay/Mock/Resilience action row', async () => {
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(urlPath));
   await window.press('#urlbar', 'Enter');
-  await window.waitForTimeout(1_500);
 
   const consoleRow = window.locator('.evt.console, .evt.log').first();
   await expect(consoleRow).toBeVisible();
@@ -396,7 +394,6 @@ test('"⇒ Mock" from a gzip-encoded response leaves out encoding headers, and a
   await tab.fill('#apiPath', '/network/gzip-json');
   await tab.click('#apiFetchBtn');
   await expect(tab.locator('#apiOut')).toContainText('"status":200', { timeout: 5_000 });
-  await window.waitForTimeout(1_500); // pollTimeline
 
   const requestRow = window.locator('.evt.network-request', { hasText: 'gzip-json' });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });

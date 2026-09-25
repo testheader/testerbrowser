@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH, wrapCloseForCleanup } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -15,7 +15,6 @@ test.beforeAll(async () => {
   app = await launchApp(MAIN_PATH);
   window = await getMainWindow(app);
   await window.waitForLoadState('domcontentloaded');
-  await window.waitForTimeout(1000);
 
   // Record Playback used to validate with alert()/prompt() — a native dialog
   // this harness never dismisses would hang any test that hits one. Guarding
@@ -251,7 +250,7 @@ test('a recording started on one tab keeps polling and stops on that tab, even i
 
   // Switch to a different tab (tab B) while the recording keeps running.
   await window.keyboard.press('Control+t');
-  await window.waitForTimeout(200);
+  await expect(window.locator('.tab.active')).not.toHaveAttribute('data-id', tabAId as string);
   const tabBId = await window.locator('.tab.active').getAttribute('data-id');
 
   // One more real action on tab A — proves the poll is still tracking A,
@@ -739,11 +738,24 @@ test('column widths persist across a restart', async () => {
 
   const resizedWidth = (await win1.locator('#rpRecordCol').boundingBox())!.width;
   // The width write is an async settings:set IPC round-trip, not something
-  // mouseup itself waits for — give it a moment to land before closing.
-  await win1.waitForTimeout(500);
+  // mouseup itself waits for, and a restart below reads only from the
+  // persisted settings.json — poll that file directly until the write has
+  // actually landed, instead of guessing how long the round-trip takes.
+  const settingsPath = path.join(userDataDir, 'settings.json');
+  await expect.poll(() => {
+    try {
+      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      return raw?.recordPlaybackColumnWidths?.record;
+    } catch {
+      return undefined;
+    }
+  }, { timeout: 5_000 }).not.toBeUndefined();
   await app1.close();
 
   const app2 = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+  // Only the second (last) launch's close should remove the shared profile
+  // dir — app1's own close above must leave it in place for app2 to reuse.
+  wrapCloseForCleanup(app2, [userDataDir]);
   const win2 = await getMainWindow(app2);
   await win2.waitForLoadState('load');
   await win2.click('#consoleTabTests');

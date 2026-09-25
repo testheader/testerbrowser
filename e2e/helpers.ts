@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { _electron as electron } from '@playwright/test';
+import { _electron as electron, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 
 /**
@@ -25,11 +25,37 @@ import type { ElectronApplication, Page } from '@playwright/test';
  * extra sessions in afterAll as a per-file mitigation — with an isolated
  * profile per launch there's no shared open-sessions.json left to compound.)
  */
+// #249: each launch also gets its own throwaway downloads folder — without
+// this, parallel workers (and the developer's own machine) would all share
+// app.getPath('downloads'), the real OS Downloads folder. DownloadManager
+// reads app.getPath('downloads') fresh on every will-download (not once at
+// startup — see downloadManager.ts), so a post-launch setPath takes effect
+// for every download this launch triggers. Both temp dirs are removed when
+// the returned app closes (best-effort — Windows can briefly hold a lock on
+// a just-closed process's own files).
 export async function launchApp(mainPath: string): Promise<ElectronApplication> {
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-'));
-  return electron.launch({
+  const userDataDir  = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-'));
+  const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-downloads-'));
+  const app = await electron.launch({
     args: [`--user-data-dir=${userDataDir}`, mainPath],
   });
+  await app.evaluate(({ app: electronApp }, dir) => electronApp.setPath('downloads', dir), downloadsDir);
+  wrapCloseForCleanup(app, [userDataDir, downloadsDir]);
+  return app;
+}
+
+/** Shared by launchApp() and any spec that hand-rolls its own launch with an
+ *  ad-hoc temp profile (crash-report.spec.ts, tests.spec.ts) — wraps the
+ *  app's own close() so the given directories are removed once it exits,
+ *  without changing close()'s signature or any call site. */
+export function wrapCloseForCleanup(app: ElectronApplication, dirs: string[]): void {
+  const originalClose = app.close.bind(app);
+  app.close = async () => {
+    await originalClose();
+    for (const dir of dirs) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+    }
+  };
 }
 
 /** Path to the built main-process entry point, for use with launchApp(). */
@@ -46,13 +72,9 @@ export const MAIN_PATH = path.join(__dirname, '..', 'dist', 'main', 'index.js');
 export async function getMainWindow(app: ElectronApplication, maxWaitMs = 20_000): Promise<Page> {
   await app.firstWindow();
   const isChrome = (p: Page) => p.url().endsWith('index.html');
-  const attempts = Math.ceil(maxWaitMs / 100);
-  for (let i = 0; i < attempts; i++) {
-    const found = app.windows().find(isChrome);
-    if (found) return found;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  return app.firstWindow();
+  const already = app.windows().find(isChrome);
+  if (already) return already;
+  return app.waitForEvent('window', { predicate: isChrome, timeout: maxWaitMs });
 }
 
 /**
@@ -62,12 +84,17 @@ export async function getMainWindow(app: ElectronApplication, maxWaitMs = 20_000
  * through the Page this returns, not through the chrome `window`.
  */
 export async function getTabPage(app: ElectronApplication, urlIncludes: string, exclude?: Page): Promise<Page> {
-  for (let i = 0; i < 200; i++) {
-    const found = app.windows().find(p => p.url().includes(urlIncludes) && p !== exclude);
-    if (found) return found;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  throw new Error(`No tab page found with URL including "${urlIncludes}"`);
+  // Unlike getMainWindow above, this can't just wait for a 'window' creation
+  // event: the common case is an *existing* tab navigating to urlIncludes
+  // (e.g. via the urlbar), not a brand-new one appearing — so the match has
+  // to be re-checked against the live window list over time, which is
+  // exactly what expect.poll does instead of a hand-rolled setTimeout loop.
+  const find = () => app.windows().find(p => p.url().includes(urlIncludes) && p !== exclude) ?? null;
+  await expect.poll(find, {
+    timeout: 20_000,
+    message: `No tab page found with URL including "${urlIncludes}"`,
+  }).not.toBeNull();
+  return find() as Page;
 }
 
 /**

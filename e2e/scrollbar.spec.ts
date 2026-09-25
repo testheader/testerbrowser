@@ -31,11 +31,14 @@ test('timeline panel is visible on initial load', async () => {
 });
 
 test('timeline panel remains scrollable after switching tabs', async () => {
-  // Switch to Storage tab then back to Console
+  // Switch to Storage tab then back to Console. switchConsoleTab() toggles
+  // the tab buttons' "active" class and panel display synchronously, so
+  // waiting for the button's own active state is a real (and immediate)
+  // signal rather than a guess at how long the switch takes.
   await window.click('#consoleTabStorage');
-  await window.waitForTimeout(300);
+  await expect(window.locator('#consoleTabStorage')).toHaveClass(/active/);
   await window.click('#consoleTabConsole');
-  await window.waitForTimeout(300);
+  await expect(window.locator('#consoleTabConsole')).toHaveClass(/active/);
 
   const panel = window.locator('#timelinePanel');
   await expect(panel).toBeVisible();
@@ -48,7 +51,7 @@ test('timeline panel remains scrollable after switching tabs', async () => {
 test('timeline panel wrapper is visible after multiple tab switches', async () => {
   for (const tab of ['#consoleTabStorage', '#consoleTabA11y', '#consoleTabConsole']) {
     await window.click(tab);
-    await window.waitForTimeout(200);
+    await expect(window.locator(tab)).toHaveClass(/active/);
   }
 
   const wrapper = window.locator('#timelinePanelWrapper');

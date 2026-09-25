@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { _electron as electron } from '@playwright/test';
-import { getMainWindow, getActiveViewBounds, MAIN_PATH } from './helpers';
+import { getMainWindow, getActiveViewBounds, MAIN_PATH, wrapCloseForCleanup } from './helpers';
 
 // launchApp() (helpers.ts) always starts from a fresh, sentinel-free userData
 // dir, so there's nothing for src/main/index.ts's crash detection to find on
@@ -44,7 +44,9 @@ async function launchWithSimulatedCrash(durableState?: {
     fs.mkdirSync(path.join(userDataDir, 'logs'), { recursive: true });
     fs.writeFileSync(path.join(userDataDir, 'logs', 'main.log'), durableState.logLines.join('\n') + '\n');
   }
-  return electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+  const app = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+  wrapCloseForCleanup(app, [userDataDir]);
+  return app;
 }
 
 test.describe('crash modal visibility', () => {
@@ -173,6 +175,7 @@ test.describe('crash time and URL redaction (#246)', () => {
     fs.writeFileSync(path.join(userDataDir, 'running.sentinel'), JSON.stringify({ startedAt: seededStartedAt }));
     fs.writeFileSync(path.join(userDataDir, 'session-urls.json'), JSON.stringify([tokenUrl]));
     app = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+    wrapCloseForCleanup(app, [userDataDir]);
     window = await getMainWindow(app);
     await window.waitForLoadState('load');
     await expect(window.locator('#crashReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
@@ -206,6 +209,7 @@ test.describe('crash time and URL redaction (#246)', () => {
     fs.writeFileSync(path.join(userDataDir2, 'running.sentinel'), JSON.stringify({ startedAt: seededStartedAt }));
     fs.writeFileSync(path.join(userDataDir2, 'session-urls.json'), JSON.stringify([tokenUrl]));
     app = await electron.launch({ args: [`--user-data-dir=${userDataDir2}`, MAIN_PATH] });
+    wrapCloseForCleanup(app, [userDataDir2]);
     window = await getMainWindow(app);
     await window.waitForLoadState('load');
     await expect(window.locator('#crashReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });

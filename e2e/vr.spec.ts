@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getActiveViewBounds, getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -148,8 +148,12 @@ test('a baseline and current screenshot of different sizes show a visible size-m
   await window.click('#vrCaptureBtn');
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
 
+  const boundsBeforeResize = await getActiveViewBounds(app);
   await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(900, 700); });
-  await window.waitForTimeout(500); // let the resize settle and the BrowserView re-layout
+  // Wait for the BrowserView's own bounds to actually reflect the new window
+  // size (sessionManager's 'resize' handler re-layouts it) instead of
+  // guessing how long that settling takes.
+  await expect.poll(async () => (await getActiveViewBounds(app))?.width).not.toBe(boundsBeforeResize?.width);
 
   await window.click('#vrCompareBtn');
   await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
@@ -158,8 +162,9 @@ test('a baseline and current screenshot of different sizes show a visible size-m
   await expect(window.locator('#vrStats')).toContainText('% of');
 
   // Restore the window size so later tests in this file see the usual layout.
+  const boundsBeforeRestore = await getActiveViewBounds(app);
   await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(1400, 900); });
-  await window.waitForTimeout(300);
+  await expect.poll(async () => (await getActiveViewBounds(app))?.width).not.toBe(boundsBeforeRestore?.width);
 });
 
 test('the Compare button re-enables after a failed screenshot instead of staying stuck on "Comparing…" (#238)', async () => {

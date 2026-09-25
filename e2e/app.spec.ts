@@ -135,8 +135,9 @@ test('timeline receives events after navigation', async () => {
   await window.click('#urlbar');
   await window.fill('#urlbar', `http://127.0.0.1:${testPort}`);
   await window.press('#urlbar', 'Enter');
-  // pollTimeline runs every 1 s; wait 2.5 s for at least one cycle to render events
-  await window.waitForTimeout(2_500);
+  const tab = await getTabPage(app, `127.0.0.1:${testPort}`, window);
+  await tab.waitForLoadState('load');
+  await expect(window.locator('#timelinePanel .evt').first()).toBeVisible();
 
   const count = await window.locator('#timelinePanel .evt').count();
   expect(count).toBeGreaterThan(0);
@@ -148,10 +149,18 @@ test('timeline receives events after navigation', async () => {
 // button (#178 moved Replay off the per-row button and into the detail
 // panel — see #detailReplayBtn in detail-panel.js).
 async function openReplayOverlayAt(win: Page, url: string) {
+  // By the time this file's later tests run, the timeline already has many
+  // earlier network-request rows in it — waiting for .last() to be visible
+  // would resolve instantly against one of those, not this navigation's own
+  // request. Capture the count first (on the Network tab, since rows for a
+  // non-active console tab aren't rendered at all — see renderTimeline's
+  // per-tab filtering) and wait for it to actually grow.
+  await win.click('#consoleTabNetwork');
+  const beforeCount = await win.locator('.evt.network-request').count();
   await win.fill('#urlbar', url);
   await win.press('#urlbar', 'Enter');
-  await win.waitForTimeout(2_500);
-  await win.click('#consoleTabNetwork');
+  await expect.poll(() => win.locator('.evt.network-request').count(), { timeout: 10_000 })
+    .toBeGreaterThan(beforeCount);
   await win.locator('.evt.network-request').last().click();
   await win.locator('#detailReplayBtn').click();
   await expect(win.locator('#replayOverlay')).toHaveClass(/open/);
@@ -177,11 +186,23 @@ test('replay cookie session picker lists all available sessions', async () => {
   await window.click('#closeReplayBtn');
 });
 
+// The session picker's change handler fetches cookies via IPC
+// (testerBrowser.sessions.getCookies) and, when the result is empty for the
+// active domain filter, leaves no DOM change to poll for — call the same
+// endpoint ourselves as a completion proxy: dispatched strictly after the
+// handler's own identical call (selectOption already fired the change
+// event), it resolves no earlier, so by the time it does, the handler's own
+// synchronous re-render has already run too.
+async function waitForReplayCookiesSettled(win: Page, sessionId: string) {
+  await win.evaluate((id) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
+}
+
 test('replay cookie session picker filters out cookies from unrelated domains', async () => {
   // Navigate so there is a 127.0.0.1 network event in the timeline.
   await window.fill('#urlbar', `http://127.0.0.1:${testPort}`);
   await window.press('#urlbar', 'Enter');
-  await window.waitForTimeout(2_500);
+  const navTab = await getTabPage(app, `127.0.0.1:${testPort}`, window);
+  await navTab.waitForLoadState('load');
 
   // Get the first session's id and partition so we can inject test cookies.
   const sessions: Array<{ id: string; partition: string }> =
@@ -206,7 +227,7 @@ test('replay cookie session picker filters out cookies from unrelated domains', 
 
   // Select the session — the change handler should filter by the request's hostname.
   await window.selectOption('#replayCookieSessionPick', { value: sessionId });
-  await window.waitForTimeout(500);
+  await waitForReplayCookiesSettled(window, sessionId);
 
   const cookieNames: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
     els => (els as HTMLInputElement[]).map(el => el.value)
@@ -248,20 +269,21 @@ test('replay cookie session picker shows each session\'s own cookies independent
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), session1Id);
   await window.fill('#urlbar', `http://127.0.0.1:${testPort}`);
   await window.press('#urlbar', 'Enter');
-  await window.waitForTimeout(2_500);
+  const navTab = await getTabPage(app, `127.0.0.1:${testPort}`, window);
+  await navTab.waitForLoadState('load');
 
   await openReplayOverlay(window, testPort);
 
   // ── Session 1 ──
   await window.selectOption('#replayCookieSessionPick', { value: session1Id });
-  await window.waitForTimeout(500);
+  await waitForReplayCookiesSettled(window, session1Id);
   const s1Names: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
     els => (els as HTMLInputElement[]).map(el => el.value)
   );
 
   // ── Session 2 — the picker handler clears and refills the table ──
   await window.selectOption('#replayCookieSessionPick', { value: session2Id });
-  await window.waitForTimeout(500);
+  await waitForReplayCookiesSettled(window, session2Id);
   const s2Names: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
     els => (els as HTMLInputElement[]).map(el => el.value)
   );
@@ -382,10 +404,11 @@ test('replay drops [REDACTED] headers from the prefill and never sends them (#23
     (url) => fetch(url, { headers: { Authorization: 'Bearer secret123' } }),
     fixtures.url(redactUrlPath)
   );
-  await window.waitForTimeout(1_500);
 
   await window.click('#consoleTabNetwork');
-  await window.locator('.evt.network-request', { hasText: 'echo/headers' }).last().click();
+  const echoHeadersRow = window.locator('.evt.network-request', { hasText: 'echo/headers' }).last();
+  await expect(echoHeadersRow).toBeVisible();
+  await echoHeadersRow.click();
   await window.locator('#detailReplayBtn').click();
   await expect(window.locator('#replayOverlay')).toHaveClass(/open/);
 
@@ -494,9 +517,29 @@ test('replay times out after the configured number of seconds (#233)', async () 
 async function openStorageTab(win: Page, port: number) {
   await win.fill('#urlbar', `http://127.0.0.1:${port}`);
   await win.press('#urlbar', 'Enter');
-  await win.waitForTimeout(1_500);
+  await expect(win.locator('#urlbar')).toHaveValue(/127\.0\.0\.1/, { timeout: 5_000 });
   await win.click('#consoleTabStorage');
-  await win.waitForTimeout(500);
+  await waitForStorageSettled(win);
+}
+
+// storage.js's renderStoragePanel() shows a "Loading…" placeholder until
+// fetchStorageData's own IPC round-trip (getCookies/getLocalStorage/…)
+// resolves and the real sections render — a reliable, content-agnostic
+// signal that a refresh (from switching to the tab, or #refreshStorageBtn)
+// has actually completed, unlike a fixed sleep.
+async function waitForStorageSettled(win: Page) {
+  await expect(win.locator('#storagePanelContent')).not.toContainText('Loading…', { timeout: 10_000 });
+}
+
+// storage-section-title spans are recreated on every re-render in a fixed
+// order (Cookies, Local Storage, Session Storage, IndexedDB) with a
+// "Label (N)" or "Label (N/M)" (while filtered) text — waiting for the
+// expected count is a precise, content-aware signal that a specific
+// clear/set/refresh this test triggered has actually landed, stronger than
+// waitForStorageSettled alone (which only proves *some* fetch finished).
+async function waitForStorageSectionCount(win: Page, label: string, expected: number) {
+  await expect(win.locator('.storage-section-title', { hasText: label }))
+    .toHaveText(new RegExp(`^${label} \\(${expected}(?:/\\d+)?\\)$`));
 }
 
 // Returns the session the Storage tab is actually bound to (state.activeId,
@@ -525,7 +568,7 @@ test('storage tab: add cookie via "+ Add" button', async () => {
 
   // Reload storage panel after clearing.
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Cookies', 0);
 
   // Click "+ Add" in the cookie section header.
   await window.locator('.storage-add-btn').first().click();
@@ -558,7 +601,7 @@ test('storage tab: edit cookie value by double-clicking', async () => {
   }, partition);
 
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Cookies', 1);
 
   // dblclick on the value cell (td[2]); the name cell (td[1]) keeps its text so
   // the row filter stays valid for the chained input locator.
@@ -570,7 +613,9 @@ test('storage tab: edit cookie value by double-clicking', async () => {
   await editInput.fill('updated');
   await editInput.press('Enter');
 
-  await window.waitForTimeout(500);
+  // commit() calls setCookie() then fetchStorageData() — wait for the
+  // re-rendered cell to actually show the new value.
+  await expect(cookieRow.locator('td').nth(2)).toHaveText('updated');
 
   const cookies: Array<{ name: string; value: string }> =
     await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
@@ -585,7 +630,7 @@ test('storage tab: add localStorage entry via "+ Add" button', async () => {
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.clearLocalStorage(id), sessionId);
 
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Local Storage', 0);
 
   // Click "+ Add" in the localStorage section (second .storage-add-btn).
   await window.locator('.storage-add-btn').nth(1).click();
@@ -595,7 +640,9 @@ test('storage tab: add localStorage entry via "+ Add" button', async () => {
   await addRow.locator('input').nth(1).fill('e2e_ls_val');
   await addRow.locator('input').nth(0).press('Enter');
 
-  await window.waitForTimeout(500);
+  // commit() calls setLocalStorageKey() then fetchStorageData() — wait for
+  // the re-rendered row to actually show the new entry.
+  await expect(window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'e2e_ls_key' })).toBeVisible();
 
   const ls: Record<string, string> =
     await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getLocalStorage(id), sessionId);
@@ -612,7 +659,7 @@ test('storage tab: rename localStorage key by double-clicking', async () => {
   [sessionId, 'old_key', 'kept_value']);
 
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Local Storage', 1);
 
   const lsRow = window.locator('#storagePanel .storage-table tbody tr')
     .filter({ hasText: 'old_key' });
@@ -624,7 +671,9 @@ test('storage tab: rename localStorage key by double-clicking', async () => {
   await editInput.fill('new_key');
   await editInput.press('Enter');
 
-  await window.waitForTimeout(500);
+  // commit() calls setLocalStorageKey()+deleteLocalStorageKey() then
+  // fetchStorageData() — wait for the re-rendered row to show the new key.
+  await expect(window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'new_key' })).toBeVisible();
 
   const ls: Record<string, string> =
     await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getLocalStorage(id), sessionId);
@@ -649,7 +698,7 @@ test('storage tab: filter re-renders from cached data, not a fresh fetch', async
   }, partition);
 
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Cookies', 2);
 
   // Added after the panel already loaded its snapshot — a live fetch would
   // pick this up, a cache-only render never will.
@@ -657,8 +706,9 @@ test('storage tab: filter re-renders from cached data, not a fresh fetch', async
     await electronSession.fromPartition(part).cookies.set({ url: 'http://127.0.0.1', name: 'e2e_filter_ccc', value: '1' });
   }, partition);
 
+  // storageFilter's input handler re-renders synchronously from the cache
+  // (no IPC round-trip) — no wait needed between filling it and asserting.
   await window.fill('#storageFilter', 'e2e_filter_');
-  await window.waitForTimeout(300);
 
   const rows = window.locator('#storagePanel .storage-table tbody tr');
   await expect(rows.filter({ hasText: 'e2e_filter_aaa' })).toHaveCount(1);
@@ -667,13 +717,12 @@ test('storage tab: filter re-renders from cached data, not a fresh fetch', async
 
   // A real refresh does pick it up.
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Cookies', 3);
   await expect(rows.filter({ hasText: 'e2e_filter_ccc' })).toHaveCount(1);
 
   // Leaving the filter populated leaks into every later test that inspects
   // #storagePanel's rows by text — clear it back to the panel's default state.
   await window.fill('#storageFilter', '');
-  await window.waitForTimeout(300);
 });
 
 test('storage tab: add cookie with Secure + SameSite=Strict round-trips through the form', async () => {
@@ -684,7 +733,7 @@ test('storage tab: add cookie with Secure + SameSite=Strict round-trips through 
     await electronSession.fromPartition(part).clearStorageData({ storages: ['cookies'] });
   }, partition);
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Cookies', 0);
 
   await window.locator('.storage-add-btn').first().click();
   const addRow = window.locator('.storage-add-row').first();
@@ -718,7 +767,7 @@ test('storage tab: a failed cookie edit leaves the original value and shows an e
   // and make the dblclick locator below wait out its full timeout.
   await window.fill('#storageFilter', '');
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Cookies', 1);
 
   const cookieRow = window.locator('#storagePanel .storage-table tbody tr')
     .filter({ hasText: 'e2e_safe_edit_cookie' });
@@ -753,9 +802,9 @@ test('storage tab: sessionStorage section shows page-set entries', async () => {
   await tab.evaluate(() => { sessionStorage.setItem('e2e_ss_key', 'e2e_ss_val'); });
 
   await window.click('#consoleTabStorage');
-  await window.waitForTimeout(300);
+  await waitForStorageSettled(window);
   await window.click('#refreshStorageBtn');
-  await window.waitForTimeout(500);
+  await waitForStorageSectionCount(window, 'Session Storage', 1);
 
   const ssRow = window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'e2e_ss_key' });
   await expect(ssRow).toContainText('e2e_ss_val');

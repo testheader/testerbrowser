@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getActiveViewBounds, getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { getActiveViewBounds, getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -42,7 +42,7 @@ test('the app menu\'s "Fill with test data…" opens the modal with the page vie
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url('/index.html'));
   await window.press('#urlbar', 'Enter');
-  await window.waitForTimeout(500);
+  await (await getTabPage(app, '/index.html')).waitForLoadState('load');
 
   const before = await getActiveViewBounds(app);
   expect(before).not.toBeNull();
@@ -78,7 +78,7 @@ test('a plain right-click (no input focused) builds a "Fill with test data…" i
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url('/index.html'));
   await window.press('#urlbar', 'Enter');
-  await window.waitForTimeout(500);
+  await (await getTabPage(app, '/index.html')).waitForLoadState('load');
   const urlPath = fixtures.url('/index.html');
 
   await app.evaluate(({ Menu }) => {

@@ -203,7 +203,9 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   await window.press('#urlbar', 'Enter');
   await expectSessionUrl(leaderId, afterDisableDest);
 
-  // Give the (now-disabled) mirror a moment to fire if it incorrectly still would.
+  // Give the (now-disabled) mirror a moment to fire if it incorrectly still
+  // would — a deliberate negative wait (proving nothing changes within a
+  // window), out of scope for #249's web-first-wait cleanup; owned by #253.
   await window.waitForTimeout(1000);
   await expect(window.locator('#followLog .follow-log-line')).toHaveCount(countBefore);
   await expect(await sessionUrl(followerId)).toContain(mirrorDest);

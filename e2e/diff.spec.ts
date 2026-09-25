@@ -30,21 +30,19 @@ test('clicking Diff tab shows diffPanel', async () => {
 
 test('diffPanel contains session pickers A and B', async () => {
   await window.locator('#consoleTabDiff').click();
-  // initDiff populates pickers on first click; wait briefly
-  await window.waitForTimeout(200);
+  // initDiff populates pickers on first click — toBeAttached() already polls
+  // for that, so no separate wait is needed.
   await expect(window.locator('#diffPickA')).toBeAttached();
   await expect(window.locator('#diffPickB')).toBeAttached();
 });
 
 test('diffPanel contains a Run diff button', async () => {
   await window.locator('#consoleTabDiff').click();
-  await window.waitForTimeout(200);
   await expect(window.locator('#diffRunBtn')).toBeAttached();
 });
 
 test('diffPanel contains a HAR export button', async () => {
   await window.locator('#consoleTabDiff').click();
-  await window.waitForTimeout(200);
   await expect(window.locator('#diffHarBtn')).toBeAttached();
 });
 
@@ -273,7 +271,7 @@ test('expanding a matched row shows a changed response header, once its query pa
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url('/network/header?v=1'));
   await window.press('#urlbar', 'Enter');
-  await window.waitForTimeout(500);
+  await (await getTabPage(app, '/network/header?v=1')).waitForLoadState('load');
 
   await window.click('#newSessionBtn');
   await expect.poll(() => window.locator('.tab').count()).toBe(2);
@@ -283,7 +281,7 @@ test('expanding a matched row shows a changed response header, once its query pa
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url('/network/header?v=2'));
   await window.press('#urlbar', 'Enter');
-  await window.waitForTimeout(500);
+  await (await getTabPage(app, '/network/header?v=2')).waitForLoadState('load');
 
   await window.click('#consoleTabDiff');
   await window.selectOption('#diffPickA', sessionAId);

@@ -80,11 +80,11 @@ test('a failed navigation is recorded and marked as failed', async () => {
     (sid: string) => (window as any).testerBrowser.sessions.navigate(sid, 'http://127.0.0.1:1/unreachable'),
     id
   );
-  await window.waitForTimeout(1_000);
 
-  const history = await window.evaluate((sid: string) => (window as any).testerBrowser.sessions.getHistory(sid), id);
-  const failedEntry = history.find((h: { url: string; failed?: boolean }) => h.url.includes('unreachable'));
-  expect(failedEntry?.failed).toBe(true);
+  await expect.poll(async () => {
+    const history = await window.evaluate((sid: string) => (window as any).testerBrowser.sessions.getHistory(sid), id);
+    return history.find((h: { url: string; failed?: boolean }) => h.url.includes('unreachable'))?.failed;
+  }, { timeout: 10_000 }).toBe(true);
 });
 
 test('History panel lists entries and clicking one navigates there', async () => {

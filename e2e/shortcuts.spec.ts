@@ -230,17 +230,19 @@ test('Ctrl+Tab while a tab is mid-rename does not crash the tab bar (#211)', asy
   window.on('pageerror', (err) => pageErrors.push(String(err)));
 
   await window.keyboard.press('Control+Tab');
-  await window.waitForTimeout(300);
 
-  expect(pageErrors).toEqual([]);
   // The tab bar itself must have survived intact — both tabs still present
   // and re-render-able, not stuck in whatever partial state a mid-loop
   // exception would have left it in. Whether the rename itself ended up
   // committed (likely, via the focus-driven blur above) or left in
   // progress is incidental to what this test checks — either way the tab
   // must be back to a normal, interactive state, not stuck mid-render.
+  // Waiting for that to settle also gives any crash from the race a chance
+  // to surface as a pageerror before the check below.
   await expect.poll(tabCount).toBe(2);
   await expect(window.locator(`.tab[data-id="${renamingId}"] .tab-name`)).toBeVisible();
+
+  expect(pageErrors).toEqual([]);
 
   window.removeAllListeners('pageerror');
 });
@@ -270,12 +272,14 @@ test('refreshTabs() running while a tab is mid-rename (e.g. another tab\'s favic
       id, favicon: 'https://example.com/favicon.ico',
     });
   }, renamingId);
-  await window.waitForTimeout(300);
+
+  // Auto-committed (to the same, unchanged name — nothing was typed) rather
+  // than left stuck as an input or torn down into nothing. Waiting for that
+  // also gives any crash from the race a chance to surface as a pageerror
+  // before the check below.
+  await expect(window.locator(`.tab[data-id="${renamingId}"] .tab-name`)).toBeVisible();
 
   expect(pageErrors).toEqual([]);
-  // Auto-committed (to the same, unchanged name — nothing was typed) rather
-  // than left stuck as an input or torn down into nothing.
-  await expect(window.locator(`.tab[data-id="${renamingId}"] .tab-name`)).toBeVisible();
 
   window.removeAllListeners('pageerror');
 });
@@ -463,11 +467,17 @@ test('F12 toggles DevTools for the active tab', async () => {
   await window.keyboard.press('F12');
   await expect.poll(countDevtoolsContents, { timeout: 8_000 }).toBeGreaterThan(before);
 
-  // A little breathing room before toggling again — devtools attaches
-  // asynchronously, and isDevToolsOpened() needs to reflect that first.
-  await window.waitForTimeout(500);
-  await window.keyboard.press('F12');
-  await expect.poll(countDevtoolsContents, { timeout: 8_000 }).toBe(before);
+  // toggleDevTools() branches on the session's own devToolsOpen flag, set
+  // asynchronously by the 'devtools-opened' event (sessionManager.ts) —
+  // not observable from here, and it can still be false for a moment after
+  // the devtools:// WebContents above already exists. A second F12 sent
+  // before that flag flips lands as another (no-op) open instead of a
+  // close, so retry the close press instead of guessing how long the flag
+  // takes to catch up.
+  await expect(async () => {
+    await window.keyboard.press('F12');
+    expect(await countDevtoolsContents()).toBe(before);
+  }).toPass({ timeout: 8_000 });
 });
 
 test('Middle-click on a tab closes it, but not when the tab is pinned', async () => {
@@ -538,7 +548,11 @@ test('Ctrl+W does not close a pinned tab, from the chrome UI or from the page it
     await freshTab.click('body', { timeout: 2_000 });
     await freshTab.keyboard.press('Control+w');
   }).toPass({ timeout: 15_000 });
-  await window.waitForTimeout(200); // app:shortcut is a fire-and-forget IPC round trip
+  // app:shortcut is a fire-and-forget main→renderer IPC round trip, and the
+  // pinned-tab guard means it's a no-op here — there's no positive DOM/IPC
+  // signal to poll for "the no-op finished", so this fixed wait is a last
+  // resort (#249).
+  await window.waitForTimeout(200);
   await expect.poll(tabCount).toBe(beforePage); // still unchanged
 
   // Unpin and confirm Ctrl+W now closes it.

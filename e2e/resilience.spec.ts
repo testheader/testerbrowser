@@ -97,7 +97,10 @@ test('the 1.5s auto-refresh does not wipe an in-progress edit (#224)', async () 
 
   // Auto-refresh polls every 1.5s — wait past two ticks and confirm the
   // edit row (and the typed value) is still there, not replaced by a
-  // freshly re-rendered read-only row.
+  // freshly re-rendered read-only row. This is a genuine negative wait
+  // (proving nothing changed over the window): there is no DOM signal to
+  // wait on for "two poll ticks did NOT happen", so a fixed sleep is the
+  // only way to give the auto-refresh timer a real chance to fire twice.
   await window.waitForTimeout(3_500);
   await expect(window.locator('.res-rule-row-editing')).toHaveCount(1);
   await expect(urlField).toHaveValue('*/api/still-editing');
@@ -129,9 +132,9 @@ test('sending a captured POST request to Resilience scopes the rule to that meth
   // own pattern — clear it so this test's own request isn't hidden by it.
   await window.fill('#networkFilterText', '');
   await tab.evaluate((url) => fetch(url, { method: 'POST', body: '{"x":1}' }).catch(() => {}), targetUrl);
-  await window.waitForTimeout(1_500);
 
   const requestRow = window.locator('.evt.network-request', { hasText: '/api/resilience-method-check' });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
     await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
     await expect(window.locator('#detailResilienceBtn')).toBeVisible({ timeout: 1_000 });
@@ -191,18 +194,25 @@ test('a broad-but-not-wildcard rule pattern under a heavy request burst, refresh
   const tab = await getTabPage(app, 'network-flood.html');
   await tab.waitForLoadState('load');
 
+  const tabCountBefore = await window.locator('.tab').count();
+
   // Fire without awaiting completion, so the refresh below lands mid-flight —
   // the "refresh tears down CDP targets while a burst is still in flight"
   // half of #210's hypothesis, alongside the immediate tab switch.
   tab.evaluate(() => {
     document.querySelector('button[data-ad="1"]').click();
   }).catch(() => {});
-  await window.waitForTimeout(50);
+  // #status is set synchronously inside the click handler, before any of the
+  // 3000 fetches resolve — waiting for it proves the burst is genuinely in
+  // flight rather than hoping a fixed delay was long enough.
+  await expect(tab.locator('#status')).toHaveText(/firing 3000 requests/);
 
   await window.click('#reloadBtn');
-  await window.waitForTimeout(50);
+  // Wait for the reload to actually start (loadingBar flips to "loading")
+  // before switching sessions, so the switch lands mid-reload as intended.
+  await expect(window.locator('#loadingBar')).toHaveClass(/loading/);
   await window.click('#newSessionBtn');
-  await window.waitForTimeout(2_000);
+  await expect.poll(() => window.locator('.tab').count()).toBeGreaterThan(tabCountBefore);
 
   // The app process is still alive and IPC-responsive — not just that
   // `window` didn't throw, but that a real round-trip to the main process
@@ -362,9 +372,9 @@ test('editing the URL after a "⇒ Resilience" prefill resets the method scope t
   await window.click('#clearNetworkBtn');
   await window.fill('#networkFilterText', '');
   await tab.evaluate((url) => fetch(url, { method: 'POST', body: '{}' }).catch(() => {}), targetUrl);
-  await window.waitForTimeout(1_500);
 
   const requestRow = window.locator('.evt.network-request', { hasText: '/api/resilience-reset-check' });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
     await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
     await expect(window.locator('#detailResilienceBtn')).toBeVisible({ timeout: 1_000 });

@@ -48,13 +48,15 @@ test('Inspect element highlights and selects the hovered/clicked page element', 
   await window.click('#consoleTabA11y');
   await expect(window.locator('#a11yInspectBtn')).toBeEnabled();
   await window.click('#a11yInspectBtn');
-  // setInspect() is fire-and-forget from the click handler — give the IPC
-  // round-trip (CDP Accessibility.enable + injecting the hover listener) a
-  // moment to land before generating page events for it to observe.
-  await window.waitForTimeout(300);
-
-  await tab.hover('[data-testid="a11y-button"]');
-  await expect(window.locator('.a11y-row.a11y-hovered')).toContainText('Save changes', { timeout: 5_000 });
+  // setInspect() is fire-and-forget from the click handler (CDP
+  // Accessibility.enable + injecting the hover listener) — there's no
+  // renderer-side signal for when that IPC round-trip actually lands, so
+  // retry the hover itself until it's observed instead of guessing how long
+  // it takes.
+  await expect(async () => {
+    await tab.hover('[data-testid="a11y-button"]');
+    await expect(window.locator('.a11y-row.a11y-hovered')).toContainText('Save changes', { timeout: 500 });
+  }).toPass({ timeout: 5_000 });
 
   await tab.click('[data-testid="a11y-button"]');
   await expect(window.locator('.a11y-row.a11y-selected')).toContainText('Save changes', { timeout: 5_000 });

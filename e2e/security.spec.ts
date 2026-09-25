@@ -55,7 +55,7 @@ test('scan reports a real HTTP finding, and a row opens the detail panel', async
   await page.click('#urlbar');
   await page.fill('#urlbar', fixtures.url(urlPath));
   await page.press('#urlbar', 'Enter');
-  await page.waitForTimeout(1_000);
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
 
   await page.click('#consoleTabSecurity');
   await page.click('#secScanBtn');
@@ -73,7 +73,7 @@ test('"Configure checks" lets a rule be disabled, and the override persists acro
   await page.click('#urlbar');
   await page.fill('#urlbar', fixtures.url(urlPath));
   await page.press('#urlbar', 'Enter');
-  await page.waitForTimeout(1_000);
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
 
   await page.click('#consoleTabSecurity');
   await page.click('#secScanBtn');
@@ -109,7 +109,7 @@ test('a severity master checkbox toggles the whole group, and goes indeterminate
   await page.click('#urlbar');
   await page.fill('#urlbar', fixtures.url(urlPath));
   await page.press('#urlbar', 'Enter');
-  await page.waitForTimeout(1_000);
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
 
   await page.click('#consoleTabSecurity');
   await page.click('#secConfigBtn');
