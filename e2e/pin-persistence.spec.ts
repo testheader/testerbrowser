@@ -13,6 +13,10 @@ import { getMainWindow, MAIN_PATH } from './helpers';
 // state never leaks between spec files) — same technique as
 // launchWithSimulatedCrash() in crash-report.spec.ts.
 test('a pinned tab is still pinned after a full app restart (#231)', async () => {
+  // Two full Electron launches (each including a build's worth of startup
+  // work) in one test easily exceeds the default 30s budget on a loaded CI
+  // runner — every other spec file launches exactly once per test.
+  test.setTimeout(90_000);
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-pin-'));
 
   const app1 = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });

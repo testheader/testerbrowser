@@ -83,13 +83,20 @@ test('closing a tab still on the new-tab page and reopening it lands back on the
   await window.keyboard.press('Control+t');
   await expect(window.locator('#urlbar')).toHaveValue('');
 
+  // resetToSingleTab (1) -> Ctrl+T (2) -> Ctrl+W (1) -> Ctrl+Shift+T reopen (2).
   await window.keyboard.press('Control+w');
   await window.keyboard.press('Control+Shift+T');
-  await expect.poll(tabCount).toBe(1);
+  await expect.poll(tabCount).toBe(2);
   await expect(window.locator('#urlbar')).toHaveValue('');
 });
 
-test('reopening a closed tab restores its pin state, notes and emulation (#231)', async () => {
+test('reopening a closed tab restores its notes and emulation (#231)', async () => {
+  // Not pinned: a pinned tab can never reach Ctrl+W's closeTab() call at all
+  // (shortcuts.js guards it with isPinned(), by design — see "Ctrl+W does
+  // not close a pinned tab" above) — so closedTabs (populated only by an
+  // actual close) can never realistically hold a pinned entry either. Pin
+  // restoration on reopen is covered separately below, driving
+  // sessions:reopen directly instead of through an impossible close.
   const urlPath = '/console/logs.html';
   await window.keyboard.press('Control+t');
   const id = await activeTabId();
@@ -99,7 +106,6 @@ test('reopening a closed tab restores its pin state, notes and emulation (#231)'
   const tab = await getTabPage(app, urlPath);
   await tab.waitForLoadState('load');
 
-  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.pin(id, true), id);
   await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.setNotes(id, 'reopen test notes'), id);
   await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.emulation.set(id, { locale: 'fr-FR' }), id);
 
@@ -110,7 +116,6 @@ test('reopening a closed tab restores its pin state, notes and emulation (#231)'
   await window.keyboard.press('Control+Shift+T');
   await expect.poll(tabCount).toBe(before);
   const reopenedId = await activeTabId();
-  await expect(window.locator(`.tab[data-id="${reopenedId}"]`)).toHaveAttribute('data-pinned', '1');
 
   const notes = await window.evaluate(
     (id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.getNotes(id), reopenedId
@@ -121,9 +126,29 @@ test('reopening a closed tab restores its pin state, notes and emulation (#231)'
     (id) => (window as unknown as { testerBrowser: any }).testerBrowser.emulation.get(id), reopenedId
   );
   expect(emulation?.locale).toBe('fr-FR');
+});
 
-  // Unpin so resetToSingleTab()'s repeated Ctrl+W in later tests can close it.
-  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.pin(id, false), reopenedId);
+test('sessions:reopen restores a pinned tab as pinned (#231)', async () => {
+  // Exercises the pinned field of sessions:reopen's opts directly via IPC
+  // (not through reopenTab()/Ctrl+Shift+T, which also updates the tab strip
+  // DOM — driving that from here would need renderer-internal state this
+  // test has no access to) — a real closedTabs entry can never carry
+  // pinned: true in practice (see the note above, Ctrl+W refuses to close a
+  // pinned tab), but the restore path itself (createSession's pinned
+  // option) is still real production code worth covering.
+  const partition = `persist:e2e-pin-reopen-${Date.now()}`;
+  const newId = await window.evaluate(
+    (partition) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.reopen({
+      name: 'Reopened pinned', url: null, partition, pinned: true,
+    }),
+    partition
+  );
+  expect(newId).toBeTruthy();
+
+  const sessions = await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.list());
+  expect(sessions.find((s: { id: string; pinned: boolean }) => s.id === newId)?.pinned).toBe(true);
+
+  await window.evaluate((id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.destroy(id), newId);
 });
 
 test('reopening 3 closed tabs in a row restores them most-recently-closed first, each with its own URL (#231)', async () => {
