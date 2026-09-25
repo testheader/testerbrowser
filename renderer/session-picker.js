@@ -1,14 +1,24 @@
 /* global testerBrowser */
 import { escHtml } from './utils.js';
 
-function buildPickerOptions(select, sessions, excludeId) {
+// Builds a <select>'s <option> list from a session array — the one bit
+// diff.js/followalong.js's paired pickers and visual-regression.js's single
+// "compare against" picker all actually share. `excludeId` drops one
+// session (used by the paired pickers, below, so A can't also be B);
+// `extraFirstOption` prepends a synthetic non-session choice (a "— pick
+// session —" placeholder here, "This session" in visual-regression.js).
+export function buildSessionOptions(select, sessions, opts = {}) {
+  const { excludeId, extraFirstOption } = opts;
   const current = select.value;
-  const opts = sessions
-    .filter(s => s.id !== excludeId)
-    .map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`)
-    .join('');
-  select.innerHTML = '<option value="">— pick session —</option>' + opts;
+  const filtered = excludeId ? sessions.filter(s => s.id !== excludeId) : sessions;
+  const optsHtml = filtered.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+  const firstHtml = extraFirstOption ? `<option value="${extraFirstOption.value}">${escHtml(extraFirstOption.label)}</option>` : '';
+  select.innerHTML = firstHtml + optsHtml;
   if (current && current !== excludeId) select.value = current;
+}
+
+function buildPickerOptions(select, sessions, excludeId) {
+  buildSessionOptions(select, sessions, { excludeId, extraFirstOption: { value: '', label: '— pick session —' } });
 }
 
 // Wires up a pair of <select> elements as complementary session pickers:

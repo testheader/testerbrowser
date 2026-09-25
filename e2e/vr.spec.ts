@@ -134,3 +134,65 @@ test('comparing against a different session captures that session\'s screenshot,
   expect(match).toBeTruthy();
   expect(Number(match![1].replace(/,/g, ''))).toBeGreaterThan(0);
 });
+
+test('a baseline and current screenshot of different sizes show a visible size-mismatch warning (#238)', async () => {
+  const urlPath = '/network/status-codes.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
+
+  await window.click('#consoleTabVR');
+  // Full page stays unchecked, so the capture is a viewport screenshot —
+  // its dimensions track the app window's size.
+  await window.click('#vrCaptureBtn');
+  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+
+  await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(900, 700); });
+  await window.waitForTimeout(500); // let the resize settle and the BrowserView re-layout
+
+  await window.click('#vrCompareBtn');
+  await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
+  await expect(window.locator('#vrStats')).toContainText('Image sizes differ');
+  // The existing diff stat is still shown alongside the warning, not replaced by it.
+  await expect(window.locator('#vrStats')).toContainText('% of');
+
+  // Restore the window size so later tests in this file see the usual layout.
+  await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(1400, 900); });
+  await window.waitForTimeout(300);
+});
+
+test('the Compare button re-enables after a failed screenshot instead of staying stuck on "Comparing…" (#238)', async () => {
+  // This drives the pre-existing "Screenshot failed" early-return path
+  // (captureScreenshot resolving null for a session that doesn't exist),
+  // which already re-enabled the button correctly before this ticket — it's
+  // not a regression test for the loadImage()/onerror fix itself. That fix
+  // addresses a *different*, narrower failure mode (a captured screenshot
+  // that decodes to a broken image) which isn't reachable from here:
+  // contextBridge-exposed methods can't be monkeypatched from the page
+  // (confirmed empirically — reassigning
+  // testerBrowser.visualRegression.captureScreenshot from window.evaluate is
+  // a silent no-op), and no fixture route naturally produces a corrupt
+  // screenshot capture. Kept anyway as a general regression guard on the
+  // button/stats recovery UX runCompare's try/catch/finally is responsible
+  // for, since that's the same machinery the real fix depends on.
+  await window.click('#consoleTabVR');
+  await expect(window.locator('#vrCompareBtn')).toBeEnabled();
+
+  await window.evaluate(() => {
+    const pick = document.getElementById('vrComparePick') as HTMLSelectElement;
+    const opt = document.createElement('option');
+    opt.value = 'nonexistent-session-id';
+    pick.appendChild(opt);
+    pick.value = 'nonexistent-session-id';
+    pick.dispatchEvent(new Event('change'));
+  });
+
+  await window.click('#vrCompareBtn');
+  await expect(window.locator('#vrCompareBtn')).toBeEnabled({ timeout: 10_000 });
+  await expect(window.locator('#vrCompareBtn')).toHaveText('Compare');
+  await expect(window.locator('#vrStats')).toContainText('Screenshot failed', { timeout: 10_000 });
+
+  // Reset the picker back to its default for later tests.
+  await window.selectOption('#vrComparePick', '');
+});

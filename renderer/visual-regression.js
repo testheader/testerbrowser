@@ -1,6 +1,21 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
-import { escHtml } from './utils.js';
+import { buildSessionOptions } from './session-picker.js';
+
+// Lazily created, reused across comparisons — spinning up a Worker has real
+// overhead, and every compare goes through the same one at most one at a
+// time (see computeDiffInWorker's own listener lifecycle).
+let vrWorker = null;
+function getVrWorker() {
+  // Relative to the page's own URL (renderer/index.html), not this module's
+  // — both live in the same renderer/ directory, so a plain relative path
+  // resolves correctly either way. Deliberately not import.meta.url: this
+  // file is also loaded (for its non-Worker exports) by Jest's CommonJS
+  // transform when other renderer modules pull it in transitively, which
+  // can't parse that syntax.
+  if (!vrWorker) vrWorker = new Worker('./vr-worker.js', { type: 'module' });
+  return vrWorker;
+}
 
 // Baseline capture is page-scoped (per session, see #88), but the "current"
 // screenshot compared against it can come from a different session — see #127.
@@ -83,8 +98,7 @@ export async function refreshVRComparePicker() {
 
   const sessions = await testerBrowser.sessions.list();
   const current = pick.value;
-  const options = sessions.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
-  pick.innerHTML = `<option value="">This session (same as baseline)</option>${options}`;
+  buildSessionOptions(pick, sessions, { extraFirstOption: { value: '', label: 'This session (same as baseline)' } });
 
   const stillValid = current && sessions.some(s => s.id === current);
   pick.value = stillValid ? current : '';
@@ -190,21 +204,28 @@ async function runCompare() {
     if (sessionId !== getActiveId()) return;
     if (!captured) { stats.textContent = 'Screenshot failed — the selected session may have been closed.'; return; }
 
-    const [baseImg, curImg] = await Promise.all([loadImage(baselineB64), loadImage(captured)]);
+    const [baseImg, curImg] = await Promise.all([
+      loadImage(baselineB64).catch(() => { throw new Error('could not decode baseline screenshot'); }),
+      loadImage(captured).catch(() => { throw new Error('could not decode current screenshot'); }),
+    ]);
 
     const w = Math.max(baseImg.width,  curImg.width);
     const h = Math.max(baseImg.height, curImg.height);
+    const sizeMismatch = baseImg.width !== curImg.width || baseImg.height !== curImg.height;
 
-    const { diffCanvas, diffCount, total } = computeDiff(baseImg, curImg, w, h);
+    const { diffDataUrl, diffCount, total } = await computeDiffInWorker(baseImg, curImg, w, h);
     const pct = total > 0 ? ((diffCount / total) * 100).toFixed(2) : '0.00';
 
     const d = activeData();
     d.currentB64  = captured;
-    d.diffDataUrl = diffCanvas.toDataURL('image/png');
+    d.diffDataUrl = diffDataUrl;
     d.viewMode    = 'diff';
     renderImages();
 
-    stats.textContent = `${diffCount.toLocaleString()} pixels differ (${pct}% of ${total.toLocaleString()})`;
+    const warning = sizeMismatch
+      ? ` ⚠ Image sizes differ: baseline ${baseImg.width}×${baseImg.height}, current ${curImg.width}×${curImg.height} — comparison may be misleading.`
+      : '';
+    stats.textContent = `${diffCount.toLocaleString()} pixels differ (${pct}% of ${total.toLocaleString()})${warning}`;
   } catch (err) {
     stats.textContent = `Compare failed: ${err.message}`;
   } finally {
@@ -217,50 +238,55 @@ function isFullPage() {
   return document.getElementById('vrFullPage').checked;
 }
 
+// Rejects on a decode failure (corrupt/truncated base64, an unsupported
+// format) instead of leaving the Promise permanently unsettled — that used
+// to hang runCompare's await forever, with the Compare button stuck on
+// "Comparing…" until the tab or app restarted (#238).
 function loadImage(b64) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('image failed to decode'));
     img.src = `data:image/png;base64,${b64}`;
   });
 }
 
-function computeDiff(img1, img2, w, h) {
+// Decodes both images onto same-size canvases on the main thread (Image()/
+// OffscreenCanvas.drawImage need a real image-decoding path, not available
+// inside a Worker), then hands the two raw RGBA buffers to vr-worker.js —
+// transferred, not copied, so a large full-page capture doesn't double its
+// memory cost — for the actual per-pixel comparison loop. That loop is the
+// part that can run to tens of millions of iterations and freeze the UI
+// thread; moving just it into a Worker keeps the app responsive during a
+// large compare (#238).
+function computeDiffInWorker(img1, img2, w, h) {
   const c1 = new OffscreenCanvas(w, h);
   const c2 = new OffscreenCanvas(w, h);
-  const cd = document.createElement('canvas');
-  cd.width = w;
-  cd.height = h;
-  const x1 = c1.getContext('2d'), x2 = c2.getContext('2d'), xd = cd.getContext('2d');
-
+  const x1 = c1.getContext('2d');
+  const x2 = c2.getContext('2d');
   x1.drawImage(img1, 0, 0);
   x2.drawImage(img2, 0, 0);
-
   const d1 = x1.getImageData(0, 0, w, h).data;
   const d2 = x2.getImageData(0, 0, w, h).data;
-  const out = xd.createImageData(w, h);
 
-  let diffCount = 0;
-  const total = w * h;
-
-  for (let i = 0; i < total; i++) {
-    const j = i * 4;
-    const dr = Math.abs(d1[j]   - d2[j]);
-    const dg = Math.abs(d1[j+1] - d2[j+1]);
-    const db = Math.abs(d1[j+2] - d2[j+2]);
-    if (dr + dg + db > 15) {
-      out.data[j]   = 255;
-      out.data[j+1] = 0;
-      out.data[j+2] = 68;
-      out.data[j+3] = 255;
-      diffCount++;
-    } else {
-      out.data[j]   = Math.round(d1[j]   * 0.25);
-      out.data[j+1] = Math.round(d1[j+1] * 0.25);
-      out.data[j+2] = Math.round(d1[j+2] * 0.25);
-      out.data[j+3] = 255;
-    }
-  }
-  xd.putImageData(out, 0, 0);
-  return { diffCanvas: cd, diffCount, total };
+  return new Promise((resolve, reject) => {
+    const worker = getVrWorker();
+    const onMessage = (e) => {
+      cleanup();
+      const { diffData, diffCount, total } = e.data;
+      const cd = document.createElement('canvas');
+      cd.width = w;
+      cd.height = h;
+      cd.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(diffData), w, h), 0, 0);
+      resolve({ diffDataUrl: cd.toDataURL('image/png'), diffCount, total });
+    };
+    const onError = () => { cleanup(); reject(new Error('diff computation failed')); };
+    const cleanup = () => {
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onError);
+    };
+    worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
+    worker.postMessage({ w, h, buf1: d1.buffer, buf2: d2.buffer }, [d1.buffer, d2.buffer]);
+  });
 }
