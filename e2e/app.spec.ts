@@ -594,6 +594,11 @@ test('storage tab: filter re-renders from cached data, not a fresh fetch', async
   await window.click('#refreshStorageBtn');
   await window.waitForTimeout(500);
   await expect(rows.filter({ hasText: 'e2e_filter_ccc' })).toHaveCount(1);
+
+  // Leaving the filter populated leaks into every later test that inspects
+  // #storagePanel's rows by text — clear it back to the panel's default state.
+  await window.fill('#storageFilter', '');
+  await window.waitForTimeout(300);
 });
 
 test('storage tab: add cookie with Secure + SameSite=Strict round-trips through the form', async () => {
@@ -634,6 +639,9 @@ test('storage tab: a failed cookie edit leaves the original value and shows an e
     await ses.clearStorageData({ storages: ['cookies'] });
     await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_safe_edit_cookie', value: 'original' });
   }, partition);
+  // Defensive: a filter left over from an earlier test would hide this row
+  // and make the dblclick locator below wait out its full timeout.
+  await window.fill('#storageFilter', '');
   await window.click('#refreshStorageBtn');
   await window.waitForTimeout(500);
 
