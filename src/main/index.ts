@@ -18,6 +18,7 @@ import {
   migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile,
   formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
 } from './jira';
+import { readJsonWithBackup, writeJsonAtomic } from './jsonFile';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -133,12 +134,9 @@ function writeCrashLog(startedAt: string, recentErrors: AppErrorEntry[], session
 // whenever a session is created/destroyed or navigates (see onSessionsChanged
 // passed into its constructor below).
 function persistSessionUrls() {
-  try {
-    if (!sessionUrlsPath) return;
-    const urls = (sessionManager?.listSessions() ?? []).map((s: { url?: string }) => s.url ?? '').filter(Boolean);
-    fs.writeFileSync(sessionUrlsPath, JSON.stringify(urls));
-  // silent: fires on every session create/destroy/navigate — too high-frequency to log; a persistent disk issue also surfaces via saveSessions()'s own warn
-  } catch {}
+  if (!sessionUrlsPath) return;
+  const urls = (sessionManager?.listSessions() ?? []).map((s: { url?: string }) => s.url ?? '').filter(Boolean);
+  writeJsonAtomic(sessionUrlsPath, urls);
 }
 
 // available-manual (#230): a newer release exists (found by the error
@@ -171,10 +169,16 @@ class JsonStore<T> {
 
   constructor(filename: string, defaultValue: T, init?: (raw: unknown) => T) {
     this.file = path.join(app.getPath('userData'), filename);
-    try {
-      const raw = JSON.parse(fs.readFileSync(this.file, 'utf-8'));
-      this.data = init ? init(raw) : (raw as T);
-    } catch { this.data = defaultValue; }
+    const result = readJsonWithBackup(this.file);
+    if (result.ok) {
+      this.data = init ? init(result.data) : (result.data as T);
+      if (result.source === 'backup') {
+        log.warn('settings', `${filename} was missing or unreadable — restored from backup`);
+      }
+    } else {
+      this.data = defaultValue;
+      log.warn('settings', `${filename} and its backup were both missing or unreadable — using defaults`);
+    }
   }
 
   get(): T { return this.data; }
@@ -188,11 +192,7 @@ class JsonStore<T> {
   }
 
   private save() {
-    try {
-      fs.writeFileSync(this.file, JSON.stringify(this.data));
-    } catch (e) {
-      log.warn('app', `Failed to write ${path.basename(this.file)}`, { error: String(e) });
-    }
+    writeJsonAtomic(this.file, this.data);
   }
 }
 

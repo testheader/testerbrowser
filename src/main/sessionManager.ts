@@ -11,6 +11,7 @@ import { AppLog } from './appLogger';
 import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
 import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 import { filterRowsSince } from './jira';
+import { writeJsonAtomic } from './jsonFile';
 import {
   RGB, WCAG_AA_NORMAL, WCAG_AA_LARGE, WCAG_AAA_NORMAL, WCAG_AAA_LARGE,
   contrastRatio, isLargeText, parseCssColor,
@@ -1190,7 +1191,7 @@ export class SessionManager {
     const recorder = new SessionRecorder(view.webContents, {
       sessionId: id,
       dbDir: this.dbDir,
-      redactSensitiveHeaders: this.getRedactHeaders(),
+      getRedact: this.getRedactHeaders,
       maxEventsPerSession: this.getRecorderMaxEvents(),
       // #229: a temp tab's traffic (including bodies) never touches disk —
       // only its session partition is in-memory before this, not its
@@ -1724,7 +1725,7 @@ export class SessionManager {
         const applied = this.emulationByPartition.get(s.partition);
         if (applied && Object.keys(applied).length > 0) emulation[s.partition] = applied;
       }
-      fs.writeFileSync(this.sessionsFile, JSON.stringify({ sessions, notes, emulation }));
+      writeJsonAtomic(this.sessionsFile, { sessions, notes, emulation });
     } catch (e) {
       this.log.warn('sessions', 'Failed to save sessions to disk', { error: String(e) });
     }

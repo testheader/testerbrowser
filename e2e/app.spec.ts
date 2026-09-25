@@ -363,9 +363,11 @@ test('replay is intercepted by the tab\'s Mock rules instead of touching the net
 });
 
 test('replay drops [REDACTED] headers from the prefill and never sends them (#233)', async () => {
-  // redactSensitiveHeaders is only read once, when a session's recorder is
-  // constructed — flip it on, then open a *new* tab so its recorder actually
-  // picks it up.
+  // #248: redactSensitiveHeaders is now re-evaluated per event, so it no
+  // longer requires a fresh tab to take effect — the new tab here is just
+  // test isolation (a clean URL to navigate), not a requirement. See the
+  // dedicated "applies immediately to an already-open tab" test below for
+  // proof of the live-toggle behavior itself.
   await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ redactSensitiveHeaders: true }));
   await window.click('#newSessionBtn');
   // A query string unique to this test — other tests above also navigate to
@@ -400,6 +402,79 @@ test('replay drops [REDACTED] headers from the prefill and never sends them (#23
 
   await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ redactSensitiveHeaders: false }));
   await window.click('#closeReplayBtn');
+});
+
+// #248: SessionRecorder now takes getRedact: () => boolean and calls it per
+// event instead of reading redactSensitiveHeaders once at construction —
+// toggling the setting must change the very next recorded request on a tab
+// that was already open before the toggle, with no new tab and no reload.
+//
+// Asserted directly against the recorded payload (recording:timeline) rather
+// than through the Replay UI: openReplay() (#233) deliberately strips any
+// header whose stored value is the literal '[REDACTED]' out of its editable
+// table (showing a separate banner instead of a nonsensical prefilled
+// value), so the table never actually contains the string '[REDACTED]' —
+// asserting against the raw stored event is what actually proves the
+// recorder redacted it. Real Chromium also doesn't reliably surface a
+// custom Authorization header in every Network.requestWillBeSent (observed:
+// present on a fresh connection, silently missing — reported via ExtraInfo
+// instead, per #260's already-known gap — on a reused one), which is real,
+// separate Chromium/CDP behavior unrelated to this ticket. Inject synthetic
+// Network.requestWillBeSent messages straight onto the tab's real debugger
+// EventEmitter instead (the same technique security.spec.ts uses), driving
+// the real recorder deterministically through its actual pipeline.
+test('turning on header redaction applies immediately to an already-open tab, without needing a new tab (#248)', async () => {
+  const urlPath = '/network/status-codes.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath, window);
+  await tab.waitForLoadState('load');
+
+  const sessionId = await window.evaluate(() => document.querySelector('.tab.active')?.getAttribute('data-id'));
+  expect(sessionId).toBeTruthy();
+
+  async function injectRequest(requestId: string, url: string) {
+    const ok = await app.evaluate(({ webContents }, opts) => {
+      const wc = webContents.getAllWebContents().find((w) => w.getURL().includes(opts.urlPath));
+      if (!wc) return false;
+      wc.debugger.emit('message', {}, 'Network.requestWillBeSent', {
+        requestId: opts.requestId,
+        request: { url: opts.url, method: 'GET', headers: { Authorization: 'Bearer secret' } },
+      });
+      return true;
+    }, { urlPath, requestId, url });
+    expect(ok).toBe(true);
+  }
+
+  const beforeUrl = fixtures.url('/echo/headers?t=redact-248-before');
+  const afterUrl  = fixtures.url('/echo/headers?t=redact-248-after');
+
+  // Before the toggle: unredacted.
+  await injectRequest('redact248-before', beforeUrl);
+
+  await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ redactSensitiveHeaders: true }));
+
+  // Same tab, same recorder, no reload — after the toggle: redacted.
+  await injectRequest('redact248-after', afterUrl);
+
+  async function authorizationHeaderFor(marker: string): Promise<unknown> {
+    return window.evaluate(async ({ sid, marker }) => {
+      const events = await (window as unknown as { testerBrowser: any }).testerBrowser.recording.timeline(sid, { limit: 500 });
+      const evt = (events as { kind: string; payload?: string }[]).find(
+        (e) => e.kind === 'network-request' && e.payload?.includes(marker)
+      );
+      if (!evt?.payload) return undefined;
+      return JSON.parse(evt.payload).request?.headers?.Authorization;
+    }, { sid: sessionId, marker });
+  }
+
+  await expect.poll(() => authorizationHeaderFor('redact-248-after'), { timeout: 5_000 }).toBe('[REDACTED]');
+  // The earlier row (recorded before the toggle) is unaffected — redaction
+  // applies at record time, not retroactively to already-stored rows.
+  expect(await authorizationHeaderFor('redact-248-before')).toBe('Bearer secret');
+
+  await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ redactSensitiveHeaders: false }));
 });
 
 test('replay times out after the configured number of seconds (#233)', async () => {

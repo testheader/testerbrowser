@@ -315,7 +315,7 @@ describe('SessionRecorder', () => {
       const rec = new SessionRecorder(wc, {
         sessionId: 'redact-req',
         dbDir: os.tmpdir(),
-        redactSensitiveHeaders: true,
+        getRedact: () => true,
       });
 
       e('Network.requestWillBeSent', {
@@ -344,7 +344,7 @@ describe('SessionRecorder', () => {
       const rec = new SessionRecorder(wc, {
         sessionId: 'redact-res',
         dbDir: os.tmpdir(),
-        redactSensitiveHeaders: true,
+        getRedact: () => true,
       });
 
       e('Network.requestWillBeSent', {
@@ -380,6 +380,35 @@ describe('SessionRecorder', () => {
 
       const payload = JSON.parse(recorder.getTimeline()[0].payload);
       expect(payload.request.headers.authorization).toBe('Bearer token');
+    });
+
+    // #248: toggling the getter must change the very next event in an
+    // already-open tab — not require a fresh SessionRecorder.
+    it('re-evaluates getRedact() per event, so flipping it mid-recording changes the next event', () => {
+      const { wc, emit: e } = makeMockWc();
+      let redact = false;
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'live-toggle',
+        dbDir: os.tmpdir(),
+        getRedact: () => redact,
+      });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://api.example.com/1', method: 'GET', headers: { authorization: 'Bearer secret' } },
+      });
+      const before = JSON.parse(rec.getTimeline()[0].payload);
+      expect(before.request.headers.authorization).toBe('Bearer secret');
+
+      redact = true;
+      e('Network.requestWillBeSent', {
+        requestId: 'r2',
+        request: { url: 'https://api.example.com/2', method: 'GET', headers: { authorization: 'Bearer secret' } },
+      });
+      const after = JSON.parse(rec.getTimeline()[1].payload);
+      expect(after.request.headers.authorization).toBe('[REDACTED]');
+
+      rec.destroy();
     });
   });
 

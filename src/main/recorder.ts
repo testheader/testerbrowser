@@ -19,7 +19,10 @@ export interface RecorderOptions {
   sessionId: string;
   dbDir: string;
   maxEventsPerSession?: number;
-  redactSensitiveHeaders?: boolean;
+  // #248: evaluated per event (not read once at construction), so toggling
+  // "Redact sensitive headers" in Settings changes the very next recorded
+  // request/response in every already-open tab, not just new ones.
+  getRedact?: () => boolean;
   // #229: temp (non-persistent) tabs record in-memory only — no traffic,
   // including bodies, ever touches disk for them.
   inMemory?: boolean;
@@ -64,7 +67,7 @@ export class SessionRecorder {
   // can be stamped onto that same row instead of only the eventual response.
   private requestRowId = new Map<string, number>();
   private updatePayloadStmt!: Database.Statement;
-  private redact: boolean;
+  private getRedact: () => boolean;
   // #229: set the first time trimIfNeeded() evicts rows for this session —
   // null until then. Exposed via getStatus() for the recording:status IPC
   // and the timeline's eviction banner.
@@ -75,7 +78,7 @@ export class SessionRecorder {
     this.wc = wc;
     this.sessionId = opts.sessionId;
     this.maxEvents = opts.maxEventsPerSession ?? 20000;
-    this.redact = opts.redactSensitiveHeaders ?? false;
+    this.getRedact = opts.getRedact ?? (() => false);
 
     const dbPath = opts.inMemory ? ':memory:' : path.join(opts.dbDir, `${this.sessionId}.sqlite`);
     if (!opts.inMemory) {
@@ -132,7 +135,7 @@ export class SessionRecorder {
             method: params.request.method,
             startTs: ts,
           });
-          const reqPayload = this.redact
+          const reqPayload = this.getRedact()
             ? { ...params, request: { ...params.request, headers: redactHeaders(params.request.headers) } }
             : params;
           const tag = this.requestTags.get(params.requestId);
@@ -149,7 +152,7 @@ export class SessionRecorder {
           const meta = this.requestMeta.get(params.requestId);
           const tag  = this.requestTags.get(params.requestId);
           const durationMs = meta ? ts - meta.startTs : undefined;
-          const resPayload = this.redact
+          const resPayload = this.getRedact()
             ? { ...params, response: { ...params.response, headers: redactHeaders(params.response.headers) } }
             : params;
           this.record({
