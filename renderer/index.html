@@ -550,6 +550,10 @@
       <h2>TesterBrowser crashed</h2>
       <p>The previous session ended unexpectedly at <strong id="crashReportTimestamp"></strong>.</p>
       <p>Would you like to file a bug report so this can be investigated?</p>
+      <label class="setting-row" style="align-items:center;gap:8px;font-size:12px">
+        <input type="checkbox" id="crashReportFullUrls" />
+        Include full tab URLs (may contain tokens)
+      </label>
       <div class="modal-actions" style="margin-top:16px">
         <button class="btn btn-secondary" id="crashReportLogFolderBtn">Open log folder</button>
         <button class="btn btn-secondary" id="crashReportDismissBtn">Dismiss</button>
@@ -578,6 +582,7 @@
             <option>Jira</option>
             <option>Record Playback</option>
             <option>Follow Along</option>
+            <option>Debug log</option>
             <option>Tabs / Sessions</option>
             <option>Bookmarks / Downloads</option>
             <option>Other</option>
@@ -605,6 +610,7 @@
       <div class="modal-actions" style="margin-top:12px">
         <button class="btn btn-secondary" id="bugReportCancelBtn">Cancel</button>
         <button class="btn btn-primary"   id="bugReportSubmitBtn">Submit</button>
+        <button class="btn btn-secondary" id="bugReportShowScreenshotBtn" hidden>Show file</button>
         <button class="btn btn-primary"   id="bugReportDoneBtn" hidden>Done</button>
       </div>
     </div>

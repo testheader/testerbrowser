@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { readLogTail, capLogBlock, capIssueBody } from '../logTail';
+import { readLogTail, capLogBlock, capIssueBody, decideScreenshotStrategy } from '../logTail';
 
 function tmpDir(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `log-tail-test-${name}-`));
@@ -75,5 +75,15 @@ describe('capIssueBody', () => {
     const diagnostics = 'keep-this-start' + 'z'.repeat(1000);
     const body = capIssueBody('d', diagnostics, 30);
     expect(body).toContain('keep-this-start');
+  });
+});
+
+describe('decideScreenshotStrategy (#246)', () => {
+  it('uploads via the Contents API when the token has push access', () => {
+    expect(decideScreenshotStrategy(true)).toBe('upload');
+  });
+
+  it('saves locally instead when the token lacks push access', () => {
+    expect(decideScreenshotStrategy(false)).toBe('save-locally');
   });
 });

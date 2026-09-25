@@ -273,6 +273,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     captureScreenshot: () => ipcRenderer.invoke('app:captureScreenshot'),
     submit: (payload: { area: string; description: string; diagnostics?: string; screenshotB64?: string | null }) =>
               ipcRenderer.invoke('bugreport:submit', payload),
+    revealScreenshot: (filePath: string) => ipcRenderer.invoke('bugreport:revealScreenshot', filePath),
     startOAuth: () => ipcRenderer.invoke('bugreport:startOAuth'),
     signOut:    () => ipcRenderer.invoke('bugreport:signOut'),
     onOAuthDone: (cb: (d: { ok: boolean; error?: string }) => void) => {

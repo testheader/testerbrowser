@@ -165,6 +165,22 @@ export function stripRedactedHeaders(headers) {
   return Object.fromEntries(Object.entries(headers || {}).filter(([, v]) => v !== '[REDACTED]'));
 }
 
+// #246: default view for "Active tabs at crash time" in a public GitHub
+// issue — strips query strings, fragments and userinfo (which can carry
+// tokens/session ids) down to origin+pathname. A non-http(s) URL (e.g.
+// file:) has no origin worth sharing at all, so only its scheme is shown.
+// Falls back to the raw string for anything that isn't a parseable URL.
+export function redactUrlForReport(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return u.protocol;
+    return u.origin + u.pathname;
+  } catch {
+    return url;
+  }
+}
+
 export function toFetch(req) {
   const { method = 'GET', url = '', headers, postData } = req || {};
   const opts = { method: method || 'GET', headers: Object.fromEntries(nonRedactedHeaders(headers)) };

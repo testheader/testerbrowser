@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { openBugReport } from './bugreport.js';
-import { formatAppLogBlock } from './utils.js';
+import { formatAppLogBlock, redactUrlForReport } from './utils.js';
 
 let pendingCrashLog = null;
 
@@ -24,8 +24,13 @@ async function checkForCrash() {
 // initCrashReport()'s checkForCrash()), so the modal must hide the view
 // first, same as bugreport.js's openBugReport()/replay.js's openReplay().
 async function showModal(log) {
-  const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : 'unknown time';
+  // crashedAt (#226) is when the crash was actually detected on this later
+  // launch — log.timestamp is the crashed session's own *start* time, which
+  // older crash logs (written before crashedAt existed) fall back to.
+  const detectedAt = log.crashedAt ?? log.timestamp;
+  const ts = detectedAt ? new Date(detectedAt).toLocaleString() : 'unknown time';
   document.getElementById('crashReportTimestamp').textContent = ts;
+  document.getElementById('crashReportFullUrls').checked = false;
   await testerBrowser.layout.setViewerVisible(false);
   document.getElementById('crashReportOverlay').classList.add('open');
 }
@@ -39,23 +44,27 @@ async function dismissCrash() {
 
 async function fileIssue() {
   const log = pendingCrashLog;
+  // Read before dismissCrash() below, which hides/resets the crash overlay.
+  const fullUrls = document.getElementById('crashReportFullUrls').checked;
   await dismissCrash(); // restores the view; openBugReport() below hides it again itself
   await openBugReport();
   if (log) {
-    document.getElementById('bugReportDesc').value = formatCrashForIssue(log);
+    document.getElementById('bugReportDesc').value = formatCrashForIssue(log, { fullUrls });
     document.getElementById('bugReportArea').value = 'Other';
   }
 }
 
-function formatCrashForIssue(log) {
+function formatCrashForIssue(log, { fullUrls = false } = {}) {
+  const detectedAt = log.crashedAt ?? log.timestamp;
   const lines = [
     'TesterBrowser crashed unexpectedly.',
-    `Crash time: ${log.timestamp ? new Date(log.timestamp).toLocaleString() : 'unknown'}`,
+    `Crash time: ${detectedAt ? new Date(detectedAt).toLocaleString() : 'unknown'}`,
+    `Session started: ${log.timestamp ? new Date(log.timestamp).toLocaleString() : 'unknown'}`,
     '',
   ];
   if (log.sessionUrls?.length) {
     lines.push('**Active tabs at crash time:**');
-    for (const url of log.sessionUrls) lines.push(`- ${url}`);
+    for (const url of log.sessionUrls) lines.push(`- ${fullUrls ? url : redactUrlForReport(url)}`);
     lines.push('');
   }
   if (log.recentErrors?.length) {

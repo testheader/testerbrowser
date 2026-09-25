@@ -159,6 +159,65 @@ test.describe('crash log content after a hard crash', () => {
   });
 });
 
+// #246: crashedAt (actual detection time) vs timestamp (the crashed
+// session's own *start* time) — and URL redaction in the pre-filled report.
+test.describe('crash time and URL redaction (#246)', () => {
+  let app: ElectronApplication;
+  let window: Page;
+
+  const seededStartedAt = new Date(Date.now() - 60_000).toISOString();
+  const tokenUrl = 'https://example.test/p?token=abc';
+
+  test.beforeEach(async () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-crash-'));
+    fs.writeFileSync(path.join(userDataDir, 'running.sentinel'), JSON.stringify({ startedAt: seededStartedAt }));
+    fs.writeFileSync(path.join(userDataDir, 'session-urls.json'), JSON.stringify([tokenUrl]));
+    app = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+    window = await getMainWindow(app);
+    await window.waitForLoadState('load');
+    await expect(window.locator('#crashReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+  });
+
+  test.afterEach(async () => {
+    await app.close();
+  });
+
+  test('the modal shows the actual detection time, not the crashed session\'s start time', async () => {
+    const shown = await window.locator('#crashReportTimestamp').textContent();
+    // seededStartedAt is a fixed 60s-old timestamp — crashedAt (written at
+    // detection, i.e. "now") renders differently as long as the two seconds
+    // don't happen to share the same locale string (they're a minute apart).
+    expect(shown).not.toBe(new Date(seededStartedAt).toLocaleString());
+  });
+
+  test('filing a bug report redacts the query string by default, and includes it when "full tab URLs" is checked', async () => {
+    await window.click('#crashReportFileBtn');
+    await expect(window.locator('#bugReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+    let desc = await window.locator('#bugReportDesc').inputValue();
+    expect(desc).toContain('https://example.test/p');
+    expect(desc).not.toContain('token=abc');
+    expect(desc).toMatch(/Session started: /);
+
+    // Reopen the crash flow to check the full-URLs box this time — checking
+    // File issue closed the crash modal (fileIssue -> dismissCrash), so
+    // relaunch with the same seeded state for a clean second pass.
+    await app.close();
+    const userDataDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-crash-'));
+    fs.writeFileSync(path.join(userDataDir2, 'running.sentinel'), JSON.stringify({ startedAt: seededStartedAt }));
+    fs.writeFileSync(path.join(userDataDir2, 'session-urls.json'), JSON.stringify([tokenUrl]));
+    app = await electron.launch({ args: [`--user-data-dir=${userDataDir2}`, MAIN_PATH] });
+    window = await getMainWindow(app);
+    await window.waitForLoadState('load');
+    await expect(window.locator('#crashReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+
+    await window.check('#crashReportFullUrls');
+    await window.click('#crashReportFileBtn');
+    await expect(window.locator('#bugReportOverlay')).toHaveClass(/open/, { timeout: 5_000 });
+    desc = await window.locator('#bugReportDesc').inputValue();
+    expect(desc).toContain('token=abc');
+  });
+});
+
 // #226: writeCrashLog()'s logTail/logTailTruncated, formatted by
 // formatCrashForIssue() -> formatAppLogBlock() (renderer/utils.js), and the
 // crash modal's new "Open log folder" button.

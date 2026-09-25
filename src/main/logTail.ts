@@ -60,3 +60,15 @@ export function capIssueBody(description: string, diagnostics: string, max: numb
   if (budget <= 0) return description.slice(0, max);
   return `${description}${sep}${diagnostics.slice(0, budget)}`;
 }
+
+/**
+ * #246: the OAuth device flow only ever requests public_repo, so most
+ * bug-reporter users have read access to testerbrowser but not push — the
+ * Contents-API screenshot upload silently fails for them. Whether to
+ * attempt it is decided from a single boolean (the repo API's own
+ * permissions.push) so the decision itself is directly unit-testable
+ * without mocking the GitHub API.
+ */
+export function decideScreenshotStrategy(hasPushAccess: boolean): 'upload' | 'save-locally' {
+  return hasPushAccess ? 'upload' : 'save-locally';
+}

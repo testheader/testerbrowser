@@ -86,3 +86,13 @@ test('the diagnostics preview includes an App log block with a reported error', 
   expect(preview).toContain('App log');
   expect(preview).toContain('diag-marker');
 });
+
+// #246: AREA_BY_CONSOLE_TAB had no entry for the Debug log console tab, so
+// a report filed from there always fell back to "Other".
+test('with the Debug log console tab active, opening the bug report pre-selects "Debug log"', async () => {
+  await window.keyboard.press('Escape'); // close the modal left open by the previous test
+
+  await window.click('#consoleTabDebugLog');
+  await openBugReportModal();
+  await expect(window.locator('#bugReportArea')).toHaveValue('Debug log');
+});

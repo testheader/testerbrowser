@@ -8,7 +8,7 @@ import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
-import { readLogTail, capLogBlock, capIssueBody } from './logTail';
+import { readLogTail, capLogBlock, capIssueBody, decideScreenshotStrategy } from './logTail';
 import {
   applySettingsPatch, AppSettings, clampNumberSetting,
   RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX,
@@ -1151,41 +1151,68 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
       return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
     }
 
+    // #246: 'status-ready' is silently dropped for a token without triage
+    // access — surfaced back rather than assumed, so the confirmation text
+    // can say so instead of implying the board/queue picked it up.
+    const appliedLabels = Array.isArray(data.labels)
+      ? (data.labels as { name?: string }[]).map((l) => l.name)
+      : [];
+    const labelApplied = appliedLabels.includes('status-ready');
+
     let screenshotAttached = false;
     let screenshotError: string | null = null;
+    let screenshotSavedPath: string | null = null;
     if (payload.screenshotB64) {
       try {
-        const filePath = `.github/bug-report-screenshots/issue-${data.number}.jpg`;
-        const putRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/contents/${filePath}`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/vnd.github+json',
-            'Content-Type': 'application/json',
-            'User-Agent': 'TesterBrowser-BugReporter',
-          },
-          body: JSON.stringify({ message: `Bug report screenshot for #${data.number}`, content: payload.screenshotB64 }),
+        // #246: the OAuth device flow only ever requests public_repo, so the
+        // Contents-API upload (which needs push) silently fails for most
+        // users — check first, rather than attempting it and surfacing a
+        // permission error.
+        const permRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}`, {
+          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'TesterBrowser-BugReporter' },
         });
-        if (!putRes.ok) {
-          const putData = await putRes.json().catch(() => ({})) as { message?: string };
-          screenshotError = putData.message ?? `Upload failed: HTTP ${putRes.status}`;
+        const permData = await permRes.json().catch(() => ({})) as { permissions?: { push?: boolean } };
+        const strategy = decideScreenshotStrategy(!!permData.permissions?.push);
+
+        if (strategy === 'save-locally') {
+          const dir = path.join(app.getPath('userData'), 'bug-report-screenshots');
+          fs.mkdirSync(dir, { recursive: true });
+          const savedPath = path.join(dir, `issue-${data.number}.jpg`);
+          fs.writeFileSync(savedPath, Buffer.from(payload.screenshotB64, 'base64'));
+          screenshotSavedPath = savedPath;
         } else {
-          const screenshotUrl = `https://raw.githubusercontent.com/${GH_REPO_OWNER}/${GH_REPO_NAME}/main/${filePath}`;
-          const patchRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues/${data.number}`, {
-            method: 'PATCH',
+          const filePath = `.github/bug-report-screenshots/issue-${data.number}.jpg`;
+          const putRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/contents/${filePath}`, {
+            method: 'PUT',
             headers: {
               'Authorization': `Bearer ${token}`,
               'Accept': 'application/vnd.github+json',
               'Content-Type': 'application/json',
               'User-Agent': 'TesterBrowser-BugReporter',
             },
-            body: JSON.stringify({ body: `${body}\n\n![TesterBrowser screenshot](${screenshotUrl})` }),
+            body: JSON.stringify({ message: `Bug report screenshot for #${data.number}`, content: payload.screenshotB64 }),
           });
-          if (patchRes.ok) {
-            screenshotAttached = true;
+          if (!putRes.ok) {
+            const putData = await putRes.json().catch(() => ({})) as { message?: string };
+            screenshotError = putData.message ?? `Upload failed: HTTP ${putRes.status}`;
           } else {
-            const patchData = await patchRes.json().catch(() => ({})) as { message?: string };
-            screenshotError = patchData.message ?? `Embedding failed: HTTP ${patchRes.status}`;
+            const screenshotUrl = `https://raw.githubusercontent.com/${GH_REPO_OWNER}/${GH_REPO_NAME}/main/${filePath}`;
+            const patchRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues/${data.number}`, {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'TesterBrowser-BugReporter',
+              },
+              body: JSON.stringify({ body: `${body}\n\n![TesterBrowser screenshot](${screenshotUrl})` }),
+            });
+            if (patchRes.ok) {
+              screenshotAttached = true;
+            } else {
+              const patchData = await patchRes.json().catch(() => ({})) as { message?: string };
+              screenshotError = patchData.message ?? `Embedding failed: HTTP ${patchRes.status}`;
+            }
           }
         }
       } catch (e: unknown) {
@@ -1195,11 +1222,20 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
 
     const boardAdded = await addIssueToProjectBoard(token, data.node_id as string);
     log.info('bugreport', `Bug report submitted: issue #${data.number}`);
-    return { ok: true, url: data.html_url, number: data.number, boardAdded, screenshotAttached, screenshotError };
+    return {
+      ok: true, url: data.html_url, number: data.number, boardAdded,
+      screenshotAttached, screenshotError, screenshotSavedPath, labelApplied,
+    };
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     log.error('bugreport', `Bug report submission failed: ${message}`);
     return { ok: false, error: message };
+  }
+});
+
+ipcMain.handle('bugreport:revealScreenshot', (_e, filePath: string) => {
+  if (typeof filePath === 'string' && filePath.startsWith(path.join(app.getPath('userData'), 'bug-report-screenshots'))) {
+    shell.showItemInFolder(filePath);
   }
 });
 

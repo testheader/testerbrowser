@@ -8,7 +8,7 @@ const AREA_BY_CONSOLE_TAB = {
   console: 'Console / Network', network: 'Console / Network', storage: 'Storage',
   a11y: 'A11y', diff: 'Network diff', vr: 'UI diff', spoof: 'Spoof',
   security: 'Security', mock: 'Mock', resilience: 'Resilience', jira: 'Jira', tests: 'Record Playback',
-  follow: 'Follow Along',
+  follow: 'Follow Along', debuglog: 'Debug log',
 };
 
 export async function openBugReport() {
@@ -86,6 +86,7 @@ function resetForm() {
   document.getElementById('bugReportConfirmView').hidden = true;
   document.getElementById('bugReportSubmitBtn').hidden = false;
   document.getElementById('bugReportDoneBtn').hidden = true;
+  document.getElementById('bugReportShowScreenshotBtn').hidden = true;
   document.getElementById('bugReportDesc').value = '';
   const msg = document.getElementById('bugReportMsg');
   msg.textContent = '';
@@ -124,10 +125,21 @@ async function submitBugReport() {
   document.getElementById('bugReportFormView').hidden = true;
   document.getElementById('bugReportConfirmView').hidden = false;
   let text = `Issue #${result.number} created` + (result.boardAdded ? ' and added to the project board.' : ' — could not confirm the project board add, check it manually.');
+  const showScreenshotBtn = document.getElementById('bugReportShowScreenshotBtn');
   if (screenshotB64) {
-    text += result.screenshotAttached
-      ? ' Screenshot attached.'
-      : ` Screenshot could not be attached${result.screenshotError ? ` (${result.screenshotError})` : ''} — you can add it manually.`;
+    if (result.screenshotSavedPath) {
+      // #246: no push access — the Contents-API upload was never attempted.
+      text += ' Screenshot saved — drag it into the issue to attach it.';
+      showScreenshotBtn.dataset.path = result.screenshotSavedPath;
+      showScreenshotBtn.hidden = false;
+    } else {
+      text += result.screenshotAttached
+        ? ' Screenshot attached.'
+        : ` Screenshot could not be attached${result.screenshotError ? ` (${result.screenshotError})` : ''} — you can add it manually.`;
+    }
+  }
+  if (result.labelApplied === false) {
+    text += ' (label not applied — needs triage access; the maintainer will label it)';
   }
   document.getElementById('bugReportConfirmText').textContent = text;
   const link = document.getElementById('bugReportLink');
@@ -173,6 +185,10 @@ export function initBugReport() {
     e.preventDefault();
     const url = e.currentTarget.dataset.url;
     if (url) testerBrowser.app.openExternal(url);
+  };
+  document.getElementById('bugReportShowScreenshotBtn').onclick = (e) => {
+    const path = e.currentTarget.dataset.path;
+    if (path) testerBrowser.bugReport.revealScreenshot(path);
   };
 
   testerBrowser.bugReport.onShow(() => openBugReport());
