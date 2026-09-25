@@ -198,9 +198,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
 
   jira: {
     getSettings:  () => ipcRenderer.invoke('jira:getSettings'),
-    saveSettings: (s: object) => ipcRenderer.invoke('jira:saveSettings', s),
+    saveSettings: (s: { baseUrl: string; email: string; projectKey: string; issueType: string; apiToken?: string }) =>
+                    ipcRenderer.invoke('jira:saveSettings', s),
     fetchTicket:  (key: string) => ipcRenderer.invoke('jira:fetchTicket', key),
-    createIssue:  (summary: string, description: string) => ipcRenderer.invoke('jira:createIssue', summary, description),
+    createIssue:  (summary: string, description: string, opts?: { linkTo?: string }) =>
+                    ipcRenderer.invoke('jira:createIssue', summary, description, opts),
   },
 
   emulation: {

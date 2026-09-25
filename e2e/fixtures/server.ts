@@ -77,6 +77,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/echo/headers') return handleHeadersEcho(req, res);
   if (u.pathname === '/network/gzip-json') return handleGzipJson(res);
   if (u.pathname === '/network/header') return handleVariantHeader(u, res);
+  if (u.pathname === '/rest/api/3/issue/TEST-1') return handleJiraFetchTicket(res);
+  if (u.pathname === '/rest/api/3/issue/BAD-1') return handleJiraBadGateway(res);
+  if (u.pathname === '/rest/api/3/issue' && req.method === 'POST') return handleJiraCreateIssue(res);
+  if (u.pathname === '/rest/api/3/issueLink' && req.method === 'POST') return handleJiraIssueLink(req, res);
+  if (u.pathname === '/rest/api/3/__debug/issueLinks') return handleJiraIssueLinksDebug(res);
 
   return handleStatic(u, res);
 }
@@ -177,6 +182,56 @@ function handleVariantHeader(u: URL, res: ServerResponse): void {
   const variant = u.searchParams.get('v') || '1';
   res.writeHead(200, { 'content-type': 'application/json', 'x-variant': variant });
   res.end(JSON.stringify({ variant }));
+}
+
+// #267: a fake Jira Cloud site for the Jira tab's e2e coverage — no real
+// Jira instance is reachable in CI, so these routes stand in for
+// GET issue / POST issue / POST issueLink, plus one route (BAD-1) that
+// mimics an SSO-redirect/proxy error returning an HTML page instead of JSON.
+let jiraIssueLinks: unknown[] = [];
+
+function handleJiraFetchTicket(res: ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({
+    fields: {
+      summary: 'Existing bug from fixtures',
+      status: { name: 'Open' },
+      assignee: { displayName: 'Ada Tester' },
+      priority: { name: 'High' },
+      description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Pre-existing description.' }] }] },
+    },
+  }));
+}
+
+function handleJiraBadGateway(res: ServerResponse): void {
+  res.writeHead(502, { 'content-type': 'text/html' });
+  res.end('<html><body><h1>502 Bad Gateway</h1></body></html>');
+}
+
+function handleJiraCreateIssue(res: ServerResponse): void {
+  res.writeHead(201, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ key: 'TEST-2' }));
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const text = Buffer.concat(chunks).toString('utf-8');
+  try { return text ? JSON.parse(text) : null; } catch { return null; }
+}
+
+async function handleJiraIssueLink(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  jiraIssueLinks.push(await readJsonBody(req));
+  res.writeHead(201, { 'content-type': 'application/json' });
+  res.end('{}');
+}
+
+// Test-only introspection route — lets an e2e test assert what the app
+// actually sent, since the fixture server (not the app) is what received it.
+function handleJiraIssueLinksDebug(res: ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(jiraIssueLinks));
+  jiraIssueLinks = [];
 }
 
 async function handleStatic(u: URL, res: ServerResponse): Promise<void> {

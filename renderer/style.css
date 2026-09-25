@@ -1246,6 +1246,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .jira-msg { font-size: 11px; }
 .jira-msg-ok { color: var(--success-strong); }
 .jira-msg-error { color: var(--error-strong); }
+.jira-msg-ok a { color: inherit; text-decoration: underline; }
+.jira-token-saved { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--success-strong); }
 .jira-ticket-bar { display: flex; gap: 6px; }
 .jira-ticket-input { flex: 1; }
 .jira-ticket-display { margin-top: 2px; }

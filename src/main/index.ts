@@ -14,6 +14,7 @@ import {
   RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX,
   RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX,
 } from './settingsPatch';
+import { migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile } from './jira';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -267,10 +268,28 @@ const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETT
   return merged;
 });
 
-interface JiraSettings { baseUrl: string; email: string; apiToken: string; projectKey: string; }
-const DEFAULT_JIRA: JiraSettings = { baseUrl: '', email: '', apiToken: '', projectKey: '' };
-const jiraStore = new JsonStore<JiraSettings>('jira-settings.json', DEFAULT_JIRA,
-  (raw) => ({ ...DEFAULT_JIRA, ...(raw as Partial<JiraSettings>) }));
+// The Jira API token is encrypted at rest via OS-level safeStorage (DPAPI /
+// Keychain / libsecret), the same as the GitHub bug-reporter token below —
+// only the ciphertext touches disk, and jira:getSettings never returns it
+// to the renderer (see toPublicJiraSettings). A pre-#267 settings file with
+// a plaintext apiToken is migrated to apiTokenEnc on first load.
+let jiraTokenMigrated = false;
+const jiraStore = new JsonStore<JiraSettingsFile>('jira-settings.json', DEFAULT_JIRA_SETTINGS, (raw) => {
+  const { settings, migrated } = migrateJiraSettings(
+    raw,
+    (s) => safeStorage.encryptString(s),
+    () => safeStorage.isEncryptionAvailable()
+  );
+  jiraTokenMigrated = migrated;
+  return settings;
+});
+if (jiraTokenMigrated) jiraStore.set(jiraStore.get()); // persist the migration, dropping the plaintext token from disk
+
+function getJiraToken(): string | null {
+  const s = jiraStore.get();
+  if (!s.apiTokenEnc || !safeStorage.isEncryptionAvailable()) return null;
+  try { return safeStorage.decryptString(Buffer.from(s.apiTokenEnc, 'base64')); } catch { return null; }
+}
 
 interface SavedTest { id: string; name: string; steps: object[]; createdAt: number; updatedAt: number; }
 const testsStore = new JsonStore<SavedTest[]>('tests.json', []);
@@ -667,32 +686,61 @@ ipcMain.handle('sessions:setLocalStorageKey', (_e, id: string, key: string, valu
 ipcMain.handle('sessions:clearLocalStorage', (_e, id: string) => sessionManager?.clearLocalStorage(id));
 ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(String(text)));
 
-ipcMain.handle('jira:getSettings', () => jiraStore.get());
-ipcMain.handle('jira:saveSettings', (_e, s: JiraSettings) => { jiraStore.set({ ...DEFAULT_JIRA, ...s }); });
+ipcMain.handle('jira:getSettings', () => toPublicJiraSettings(jiraStore.get()));
 
-function jiraAuthHeader(s: JiraSettings): string {
-  return 'Basic ' + Buffer.from(`${s.email}:${s.apiToken}`).toString('base64');
+ipcMain.handle('jira:saveSettings', (_e, s: { baseUrl: string; email: string; projectKey: string; issueType: string; apiToken?: string }) => {
+  const current = jiraStore.get();
+  let apiTokenEnc = current.apiTokenEnc;
+  // An empty token field means "keep the current token" — only a non-empty
+  // value replaces it, and replacing it requires OS-level secure storage to
+  // actually be available (the GitHub bug-reporter token path works the
+  // same way), since a token is never written to disk in plain text.
+  const trimmedToken = (s.apiToken ?? '').trim();
+  if (trimmedToken) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, error: 'OS-level secure storage is unavailable on this system — cannot store the token safely.' };
+    }
+    apiTokenEnc = safeStorage.encryptString(trimmedToken).toString('base64');
+  }
+  jiraStore.set({
+    baseUrl: (s.baseUrl ?? '').trim().replace(/\/$/, ''),
+    email: (s.email ?? '').trim(),
+    projectKey: (s.projectKey ?? '').trim().toUpperCase(),
+    issueType: (s.issueType ?? '').trim() || DEFAULT_JIRA_SETTINGS.issueType,
+    apiTokenEnc,
+  });
+  return { ok: true };
+});
+
+function jiraAuthHeader(email: string, token: string): string {
+  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+}
+
+async function jiraFetch(url: string, init: Parameters<typeof net.fetch>[1]) {
+  const res = await net.fetch(url, init);
+  const contentType = res.headers.get('content-type');
+  const text = await res.text();
+  return parseJiraResponse(res.status, res.statusText, contentType, text);
 }
 
 ipcMain.handle('jira:fetchTicket', async (_e, key: string) => {
   const s = jiraStore.get();
-  if (!s.baseUrl || !s.email || !s.apiToken) return { ok: false, error: 'Jira not configured' };
+  const token = getJiraToken();
+  if (!s.baseUrl || !s.email || !token) return { ok: false, error: 'Jira not configured' };
   try {
-    const res = await net.fetch(
+    return await jiraFetch(
       `${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(key)}`,
-      { headers: { 'Authorization': jiraAuthHeader(s), 'Accept': 'application/json' } }
+      { headers: { 'Authorization': jiraAuthHeader(s.email, token), 'Accept': 'application/json' } }
     );
-    const data = await res.json() as Record<string, unknown>;
-    if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
-    return { ok: true, data };
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 });
 
-ipcMain.handle('jira:createIssue', async (_e, summary: string, description: string) => {
+ipcMain.handle('jira:createIssue', async (_e, summary: string, description: string, opts?: { linkTo?: string }) => {
   const s = jiraStore.get();
-  if (!s.baseUrl || !s.email || !s.apiToken || !s.projectKey) return { ok: false, error: 'Jira not configured' };
+  const token = getJiraToken();
+  if (!s.baseUrl || !s.email || !token || !s.projectKey) return { ok: false, error: 'Jira not configured' };
   try {
     const body = {
       fields: {
@@ -702,21 +750,36 @@ ipcMain.handle('jira:createIssue', async (_e, summary: string, description: stri
           version: 1, type: 'doc',
           content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
         },
-        issuetype: { name: 'Bug' },
+        issuetype: { name: s.issueType || DEFAULT_JIRA_SETTINGS.issueType },
       },
     };
-    const res = await net.fetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue`, {
-      method: 'POST',
-      headers: {
-        'Authorization': jiraAuthHeader(s),
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+    const authHeaders = {
+      'Authorization': jiraAuthHeader(s.email, token),
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
+    const result = await jiraFetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue`, {
+      method: 'POST', headers: authHeaders, body: JSON.stringify(body),
     });
-    const data = await res.json() as Record<string, unknown>;
-    if (!res.ok) return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
-    return { ok: true, key: data.key };
+    if (!result.ok) return result;
+    const key = (result.data as { key?: string } | undefined)?.key;
+    if (!key) return { ok: false, error: 'Jira did not return an issue key' };
+
+    // A link failure never fails the creation — the bug already exists.
+    let linkError: string | undefined;
+    if (opts?.linkTo) {
+      const linkResult = await jiraFetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issueLink`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          type: { name: 'Relates' },
+          inwardIssue: { key },
+          outwardIssue: { key: opts.linkTo },
+        }),
+      });
+      if (!linkResult.ok) linkError = linkResult.error;
+    }
+    return { ok: true, key, linkError };
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

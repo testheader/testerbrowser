@@ -3,6 +3,9 @@ import { escHtml } from './utils.js';
 import { getActiveId, getTabTitle } from './tabs.js';
 
 let initialized = false;
+let currentHasToken = false;
+let cachedSettings = null;
+let lastFetchedKey = null;
 
 export function initJira() {
   const panel = document.getElementById('jiraPanel');
@@ -28,11 +31,19 @@ export function initJira() {
           </div>
           <div class="jira-field">
             <label class="jira-label">API Token</label>
+            <div class="jira-token-saved" id="jiraTokenSaved" hidden>
+              <span>Token saved &#10003;</span>
+              <button type="button" class="jira-btn" id="jiraTokenReplaceBtn">Replace</button>
+            </div>
             <input class="jira-input" id="jiraApiToken" type="password" placeholder="API token from id.atlassian.com" />
           </div>
           <div class="jira-field">
             <label class="jira-label">Default Project Key</label>
             <input class="jira-input" id="jiraProjectKey" type="text" placeholder="e.g. PROJ" />
+          </div>
+          <div class="jira-field">
+            <label class="jira-label">Issue Type</label>
+            <input class="jira-input" id="jiraIssueType" type="text" placeholder="Bug" />
           </div>
           <div class="jira-setup-actions">
             <button class="jira-btn jira-btn-primary" id="jiraSaveSettingsBtn">Save</button>
@@ -77,6 +88,7 @@ export function initJira() {
   document.getElementById('jiraSettingsBtn').addEventListener('click', openSettings);
   document.getElementById('jiraSaveSettingsBtn').addEventListener('click', saveSettings);
   document.getElementById('jiraCancelSettingsBtn').addEventListener('click', closeSettings);
+  document.getElementById('jiraTokenReplaceBtn').addEventListener('click', () => setTokenEditing(true));
   document.getElementById('jiraFetchBtn').addEventListener('click', fetchTicket);
   document.getElementById('jiraTicketKey').addEventListener('keydown', e => { if (e.key === 'Enter') fetchTicket(); });
   document.getElementById('jiraAddBugBtn').addEventListener('click', openBugForm);
@@ -86,14 +98,24 @@ export function initJira() {
 
 async function loadSettings() {
   const s = await testerBrowser.jira.getSettings();
-  const configured = s.baseUrl && s.email && s.apiToken;
+  cachedSettings = s;
+  currentHasToken = !!s.hasToken;
+  const configured = s.baseUrl && s.email && currentHasToken;
   document.getElementById('jiraNotConfigured').hidden = !!configured;
-  if (configured) {
-    document.getElementById('jiraBaseUrl').value = s.baseUrl;
-    document.getElementById('jiraEmail').value = s.email;
-    document.getElementById('jiraApiToken').value = s.apiToken;
-    document.getElementById('jiraProjectKey').value = s.projectKey || '';
-  }
+  document.getElementById('jiraBaseUrl').value = s.baseUrl || '';
+  document.getElementById('jiraEmail').value = s.email || '';
+  document.getElementById('jiraProjectKey').value = s.projectKey || '';
+  document.getElementById('jiraIssueType').value = s.issueType || 'Bug';
+  setTokenEditing(!currentHasToken);
+}
+
+// A saved token is never sent back to the renderer (#267) — show a "Token
+// saved" indicator with a Replace action instead of a password field the
+// real value could never actually populate.
+function setTokenEditing(editing) {
+  document.getElementById('jiraTokenSaved').hidden = editing;
+  document.getElementById('jiraApiToken').hidden = !editing;
+  if (editing) document.getElementById('jiraApiToken').value = '';
 }
 
 function openSettings() {
@@ -107,22 +129,32 @@ function closeSettings() {
 }
 
 async function saveSettings() {
+  const tokenInput = document.getElementById('jiraApiToken');
+  const typedToken = tokenInput.hidden ? '' : tokenInput.value.trim();
   const s = {
     baseUrl: document.getElementById('jiraBaseUrl').value.trim().replace(/\/$/, ''),
     email: document.getElementById('jiraEmail').value.trim(),
-    apiToken: document.getElementById('jiraApiToken').value.trim(),
     projectKey: document.getElementById('jiraProjectKey').value.trim().toUpperCase(),
+    issueType: document.getElementById('jiraIssueType').value.trim() || 'Bug',
   };
+  if (typedToken) s.apiToken = typedToken;
+
   const msg = document.getElementById('jiraSettingsMsg');
-  if (!s.baseUrl || !s.email || !s.apiToken) {
+  if (!s.baseUrl || !s.email || (!currentHasToken && !typedToken)) {
     msg.textContent = 'Base URL, email and API token are required.';
     msg.className = 'jira-msg jira-msg-error';
     return;
   }
-  await testerBrowser.jira.saveSettings(s);
+  const result = await testerBrowser.jira.saveSettings(s);
+  if (!result?.ok) {
+    msg.textContent = result?.error || 'Could not save settings.';
+    msg.className = 'jira-msg jira-msg-error';
+    return;
+  }
   msg.textContent = 'Saved.';
   msg.className = 'jira-msg jira-msg-ok';
   document.getElementById('jiraNotConfigured').hidden = true;
+  await loadSettings();
   setTimeout(closeSettings, 800);
 }
 
@@ -134,6 +166,7 @@ async function fetchTicket() {
   display.innerHTML = '<span class="jira-loading">Loading…</span>';
   document.getElementById('jiraActionsBar').hidden = true;
   closeBugForm();
+  lastFetchedKey = null;
 
   const result = await testerBrowser.jira.fetchTicket(key);
   if (!result.ok) {
@@ -161,6 +194,7 @@ async function fetchTicket() {
       <div class="jira-ticket-desc">${escHtml(desc)}</div>
     </div>`;
 
+  lastFetchedKey = key;
   document.getElementById('jiraActionsBar').hidden = false;
 }
 
@@ -191,17 +225,25 @@ async function submitBug() {
   msg.textContent = 'Creating…';
   msg.className = 'jira-msg';
 
-  const result = await testerBrowser.jira.createIssue(summary, desc);
+  const result = await testerBrowser.jira.createIssue(summary, desc, lastFetchedKey ? { linkTo: lastFetchedKey } : undefined);
   if (!result.ok) {
     msg.textContent = `Error: ${result.error}`;
     msg.className = 'jira-msg jira-msg-error';
     return;
   }
-  msg.textContent = `Created: ${result.key}`;
+
+  const issueUrl = `${cachedSettings?.baseUrl ?? ''}/browse/${result.key}`;
+  const linkNote = result.linkError
+    ? ` (could not link to ${escHtml(lastFetchedKey)}: ${escHtml(result.linkError)})`
+    : '';
+  msg.innerHTML = `Created: <a href="#" id="jiraCreatedLink">${escHtml(result.key)}</a>${linkNote}`;
   msg.className = 'jira-msg jira-msg-ok';
+  document.getElementById('jiraCreatedLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    testerBrowser.app.openExternal(issueUrl);
+  });
   setTimeout(closeBugForm, 1500);
 }
-
 
 function extractText(node) {
   if (!node) return '';
