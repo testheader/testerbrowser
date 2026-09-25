@@ -205,6 +205,8 @@ export function computeGroupCheckState(rules, overrides) {
 }
 
 let lastFindings = [];
+let lastSkipped = { cookieRulesRedacted: false };
+let lastTruncated = false;
 
 export function initSecurity() {
   const panel = document.getElementById('securityPanel');
@@ -253,12 +255,26 @@ async function toggleConfigPanel() {
   setConfigOpen(opening);
   if (!opening) return;
   const settings = await testerBrowser.settings.get();
-  renderConfigPanel(settings.securityRuleOverrides ?? {});
+  renderConfigPanel(settings.securityRuleOverrides ?? {}, !!settings.securityIncludeSubresources);
 }
 
-function renderConfigPanel(overrides) {
+function renderConfigPanel(overrides, includeSubresources) {
   const configEl = document.getElementById('secConfig');
   configEl.innerHTML = '';
+
+  const subresourcesLabel = document.createElement('label');
+  subresourcesLabel.className = 'sec-config-subresources';
+  const subresourcesCheckbox = document.createElement('input');
+  subresourcesCheckbox.type = 'checkbox';
+  subresourcesCheckbox.checked = includeSubresources;
+  subresourcesCheckbox.addEventListener('change', async () => {
+    await testerBrowser.settings.set({ securityIncludeSubresources: subresourcesCheckbox.checked });
+  });
+  subresourcesLabel.appendChild(subresourcesCheckbox);
+  const subresourcesText = document.createElement('span');
+  subresourcesText.textContent = 'Include subresources in header checks';
+  subresourcesLabel.appendChild(subresourcesText);
+  configEl.appendChild(subresourcesLabel);
 
   for (const sev of SEVERITIES) {
     const rules = ALL_RULES.filter(r => r.severity === sev);
@@ -326,6 +342,8 @@ function renderConfigPanel(overrides) {
 // they applied to a different page.
 export function clearSecurityFindings() {
   lastFindings = [];
+  lastSkipped = { cookieRulesRedacted: false };
+  lastTruncated = false;
   const results = document.getElementById('secResults');
   if (results) results.innerHTML = '<div class="sec-hint">Click Scan to analyse headers and cookies for the current page.</div>';
   const status = document.getElementById('secStatus');
@@ -345,15 +363,19 @@ async function runScan() {
     testerBrowser.settings.get(),
   ]);
   const enabledRuleIds = computeEnabledRuleIds(settings.securityRuleOverrides);
-  lastFindings = analyze(events, enabledRuleIds);
+  const result = analyze(events, enabledRuleIds, { includeSubresources: !!settings.securityIncludeSubresources });
+  lastFindings = result.findings;
+  lastSkipped = result.skipped;
+  lastTruncated = events.length >= 5000;
   renderFilteredFindings();
   status.textContent = `${lastFindings.length} issue${lastFindings.length !== 1 ? 's' : ''} found`;
   btn.disabled = false;
 }
 
-export function analyze(events, enabledRuleIds = ALL_RULE_IDS) {
+export function analyze(events, enabledRuleIds = ALL_RULE_IDS, { includeSubresources = false } = {}) {
   const findings = [];
   const seenUrls = new Set();
+  let cookieRulesRedacted = false;
 
   for (const ev of events) {
     if (ev.kind !== 'network-response') continue;
@@ -369,11 +391,21 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS) {
     const setCookie = norm['set-cookie'] ?? '';
     const ctx = { url, norm, status, setCookie };
 
+    // #240: header-presence/value rules only matter on the document itself
+    // by default — a missing CSP on a third-party image isn't a real
+    // finding. `type` comes straight off CDP's Network.responseReceived
+    // (a Page.ResourceType string like "Document"/"Image"/"Script"); a
+    // payload shape with no such field at all (an older recording, or a
+    // hand-built fixture) has no way to tell, so it's treated as Document
+    // — old recordings keep scanning exactly as they did before this.
+    const resourceType = payload.type ?? payload.response?.type;
+    const isDocument = resourceType === undefined || resourceType === 'Document';
+
     for (const rule of TRANSPORT_RULES) {
       if (enabledRuleIds.has(rule.id) && rule.check(ctx)) pushFinding(findings, rule, ctx, ev);
     }
 
-    if (!seenUrls.has(url) && url.startsWith('https://')) {
+    if ((includeSubresources || isDocument) && !seenUrls.has(url) && url.startsWith('https://')) {
       seenUrls.add(url);
       for (const rule of HEADER_PRESENCE_RULES) {
         if (enabledRuleIds.has(rule.id) && rule.check(norm)) pushFinding(findings, rule, ctx, ev);
@@ -383,6 +415,7 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS) {
       }
     }
 
+    if (setCookie === '[REDACTED]') cookieRulesRedacted = true;
     if (setCookie && setCookie !== '[REDACTED]') {
       const lc = setCookie.toLowerCase();
       for (const rule of COOKIE_RULES) {
@@ -398,7 +431,7 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS) {
       if (enabledRuleIds.has(rule.id) && rule.check(ctx)) pushFinding(findings, rule, ctx, ev);
     }
   }
-  return findings;
+  return { findings, skipped: { cookieRulesRedacted } };
 }
 
 function renderFilteredFindings() {
@@ -423,18 +456,31 @@ function renderFilteredFindings() {
   renderFindings(filtered);
 }
 
+function bannersHtml() {
+  let html = '';
+  if (lastTruncated) {
+    html += '<div class="sec-banner">Only the most recent 5,000 events were scanned.</div>';
+  }
+  if (lastSkipped.cookieRulesRedacted) {
+    html += '<div class="sec-banner">Cookie rules skipped — sensitive headers are redacted (Settings → Redact sensitive headers)</div>';
+  }
+  return html;
+}
+
 function renderFindings(findings) {
   const results = document.getElementById('secResults');
-  results.innerHTML = '';
+  const banners = bannersHtml();
 
   if (!lastFindings.length) {
-    results.innerHTML = '<div class="sec-hint sec-ok">No issues detected in recorded traffic.</div>';
+    results.innerHTML = banners + '<div class="sec-hint sec-ok">No issues detected in recorded traffic.</div>';
     return;
   }
   if (!findings.length) {
-    results.innerHTML = '<div class="sec-hint">No findings match the current filter.</div>';
+    results.innerHTML = banners + '<div class="sec-hint">No findings match the current filter.</div>';
     return;
   }
+
+  results.innerHTML = banners;
 
   const bySev = { high: [], medium: [], low: [] };
   for (const f of findings) (bySev[f.severity] ?? bySev.low).push(f);

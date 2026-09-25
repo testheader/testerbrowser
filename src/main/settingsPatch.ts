@@ -9,6 +9,7 @@
 export interface AppSettings {
   redactSensitiveHeaders: boolean;
   securityRuleOverrides: Record<string, boolean>;
+  securityIncludeSubresources: boolean;
   searchEngine: 'google' | 'duckduckgo';
   recordPlaybackColumnWidths: { record: number; saved: number };
   debugMode: boolean;
@@ -59,6 +60,10 @@ export function applySettingsPatch(current: AppSettings, patch: unknown): AppSet
       if (typeof value === 'boolean') overrides[key] = value;
     }
     next.securityRuleOverrides = overrides;
+  }
+
+  if (typeof patch.securityIncludeSubresources === 'boolean') {
+    next.securityIncludeSubresources = patch.securityIncludeSubresources;
   }
 
   if (isPlainObject(patch.recordPlaybackColumnWidths)) {

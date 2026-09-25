@@ -3,6 +3,7 @@ import { applySettingsPatch, AppSettings, clampNumberSetting } from '../settings
 const BASE: AppSettings = {
   redactSensitiveHeaders: false,
   securityRuleOverrides: { ruleA: true },
+  securityIncludeSubresources: false,
   searchEngine: 'google',
   recordPlaybackColumnWidths: { record: 220, saved: 420 },
   debugMode: false,
@@ -50,6 +51,11 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
   it('ignores a non-object securityRuleOverrides', () => {
     const result = applySettingsPatch(BASE, { securityRuleOverrides: 'nope' });
     expect(result.securityRuleOverrides).toEqual(BASE.securityRuleOverrides);
+  });
+
+  it('applies securityIncludeSubresources and ignores a wrong-typed value (#240)', () => {
+    expect(applySettingsPatch(BASE, { securityIncludeSubresources: true }).securityIncludeSubresources).toBe(true);
+    expect(applySettingsPatch(BASE, { securityIncludeSubresources: 'yes' }).securityIncludeSubresources).toBe(false);
   });
 
   it('accepts valid recordPlaybackColumnWidths and falls back per-field on bad values', () => {

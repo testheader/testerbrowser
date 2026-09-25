@@ -204,6 +204,11 @@ interface SpeedDialTile { id: string; url: string; title: string; }
 //   A rule id absent from the map means "enabled" — new rules added later
 //   need no migration, they just aren't in anyone's map yet.
 // - securityRuleOverrides
+// - securityIncludeSubresources
+//   #240: header-presence/value rules (CSP, XFO, HSTS, ...) only apply to
+//   Document responses by default — a missing CSP on a third-party image
+//   isn't a real finding. Turning this on restores the old behaviour of
+//   checking every unique HTTPS URL, subresources included.
 // - searchEngine
 // - recordPlaybackColumnWidths
 //   Record/Playback tab column widths (px) — "Record new test" and "Replay
@@ -224,6 +229,7 @@ interface SpeedDialTile { id: string; url: string; title: string; }
 const DEFAULT_SETTINGS: AppSettings = {
   redactSensitiveHeaders: false,
   securityRuleOverrides: {},
+  securityIncludeSubresources: false,
   searchEngine: 'google',
   recordPlaybackColumnWidths: { record: 220, saved: 420 },
   debugMode: false,

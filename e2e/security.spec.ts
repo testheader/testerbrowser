@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { _electron as electron } from 'playwright';
-import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: Awaited<ReturnType<typeof electron.launch>>;
@@ -223,4 +223,122 @@ test('"Configure checks" is a cog that toggles open and closed indefinitely, and
   await expect(configEl).toBeVisible();
   await expect(page.locator('.sec-config-row')).not.toHaveCount(0);
   await configBtn.click();
+});
+
+// ── Document-only header rules, redaction/truncation banners (#240) ────────
+
+test('header-presence findings name a Document response, not an Image response on the same host (#240)', async () => {
+  // The fixture server is plain HTTP, and HEADER_PRESENCE_RULES/HEADER_VALUE_RULES
+  // only ever apply to https:// URLs (pre-existing, unrelated to this ticket) —
+  // so real fixture traffic can never reach them either way. Inject synthetic
+  // Network.responseReceived CDP messages straight onto the tab's real
+  // debugger EventEmitter (the same technique the #222 test above uses for a
+  // branch that's otherwise unreachable through genuine traffic) to drive the
+  // real recorder, IPC and renderer with a Document and an Image response
+  // that both carry the same missing headers.
+  const urlPath = '/network/status-codes.html';
+  await page.click('#urlbar');
+  await page.fill('#urlbar', fixtures.url(urlPath));
+  await page.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  const docUrl = 'https://sec240.example.test/';
+  const imgUrl = 'https://sec240.example.test/logo.png';
+  const injected = await app.evaluate(({ webContents }, url) => {
+    const wc = webContents.getAllWebContents().find(w => w.getURL() === url);
+    if (!wc) return false;
+    wc.debugger.emit('message', {}, 'Network.responseReceived', {
+      requestId: 'sec240-doc', type: 'Document',
+      response: { url: 'https://sec240.example.test/', status: 200, headers: {} },
+    });
+    wc.debugger.emit('message', {}, 'Network.responseReceived', {
+      requestId: 'sec240-img', type: 'Image',
+      response: { url: 'https://sec240.example.test/logo.png', status: 200, headers: {} },
+    });
+    return true;
+  }, tab.url());
+  expect(injected).toBe(true);
+
+  await page.click('#consoleTabSecurity');
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+
+  await expect(
+    page.locator('.sec-row', { hasText: docUrl }).filter({ hasText: 'Missing x-frame-options' })
+  ).toBeVisible();
+  await expect(page.locator('.sec-row', { hasText: imgUrl })).toHaveCount(0);
+
+  // The "Include subresources" toggle restores the old, type-blind behaviour.
+  await page.click('#secConfigBtn');
+  const subresourcesCheckbox = page.locator('.sec-config-subresources input');
+  await expect(subresourcesCheckbox).not.toBeChecked();
+  await subresourcesCheckbox.check();
+  // The checkbox's own change handler persists via an async settings:set —
+  // wait for it to actually land before scanning, rather than racing it.
+  await expect.poll(async () => {
+    const settings = await page.evaluate(() => (window as any).testerBrowser.settings.get());
+    return settings.securityIncludeSubresources;
+  }).toBe(true);
+  await page.click('#secConfigBtn');
+
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+  await expect(
+    page.locator('.sec-row', { hasText: imgUrl }).filter({ hasText: 'Missing x-frame-options' })
+  ).toBeVisible();
+
+  // Reset for later tests in this file.
+  await page.click('#secConfigBtn');
+  await subresourcesCheckbox.uncheck();
+  await expect.poll(async () => {
+    const settings = await page.evaluate(() => (window as any).testerBrowser.settings.get());
+    return settings.securityIncludeSubresources;
+  }).toBe(false);
+  await page.click('#secConfigBtn');
+});
+
+test('cookie-redaction banner appears when a response carries a redacted set-cookie (#240)', async () => {
+  // Chromium's Network domain never exposes Set-Cookie on Network.responseReceived
+  // (only on the separate ...ExtraInfo event the recorder doesn't listen to —
+  // see the "scan reports a real HTTP finding" test's own note above, and
+  // #260), so a real page load can never produce a captured set-cookie value,
+  // redacted or not, regardless of the redactSensitiveHeaders setting. Toggle
+  // the real setting anyway (documents/exercises the intended real-world
+  // trigger), then inject a synthetic already-redacted response the same way
+  // the previous test does, since that's the only way to reach this specific
+  // banner at all today.
+  await page.evaluate(async () => {
+    await (window as any).testerBrowser.settings.set({ redactSensitiveHeaders: true });
+  });
+
+  const urlPath = '/network/status-codes.html';
+  await page.click('#urlbar');
+  await page.fill('#urlbar', fixtures.url(urlPath));
+  await page.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  const injected = await app.evaluate(({ webContents }, url) => {
+    const wc = webContents.getAllWebContents().find(w => w.getURL() === url);
+    if (!wc) return false;
+    wc.debugger.emit('message', {}, 'Network.responseReceived', {
+      requestId: 'sec240-cookie', type: 'XHR',
+      response: { url: 'https://sec240.example.test/api', status: 200, headers: { 'set-cookie': '[REDACTED]' } },
+    });
+    return true;
+  }, tab.url());
+  expect(injected).toBe(true);
+
+  try {
+    await page.click('#consoleTabSecurity');
+    await page.click('#secScanBtn');
+    await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+
+    await expect(page.locator('.sec-banner', { hasText: 'Cookie rules skipped' })).toBeVisible();
+  } finally {
+    await page.evaluate(async () => {
+      await (window as any).testerBrowser.settings.set({ redactSensitiveHeaders: false });
+    });
+  }
 });

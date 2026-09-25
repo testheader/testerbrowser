@@ -3,14 +3,21 @@
 import { analyze, computeEnabledRuleIds, computeGroupCheckState } from '../../renderer/security.js';
 
 // Mirrors what SessionRecorder stores: a row with `kind` and a JSON-string `payload`
-// holding raw CDP Network.responseReceived params.
-function responseEvent(response: Record<string, unknown>) {
+// holding raw CDP Network.responseReceived params. `type` is CDP's own
+// top-level Page.ResourceType field on that event (sibling to `response`,
+// not nested inside it) — omit it to exercise the "no type at all" case an
+// older recording or hand-built fixture would hit.
+function responseEvent(response: Record<string, unknown>, type?: string) {
   return {
     kind: 'network-response',
     ts: 1700000000000,
     summary: 'test',
-    payload: JSON.stringify({ requestId: '1', response }),
+    payload: JSON.stringify(type === undefined ? { requestId: '1', response } : { requestId: '1', response, type }),
   };
+}
+
+function findingsOf(...events: ReturnType<typeof responseEvent>[]) {
+  return analyze(events).findings;
 }
 
 // A response that should trip none of the ~28 rules — every existing test
@@ -31,9 +38,9 @@ const secureHeaders = {
 
 describe('analyze', () => {
   it('reads the kind field, not type', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({ url: 'http://example.com/', status: 200, headers: {} }),
-    ]);
+    );
     expect(findings.length).toBeGreaterThan(0);
   });
 
@@ -41,13 +48,13 @@ describe('analyze', () => {
     expect(analyze([
       { kind: 'console', ts: 1, summary: 'x', payload: JSON.stringify({ message: 'hi' }) },
       { kind: 'network-request', ts: 2, summary: 'x', payload: JSON.stringify({ request: {} }) },
-    ])).toEqual([]);
+    ]).findings).toEqual([]);
   });
 
   it('flags plain HTTP as high severity', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({ url: 'http://example.com/', status: 200, headers: secureHeaders }),
-    ]);
+    );
     expect(findings).toContainEqual(expect.objectContaining({
       severity: 'high',
       issue: 'HTTP (unencrypted)',
@@ -56,9 +63,9 @@ describe('analyze', () => {
   });
 
   it('reports each missing security header on an HTTPS response', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({ url: 'https://example.com/', status: 200, headers: {} }),
-    ]);
+    );
     const issues = findings.map(f => f.issue);
     expect(issues).toEqual(expect.arrayContaining([
       'Missing content-security-policy',
@@ -70,13 +77,13 @@ describe('analyze', () => {
   });
 
   it('reports nothing for a fully secured HTTPS response', () => {
-    expect(analyze([
+    expect(findingsOf(
       responseEvent({ url: 'https://example.com/', status: 200, headers: secureHeaders }),
-    ])).toEqual([]);
+    )).toEqual([]);
   });
 
   it('matches headers case-insensitively', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
@@ -93,53 +100,53 @@ describe('analyze', () => {
           'X-XSS-Protection': '0',
         },
       }),
-    ]);
+    );
     expect(findings).toEqual([]);
   });
 
   it('flags cookies missing Secure and HttpOnly', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'set-cookie': 'sid=abc; Path=/' },
       }),
-    ]);
+    );
     const issues = findings.map(f => f.issue);
     expect(issues).toContain('Insecure cookie');
     expect(issues).toContain('Cookie missing HttpOnly');
   });
 
   it('accepts a cookie carrying Secure, HttpOnly and SameSite', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'set-cookie': 'sid=abc; Path=/; Secure; HttpOnly; SameSite=Lax' },
       }),
-    ]);
+    );
     expect(findings).toEqual([]);
   });
 
   it('flags a cookie missing SameSite', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'set-cookie': 'sid=abc; Secure; HttpOnly' },
       }),
-    ]);
+    );
     expect(findings.map(f => f.issue)).toContain('Cookie missing SameSite');
   });
 
   it('flags SameSite=None without Secure as high severity', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'set-cookie': 'sid=abc; HttpOnly; SameSite=None' },
       }),
-    ]);
+    );
     expect(findings).toContainEqual(expect.objectContaining({
       severity: 'high',
       issue: 'SameSite=None without Secure',
@@ -148,24 +155,24 @@ describe('analyze', () => {
 
   it('flags a cookie set without no-store/private caching', () => {
     const { 'cache-control': _omit, ...headersWithoutCacheControl } = secureHeaders;
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...headersWithoutCacheControl, 'set-cookie': 'sid=abc; Secure; HttpOnly; SameSite=Lax' },
       }),
-    ]);
+    );
     expect(findings.map(f => f.issue)).toContain('Cookie set without no-store/private caching');
   });
 
   it('flags CSP unsafe-inline, unsafe-eval and wildcard sources', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'content-security-policy': "default-src *; script-src 'unsafe-inline' 'unsafe-eval'" },
       }),
-    ]);
+    );
     const issues = findings.map(f => f.issue);
     expect(issues).toContain('CSP allows unsafe-inline');
     expect(issues).toContain('CSP allows unsafe-eval');
@@ -173,48 +180,48 @@ describe('analyze', () => {
   });
 
   it('flags X-Frame-Options set to a value other than DENY/SAMEORIGIN', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'x-frame-options': 'ALLOW-FROM https://evil.example' },
       }),
-    ]);
+    );
     expect(findings.map(f => f.issue)).toContain('X-Frame-Options is not DENY/SAMEORIGIN');
   });
 
   it('flags a short HSTS max-age and a missing includeSubDomains', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'strict-transport-security': 'max-age=3600' },
       }),
-    ]);
+    );
     const issues = findings.map(f => f.issue);
     expect(issues).toContain('HSTS max-age is too short');
     expect(issues).toContain('HSTS missing includeSubDomains');
   });
 
   it('flags Referrer-Policy set to unsafe-url', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'referrer-policy': 'unsafe-url' },
       }),
-    ]);
+    );
     expect(findings.map(f => f.issue)).toContain('Referrer-Policy is unsafe-url');
   });
 
   it('flags a Server header that discloses version info, and X-Powered-By when present', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, server: 'nginx/1.18.0', 'x-powered-by': 'Express' },
       }),
-    ]);
+    );
     const issues = findings.map(f => f.issue);
     expect(issues).toContain('Server header discloses version info');
     expect(issues).toContain('X-Powered-By header present');
@@ -222,13 +229,13 @@ describe('analyze', () => {
   });
 
   it('flags an insecure HTTPS-to-HTTP redirect', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/old',
         status: 302,
         headers: { location: 'http://example.com/new' },
       }),
-    ]);
+    );
     expect(findings).toContainEqual(expect.objectContaining({
       severity: 'high',
       issue: 'Insecure redirect (HTTPS → HTTP)',
@@ -236,22 +243,22 @@ describe('analyze', () => {
   });
 
   it('flags CORS wildcard origin, and wildcard combined with credentials as high severity', () => {
-    const wildcardOnly = analyze([
+    const wildcardOnly = findingsOf(
       responseEvent({
         url: 'https://example.com/api',
         status: 200,
         headers: { ...secureHeaders, 'access-control-allow-origin': '*' },
       }),
-    ]);
+    );
     expect(wildcardOnly.map(f => f.issue)).toContain('CORS allows any origin');
 
-    const wildcardWithCreds = analyze([
+    const wildcardWithCreds = findingsOf(
       responseEvent({
         url: 'https://example.com/api',
         status: 200,
         headers: { ...secureHeaders, 'access-control-allow-origin': '*', 'access-control-allow-credentials': 'true' },
       }),
-    ]);
+    );
     expect(wildcardWithCreds).toContainEqual(expect.objectContaining({
       severity: 'high',
       issue: 'CORS wildcard combined with credentials',
@@ -259,21 +266,21 @@ describe('analyze', () => {
   });
 
   it('does not flag cookie flags when the value was redacted', () => {
-    const findings = analyze([
+    const findings = findingsOf(
       responseEvent({
         url: 'https://example.com/',
         status: 200,
         headers: { ...secureHeaders, 'set-cookie': '[REDACTED]' },
       }),
-    ]);
+    );
     expect(findings).toEqual([]);
   });
 
   it('flags auth failures', () => {
     for (const status of [401, 403]) {
-      const findings = analyze([
+      const findings = findingsOf(
         responseEvent({ url: 'https://example.com/api', status, headers: secureHeaders }),
-      ]);
+      );
       expect(findings).toContainEqual(expect.objectContaining({
         severity: 'low',
         issue: `Auth failure (${status})`,
@@ -283,26 +290,92 @@ describe('analyze', () => {
 
   it('reports missing headers once per URL across repeated responses', () => {
     const ev = responseEvent({ url: 'https://example.com/', status: 200, headers: {} });
-    const findings = analyze([ev, { ...ev }]);
+    const findings = findingsOf(ev, { ...ev });
     expect(findings.filter(f => f.issue === 'Missing x-frame-options')).toHaveLength(1);
   });
 
   it('skips events whose payload is not valid JSON', () => {
     expect(analyze([
       { kind: 'network-response', ts: 1, summary: 'x', payload: 'not json' },
-    ])).toEqual([]);
+    ]).findings).toEqual([]);
   });
 
   it('omits a finding whose rule id is not in enabledRuleIds', () => {
     const ev = responseEvent({ url: 'https://example.com/', status: 200, headers: {} });
-    const allEnabled = analyze([ev]);
+    const allEnabled = analyze([ev]).findings;
     expect(allEnabled.map(f => f.ruleId)).toContain('missing-x-frame-options');
 
     const withoutOne = analyze([ev], new Set(
       allEnabled.map(f => f.ruleId).filter(id => id !== 'missing-x-frame-options')
-    ));
+    )).findings;
     expect(withoutOne.map(f => f.ruleId)).not.toContain('missing-x-frame-options');
     expect(withoutOne.length).toBe(allEnabled.length - 1);
+  });
+});
+
+describe('analyze — document-only header rules (#240)', () => {
+  it('a Document response missing XFO produces the finding', () => {
+    const findings = findingsOf(
+      responseEvent({ url: 'https://example.com/', status: 200, headers: {} }, 'Document'),
+    );
+    expect(findings.map(f => f.issue)).toContain('Missing x-frame-options');
+  });
+
+  it('an Image response missing XFO does not produce the finding', () => {
+    const findings = findingsOf(
+      responseEvent({ url: 'https://example.com/logo.png', status: 200, headers: {} }, 'Image'),
+    );
+    expect(findings.map(f => f.issue)).not.toContain('Missing x-frame-options');
+  });
+
+  it('with includeSubresources: true, the Image response does produce the finding', () => {
+    const ev = responseEvent({ url: 'https://example.com/logo.png', status: 200, headers: {} }, 'Image');
+    const { findings } = analyze([ev], undefined, { includeSubresources: true });
+    expect(findings.map(f => f.issue)).toContain('Missing x-frame-options');
+  });
+
+  it('a payload with no type field at all is treated as Document, so old recordings scan as before', () => {
+    const findings = findingsOf(
+      responseEvent({ url: 'https://example.com/', status: 200, headers: {} }), // no third arg — no `type`
+    );
+    expect(findings.map(f => f.issue)).toContain('Missing x-frame-options');
+  });
+
+  it('transport, cookie and CORS rules still fire on a subresource, regardless of includeSubresources', () => {
+    const findings = findingsOf(
+      responseEvent({
+        url: 'http://example.com/logo.png',
+        status: 200,
+        headers: { 'set-cookie': 'sid=abc', 'access-control-allow-origin': '*' },
+      }, 'Image'),
+    );
+    const issues = findings.map(f => f.issue);
+    expect(issues).toContain('HTTP (unencrypted)'); // transport
+    expect(issues).toContain('Insecure cookie'); // cookie (http, not https, but cookie rules don't gate on scheme)
+    expect(issues).toContain('CORS allows any origin'); // CORS
+    // Header-presence rules (https-gated + document-only) never apply to
+    // this http:// Image response either way, so their absence here isn't
+    // itself proof of the document-only gate — that's covered above.
+  });
+});
+
+describe('analyze — skipped.cookieRulesRedacted (#240)', () => {
+  it('is false when no response carries a redacted set-cookie', () => {
+    const { skipped } = analyze([
+      responseEvent({ url: 'https://example.com/', status: 200, headers: secureHeaders }),
+    ]);
+    expect(skipped.cookieRulesRedacted).toBe(false);
+  });
+
+  it('is true when a response carries a redacted set-cookie', () => {
+    const { skipped } = analyze([
+      responseEvent({
+        url: 'https://example.com/',
+        status: 200,
+        headers: { ...secureHeaders, 'set-cookie': '[REDACTED]' },
+      }),
+    ]);
+    expect(skipped.cookieRulesRedacted).toBe(true);
   });
 });
 
