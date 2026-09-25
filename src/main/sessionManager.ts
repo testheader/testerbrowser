@@ -1517,8 +1517,15 @@ export class SessionManager {
           ],
         });
         items.push({ type: 'separator' });
-      } else if (params.selectionText) {
-        items.push({ label: 'Copy', click: () => view.webContents.copy() });
+      } else {
+        if (params.selectionText) {
+          items.push({ label: 'Copy', click: () => view.webContents.copy() });
+        }
+        // #244: with no input focused there's no specific field to target
+        // with the quick-generator submenu above, so this opens the custom-
+        // template modal directly — the same testdata:promptTemplate event
+        // the focused-input submenu's "Custom template…" item sends.
+        items.push({ label: 'Fill with test data…', click: () => this.win.webContents.send('testdata:promptTemplate', { sessionId: id }) });
         items.push({ type: 'separator' });
       }
 

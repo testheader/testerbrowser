@@ -1,8 +1,9 @@
 import { openSettings } from './settings.js';
 import { openBugReport } from './bugreport.js';
-import { newSession } from './tabs.js';
+import { newSession, getActiveId } from './tabs.js';
 import { beginPageOverlay, endPageOverlay } from './layout.js';
 import { closeViewDropdown } from './view-dropdown.js';
+import { openTestdataModal } from './testdata.js';
 
 // The dropdown can extend past the topbar into the region the native view
 // occupies — that view always paints over page HTML regardless of z-index,
@@ -52,6 +53,12 @@ export function initAppMenu() {
   document.getElementById('appMenuNewTemp').addEventListener('click', () => {
     closeAppMenu();
     newSession({ persistent: false });
+  });
+
+  document.getElementById('appMenuTestData').addEventListener('click', () => {
+    closeAppMenu();
+    const id = getActiveId();
+    if (id) openTestdataModal(id);
   });
 
   document.getElementById('appMenuSettings').addEventListener('click', () => {
