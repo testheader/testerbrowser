@@ -62,6 +62,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/echo/user-agent') return handleUserAgentEcho(req, res);
   if (u.pathname === '/echo/headers') return handleHeadersEcho(req, res);
   if (u.pathname === '/network/gzip-json') return handleGzipJson(res);
+  if (u.pathname === '/network/header') return handleVariantHeader(u, res);
 
   return handleStatic(u, res);
 }
@@ -152,6 +153,16 @@ function handleGzipJson(res: ServerResponse): void {
   const body = zlib.gzipSync(Buffer.from(JSON.stringify({ from: 'server' })));
   res.writeHead(200, { 'content-type': 'application/json', 'content-encoding': 'gzip', 'content-length': String(body.length) });
   res.end(body);
+}
+
+// #237: a response whose header value tracks a query param — network diff's
+// e2e coverage loads this with different `v` values on each side (with `v`
+// added to the ignore-params list, so the two calls still match by key) and
+// asserts the expanded row shows x-variant as a changed header.
+function handleVariantHeader(u: URL, res: ServerResponse): void {
+  const variant = u.searchParams.get('v') || '1';
+  res.writeHead(200, { 'content-type': 'application/json', 'x-variant': variant });
+  res.end(JSON.stringify({ variant }));
 }
 
 async function handleStatic(u: URL, res: ServerResponse): Promise<void> {

@@ -203,3 +203,86 @@ test('Reset also clears the free-text filter input', async () => {
 
   await expect(window.locator('#diffFilterText')).toHaveValue('');
 });
+
+// ── Host-agnostic matching (#237) ────────────────────────────────────────
+
+test('"Path only" matching treats the same path on two different hosts as the same request', async () => {
+  const sharedPath = '/network/status-codes.html';
+
+  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const sessionAId = sessions[0].id;
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionAId);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(sharedPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+
+  await window.click('#newSessionBtn');
+  const allSessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const sessionBId = allSessions.find((s: { id: string }) => s.id !== sessionAId).id;
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionBId);
+  await window.click('#urlbar');
+  // Same path, a different host — localhost and 127.0.0.1 are distinct
+  // origins even though they resolve to the same server here.
+  await window.fill('#urlbar', `http://localhost:${fixtures.port}${sharedPath}`);
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+
+  await window.click('#consoleTabDiff');
+  await window.selectOption('#diffPickA', sessionAId);
+  await window.selectOption('#diffPickB', sessionBId);
+  await expect(window.locator('#diffMatchMode')).toHaveValue('full');
+  await window.click('#diffRunBtn');
+
+  // Full URL mode: different hosts, so this pair never lands as "same".
+  await expect(window.locator('.diff-row.same', { hasText: sharedPath })).toHaveCount(0);
+
+  await window.selectOption('#diffMatchMode', 'path');
+  await expect(window.locator('.diff-row.same', { hasText: sharedPath })).toBeVisible();
+
+  await window.selectOption('#diffMatchMode', 'full'); // leave state clean for later tests
+  await window.click('#diffResetBtn');
+});
+
+test('expanding a matched row shows a changed response header, once its query param is ignored (#237)', async () => {
+  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const sessionAId = sessions[0].id;
+  const sessionBId = sessions[1].id;
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionAId);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/network/header?v=1'));
+  await window.press('#urlbar', 'Enter');
+  await window.waitForTimeout(500);
+
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionBId);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/network/header?v=2'));
+  await window.press('#urlbar', 'Enter');
+  await window.waitForTimeout(500);
+
+  await window.click('#consoleTabDiff');
+  await window.selectOption('#diffPickA', sessionAId);
+  await window.selectOption('#diffPickB', sessionBId);
+  await window.fill('#diffIgnoreParams', 'v, _, cb, ts, t, timestamp, nocache, utm_*, gclid, fbclid');
+  await window.locator('#diffIgnoreParams').blur();
+  await window.click('#diffRunBtn');
+
+  const row = window.locator('.diff-row', { hasText: '/network/header' });
+  await expect(row).toBeVisible();
+  // Status matches on both sides (200) — category stays "same", with the
+  // secondary marker for the header difference the ignore list doesn't hide.
+  await expect(row).toHaveClass(/same/);
+  await expect(row.locator('.diff-badge.hb-diff')).toBeVisible();
+
+  await row.click();
+  const detail = window.locator('.diff-detail-row');
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('x-variant');
+  await expect(detail).toContainText('1');
+  await expect(detail).toContainText('2');
+
+  await window.click('#diffResetBtn');
+});

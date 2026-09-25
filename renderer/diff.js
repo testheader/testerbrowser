@@ -1,16 +1,43 @@
 /* global testerBrowser */
 import { escHtml, wirePillGroup, activePillValues, matchesFreeText } from './utils.js';
 import { populateSessionPickers } from './session-picker.js';
+import {
+  DEFAULT_IGNORED_PARAMS, DEFAULT_IGNORED_HEADERS,
+  buildRequestMap, computeDiffRows, isTruncated,
+} from './diff-logic.js';
+
+const RECORDING_FETCH_LIMIT = 5000;
+const IGNORE_PARAMS_LS_KEY = 'diffIgnoreParams';
 
 let lastDiffRows = [];
 let cachedSessions = [];
+// Raw events from the last Compare — kept so switching Match mode or
+// editing the ignore-params list can recompute without re-fetching.
+let rawEventsA = [];
+let rawEventsB = [];
 let rawMapA = new Map();
 let rawMapB = new Map();
 let groupDuplicates = true;
+let matchMode = 'full'; // 'full' | 'path'
+let ignoreParams = loadIgnoreParams();
+let truncatedSides = []; // subset of ['A', 'B']
+let expandedKeys = new Set();
 // Session names must be captured at compare time, not looked up later by id:
 // destroySession removes a closed session from sessions.list() entirely, so
 // a later re-lookup would silently fail once a compared session is closed.
 let diffMeta = null;
+
+function loadIgnoreParams() {
+  try {
+    const raw = localStorage.getItem(IGNORE_PARAMS_LS_KEY);
+    if (raw && raw.trim()) return raw.split(',').map(s => s.trim()).filter(Boolean);
+  } catch {}
+  return [...DEFAULT_IGNORED_PARAMS];
+}
+
+function saveIgnoreParams(list) {
+  try { localStorage.setItem(IGNORE_PARAMS_LS_KEY, list.join(',')); } catch {}
+}
 
 export function initDiff() {
   const panel = document.getElementById('diffPanel');
@@ -40,11 +67,23 @@ export function initDiff() {
       <button class="diff-har-btn" id="diffHarBtn" disabled>Export diff (JSON)</button>
       <button class="console-icon-btn" id="diffResetBtn" title="Reset comparison">&#10005;</button>
     </div>
+    <div class="diff-toolbar diff-toolbar-row2">
+      <label class="diff-label">Match by
+        <select class="diff-pick" id="diffMatchMode">
+          <option value="full">Full URL</option>
+          <option value="path">Path only (ignore host)</option>
+        </select>
+      </label>
+      <label class="diff-label diff-ignore-params-label">Ignore query params
+        <input type="text" class="diff-filter-text" id="diffIgnoreParams" value="${escHtml(ignoreParams.join(', '))}" />
+      </label>
+    </div>
     <div class="diff-body" id="diffBody">
       <div class="diff-hint">Select two sessions above and click Compare.</div>
     </div>`;
 
   populatePickers();
+  document.getElementById('diffMatchMode').value = matchMode;
 
   document.getElementById('diffRunBtn').addEventListener('click', runDiff);
   document.getElementById('diffHarBtn').addEventListener('click', exportDiffHar);
@@ -56,13 +95,40 @@ export function initDiff() {
   wirePillGroup(document.getElementById('diffCatPills'), () => {
     if (lastDiffRows.length > 0) renderDiffTable(document.getElementById('diffBody'));
   });
+
+  document.getElementById('diffMatchMode').addEventListener('change', (e) => {
+    matchMode = e.target.value;
+    if (rawEventsA.length || rawEventsB.length) recomputeFromRaw();
+  });
+  document.getElementById('diffIgnoreParams').addEventListener('change', (e) => {
+    ignoreParams = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+    saveIgnoreParams(ignoreParams);
+    if (rawEventsA.length || rawEventsB.length) recomputeFromRaw();
+  });
+
+  // Delegated: rows are rebuilt from scratch on every render, so a
+  // per-row listener would need re-wiring each time — this survives that.
+  document.getElementById('diffBody').addEventListener('click', (e) => {
+    const row = e.target.closest('tr.diff-row');
+    if (row && row.dataset.expandable === '1') toggleExpanded(row.dataset.key);
+  });
+}
+
+function toggleExpanded(key) {
+  if (expandedKeys.has(key)) expandedKeys.delete(key);
+  else expandedKeys.add(key);
+  renderDiffTable(document.getElementById('diffBody'));
 }
 
 function resetDiff() {
+  rawEventsA = [];
+  rawEventsB = [];
   rawMapA = new Map();
   rawMapB = new Map();
   lastDiffRows = [];
   diffMeta = null;
+  truncatedSides = [];
+  expandedKeys = new Set();
   document.getElementById('diffFilterText').value = '';
   document.getElementById('diffBody').innerHTML = '<div class="diff-hint">Select two sessions above and click Compare.</div>';
   document.getElementById('diffHarBtn').disabled = true;
@@ -71,8 +137,8 @@ function resetDiff() {
 function onGroupToggleChanged(e) {
   groupDuplicates = e.target.checked;
   if (rawMapA.size === 0 && rawMapB.size === 0) return;
-  computeDiffRows();
-  renderDiffTable(document.getElementById('diffBody'));
+  expandedKeys = new Set(); // grouped vs. per-call keys aren't comparable
+  computeDiffRowsAndRender();
 }
 
 export async function refreshDiffPickers() {
@@ -101,140 +167,49 @@ async function runDiff() {
   diffMeta = { nameA, nameB, comparedAt: Date.now() };
 
   const [evA, evB] = await Promise.all([
-    testerBrowser.recording.timeline(idA, { limit: 5000 }),
-    testerBrowser.recording.timeline(idB, { limit: 5000 }),
+    testerBrowser.recording.timeline(idA, { limit: RECORDING_FETCH_LIMIT }),
+    testerBrowser.recording.timeline(idB, { limit: RECORDING_FETCH_LIMIT }),
   ]);
 
-  rawMapA = buildRequestMap(evA);
-  rawMapB = buildRequestMap(evB);
+  rawEventsA = evA;
+  rawEventsB = evB;
+  truncatedSides = [
+    ...(isTruncated(evA, RECORDING_FETCH_LIMIT) ? ['A'] : []),
+    ...(isTruncated(evB, RECORDING_FETCH_LIMIT) ? ['B'] : []),
+  ];
+  expandedKeys = new Set();
 
-  computeDiffRows();
-  renderDiffTable(body);
+  recomputeFromRaw();
   harBtn.disabled = lastDiffRows.length === 0;
 }
 
-// Groups every call to the same "METHOD url" within one session, so a page
-// that fires the same request more than once (analytics beacons, polling,
-// cache revalidation) doesn't drown out genuine differences between sessions.
-function buildRequestMap(events) {
-  const reqMeta = new Map();
-  const result  = new Map();
-
-  const pushCall = (key, method, url, status, fromCache) => {
-    let entry = result.get(key);
-    if (!entry) {
-      entry = { method, url, calls: [] };
-      result.set(key, entry);
-    }
-    entry.calls.push({ status, fromCache });
-  };
-
-  for (const ev of events) {
-    if (ev.kind === 'network-request') {
-      try {
-        const p = JSON.parse(ev.payload);
-        reqMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
-      } catch {}
-    }
-    if (ev.kind === 'network-response') {
-      try {
-        const p = JSON.parse(ev.payload);
-        const meta = reqMeta.get(p.requestId);
-        if (!meta) continue;
-        const key = `${meta.method} ${meta.url}`;
-        const fromCache = !!(p.response.fromDiskCache || p.response.fromServiceWorker);
-        pushCall(key, meta.method, meta.url, p.response.status, fromCache);
-      } catch {}
-    }
-    if (ev.kind === 'network-failed') {
-      try {
-        const p = JSON.parse(ev.payload);
-        const meta = reqMeta.get(p.requestId);
-        if (!meta) continue;
-        const key = `${meta.method} ${meta.url}`;
-        pushCall(key, meta.method, meta.url, 'FAILED', false);
-      } catch {}
-    }
-  }
-
-  return result;
+// Rebuilds rawMapA/rawMapB from the raw events under the current
+// matchMode/ignoreParams, then recomputes rows — no re-fetch.
+function recomputeFromRaw() {
+  rawMapA = buildRequestMap(rawEventsA, { mode: matchMode, ignoreParams });
+  rawMapB = buildRequestMap(rawEventsB, { mode: matchMode, ignoreParams });
+  computeDiffRowsAndRender();
 }
 
-// Builds lastDiffRows from rawMapA/rawMapB according to the current
-// groupDuplicates mode, without re-fetching the timelines.
-function computeDiffRows() {
-  const allKeys = new Set([...rawMapA.keys(), ...rawMapB.keys()]);
-  lastDiffRows = [];
+function computeDiffRowsAndRender() {
+  lastDiffRows = computeDiffRows(rawMapA, rawMapB, { groupDuplicates, ignoreHeaders: DEFAULT_IGNORED_HEADERS });
+  renderDiffTable(document.getElementById('diffBody'));
+  const harBtn = document.getElementById('diffHarBtn');
+  if (harBtn) harBtn.disabled = lastDiffRows.length === 0;
+}
 
-  for (const key of allKeys) {
-    const a = rawMapA.get(key);
-    const b = rawMapB.get(key);
-
-    if (groupDuplicates) {
-      lastDiffRows.push(makeGroupedRow(key, a, b));
-    } else {
-      const maxLen = Math.max(a?.calls.length ?? 0, b?.calls.length ?? 0);
-      for (let i = 0; i < maxLen; i++) {
-        lastDiffRows.push(makeCallRow(key, a, b, i));
-      }
-    }
-  }
-
-  lastDiffRows.sort((x, y) => {
-    const order = { diff: 0, 'only-a': 1, 'only-b': 2, same: 3 };
-    return (order[x.category] ?? 9) - (order[y.category] ?? 9) || x.key.localeCompare(y.key);
+function truncationBannerHtml() {
+  if (!truncatedSides.length || !diffMeta) return '';
+  const lines = truncatedSides.map((side) => {
+    const name = side === 'A' ? diffMeta.nameA : diffMeta.nameB;
+    return `Session <b>${escHtml(name)}</b> has more than ${RECORDING_FETCH_LIMIT.toLocaleString()} recorded events — only the most recent ${RECORDING_FETCH_LIMIT.toLocaleString()} were compared.`;
   });
-}
-
-function summarizeCalls(entry) {
-  if (!entry || entry.calls.length === 0) return null;
-  const statuses = [...new Set(entry.calls.map(c => c.status))];
-  const cacheCount = entry.calls.filter(c => c.fromCache).length;
-  const cache = cacheCount === 0 ? 'none' : cacheCount === entry.calls.length ? 'all' : 'mixed';
-  return { label: statuses.join('/'), count: entry.calls.length, cache };
-}
-
-function makeGroupedRow(key, a, b) {
-  const sa = summarizeCalls(a);
-  const sb = summarizeCalls(b);
-  let category;
-  if (sa && !sb)          category = 'only-a';
-  else if (!sa && sb)     category = 'only-b';
-  else if (sa.label === sb.label) category = 'same';
-  else                    category = 'diff';
-  return {
-    key,
-    method: (a ?? b).method,
-    url: (a ?? b).url,
-    a: sa,
-    b: sb,
-    category,
-  };
-}
-
-function makeCallRow(key, a, b, index) {
-  const callA = a?.calls[index];
-  const callB = b?.calls[index];
-  const cellA = callA ? { label: String(callA.status), count: 1, cache: callA.fromCache ? 'all' : 'none' } : null;
-  const cellB = callB ? { label: String(callB.status), count: 1, cache: callB.fromCache ? 'all' : 'none' } : null;
-  let category;
-  if (cellA && !cellB)          category = 'only-a';
-  else if (!cellA && cellB)     category = 'only-b';
-  else if (cellA.label === cellB.label) category = 'same';
-  else                          category = 'diff';
-  return {
-    key: `${key}#${index}`,
-    method: (a ?? b).method,
-    url: (a ?? b).url,
-    a: cellA,
-    b: cellB,
-    category,
-  };
+  return `<div class="diff-truncation-warning">${lines.join('<br>')}</div>`;
 }
 
 function renderDiffTable(body) {
   if (lastDiffRows.length === 0) {
-    body.innerHTML = '<div class="diff-hint">No network requests found in either session.</div>';
+    body.innerHTML = truncationBannerHtml() + '<div class="diff-hint">No network requests found in either session.</div>';
     return;
   }
 
@@ -258,18 +233,50 @@ function renderDiffTable(body) {
   const rows = lastDiffRows.filter(r => activeCats.has(r.category) && matchesFreeText(r.url, filterText)).map(r => {
     const url = escHtml(r.url);
     const method = escHtml(r.method);
-    return `<tr class="diff-row ${r.category}">
+    const expandable = !!r.detail;
+    const expanded = expandable && expandedKeys.has(r.key);
+    const hbBadge = r.headerBodyDiffer
+      ? '<span class="diff-badge hb-diff" title="Status matches but headers or body differ">&ne; headers/body</span>' : '';
+    const rowHtml = `<tr class="diff-row ${r.category}${expandable ? ' diff-row-expandable' : ''}" data-key="${escHtml(r.key)}" data-expandable="${expandable ? '1' : '0'}">
       <td class="diff-method">${method}</td>
       <td class="diff-url" title="${url}">${url}</td>
       <td class="diff-st">${renderCell(r.a)}</td>
       <td class="diff-st">${renderCell(r.b)}</td>
+      <td class="diff-hb">${hbBadge}</td>
     </tr>`;
+    const detailHtml = expanded ? `<tr class="diff-detail-row"><td colspan="5">${renderDetailBlock(r.detail)}</td></tr>` : '';
+    return rowHtml + detailHtml;
   }).join('');
 
-  body.innerHTML = meta + legend + `<div class="diff-table-wrap"><table class="diff-table">
-    <thead><tr><th>Method</th><th>URL</th><th>Status A</th><th>Status B</th></tr></thead>
+  body.innerHTML = truncationBannerHtml() + meta + legend + `<div class="diff-table-wrap"><table class="diff-table">
+    <thead><tr><th>Method</th><th>URL</th><th>Status A</th><th>Status B</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+}
+
+function renderDetailBlock(detail) {
+  const headerLines = [
+    ...detail.headerDiff.removed.map(h => `<div class="diff-detail-header removed">&minus; ${escHtml(h.name)}: ${escHtml(h.value)}</div>`),
+    ...detail.headerDiff.added.map(h => `<div class="diff-detail-header added">+ ${escHtml(h.name)}: ${escHtml(h.value)}</div>`),
+    ...detail.headerDiff.changed.map(h => `<div class="diff-detail-header changed">&plusmn; ${escHtml(h.name)}: ${escHtml(h.valueA)} &rarr; ${escHtml(h.valueB)}</div>`),
+  ].join('');
+
+  const bodyLine = detail.bodiesMatch === null
+    ? 'Body not captured on at least one side'
+    : detail.bodiesMatch
+      ? 'Bodies identical'
+      : `Bodies differ — A: ${detail.bodySizeA ?? '?'} bytes, B: ${detail.bodySizeB ?? '?'} bytes (&Delta; ${Math.abs((detail.bodySizeA ?? 0) - (detail.bodySizeB ?? 0))})`;
+
+  const durA = detail.durationA !== null ? `${detail.durationA}ms` : '—';
+  const durB = detail.durationB !== null ? `${detail.durationB}ms` : '—';
+  const durDelta = (detail.durationA !== null && detail.durationB !== null)
+    ? ` (&Delta; ${detail.durationB - detail.durationA}ms)` : '';
+
+  return `<div class="diff-detail">
+    <div class="diff-detail-section"><span class="diff-detail-label">Response headers</span>${headerLines || '<div class="diff-detail-header-none">No differences (outside the ignored set)</div>'}</div>
+    <div class="diff-detail-section"><span class="diff-detail-label">Body</span> ${bodyLine}</div>
+    <div class="diff-detail-section"><span class="diff-detail-label">Duration</span> A ${durA} vs B ${durB}${durDelta}</div>
+  </div>`;
 }
 
 function renderCell(cell) {
@@ -295,6 +302,7 @@ function exportDiffHar() {
     statusB:  r.b?.label ?? null,
     countB:   r.b?.count ?? 0,
     cacheB:   r.b?.cache ?? 'none',
+    headerBodyDiffer: r.headerBodyDiffer,
   }));
   const diffExport = {
     log: {
@@ -312,4 +320,3 @@ function exportDiffHar() {
   a.click();
   URL.revokeObjectURL(url);
 }
-

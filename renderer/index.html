@@ -375,7 +375,7 @@
             </div>
             <div class="feature-item">
               <div class="feature-name">Diff tab (network diff)</div>
-              <p>Pick two open sessions (Session A / Session B) and click <b>Compare</b> to diff their recorded requests by method + URL — same, different status, or only present in one side — in a color-coded table. Once a comparison has run, <b>Export diff (JSON)</b> downloads the comparison as a JSON file, which is useful for comparing the same flow across two environments (e.g. staging vs. production).</p>
+              <p>Pick two open sessions (Session A / Session B) and click <b>Compare</b> to diff their recorded requests — same, different status, or only present in one side — in a color-coded table. <b>Match by</b> switches between comparing full URLs or just the path (so staging and production on different hosts still line up); query params in the editable ignore list (saved locally) are dropped before matching. Click a row present on both sides to expand response-header and body differences and the duration delta; a row whose status matches but headers or body differ still counts as "same" but gets a "&ne; headers/body" marker. A banner warns if either session had more than 5,000 recorded events, since only the most recent 5,000 are compared. Once a comparison has run, <b>Export diff (JSON)</b> downloads it as a JSON file.</p>
             </div>
             <div class="feature-item">
               <div class="feature-name">Spoof tab</div>
