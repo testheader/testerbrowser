@@ -285,8 +285,11 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     reportError:        (message: string) => ipcRenderer.invoke('app:reportError', message),
     getUpdateLog:       () => ipcRenderer.invoke('app:getUpdateLog'),
     getDebugLog:        (afterId?: number) => ipcRenderer.invoke('app:debugLog', afterId),
+    // #230: unlike every other on*() subscription here (single-consumer —
+    // re-registering replaces the previous handler), this one is additive:
+    // both settings.js's modal and update-pill.js's titlebar pill each call
+    // this once at startup and both need to keep receiving every update.
     onUpdateStatus: (cb: (d: { status: string; current: string; latest: string | null }) => void) => {
-      ipcRenderer.removeAllListeners('update:status');
       ipcRenderer.on('update:status', (_e, d) => cb(d));
     },
     onShowSettings: (cb: () => void) => {

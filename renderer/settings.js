@@ -2,12 +2,17 @@
 import { applyTheme, getStoredScheme } from './theme.js';
 
 const STATUS_CONFIG = {
-  checking:        { cls: 'info', text: 'Checking for updates…' },
-  available:       { cls: 'info', text: (v) => `Update ${v} found — downloading…` },
-  downloading:     { cls: 'info', text: 'Downloading update…' },
-  downloaded:      { cls: 'warn', text: (v) => `Update ${v} downloaded — restart to install` },
-  'not-available': { cls: 'ok',   text: 'You\'re up to date' },
-  error:           { cls: 'err',  text: (msg) => `Update error: ${msg || 'unknown'}` },
+  checking:          { cls: 'info', text: 'Checking for updates…' },
+  available:         { cls: 'info', text: (v) => `Update ${v} found — downloading…` },
+  // #230: found via the error handler's release-scan fallback (the newest
+  // release's own latest.yml is missing) — electron-updater has no update
+  // info to actually download this with, so it's a manual download, not
+  // "downloading…".
+  'available-manual': { cls: 'warn', text: (v) => `Update ${v} available — download it from GitHub` },
+  downloading:       { cls: 'info', text: 'Downloading update…' },
+  downloaded:        { cls: 'warn', text: (v) => `Update ${v} downloaded — restart to install` },
+  'not-available':   { cls: 'ok',   text: 'You\'re up to date' },
+  error:             { cls: 'err',  text: (msg) => `Update error: ${msg || 'unknown'}` },
 };
 
 function applyUpdateStatus({ status, current, latest }) {
@@ -19,6 +24,11 @@ function applyUpdateStatus({ status, current, latest }) {
   el.textContent = typeof cfg.text === 'function' ? cfg.text(latest) : cfg.text;
   document.getElementById('restartBtn').style.display      = status === 'downloaded' ? '' : 'none';
   document.getElementById('copyUpdateLogBtn').style.display = status === 'error'     ? '' : 'none';
+  const releaseBtn = document.getElementById('openReleasePageBtn');
+  releaseBtn.style.display = status === 'available-manual' ? '' : 'none';
+  if (status === 'available-manual' && latest) {
+    releaseBtn.dataset.url = `https://github.com/testheader/testerbrowser/releases/tag/v${latest}`;
+  }
 }
 
 export async function openSettings() {
@@ -98,6 +108,11 @@ export function initSettings() {
     await testerBrowser.app.checkForUpdates();
   };
   document.getElementById('restartBtn').onclick = () => testerBrowser.app.restartAndInstall();
+
+  document.getElementById('openReleasePageBtn').onclick = () => {
+    const url = document.getElementById('openReleasePageBtn').dataset.url;
+    if (url) testerBrowser.app.openExternal(url);
+  };
 
   document.getElementById('copyUpdateLogBtn').onclick = async () => {
     const entries = await testerBrowser.app.getUpdateLog();

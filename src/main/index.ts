@@ -137,7 +137,13 @@ function persistSessionUrls() {
   } catch {}
 }
 
-type UpdateStatus = 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error';
+// available-manual (#230): a newer release exists (found by the error
+// handler's release-scan fallback below, when the newest release is
+// missing latest.yml) but electron-updater has no update info to actually
+// download it with — Settings links out to the GitHub release page
+// instead of showing "downloading…", and the titlebar pill never appears
+// for this status (there's nothing it could silently install).
+type UpdateStatus = 'checking' | 'available' | 'available-manual' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
 
@@ -468,8 +474,16 @@ app.whenReady().then(() => {
                 latestVersion = foundVersion;
                 // A release found while scanning back for a valid latest.yml can be
                 // older than what's already installed — that's not an available update.
-                updateStatus = isVersionNewer(foundVersion, app.getVersion()) ? 'available' : 'not-available';
+                // #230: electron-updater has no update info to download this from (it
+                // errored on the newest release's own latest.yml) — 'available-manual'
+                // points the user at the GitHub release page instead of pretending a
+                // real download is in progress.
+                const newer = isVersionNewer(foundVersion, app.getVersion());
+                updateStatus = newer ? 'available-manual' : 'not-available';
                 pushUpdateStatus();
+                log.info('updater', newer
+                  ? `Update found via release scan (manual download required): ${foundVersion}`
+                  : `Release scan found ${foundVersion}, not newer than current`);
                 return;
               }
               if (++checked >= 3) break;
@@ -1170,7 +1184,23 @@ ipcMain.handle('app:checkForUpdates', () => {
   pushUpdateStatus();
   autoUpdater.checkForUpdates();
 });
-ipcMain.handle('app:restartAndInstall', () => autoUpdater.quitAndInstall());
+// #230: quitAndInstall(isSilent, isForceRunAfter) — verified against the
+// installed electron-updater@6.8.9 (node_modules/electron-updater/out/
+// BaseUpdater.js): its quit-time auto-install path (addQuitHandler, run
+// when the app quits normally without quitAndInstall having been called
+// explicitly) already calls `this.install(true, false)` — silent, no
+// installer UI — by default, so no autoInstallOnAppQuit/app.on('quit')
+// override is needed for that path. This explicit path additionally
+// force-runs the new version after install.
+ipcMain.handle('app:restartAndInstall', () => {
+  // Persist state before quitAndInstall() tears the process down — it calls
+  // app.quit() itself, but does so via setImmediate after starting the
+  // installer, not through the normal before-quit path in time to matter,
+  // so the persisted state has to already be on disk before this returns.
+  sessionManager?.saveSessions();
+  persistSessionUrls();
+  autoUpdater.quitAndInstall(true, true);
+});
 ipcMain.handle('app:openExternal', (_e, url: string) => {
   if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
 });

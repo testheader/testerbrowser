@@ -133,6 +133,18 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .win-icon { display: block; width: 10px; height: 10px; }
 .win-icon[hidden] { display: none; }
 
+/* #230: update-ready pill + its temp-tab-warning confirm popover */
+#updateReadyWrapper { position: relative; flex-shrink: 0; display: flex; align-items: center; -webkit-app-region: no-drag; }
+#updateReadyBtn { background: var(--warn-surface); border: 1px solid var(--warn-border); color: var(--warn-strong);
+                  cursor: pointer; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 12px;
+                  margin-right: 8px; white-space: nowrap; font-family: inherit; }
+#updateReadyBtn:hover { background: var(--warn-border); }
+#updateReadyPopover { position: absolute; top: calc(100% + 4px); right: 0; background: var(--bg-secondary);
+                       border: 1px solid var(--border-strong); border-radius: 6px; padding: 12px;
+                       box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 90; width: 240px; }
+#updateReadyPopoverText { margin: 0 0 10px; font-size: 12px; color: var(--text-primary); }
+#updateReadyPopover .modal-actions { margin-top: 0; }
+
 /* ── Top bar ── */
 #topbar { display: flex; flex-direction: column; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
 

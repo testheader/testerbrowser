@@ -29,6 +29,16 @@
     </div>
     <div id="tabs"><button id="newSessionBtn" title="New tab (Ctrl+T)">+</button></div>
     <div id="titlebarDrag"></div>
+    <div id="updateReadyWrapper">
+      <button id="updateReadyBtn" hidden></button>
+      <div id="updateReadyPopover" hidden>
+        <p id="updateReadyPopoverText"></p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="updateReadyCancelBtn">Cancel</button>
+          <button class="btn btn-danger" id="updateReadyConfirmBtn">Restart now</button>
+        </div>
+      </div>
+    </div>
     <div id="titlebarControls">
       <button id="themeToggleBtn" title="Toggle light/dark mode">&#9728;</button>
       <button id="winMinBtn" title="Minimize">&#8211;</button>
@@ -410,8 +420,9 @@
       </div>
 
       <div class="modal-actions">
-        <button class="btn btn-danger"    id="restartBtn"        style="display:none">Restart to install</button>
-        <button class="btn btn-secondary" id="copyUpdateLogBtn"  style="display:none" title="Copy update error log to clipboard for sharing with support">Copy error log</button>
+        <button class="btn btn-danger"    id="restartBtn"          style="display:none">Restart to install</button>
+        <button class="btn btn-secondary" id="openReleasePageBtn"  style="display:none">Open release page</button>
+        <button class="btn btn-secondary" id="copyUpdateLogBtn"    style="display:none" title="Copy update error log to clipboard for sharing with support">Copy error log</button>
         <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>
         <button class="btn btn-primary"   id="closeSettingsBtn">Close</button>
       </div>
