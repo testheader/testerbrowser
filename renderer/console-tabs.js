@@ -1,4 +1,4 @@
-import { loadStoragePanel } from './storage.js';
+import { loadStoragePanel, stopStorageAutoRefreshPolling, resumeStorageAutoRefreshIfOn } from './storage.js';
 import { initA11y, disableA11yHover, disableA11yFocusOrder } from './a11y.js';
 import { initDiff } from './diff.js';
 import { initVR, refreshVR } from './visual-regression.js';
@@ -25,6 +25,7 @@ export function switchConsoleTab(tab) {
   activeConsoleTab = tab;
   if (prevTab === 'a11y' && tab !== 'a11y') { disableA11yHover(); disableA11yFocusOrder(); }
   if (prevTab === 'debuglog' && tab !== 'debuglog') stopDebugLogPolling();
+  if (prevTab === 'storage' && tab !== 'storage') stopStorageAutoRefreshPolling();
   document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
   document.getElementById('consoleTabNetwork').classList.toggle('active', tab === 'network');
   document.getElementById('consoleTabStorage').classList.toggle('active', tab === 'storage');
@@ -61,7 +62,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? 'block' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();
-  if (tab === 'storage') loadStoragePanel();
+  if (tab === 'storage') { loadStoragePanel(); resumeStorageAutoRefreshIfOn(); }
   if (tab === 'a11y') { initA11y(); }
   if (tab === 'spoof') { initSpoof(); refreshSpoofStatus(); }
   if (tab === 'security') initSecurity();

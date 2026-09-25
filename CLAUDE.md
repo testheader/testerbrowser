@@ -62,7 +62,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
   Tab state: tabOrder[], mruStack[], tabFavicons{}, tabTitles{}, navState{}
   Console panel
     Console tab  — timeline events, pill filter toggles (Req/Res/Err/JS/Log), HAR export
-    Storage tab  — cookies (via sessions:getCookies) + localStorage (via sessions:getLocalStorage)
+    Storage tab  — cookies, localStorage, sessionStorage, IndexedDB (read-only), client-filtered
+                   in-memory once fetched, optional 2 s auto-refresh while the tab is visible
   View dropdown  — toggle console panel visibility + bookmarks bar
   pollTimeline() — 1 s interval, fetches events since lastTs
 ```
@@ -86,6 +87,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `sessions:setZoom/resetZoom/getZoom` | R→M | zoom factor |
 | `sessions:getCookies` | R→M | `session.cookies.get({})` for session partition |
 | `sessions:getLocalStorage` | R→M | `executeJavaScript('JSON.stringify(localStorage)')` in active page |
+| `sessions:getSessionStorage` | R→M | same, for `sessionStorage` |
+| `sessions:getIndexedDB` | R→M | `executeJavaScript` runs the shared IndexedDB collector (`snapshotScripts.ts`'s `COLLECT_INDEXEDDB_SCRIPT`) in active page |
 | `sessions:notes:get/set` | R→M | per-session scratch notes |
 | `sessions:contextMenu` | R→M | show tab right-click menu |
 | `devtools:toggle` | R→M | open/close DevTools for session |
@@ -161,7 +164,7 @@ The console panel sits fixed at the bottom of the window. Height is drag-resizab
 
 **Console tab** — streams timeline events polled every 1 s via `recording:timeline`. Five pill toggle buttons filter by event kind (Req/Res/Err/JS/Log). Click a pill to toggle. HAR export and clear buttons on the right.
 
-**Storage tab** — fetches cookies + localStorage on demand (refresh button or session switch). Displays in tables: cookies have domain/name/value/path/secure/httpOnly columns; localStorage has key/value. `getLocalStorage` runs `executeJavaScript` in the active page — returns empty for pages with no content.
+**Storage tab** — fetches cookies, localStorage, sessionStorage and IndexedDB once per real refresh trigger (refresh button, tab switch, session switch, or an auto-refresh tick), then keeps that snapshot in memory: the filter input re-renders from it with no further IPC calls. Cookies have a full add/edit form (domain/name/value/path/SameSite/expiry/Secure/HttpOnly); an edit calls `setCookie` first and only removes the old cookie if its identity (name/domain/path) changed, so a failed edit never loses the original. localStorage is editable the same way it always was; sessionStorage and IndexedDB (database → object store → records, expandable) are read-only diagnostic views, reusing `snapshotScripts.ts`'s IndexedDB collector. An "Auto-refresh" toggle (default off) polls all four sections every 2 s, but only while the Storage tab is active and the console panel is visible. `getLocalStorage`/`getSessionStorage`/`getIndexedDB` all run `executeJavaScript` in the active page — empty for pages with no content, and scoped to whatever page is currently loaded (see Gotchas).
 
 ---
 
@@ -227,7 +230,7 @@ npm run dist:win          # Full Windows installer build + publish
 - **Infinite bump loop prevention** — `if: github.actor != 'github-actions[bot]'` on bump-version.
 - **Build jobs must `ref: main`** after bump-version pushes — without it they'd checkout the pre-bump SHA.
 - **`setConsoleHeight(0)` is special** — the method clamps to min 80px for drag-resize, but explicitly accepts 0 to fully hide the console (BrowserView fills the window).
-- **`getLocalStorage` is page-scoped** — `executeJavaScript` runs in the currently loaded page's origin. Navigating to a new page changes what localStorage is visible.
+- **`getLocalStorage`/`getSessionStorage`/`getIndexedDB` are page-scoped** — `executeJavaScript` runs in the currently loaded page's origin. Navigating to a new page changes what's visible.
 - **Session colour inheritance** — when `setWindowOpenHandler` fires (window.open or middle-click), the new session is created with the parent session's `color` captured in the `createSession` closure. Context-menu "Open link in new tab" does the same.
 - **Session snapshot export/import cannot restore in-memory JS/React state** — "Export snapshot…" / "Import snapshot…" (tab context menu, `sessionManager.ts`) capture cookies, localStorage, sessionStorage, IndexedDB, form field values, scroll position and `history.state`, per-frame (main frame + same-page iframes, via `WebFrameMain.framesInSubtree`). React (or any framework) component state that never gets persisted to storage is *not* restorable — there's no supported API to feed state back into arbitrary components. `snapshotScripts.ts`'s `COLLECT_FRAME_SCRIPT` will, best-effort, dump React state through the `__REACT_DEVTOOLS_GLOBAL_HOOK__` when present, but that dump is diagnostic-only (`reactState` field) and is never applied on import. Snapshot files are versioned (`version: 2`); v1 files (single implicit frame, storage inline) still import via a compatibility path in `restoreSnapshot`.
 

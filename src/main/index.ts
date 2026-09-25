@@ -643,6 +643,8 @@ ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.g
 ipcMain.handle('sessions:getHistory',      (_e, id: string) => sessionManager?.getHistory(id) ?? []);
 ipcMain.handle('sessions:getLoadedDomains', (_e, id: string) => sessionManager?.getLoadedDomains(id) ?? []);
 ipcMain.handle('sessions:getLocalStorage', (_e, id: string) => sessionManager?.getLocalStorage(id) ?? {});
+ipcMain.handle('sessions:getSessionStorage', (_e, id: string) => sessionManager?.getSessionStorage(id) ?? {});
+ipcMain.handle('sessions:getIndexedDB', (_e, id: string) => sessionManager?.getIndexedDB(id) ?? {});
 ipcMain.handle('sessions:deleteCookie', (_e, id: string, name: string, domain: string, cookiePath: string, secure: boolean) =>
   sessionManager?.deleteCookie(id, name, domain, cookiePath, secure)
 );

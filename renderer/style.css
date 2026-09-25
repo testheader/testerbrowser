@@ -502,6 +502,16 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .storage-table td.copyable { cursor: pointer; }
 .storage-table td.copyable:hover { background: rgba(79,195,247,0.06); }
 .storage-table td.flash-copied { background: rgba(79,195,247,0.18) !important; }
+.storage-add-row input[type="checkbox"] { width: auto; }
+.storage-add-row select { background: var(--bg-deep); color: var(--text-primary); border: 1px solid var(--accent);
+                           font-size: 11px; border-radius: 2px; }
+.storage-row-error td { padding: 4px 10px; background: var(--error-surface); color: var(--error-strong);
+                         font-size: 11px; font-family: sans-serif; border-bottom: 1px solid var(--error-border); }
+.storage-idb-db, .storage-idb-store { margin: 0 10px 6px; }
+.storage-idb-db summary, .storage-idb-store summary { cursor: pointer; font-size: 11px; color: var(--text-primary);
+                                                        padding: 3px 0; }
+.storage-idb-store { margin-left: 16px; }
+.storage-hint { padding: 4px 10px; color: var(--text-faint); font-size: 11px; font-style: italic; }
 .ls-edit-input { width: 100%; background: var(--bg-deep); color: var(--text-primary); border: 1px solid var(--accent);
                  border-radius: 2px; font-family: monospace; font-size: 11px;
                  padding: 1px 4px; outline: none; box-sizing: border-box; }

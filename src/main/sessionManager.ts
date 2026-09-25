@@ -9,7 +9,7 @@ import { PermissionManager } from './permissionManager';
 import { AppLog } from './appLogger';
 
 import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
-import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
+import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 import {
   RGB, WCAG_AA_NORMAL, WCAG_AA_LARGE, WCAG_AAA_NORMAL, WCAG_AAA_LARGE,
   contrastRatio, isLargeText, parseCssColor,
@@ -603,6 +603,14 @@ export interface HistoryEntry {
   failed?: boolean;
 }
 
+// db name → { version, stores: { storeName → { keyPath, autoIncrement, records } } } —
+// shared by session snapshots (FrameSnapshot.indexedDB) and the live Storage
+// panel's IndexedDB view (SessionManager.getIndexedDB()).
+export type IndexedDBSnapshot = Record<string, {
+  version: number;
+  stores: Record<string, { keyPath: string | string[] | null; autoIncrement: boolean; records: { key: unknown; value: unknown }[] }>;
+}>;
+
 // One entry per frame (main frame + same-page iframes) inside a session
 // snapshot. Storage/IndexedDB/history/scroll/fields are captured and
 // restored; reactState is diagnostic-only (see snapshotScripts.ts) and is
@@ -611,10 +619,7 @@ export interface FrameSnapshot {
   url: string;
   localStorage?: Record<string, string>;
   sessionStorage?: Record<string, string>;
-  indexedDB?: Record<string, {
-    version: number;
-    stores: Record<string, { keyPath: string | string[] | null; autoIncrement: boolean; records: { key: unknown; value: unknown }[] }>;
-  }>;
+  indexedDB?: IndexedDBSnapshot;
   fields?: { sel: string; kind: 'value' | 'checked'; value?: string; checked?: boolean }[];
   scroll?: { x: number; y: number };
   historyState?: unknown;
@@ -2418,6 +2423,26 @@ export class SessionManager {
       const raw = await s.view.webContents.executeJavaScript(
         'JSON.stringify(Object.fromEntries(Object.entries(localStorage)))'
       );
+      return JSON.parse(raw) ?? {};
+    } catch { return {}; }
+  }
+
+  async getSessionStorage(id: string): Promise<Record<string, string>> {
+    const s = this.sessions.get(id);
+    if (!s) return {};
+    try {
+      const raw = await s.view.webContents.executeJavaScript(
+        'JSON.stringify(Object.fromEntries(Object.entries(sessionStorage)))'
+      );
+      return JSON.parse(raw) ?? {};
+    } catch { return {}; }
+  }
+
+  async getIndexedDB(id: string): Promise<IndexedDBSnapshot> {
+    const s = this.sessions.get(id);
+    if (!s) return {};
+    try {
+      const raw = await s.view.webContents.executeJavaScript(COLLECT_INDEXEDDB_SCRIPT);
       return JSON.parse(raw) ?? {};
     } catch { return {}; }
   }

@@ -4,47 +4,14 @@
 // the page's own JS context, not the Electron main process — tsc never sees
 // them, so there's no benefit to a separate compiled file.
 
-// Executed once per frame (main frame + every same-page iframe) during
-// export. Returns a JSON string (frames can't return arbitrary structured
-// data across the executeJavaScript boundary reliably, so we stringify).
-//
-// Collects, best-effort, with every step isolated so one failing piece
-// (e.g. a locked IndexedDB) doesn't drop the rest:
-//   - localStorage / sessionStorage
-//   - IndexedDB databases + object stores + records
-//   - visible form field values (skips password inputs)
-//   - scroll position and history.state
-//   - a diagnostic-only dump of React component state via the React
-//     DevTools global hook, when present. This is never restored on
-//     import — there's no supported way to feed state back into arbitrary
-//     React components from outside the app, so it's exported purely so a
-//     tester can inspect what a component's state looked like at capture
-//     time.
-export const COLLECT_FRAME_SCRIPT = `
-(async function() {
-  const warnings = [];
-  const safe = (fn, label) => { try { return fn(); } catch (e) { warnings.push(label + ': ' + (e && e.message || String(e))); return undefined; } };
-
-  const localStorageData = safe(() => Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])), 'localStorage');
-  const sessionStorageData = safe(() => Object.fromEntries(Object.keys(sessionStorage).map(k => [k, sessionStorage.getItem(k)])), 'sessionStorage');
-
-  const fields = safe(() => {
-    const out = [];
-    document.querySelectorAll('input, textarea, select').forEach((el) => {
-      if (el.type === 'password') return;
-      let sel = null;
-      if (el.id) sel = '#' + CSS.escape(el.id);
-      else if (el.name) sel = el.tagName.toLowerCase() + '[name="' + el.name.replace(/"/g, '\\\\"') + '"]';
-      if (!sel) return;
-      if (el.type === 'checkbox' || el.type === 'radio') out.push({ sel, kind: 'checked', checked: el.checked });
-      else out.push({ sel, kind: 'value', value: el.value });
-    });
-    return out;
-  }, 'formFields') || [];
-
-  const scroll = safe(() => ({ x: window.scrollX, y: window.scrollY }), 'scroll');
-  const historyState = safe(() => window.history.state, 'historyState');
-
+// Collects every IndexedDB database into `indexedDBData` (db name → { version,
+// stores: { storeName → { keyPath, autoIncrement, records } } }), pushing
+// per-database/per-store failures onto a `warnings` array already declared
+// in the enclosing scope rather than aborting the whole collection. Shared,
+// verbatim, between COLLECT_FRAME_SCRIPT (full snapshot export) and
+// COLLECT_INDEXEDDB_SCRIPT (the live Storage panel's IndexedDB view) so the
+// two never drift apart.
+const COLLECT_INDEXEDDB_BODY = `
   const indexedDBData = {};
   if (typeof indexedDB !== 'undefined' && indexedDB.databases) {
     try {
@@ -89,6 +56,62 @@ export const COLLECT_FRAME_SCRIPT = `
       warnings.push('IndexedDB: ' + (e && e.message || String(e)));
     }
   }
+`;
+
+// Executed in page context by the live Storage panel (sessionManager.ts's
+// getIndexedDB()) — same collection as COLLECT_FRAME_SCRIPT below, but
+// standalone and returning just the IndexedDB data, since the panel doesn't
+// need localStorage/sessionStorage/form fields/scroll/history/React state.
+export const COLLECT_INDEXEDDB_SCRIPT = `
+(async function() {
+  const warnings = [];
+  ${COLLECT_INDEXEDDB_BODY}
+  return JSON.stringify(indexedDBData);
+})()
+`;
+
+// Executed once per frame (main frame + every same-page iframe) during
+// export. Returns a JSON string (frames can't return arbitrary structured
+// data across the executeJavaScript boundary reliably, so we stringify).
+//
+// Collects, best-effort, with every step isolated so one failing piece
+// (e.g. a locked IndexedDB) doesn't drop the rest:
+//   - localStorage / sessionStorage
+//   - IndexedDB databases + object stores + records
+//   - visible form field values (skips password inputs)
+//   - scroll position and history.state
+//   - a diagnostic-only dump of React component state via the React
+//     DevTools global hook, when present. This is never restored on
+//     import — there's no supported way to feed state back into arbitrary
+//     React components from outside the app, so it's exported purely so a
+//     tester can inspect what a component's state looked like at capture
+//     time.
+export const COLLECT_FRAME_SCRIPT = `
+(async function() {
+  const warnings = [];
+  const safe = (fn, label) => { try { return fn(); } catch (e) { warnings.push(label + ': ' + (e && e.message || String(e))); return undefined; } };
+
+  const localStorageData = safe(() => Object.fromEntries(Object.keys(localStorage).map(k => [k, localStorage.getItem(k)])), 'localStorage');
+  const sessionStorageData = safe(() => Object.fromEntries(Object.keys(sessionStorage).map(k => [k, sessionStorage.getItem(k)])), 'sessionStorage');
+
+  const fields = safe(() => {
+    const out = [];
+    document.querySelectorAll('input, textarea, select').forEach((el) => {
+      if (el.type === 'password') return;
+      let sel = null;
+      if (el.id) sel = '#' + CSS.escape(el.id);
+      else if (el.name) sel = el.tagName.toLowerCase() + '[name="' + el.name.replace(/"/g, '\\\\"') + '"]';
+      if (!sel) return;
+      if (el.type === 'checkbox' || el.type === 'radio') out.push({ sel, kind: 'checked', checked: el.checked });
+      else out.push({ sel, kind: 'value', value: el.value });
+    });
+    return out;
+  }, 'formFields') || [];
+
+  const scroll = safe(() => ({ x: window.scrollX, y: window.scrollY }), 'scroll');
+  const historyState = safe(() => window.history.state, 'historyState');
+
+  ${COLLECT_INDEXEDDB_BODY}
 
   let reactState;
   try {

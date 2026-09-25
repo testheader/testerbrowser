@@ -185,6 +185,7 @@
           <span class="filter-label">Filter</span>
           <input id="storageFilter" placeholder="Filter…" />
           <button class="storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
+          <button class="storage-domain-btn" id="storageAutoRefreshBtn" title="Poll cookies, storage and IndexedDB every 2s while this tab is visible">Auto-refresh</button>
           <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage">&#8635;</button>
         </div>
         <div id="storagePanelContent"></div>
@@ -350,7 +351,7 @@
             </div>
             <div class="feature-item">
               <div class="feature-name">Storage tab</div>
-              <p>Live tables of the active session's cookies and localStorage. Cookies show domain/name/value/path/SameSite/expiry/Secure/HttpOnly with a badge distinguishing first- vs third-party, and a domain filter can narrow the list to cookies relevant to the page currently loaded. Double-click any row to edit it inline, click to copy a value, use <b>+ Add</b> to create new entries, and <b>×</b> / <b>Clear All</b> to delete.</p>
+              <p>Live tables of the active session's cookies, localStorage, sessionStorage and IndexedDB. Cookies show domain/name/value/path/SameSite/expiry/Secure/HttpOnly with a badge distinguishing first- vs third-party, and a domain filter can narrow the list to cookies relevant to the page currently loaded. Double-click a cookie or localStorage row to edit it inline (a failed cookie edit never loses the original value), click to copy a value, use <b>+ Add</b> to create new entries (the cookie form includes SameSite/expiry/Secure/HttpOnly), and <b>×</b> / <b>Clear All</b> to delete. sessionStorage and IndexedDB (expandable by database → object store) are read-only. The filter box matches everything already loaded with no extra round-trips per keystroke; <b>Auto-refresh</b> polls everything every 2s while this tab is visible.</p>
             </div>
             <div class="feature-item">
               <div class="feature-name">Security tab</div>

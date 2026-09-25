@@ -556,3 +556,124 @@ test('storage tab: rename localStorage key by double-clicking', async () => {
   expect(ls['new_key']).toBe('kept_value');
   expect(ls['old_key']).toBeUndefined();
 });
+
+// #234: typing in the filter must re-render from the already-fetched data,
+// never re-fetch. Proven by adding a cookie out-of-band (bypassing the
+// panel entirely, as a page or another tool would) while a filter that
+// would match it is typed: if filtering re-fetched, the new cookie would
+// appear; since it's cache-only, it stays absent until an explicit refresh.
+test('storage tab: filter re-renders from cached data, not a fresh fetch', async () => {
+  await openStorageTab(window, testPort);
+  const { partition } = await activeSession(window);
+
+  await app.evaluate(async ({ session: electronSession }, part) => {
+    const ses = electronSession.fromPartition(part);
+    await ses.clearStorageData({ storages: ['cookies'] });
+    await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_filter_aaa', value: '1' });
+    await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_filter_bbb', value: '1' });
+  }, partition);
+
+  await window.click('#refreshStorageBtn');
+  await window.waitForTimeout(500);
+
+  // Added after the panel already loaded its snapshot — a live fetch would
+  // pick this up, a cache-only render never will.
+  await app.evaluate(async ({ session: electronSession }, part) => {
+    await electronSession.fromPartition(part).cookies.set({ url: 'http://127.0.0.1', name: 'e2e_filter_ccc', value: '1' });
+  }, partition);
+
+  await window.fill('#storageFilter', 'e2e_filter_');
+  await window.waitForTimeout(300);
+
+  const rows = window.locator('#storagePanel .storage-table tbody tr');
+  await expect(rows.filter({ hasText: 'e2e_filter_aaa' })).toHaveCount(1);
+  await expect(rows.filter({ hasText: 'e2e_filter_bbb' })).toHaveCount(1);
+  await expect(rows.filter({ hasText: 'e2e_filter_ccc' })).toHaveCount(0);
+
+  // A real refresh does pick it up.
+  await window.click('#refreshStorageBtn');
+  await window.waitForTimeout(500);
+  await expect(rows.filter({ hasText: 'e2e_filter_ccc' })).toHaveCount(1);
+});
+
+test('storage tab: add cookie with Secure + SameSite=Strict round-trips through the form', async () => {
+  await openStorageTab(window, testPort);
+  const { id: sessionId, partition } = await activeSession(window);
+
+  await app.evaluate(async ({ session: electronSession }, part) => {
+    await electronSession.fromPartition(part).clearStorageData({ storages: ['cookies'] });
+  }, partition);
+  await window.click('#refreshStorageBtn');
+  await window.waitForTimeout(500);
+
+  await window.locator('.storage-add-btn').first().click();
+  const addRow = window.locator('.storage-add-row').first();
+  await addRow.locator('input').nth(1).fill('e2e_secure_cookie');
+  await addRow.locator('input').nth(2).fill('e2e_value');
+  await addRow.locator('select').selectOption('strict');
+  await addRow.locator('input[type="checkbox"]').nth(0).check(); // Secure
+  await addRow.locator('input').nth(1).press('Enter');
+
+  let added: { name: string; value: string; secure: boolean; sameSite: string } | undefined;
+  await expect(async () => {
+    const cookies: Array<{ name: string; value: string; secure: boolean; sameSite: string }> =
+      await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
+    added = cookies.find(c => c.name === 'e2e_secure_cookie');
+    expect(added).toBeDefined();
+  }).toPass({ timeout: 5_000 });
+  expect(added?.secure).toBe(true);
+  expect(added?.sameSite).toBe('strict');
+});
+
+test('storage tab: a failed cookie edit leaves the original value and shows an error', async () => {
+  await openStorageTab(window, testPort);
+  const { id: sessionId, partition } = await activeSession(window);
+
+  await app.evaluate(async ({ session: electronSession }, part) => {
+    const ses = electronSession.fromPartition(part);
+    await ses.clearStorageData({ storages: ['cookies'] });
+    await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_safe_edit_cookie', value: 'original' });
+  }, partition);
+  await window.click('#refreshStorageBtn');
+  await window.waitForTimeout(500);
+
+  const cookieRow = window.locator('#storagePanel .storage-table tbody tr')
+    .filter({ hasText: 'e2e_safe_edit_cookie' });
+  await cookieRow.locator('td').nth(2).dblclick();
+
+  const editInput = cookieRow.locator('input.ls-edit-input');
+  // A semicolon is illegal inside a cookie value (it's the attribute
+  // separator) — Electron's cookies.set() rejects it, giving a deterministic
+  // failure to prove the edit is safe.
+  await editInput.fill('bad;value');
+  await editInput.press('Enter');
+
+  await expect(window.locator('#storagePanel .storage-row-error')).toBeVisible();
+
+  const cookies: Array<{ name: string; value: string }> =
+    await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
+  const stillThere = cookies.find(c => c.name === 'e2e_safe_edit_cookie');
+  expect(stillThere?.value).toBe('original');
+  await expect(window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'e2e_safe_edit_cookie' })).toBeVisible();
+});
+
+test('storage tab: sessionStorage section shows page-set entries', async () => {
+  // A fresh tab + a query string unique to this test, since getTabPage()
+  // matches by URL substring across every open tab, not just the active one
+  // (see the #233 redaction test above for the same pattern).
+  await window.click('#newSessionBtn');
+  const ssUrlPath = '/network/status-codes.html?t=ss-234';
+  await window.fill('#urlbar', fixtures.url(ssUrlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, ssUrlPath, window);
+  await tab.waitForLoadState('load');
+  await tab.evaluate(() => { sessionStorage.setItem('e2e_ss_key', 'e2e_ss_val'); });
+
+  await window.click('#consoleTabStorage');
+  await window.waitForTimeout(300);
+  await window.click('#refreshStorageBtn');
+  await window.waitForTimeout(500);
+
+  const ssRow = window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'e2e_ss_key' });
+  await expect(ssRow).toContainText('e2e_ss_val');
+});

@@ -1,10 +1,20 @@
 /* global testerBrowser */
 import { cookieMatchesDomain } from './utils.js';
 import { getActiveId } from './tabs.js';
+import { getActiveConsoleTab } from './console-tabs.js';
+import { isConsoleVisible } from './layout.js';
 
 // domainFilterActive (the Storage tab's "only cookies relevant to this page"
 // toggle) is used only within this file.
 let domainFilterActive = true;
+let autoRefreshOn = false;
+let autoRefreshTimer = null;
+
+// The last fetch's data, kept in memory so the filter input can re-render
+// without any further IPC round-trip — see fetchStorageData()/renderStoragePanel().
+let cache = null;
+
+const ROW_ERROR_TTL_MS = 6000;
 
 function formatCookieExpiry(ts) {
   if (!ts) return '—';
@@ -27,13 +37,41 @@ async function copyToClipboard(text) {
   await testerBrowser.clipboard.write(text);
 }
 
-export async function loadStoragePanel() {
-  if (!getActiveId()) return;
-  const panel = document.getElementById('storagePanelContent');
-  panel.innerHTML = '<div class="storage-empty">Loading…</div>';
+// Inserts a transient error message right after `afterRow` inside the same
+// table, replacing any earlier one in that table. Used for a failed cookie
+// add/edit so the row that caused it stays visible instead of vanishing —
+// removed automatically, or by the next real render.
+function showRowError(afterRow, colSpan, message) {
+  const table = afterRow.closest('table');
+  if (!table) return;
+  table.querySelectorAll('.storage-row-error').forEach((el) => el.remove());
+  const tr = document.createElement('tr');
+  tr.className = 'storage-row-error';
+  const td = document.createElement('td');
+  td.colSpan = colSpan;
+  td.textContent = message;
+  tr.appendChild(td);
+  afterRow.after(tr);
+  setTimeout(() => tr.remove(), ROW_ERROR_TTL_MS);
+}
 
-  const filterText = document.getElementById('storageFilter').value.toLowerCase();
-  const sessionId  = getActiveId();
+function revertValueCell(td, text) {
+  td.innerHTML = '';
+  td.style.overflow = 'hidden';
+  td.textContent = text;
+}
+
+// ── Fetch (real IPC round-trip) vs. render (pure, in-memory) ──
+//
+// Every real state change (tab/session switch, explicit refresh, a
+// successful add/edit/delete, an auto-refresh tick) goes through
+// fetchStorageData(). Everything else — typing in the filter, toggling
+// "Current domain", cancelling an in-progress edit — re-renders from
+// `cache` via renderStoragePanel() with zero IPC calls.
+
+export async function fetchStorageData() {
+  const sessionId = getActiveId();
+  if (!sessionId) return;
 
   const urlbarVal = document.getElementById('urlbar').value;
   let currentHostname = '';
@@ -41,15 +79,42 @@ export async function loadStoragePanel() {
     if (urlbarVal && urlbarVal.startsWith('http')) currentHostname = new URL(urlbarVal).hostname;
   } catch {}
 
-  const [cookies, ls, loadedDomains] = await Promise.all([
+  const [cookies, ls, ss, idb, loadedDomains] = await Promise.all([
     testerBrowser.sessions.getCookies(sessionId),
     testerBrowser.sessions.getLocalStorage(sessionId),
+    testerBrowser.sessions.getSessionStorage(sessionId),
+    testerBrowser.sessions.getIndexedDB(sessionId),
     testerBrowser.sessions.getLoadedDomains(sessionId),
   ]);
 
-  panel.innerHTML = '';
+  cache = { sessionId, cookies, ls, ss, idb, loadedDomains, currentHostname };
+  renderStoragePanel();
+}
 
-  // ── Cookies ──
+// Kept as the exported name every existing caller (tabs.js, console-tabs.js,
+// ipc-events.js, refreshStorageBtn, …) already uses for "the storage panel
+// needs a real refresh."
+export const loadStoragePanel = fetchStorageData;
+
+export function renderStoragePanel() {
+  const panel = document.getElementById('storagePanelContent');
+  if (!cache || cache.sessionId !== getActiveId()) {
+    panel.innerHTML = '<div class="storage-empty">Loading…</div>';
+    return;
+  }
+  const { sessionId, cookies, ls, ss, idb, loadedDomains, currentHostname } = cache;
+  const filterText = document.getElementById('storageFilter').value.toLowerCase();
+
+  panel.innerHTML = '';
+  renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomains, currentHostname);
+  renderLocalStorageSection(panel, sessionId, ls, filterText);
+  renderSessionStorageSection(panel, ss, filterText);
+  renderIndexedDBSection(panel, idb, filterText);
+}
+
+// ── Cookies ──
+
+function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomains, currentHostname) {
   const textFiltered = filterText
     ? cookies.filter(c =>
         (c.domain || '').toLowerCase().includes(filterText) ||
@@ -81,7 +146,7 @@ export async function loadStoragePanel() {
     clearBtn.title       = 'Delete all cookies for this session';
     clearBtn.onclick = async () => {
       await testerBrowser.sessions.clearCookies(sessionId);
-      loadStoragePanel();
+      fetchStorageData();
     };
     cookieHdr.appendChild(clearBtn);
   }
@@ -96,6 +161,7 @@ export async function loadStoragePanel() {
     if (cookieTable.querySelector('.storage-add-row')) return;
     const addTr = document.createElement('tr');
     addTr.className = 'storage-add-row';
+
     const domainInput = document.createElement('input');
     domainInput.className   = 'ls-edit-input';
     domainInput.placeholder = 'domain';
@@ -110,19 +176,37 @@ export async function loadStoragePanel() {
     pathInput.className   = 'ls-edit-input';
     pathInput.placeholder = 'path';
     pathInput.value       = '/';
-    ['domain','name','value','path','','','','',''].forEach((field) => {
+    const sameSiteSelect = document.createElement('select');
+    [['', 'Default'], ['lax', 'Lax'], ['strict', 'Strict'], ['no_restriction', 'None']]
+      .forEach(([value, label]) => {
+        const opt = document.createElement('option');
+        opt.value = value; opt.textContent = label;
+        sameSiteSelect.appendChild(opt);
+      });
+    const expiryInput = document.createElement('input');
+    expiryInput.type  = 'datetime-local';
+    expiryInput.className = 'ls-edit-input';
+    expiryInput.title = 'Leave blank for a session cookie';
+    const secureInput = document.createElement('input');
+    secureInput.type  = 'checkbox';
+    secureInput.title = 'Secure';
+    const httpOnlyInput = document.createElement('input');
+    httpOnlyInput.type  = 'checkbox';
+    httpOnlyInput.title = 'HttpOnly';
+
+    const cells = [domainInput, nameInput, valInput, pathInput, sameSiteSelect, expiryInput, secureInput, httpOnlyInput];
+    for (const el of cells) {
       const td = document.createElement('td');
-      if (field === 'domain') td.appendChild(domainInput);
-      else if (field === 'name')  td.appendChild(nameInput);
-      else if (field === 'value') td.appendChild(valInput);
-      else if (field === 'path')  td.appendChild(pathInput);
+      td.appendChild(el);
       addTr.appendChild(td);
-    });
+    }
+    const cancelTd = document.createElement('td');
     const cancelBtn = document.createElement('button');
     cancelBtn.className   = 'storage-delete-btn';
     cancelBtn.textContent = '×';
     cancelBtn.title       = 'Cancel';
-    addTr.lastElementChild.appendChild(cancelBtn);
+    cancelTd.appendChild(cancelBtn);
+    addTr.appendChild(cancelTd);
     cookieTbody.prepend(addTr);
     nameInput.focus();
 
@@ -130,16 +214,30 @@ export async function loadStoragePanel() {
     const commit = async () => {
       if (done) return; done = true;
       const name = nameInput.value.trim();
-      if (!name) { loadStoragePanel(); return; }
+      if (!name) { renderStoragePanel(); return; }
       const domain = domainInput.value.trim() || currentHostname || 'localhost';
-      const path   = pathInput.value.trim() || '/';
-      const url    = `http://${domain.replace(/^\./, '')}${path}`;
-      await testerBrowser.sessions.setCookie(sessionId, { url, name, value: valInput.value, domain, path }).catch(() => {});
-      loadStoragePanel();
+      const path    = pathInput.value.trim() || '/';
+      const secure  = secureInput.checked;
+      const httpOnly = httpOnlyInput.checked;
+      const sameSite = sameSiteSelect.value || undefined;
+      const expirationDate = expiryInput.value
+        ? Math.floor(new Date(expiryInput.value).getTime() / 1000)
+        : undefined;
+      const url = `${secure ? 'https' : 'http'}://${domain.replace(/^\./, '')}${path}`;
+      try {
+        await testerBrowser.sessions.setCookie(sessionId, {
+          url, name, value: valInput.value, domain, path, secure, httpOnly, sameSite, expirationDate,
+        });
+      } catch (err) {
+        done = false;
+        showRowError(addTr, cells.length + 1, `Failed to add cookie: ${err?.message || err}`);
+        return;
+      }
+      fetchStorageData();
     };
-    const cancel = () => { if (done) return; done = true; loadStoragePanel(); };
+    const cancel = () => { if (done) return; done = true; renderStoragePanel(); };
     cancelBtn.onclick = cancel;
-    [domainInput, nameInput, valInput, pathInput].forEach(inp => {
+    [domainInput, nameInput, valInput, pathInput, expiryInput].forEach(inp => {
       inp.addEventListener('keydown', ev => {
         if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
         if (ev.key === 'Escape') cancel();
@@ -204,20 +302,29 @@ export async function loadStoragePanel() {
       let done = false;
       const commit = async () => {
         if (done) return; done = true;
-        if (input.value !== c.value) {
-          const host = (c.domain || '').replace(/^\./, '') || currentHostname || 'localhost';
-          const url  = `${c.secure ? 'https' : 'http'}://${host}${c.path || '/'}`;
-          await testerBrowser.sessions.deleteCookie(sessionId, c.name, c.domain || '', c.path || '/', !!c.secure);
+        if (input.value === c.value) { revertValueCell(valTd, c.value); return; }
+        // Only the value changes here — name/domain/path stay the same, so
+        // this is a same-identity update: a single setCookie() overwrites
+        // in place. setCookie() is tried first; the old cookie is never
+        // deleted, so a rejected set (bad domain/path/Secure combination)
+        // leaves the original untouched instead of destroying it.
+        const host = (c.domain || '').replace(/^\./, '') || currentHostname || 'localhost';
+        const url  = `${c.secure ? 'https' : 'http'}://${host}${c.path || '/'}`;
+        try {
           await testerBrowser.sessions.setCookie(sessionId, {
             url, name: c.name, value: input.value,
             domain: c.domain, path: c.path,
             secure: c.secure, httpOnly: c.httpOnly,
             expirationDate: c.expirationDate, sameSite: c.sameSite,
-          }).catch(() => {});
+          });
+        } catch (err) {
+          revertValueCell(valTd, c.value);
+          showRowError(tr, 9, `Failed to save cookie: ${err?.message || err}`);
+          return;
         }
-        loadStoragePanel();
+        fetchStorageData();
       };
-      const cancel = () => { if (done) return; done = true; loadStoragePanel(); };
+      const cancel = () => { if (done) return; done = true; revertValueCell(valTd, c.value); };
       input.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
         if (ev.key === 'Escape') cancel();
@@ -246,7 +353,7 @@ export async function loadStoragePanel() {
     delBtn.title       = 'Delete this cookie';
     delBtn.onclick = async () => {
       await testerBrowser.sessions.deleteCookie(sessionId, c.name, c.domain || '', c.path || '/', !!c.secure);
-      loadStoragePanel();
+      fetchStorageData();
     };
     delTd.appendChild(delBtn);
     tr.appendChild(delTd);
@@ -254,8 +361,11 @@ export async function loadStoragePanel() {
   }
   cookieTable.appendChild(cookieTbody);
   panel.appendChild(cookieTable);
+}
 
-  // ── Local Storage ──
+// ── Local Storage ──
+
+function renderLocalStorageSection(panel, sessionId, ls, filterText) {
   const lsEntries   = Object.entries(ls);
   const filteredLs  = filterText
     ? lsEntries.filter(([k, v]) =>
@@ -280,7 +390,7 @@ export async function loadStoragePanel() {
     clearBtn.title       = 'Clear all localStorage for this page';
     clearBtn.onclick = async () => {
       await testerBrowser.sessions.clearLocalStorage(sessionId);
-      loadStoragePanel();
+      fetchStorageData();
     };
     lsHdr.appendChild(clearBtn);
   }
@@ -318,9 +428,9 @@ export async function loadStoragePanel() {
       if (done) return; done = true;
       const key = keyInput.value.trim();
       if (key) await testerBrowser.sessions.setLocalStorageKey(sessionId, key, valInput.value).catch(() => {});
-      loadStoragePanel();
+      fetchStorageData();
     };
-    const cancel = () => { if (done) return; done = true; loadStoragePanel(); };
+    const cancel = () => { if (done) return; done = true; renderStoragePanel(); };
     cancelBtn.onclick = cancel;
     [keyInput, valInput].forEach(inp => inp.addEventListener('keydown', ev => {
       if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
@@ -359,9 +469,9 @@ export async function loadStoragePanel() {
           await testerBrowser.sessions.setLocalStorageKey(sessionId, newKey, v).catch(() => {});
           await testerBrowser.sessions.deleteLocalStorageKey(sessionId, k).catch(() => {});
         }
-        loadStoragePanel();
+        fetchStorageData();
       };
-      const cancel = () => { if (done) return; done = true; loadStoragePanel(); };
+      const cancel = () => { if (done) return; done = true; renderStoragePanel(); };
       input.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
         if (ev.key === 'Escape') cancel();
@@ -388,9 +498,9 @@ export async function loadStoragePanel() {
       const commit = async () => {
         if (done) return; done = true;
         await testerBrowser.sessions.setLocalStorageKey(sessionId, k, input.value);
-        loadStoragePanel();
+        fetchStorageData();
       };
-      const cancel = () => { if (done) return; done = true; loadStoragePanel(); };
+      const cancel = () => { if (done) return; done = true; renderStoragePanel(); };
       input.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
         if (ev.key === 'Escape') cancel();
@@ -406,7 +516,7 @@ export async function loadStoragePanel() {
     delBtn.title       = 'Delete this entry';
     delBtn.onclick = async () => {
       await testerBrowser.sessions.deleteLocalStorageKey(sessionId, k);
-      loadStoragePanel();
+      fetchStorageData();
     };
     delTd.appendChild(delBtn);
     tr.appendChild(delTd);
@@ -416,15 +526,175 @@ export async function loadStoragePanel() {
   panel.appendChild(lsTable);
 }
 
+// ── Session Storage (read-only) ──
+
+function renderSessionStorageSection(panel, ss, filterText) {
+  const ssEntries  = Object.entries(ss);
+  const filteredSs = filterText
+    ? ssEntries.filter(([k, v]) =>
+        k.toLowerCase().includes(filterText) || v.toLowerCase().includes(filterText))
+    : ssEntries;
+
+  const hdr = document.createElement('div');
+  hdr.className = 'storage-section-header';
+  const title = document.createElement('span');
+  title.className   = 'storage-section-title';
+  title.textContent = `Session Storage (${filteredSs.length}${filterText && filteredSs.length !== ssEntries.length ? '/' + ssEntries.length : ''})`;
+  hdr.appendChild(title);
+  panel.appendChild(hdr);
+
+  if (filteredSs.length === 0) {
+    const empty = document.createElement('div');
+    empty.className   = 'storage-empty';
+    empty.textContent = filterText ? 'No entries match the filter' : 'No sessionStorage entries for this page';
+    panel.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'storage-table';
+  table.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const [k, v] of filteredSs) {
+    const tr = document.createElement('tr');
+    const keyTd = document.createElement('td'); keyTd.textContent = k; tr.appendChild(keyTd);
+    const valTd = document.createElement('td');
+    valTd.className  = 'copyable';
+    valTd.style.cssText = 'max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    valTd.textContent = v;
+    valTd.title       = 'Click to copy';
+    valTd.onclick     = () => { copyToClipboard(v); flashCopied(valTd); };
+    tr.appendChild(valTd);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  panel.appendChild(table);
+}
+
+// ── IndexedDB (read-only, database → object store → records) ──
+
+function renderIndexedDBSection(panel, idb, filterText) {
+  const dbNames = Object.keys(idb || {});
+
+  const hdr = document.createElement('div');
+  hdr.className = 'storage-section-header';
+  const title = document.createElement('span');
+  title.className   = 'storage-section-title';
+  title.textContent = `IndexedDB (${dbNames.length})`;
+  hdr.appendChild(title);
+  panel.appendChild(hdr);
+
+  if (dbNames.length === 0) {
+    const empty = document.createElement('div');
+    empty.className   = 'storage-empty';
+    empty.textContent = 'No IndexedDB databases for this page';
+    panel.appendChild(empty);
+    return;
+  }
+
+  let anyVisible = false;
+  for (const dbName of dbNames) {
+    const dbSnap = idb[dbName];
+    const storeNames = Object.keys(dbSnap.stores || {});
+    const visibleStores = storeNames.filter((storeName) => {
+      if (!filterText) return true;
+      if (dbName.toLowerCase().includes(filterText) || storeName.toLowerCase().includes(filterText)) return true;
+      const records = dbSnap.stores[storeName].records || [];
+      return records.some(r =>
+        JSON.stringify(r.key).toLowerCase().includes(filterText) ||
+        JSON.stringify(r.value).toLowerCase().includes(filterText));
+    });
+    if (filterText && visibleStores.length === 0) continue;
+    anyVisible = true;
+
+    const dbDetails = document.createElement('details');
+    dbDetails.className = 'storage-idb-db';
+    dbDetails.open = !!filterText;
+    const dbSummary = document.createElement('summary');
+    dbSummary.textContent = `${dbName} (v${dbSnap.version}, ${storeNames.length} store${storeNames.length === 1 ? '' : 's'})`;
+    dbDetails.appendChild(dbSummary);
+
+    for (const storeName of visibleStores) {
+      const store = dbSnap.stores[storeName];
+      const records = store.records || [];
+      const storeDetails = document.createElement('details');
+      storeDetails.className = 'storage-idb-store';
+      storeDetails.open = !!filterText;
+      const storeSummary = document.createElement('summary');
+      storeSummary.textContent = `${storeName} (${records.length} row${records.length === 1 ? '' : 's'})`;
+      storeDetails.appendChild(storeSummary);
+
+      const table = document.createElement('table');
+      table.className = 'storage-table';
+      table.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+      for (const r of records) {
+        const tr = document.createElement('tr');
+        const keyTd = document.createElement('td'); keyTd.textContent = JSON.stringify(r.key); tr.appendChild(keyTd);
+        const valStr = JSON.stringify(r.value);
+        const valTd = document.createElement('td');
+        valTd.className  = 'copyable';
+        valTd.style.cssText = 'max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        valTd.textContent = valStr;
+        valTd.title       = 'Click to copy';
+        valTd.onclick     = () => { copyToClipboard(valStr); flashCopied(valTd); };
+        tr.appendChild(valTd);
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      storeDetails.appendChild(table);
+      dbDetails.appendChild(storeDetails);
+    }
+    panel.appendChild(dbDetails);
+  }
+
+  if (filterText && !anyVisible) {
+    const empty = document.createElement('div');
+    empty.className   = 'storage-empty';
+    empty.textContent = 'No IndexedDB entries match the filter';
+    panel.appendChild(empty);
+  }
+}
+
+// ── Auto-refresh: polls every 2s, but only while the Storage tab is active
+// and the console panel is visible — mirrors debuglog.js's tab-switch
+// stop/resume pattern (see console-tabs.js's switchConsoleTab). ──
+
+function tickAutoRefresh() {
+  if (getActiveConsoleTab() !== 'storage' || !isConsoleVisible()) return;
+  fetchStorageData();
+}
+
+function startAutoRefreshTimer() {
+  if (autoRefreshTimer) return;
+  autoRefreshTimer = setInterval(tickAutoRefresh, 2000);
+}
+
+export function stopStorageAutoRefreshPolling() {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+}
+
+export function resumeStorageAutoRefreshIfOn() {
+  if (autoRefreshOn) startAutoRefreshTimer();
+}
+
 export function initStorage() {
-  document.getElementById('refreshStorageBtn').addEventListener('click', loadStoragePanel);
-  document.getElementById('storageFilter').addEventListener('input', loadStoragePanel);
+  document.getElementById('refreshStorageBtn').addEventListener('click', fetchStorageData);
+  document.getElementById('storageFilter').addEventListener('input', renderStoragePanel);
 
   const domainFilterBtn = document.getElementById('domainFilterBtn');
   domainFilterBtn.classList.add('active'); // matches domainFilterActive = true default
   domainFilterBtn.addEventListener('click', () => {
     domainFilterActive = !domainFilterActive;
     domainFilterBtn.classList.toggle('active', domainFilterActive);
-    loadStoragePanel();
+    renderStoragePanel();
+  });
+
+  const autoRefreshBtn = document.getElementById('storageAutoRefreshBtn');
+  autoRefreshBtn.addEventListener('click', () => {
+    autoRefreshOn = !autoRefreshOn;
+    autoRefreshBtn.classList.toggle('active', autoRefreshOn);
+    if (autoRefreshOn) startAutoRefreshTimer();
+    else stopStorageAutoRefreshPolling();
   });
 }
