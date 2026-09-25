@@ -327,7 +327,6 @@ test('fall-through: a rule whose roll misses lets a later matching rule fire on 
 
   const rows = window.locator('.res-rule-row', { hasText: 'fallthrough-target' });
   await expect(rows).toHaveCount(2);
-  const secondRuleRow = rows.nth(1);
 
   for (let i = 0; i < 5; i++) {
     await tab.fill('#apiPath', '/api/fallthrough-target');
@@ -335,11 +334,20 @@ test('fall-through: a rule whose roll misses lets a later matching rule fire on 
     await expect(tab.locator('#apiOut')).toContainText('"status":500', { timeout: 5_000 });
   }
 
-  const secondHitsText = (await secondRuleRow.locator('.res-hits-badge').textContent()) || '';
-  const secondHits = parseInt(secondHitsText.replace(/\D/g, ''), 10) || 0;
+  // Read hit counts straight from the main process instead of the rule
+  // row's `.res-hits-badge` — the panel only repaints on its own 1.5s
+  // auto-refresh interval or an explicit user action, so five fast fetches
+  // in a row can easily finish (and this assertion can run) before a
+  // single repaint has happened, making the badge read back "Hits: 0"
+  // regardless of what actually matched server-side.
+  const activeId = await window.locator('.tab.active').getAttribute('data-id');
+  const rules: { urlPattern: string; type: string; probability: number; hitCount: number }[] =
+    await window.evaluate((id) => (window as any).testerBrowser.resilience.getRules(id), activeId);
+  const secondRule = rules.find(r => r.urlPattern === '*/api/fallthrough-target' && r.type === 'error500');
+  expect(secondRule).toBeTruthy();
   // The 1% rule may fire rarely too, so this only asserts the 100% rule
   // caught nearly everything, not that it caught literally every hit.
-  expect(secondHits).toBeGreaterThanOrEqual(4);
+  expect(secondRule?.hitCount).toBeGreaterThanOrEqual(4);
 });
 
 test('editing the URL after a "⇒ Resilience" prefill resets the method scope to Any (#236)', async () => {
