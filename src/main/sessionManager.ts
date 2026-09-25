@@ -762,6 +762,17 @@ export interface SessionSnapshot {
   warnings: string[];
 }
 
+// Mirrors readSnapshotFile's real acceptance check — a file is importable if
+// it has a frames array (v2), a cookies array, or a url, covering both the
+// current multi-frame shape and the original v1 shape (single implicit
+// frame, storage inline). Exported so tests exercise the real check instead
+// of a locally reimplemented copy.
+export function looksLikeImportableSnapshot(obj: unknown): boolean {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const s = obj as Record<string, unknown>;
+  return Array.isArray(s.frames) || Array.isArray(s.cookies) || typeof s.url === 'string';
+}
+
 export interface EmulationOverrides {
   timezone?: string;
   locale?: string;
@@ -1969,7 +1980,7 @@ export class SessionManager {
       for (const c of snap.cookies as Electron.Cookie[]) {
         const url = `${c.secure ? 'https' : 'http'}://${(c.domain ?? '').replace(/^\./, '')}${c.path ?? '/'}`;
         try {
-          await s.view.webContents.session.cookies.set({ url, name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate });
+          await s.view.webContents.session.cookies.set({ url, name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate, sameSite: c.sameSite });
         } catch (e) {
           warnings.push(`cookie ${c.name}: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -1986,8 +1997,39 @@ export class SessionManager {
     const [mainFrameSnap, ...subframeSnaps] = frames;
 
     if (typeof snap.url === 'string' && snap.url) {
+      // Seed the main frame's localStorage/sessionStorage/IndexedDB via a
+      // one-shot CDP script BEFORE navigating, so the page's own bootstrap
+      // JS (e.g. an app reading auth state out of localStorage on load) runs
+      // against the restored values instead of empty storage. Guarded to
+      // only run in the top frame — addScriptToEvaluateOnNewDocument applies
+      // to every frame of the target, and this snapshot's data belongs to
+      // the main frame only. Subframes can't be pre-seeded this way (they
+      // don't exist as separate CDP targets from here) and remain restored
+      // post-load below — an accepted limitation. Form fields/scroll/history
+      // still need a live DOM, so applyFrame() re-runs the full script
+      // post-load anyway; re-seeding storage there is a harmless no-op repeat.
+      const dbg = s.view.webContents.debugger;
+      let preloadScriptId: string | undefined;
+      if (mainFrameSnap) {
+        try {
+          await dbg.sendCommand('Page.enable');
+          const result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+            source: `if (window.top === window.self) { ${buildRestoreFrameScript(mainFrameSnap)} }`,
+          }) as { identifier: string };
+          preloadScriptId = result?.identifier;
+        } catch (e) {
+          warnings.push(`pre-load storage seed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+
       await s.view.webContents.loadURL(snap.url);
       await this.waitForFrameLoad(s.view.webContents);
+
+      if (preloadScriptId) {
+        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: preloadScriptId })
+          .catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
+      }
+
       // Same-page iframes start loading only after the main frame's load
       // event fires — give them a brief moment to attach before we walk
       // the frame tree below.
@@ -2035,6 +2077,17 @@ export class SessionManager {
   }
 
   async exportSnapshotDialog(id: string): Promise<void> {
+    const confirm = await dialog.showMessageBox(this.win, {
+      type: 'warning',
+      title: 'Export session snapshot',
+      message: 'This file will contain cookies, storage and other captured page data in plain text.',
+      detail: 'Anyone with the exported file can read cookies (including session tokens), localStorage/sessionStorage contents and IndexedDB records captured from this session. Password fields are excluded, but other credentials the page stored may not be. Treat the file like a credential.',
+      buttons: ['I understand, export…', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (confirm.response !== 0) return;
+
     const snap = await this.collectSnapshot(id);
     if (!snap) return;
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -2044,9 +2097,14 @@ export class SessionManager {
       filters: [{ name: 'JSON', extensions: ['json'] }],
     });
     if (!result.canceled && result.filePath) {
-      fs.writeFileSync(result.filePath, JSON.stringify(snap, null, 2));
-      this.showSnapshotWarnings('Export snapshot', snap.warnings);
-      this.log.info('snapshot', 'Snapshot exported', { sessionId: id });
+      try {
+        fs.writeFileSync(result.filePath, JSON.stringify(snap, null, 2));
+        this.showSnapshotWarnings('Export snapshot', snap.warnings);
+        this.log.info('snapshot', 'Snapshot exported', { sessionId: id });
+      } catch (e) {
+        dialog.showErrorBox('Export failed', 'Could not write the snapshot file.');
+        this.log.warn('snapshot', 'Snapshot export failed', { sessionId: id, error: String(e) });
+      }
     }
   }
 
@@ -2138,17 +2196,11 @@ export class SessionManager {
       dialog.showErrorBox('Import failed', 'The selected file is not valid JSON.');
       return null;
     }
-    if (!snap || typeof snap !== 'object' || Array.isArray(snap)) {
+    if (!looksLikeImportableSnapshot(snap)) {
       dialog.showErrorBox('Import failed', 'The selected file is not a valid session snapshot.');
       return null;
     }
-    const s = snap as Record<string, unknown>;
-    const looksValid = Array.isArray(s.frames) || Array.isArray(s.cookies) || typeof s.url === 'string';
-    if (!looksValid) {
-      dialog.showErrorBox('Import failed', 'The selected file is not a valid session snapshot.');
-      return null;
-    }
-    return s;
+    return snap as Record<string, unknown>;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
