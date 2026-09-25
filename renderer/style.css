@@ -949,6 +949,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                 padding: 3px 8px; font-size: 12px; cursor: pointer; }
 .diff-har-btn:not([disabled]):hover { border-color: var(--accent); color: var(--accent); }
 .diff-har-btn[disabled] { opacity: 0.4; cursor: default; }
+/* #232: inline status next to the Console tab's HAR button ("Saved <file>" / an error) */
+.har-export-status { font-size: 11px; color: var(--text-muted); margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.har-export-status.err { color: var(--error-strong); }
+
 .diff-body { flex: 1; overflow: auto; }
 .diff-hint { color: var(--text-muted); font-size: 12px; padding: 12px; }
 .diff-meta { padding: 6px 10px 0; font-size: 11px; color: var(--text-muted); }

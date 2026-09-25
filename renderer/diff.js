@@ -37,7 +37,7 @@ export function initDiff() {
       </div>
       <input type="text" class="diff-filter-text" id="diffFilterText"
         placeholder="Filter URLs, e.g. api -analytics" />
-      <button class="diff-har-btn" id="diffHarBtn" disabled>Export HAR</button>
+      <button class="diff-har-btn" id="diffHarBtn" disabled>Export diff (JSON)</button>
       <button class="console-icon-btn" id="diffResetBtn" title="Reset comparison">&#10005;</button>
     </div>
     <div class="diff-body" id="diffBody">
@@ -281,6 +281,9 @@ function renderCell(cell) {
   return `<span class="diff-status">${escHtml(cell.label)}</span>${count}${cache}`;
 }
 
+// #232: this was never real HAR (a HAR entry doesn't have category/statusA/
+// countA/... fields) — renamed to what it actually is. Content is unchanged;
+// only the button label and file name are.
 function exportDiffHar() {
   const entries = lastDiffRows.map(r => ({
     category: r.category,
@@ -293,7 +296,7 @@ function exportDiffHar() {
     countB:   r.b?.count ?? 0,
     cacheB:   r.b?.cache ?? 'none',
   }));
-  const har = {
+  const diffExport = {
     log: {
       version: '1.2',
       creator: { name: 'TesterBrowser', version: 'diff' },
@@ -301,11 +304,11 @@ function exportDiffHar() {
       entries,
     },
   };
-  const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(diffExport, null, 2)], { type: 'application/json' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = 'session-diff.har';
+  a.download = 'session-diff.json';
   a.click();
   URL.revokeObjectURL(url);
 }

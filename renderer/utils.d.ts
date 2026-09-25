@@ -17,3 +17,12 @@ export function matchesFreeText(text: string, filterText: string): boolean;
 export function looksLikeUrl(v: string): boolean;
 export function buildSearchUrl(engine: string, query: string): string;
 export function mergeRecordedSteps<T>(localSteps: T[], remoteSteps: T[], receivedCount: number): T[];
+
+export interface CopyableRequest {
+  method?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  postData?: string;
+}
+export function toCurl(req: CopyableRequest): string;
+export function toFetch(req: CopyableRequest): string;

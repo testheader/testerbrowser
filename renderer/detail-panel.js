@@ -1,4 +1,5 @@
-import { escHtml, getEventTabId, getHeader } from './utils.js';
+/* global testerBrowser */
+import { escHtml, getEventTabId, getHeader, toCurl, toFetch } from './utils.js';
 import { getTimelineEvents } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 import { openMockFromRequest } from './mock.js';
@@ -125,6 +126,8 @@ function renderDetailContent() {
           <button class="detail-action-btn" id="detailReplayBtn" title="Edit and replay this request">↺ Replay</button>
           <button class="detail-action-btn" id="detailMockBtn" title="Send this call's method, URL, status and body to the Mock panel">⇒ Mock</button>
           <button class="detail-action-btn" id="detailResilienceBtn" title="Send this call's method and URL to the Resilience panel">⇒ Resilience</button>
+          <button class="detail-action-btn" id="detailCurlBtn" title="Copy this request as a curl command">⧉ cURL</button>
+          <button class="detail-action-btn" id="detailFetchBtn" title="Copy this request as a fetch() call">⧉ fetch</button>
         </div>`;
         if (req.headers && Object.keys(req.headers).length) {
           html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
@@ -221,6 +224,18 @@ function renderDetailContent() {
     const resilienceBtn = document.getElementById('detailResilienceBtn');
     if (resilienceBtn) {
       resilienceBtn.onclick = () => openResilienceFromRequest(mockData.method, mockData.url, mockData.requestHeaders, mockData.requestBody);
+    }
+    const curlBtn = document.getElementById('detailCurlBtn');
+    if (curlBtn) {
+      curlBtn.onclick = () => testerBrowser.clipboard.write(toCurl({
+        method: mockData.method, url: mockData.url, headers: mockData.requestHeaders, postData: mockData.requestBody,
+      }));
+    }
+    const fetchBtn = document.getElementById('detailFetchBtn');
+    if (fetchBtn) {
+      fetchBtn.onclick = () => testerBrowser.clipboard.write(toFetch({
+        method: mockData.method, url: mockData.url, headers: mockData.requestHeaders, postData: mockData.requestBody,
+      }));
     }
   }
 }

@@ -40,7 +40,7 @@ function redactHeaders(headers: Record<string, string>): Record<string, string> 
   return out;
 }
 
-type EventRow = {
+export type EventRow = {
   id?: number;
   session_id: string;
   ts: number;
@@ -308,20 +308,13 @@ export class SessionRecorder {
     ).reverse();
   }
 
-  exportHAR(): object {
-    // Minimal HAR-ish export from stored network events; extend as needed.
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM events WHERE session_id = ? AND kind LIKE 'network-%' ORDER BY ts ASC`
-      )
+  /** Every stored network-* row for this session, unbounded by getTimeline()'s
+   *  limit — the HAR builder (har.ts) needs the full history, not just the
+   *  window currently loaded into the renderer's timeline. */
+  getAllNetworkRows(): EventRow[] {
+    return this.db
+      .prepare(`SELECT * FROM events WHERE session_id = ? AND kind LIKE 'network-%' ORDER BY ts ASC, id ASC`)
       .all(this.sessionId) as EventRow[];
-    return {
-      log: {
-        version: '1.2',
-        creator: { name: 'TesterBrowser', version: '0.1.0' },
-        entries: rows.map((r) => ({ kind: r.kind, ts: r.ts, data: JSON.parse(r.payload) })),
-      },
-    };
   }
 
   destroy() {

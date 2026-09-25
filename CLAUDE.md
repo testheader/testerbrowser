@@ -92,6 +92,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `find:start/stop` | R→M | findInPage / stopFindInPage |
 | `recording:timeline` | R→M | query events (optional `sinceId` id cursor, `since` timestamp, `limit`) |
 | `recording:status` | R→M | `{ cap, evictedAt, evictedCount }` — recorder ring-buffer cap/eviction state |
+| `recording:exportHar` | R→M | build a HAR 1.2 from every stored network-* row, `dialog.showSaveDialog`, write it — `{ ok, path?, canceled?, error? }` |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |

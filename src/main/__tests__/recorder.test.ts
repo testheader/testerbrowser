@@ -604,16 +604,9 @@ describe('SessionRecorder', () => {
     });
   });
 
-  // ── exportHAR ─────────────────────────────────────────────────────────────
+  // ── getAllNetworkRows ─────────────────────────────────────────────────────
 
-  describe('exportHAR', () => {
-    it('returns a valid HAR skeleton', () => {
-      const har = recorder.exportHAR() as any;
-      expect(har.log.version).toBe('1.2');
-      expect(har.log.creator.name).toBe('TesterBrowser');
-      expect(Array.isArray(har.log.entries)).toBe(true);
-    });
-
+  describe('getAllNetworkRows', () => {
     it('includes only network-* events, excluding console and log', () => {
       emit('Network.requestWillBeSent', {
         requestId: 'r1',
@@ -626,18 +619,18 @@ describe('SessionRecorder', () => {
       emit('Log.entryAdded', { entry: { level: 'info', text: 'ignored' } });
       emit('Runtime.consoleAPICalled', { type: 'log', args: [] });
 
-      const har = recorder.exportHAR() as any;
-      expect(har.log.entries).toHaveLength(2);
-      expect(har.log.entries.every((e: any) => (e.kind as string).startsWith('network-'))).toBe(true);
+      const rows = recorder.getAllNetworkRows();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.kind.startsWith('network-'))).toBe(true);
     });
 
-    it('returns an empty entries array when there are no network events', () => {
+    it('returns an empty array when there are no network events', () => {
       emit('Log.entryAdded', { entry: { level: 'error', text: 'an error' } });
 
-      expect((recorder.exportHAR() as any).log.entries).toHaveLength(0);
+      expect(recorder.getAllNetworkRows()).toHaveLength(0);
     });
 
-    it('orders entries by timestamp ascending', () => {
+    it('orders rows by timestamp ascending, unbounded by any limit', () => {
       const mockNow = jest.spyOn(Date, 'now');
       try {
         mockNow.mockReturnValue(3000);
@@ -651,9 +644,9 @@ describe('SessionRecorder', () => {
           request: { url: 'https://example.com/a', method: 'GET', headers: {} },
         });
 
-        const { entries } = (recorder.exportHAR() as any).log;
-        expect(entries[0].ts).toBe(1000);
-        expect(entries[1].ts).toBe(3000);
+        const rows = recorder.getAllNetworkRows();
+        expect(rows[0].ts).toBe(1000);
+        expect(rows[1].ts).toBe(3000);
       } finally {
         mockNow.mockRestore();
       }

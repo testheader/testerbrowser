@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import { SessionRecorder } from './recorder';
+import { buildHar } from './har';
 import { DownloadManager } from './downloadManager';
 import { PermissionManager } from './permissionManager';
 import { AppLog } from './appLogger';
@@ -1785,6 +1786,38 @@ export class SessionManager {
     } catch (e) {
       dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
       this.log.warn('snapshot', 'Snapshot import failed', { sessionId: id, error: String(e) });
+    }
+  }
+
+  // #232: builds from every stored network-* row for the session (via
+  // SessionRecorder.getAllNetworkRows()), not just whatever window the
+  // renderer's own timeline currently has loaded.
+  async exportHarDialog(id: string): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> {
+    const s = this.sessions.get(id);
+    if (!s) return { ok: false, error: 'Session not found' };
+
+    const rows = s.recorder.getAllNetworkRows();
+    const har = buildHar(rows, { creatorVersion: app.getVersion(), pageUrl: s.currentUrl });
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+    const safeName = s.name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'session';
+
+    const result = await dialog.showSaveDialog(this.win, {
+      title: 'Export HAR',
+      defaultPath: `${safeName}-${stamp}.har`,
+      filters: [{ name: 'HAR', extensions: ['har'] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+
+    try {
+      fs.writeFileSync(result.filePath, JSON.stringify(har, null, 2));
+      this.log.info('sessions', 'HAR exported', { sessionId: id });
+      return { ok: true, path: result.filePath };
+    } catch (e) {
+      this.log.warn('sessions', 'HAR export failed', { sessionId: id, error: String(e) });
+      return { ok: false, error: String(e) };
     }
   }
 

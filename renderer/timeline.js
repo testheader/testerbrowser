@@ -567,6 +567,30 @@ export function initTimeline() {
   document.getElementById('clearConsoleBtn').onclick  = clearTimeline;
   document.getElementById('clearNetworkBtn').onclick  = clearTimeline;
 
+  document.getElementById('harExportBtn').onclick = async () => {
+    const id = getActiveId();
+    if (!id) return;
+    const statusEl = document.getElementById('harExportStatus');
+    const btn = document.getElementById('harExportBtn');
+    statusEl.classList.remove('err');
+    statusEl.textContent = 'Exporting…';
+    btn.disabled = true;
+    try {
+      const result = await testerBrowser.recording.exportHar(id);
+      if (result.canceled) {
+        statusEl.textContent = '';
+      } else if (result.ok) {
+        const fileName = result.path.split(/[\\/]/).pop();
+        statusEl.textContent = `Saved ${fileName}`;
+      } else {
+        statusEl.classList.add('err');
+        statusEl.textContent = result.error || 'HAR export failed';
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
   testerBrowser.sessions.onLoadFailed(({ id, errorCode, errorDescription, url }) => {
     if (id !== getActiveId()) return;
     timelineEvents.push({

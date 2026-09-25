@@ -116,3 +116,38 @@ export function cookieMatchesDomain(cookie, hostname) {
   if (!d) return true;
   return hostname === d || hostname.endsWith('.' + d);
 }
+
+// #232: single-quoted bash string, with any embedded single quote closed,
+// escaped, and reopened ('\'') — the standard trick, since bash has no
+// escape character inside single quotes.
+function bashQuote(str) {
+  return `'${String(str).replace(/'/g, `'\\''`)}'`;
+}
+
+function nonRedactedHeaders(headers) {
+  return Object.entries(headers || {}).filter(([, v]) => v !== '[REDACTED]');
+}
+
+function redactedNotice(headers, commentPrefix) {
+  const count = Object.values(headers || {}).filter(v => v === '[REDACTED]').length;
+  return count ? `${commentPrefix} ${count} redacted header${count === 1 ? '' : 's'} omitted\n` : '';
+}
+
+// req: { method, url, headers, postData }
+export function toCurl(req) {
+  const { method = 'GET', url = '', headers, postData } = req || {};
+  let cmd = `curl ${bashQuote(url)}`;
+  if (method && method.toUpperCase() !== 'GET') cmd += ` -X ${method.toUpperCase()}`;
+  for (const [name, value] of nonRedactedHeaders(headers)) {
+    cmd += ` -H ${bashQuote(`${name}: ${value}`)}`;
+  }
+  if (postData) cmd += ` --data-raw ${bashQuote(postData)}`;
+  return redactedNotice(headers, '#') + cmd;
+}
+
+export function toFetch(req) {
+  const { method = 'GET', url = '', headers, postData } = req || {};
+  const opts = { method: method || 'GET', headers: Object.fromEntries(nonRedactedHeaders(headers)) };
+  if (postData) opts.body = postData;
+  return redactedNotice(headers, '//') + `fetch(${JSON.stringify(url)}, ${JSON.stringify(opts, null, 2)});`;
+}

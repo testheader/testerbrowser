@@ -150,6 +150,8 @@
             <button class="filter-pill on" data-level="debug" title="Debug">Debug<span class="pill-count"></span></button>
           </div>
           <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console">&#10005;</button>
+          <button class="diff-har-btn" id="harExportBtn" title="Export everything recorded for this tab as a HAR 1.2 file">HAR</button>
+          <span id="harExportStatus" class="har-export-status"></span>
         </div>
         <div id="networkControls">
           <span class="filter-label">Filter</span>
@@ -372,7 +374,7 @@
             </div>
             <div class="feature-item">
               <div class="feature-name">Diff tab (network diff)</div>
-              <p>Pick two open sessions (Session A / Session B) and click <b>Compare</b> to diff their recorded requests by method + URL — same, different status, or only present in one side — in a color-coded table. Once a comparison has run, <b>Export HAR</b> downloads it as a HAR file, which is useful for comparing the same flow across two environments (e.g. staging vs. production).</p>
+              <p>Pick two open sessions (Session A / Session B) and click <b>Compare</b> to diff their recorded requests by method + URL — same, different status, or only present in one side — in a color-coded table. Once a comparison has run, <b>Export diff (JSON)</b> downloads the comparison as a JSON file, which is useful for comparing the same flow across two environments (e.g. staging vs. production).</p>
             </div>
             <div class="feature-item">
               <div class="feature-name">Spoof tab</div>
@@ -391,7 +393,7 @@
 
             <div class="feature-item">
               <div class="feature-name">HAR export</div>
-              <p>The <b>HAR</b> button (Console tab toolbar, and in the network-diff view) exports everything recorded for a session as a standard HAR file — for handing off to an external HAR viewer, attaching to a bug report, or archiving a run.</p>
+              <p>The <b>HAR</b> button (Console tab toolbar) exports everything recorded for the active tab's session as a standard HAR 1.2 file — for handing off to an external HAR viewer, attaching to a bug report, or archiving a run. A request's detail tab also has <b>Copy as cURL</b> / <b>Copy as fetch</b> to take a single request out of the app.</p>
             </div>
             <div class="feature-item">
               <div class="feature-name">Speed Dial</div>

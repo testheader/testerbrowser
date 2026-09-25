@@ -608,6 +608,7 @@ ipcMain.handle('sessions:contextMenu', (_e, id: string) => sessionManager?.showC
 
 ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
 ipcMain.handle('recording:status',    (_e, id: string) => sessionManager?.getRecordingStatus(id) ?? null);
+ipcMain.handle('recording:exportHar', (_e, id: string) => sessionManager?.exportHarDialog(id) ?? { ok: false, error: 'No session manager' });
 ipcMain.handle('a11y:getTree',        (_e, id: string) => sessionManager?.getA11yTree(id) ?? null);
 ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
 ipcMain.handle('a11y:getViolations',  (_e, id: string) => sessionManager?.getA11yViolations(id) ?? { ok: false, error: 'No session manager' });

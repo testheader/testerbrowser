@@ -10,6 +10,9 @@
  */
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
@@ -235,6 +238,55 @@ test('network/status-codes.html: Clear button empties the log and it stays empty
   await window.waitForTimeout(1_500);
   await expect(window.locator('.evt.network-request, .evt.network-body')).toHaveCount(0);
   await expect(resPill).toHaveText('');
+});
+
+test('network/status-codes.html: HAR button exports a valid HAR 1.2 file with a 200 entry for the page load (#232)', async () => {
+  const tmpPath = path.join(os.tmpdir(), `testerbrowser-e2e-har-${Date.now()}.har`);
+  // autoUpdater-style stubbing isn't available here (this isn't an
+  // ipcMain.handle route) — replace dialog.showSaveDialog itself in the main
+  // process, per the ticket's own suggested technique.
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
+  }, tmpPath);
+
+  await navigate('/network/status-codes.html');
+  await window.click('#consoleTabNetwork');
+  await window.waitForTimeout(1_500); // pollTimeline runs every 1s
+
+  await window.click('#harExportBtn');
+  await expect(window.locator('#harExportStatus')).toHaveText(/Saved/, { timeout: 10_000 });
+
+  const har = JSON.parse(fs.readFileSync(tmpPath, 'utf-8'));
+  expect(har.log.version).toBe('1.2');
+  const entry = har.log.entries.find(
+    (e: { request: { url: string }; response: { status: number } }) =>
+      e.request.url.includes('status-codes.html') && e.response.status === 200
+  );
+  expect(entry).toBeTruthy();
+
+  fs.rmSync(tmpPath, { force: true });
+});
+
+test('network/status-codes.html: Copy as cURL copies a curl command for the selected request to the clipboard (#232)', async () => {
+  const urlPath = '/network/status-codes.html';
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await navigate(urlPath);
+  await window.waitForTimeout(1_500); // pollTimeline runs every 1s
+
+  const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
+
+  const curlBtn = window.locator('#detailCurlBtn');
+  await expect(async () => {
+    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(curlBtn).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await curlBtn.click();
+
+  const clipboardText = await app.evaluate(({ clipboard }) => clipboard.readText());
+  expect(clipboardText.startsWith("curl '")).toBe(true);
+  expect(clipboardText).toContain(fixtures.url(urlPath));
 });
 
 test('network/slow.html: free-text filter also matches payload content not present in the summary line', async () => {
