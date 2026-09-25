@@ -231,7 +231,13 @@ test('"Path only" matching treats the same path on two different hosts as the sa
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
-  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+  // Kept open for the whole test (never navigates away from sharedPath), so
+  // it's passed as `exclude` below — otherwise getTabPage's URL-substring
+  // match is ambiguous between this tab and session B's, and could resolve
+  // to this already-loaded tab instead of waiting on session B's own
+  // navigation to actually finish.
+  const tabA = await getTabPage(app, sharedPath);
+  await tabA.waitForLoadState('load');
 
   await window.click('#newSessionBtn');
   await expect.poll(() => window.locator('.tab').count()).toBe(2);
@@ -243,7 +249,7 @@ test('"Path only" matching treats the same path on two different hosts as the sa
   // origins even though they resolve to the same server here.
   await window.fill('#urlbar', `http://localhost:${fixtures.port}${sharedPath}`);
   await window.press('#urlbar', 'Enter');
-  await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+  await (await getTabPage(app, sharedPath, tabA)).waitForLoadState('load');
 
   await window.click('#consoleTabDiff');
   await window.selectOption('#diffPickA', sessionAId);
