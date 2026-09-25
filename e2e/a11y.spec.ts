@@ -167,11 +167,19 @@ test('highlighting a contrast finding lands on the exact element for a non-ident
   // to the wrong element. An inline outline exercises the highlight's
   // restore path (it used to hardcode outline: '' instead of putting this
   // back).
-  await tab.evaluate(() => {
-    const el = document.querySelector('[data-testid="a11y-contrast-low"]') as HTMLElement;
-    el.id = 'a:b';
-    el.style.outline = '2px dashed blue';
-  });
+  //
+  // On some CI runners 'load' can resolve for a transitional navigation
+  // state just before the real document commits, so the very next
+  // evaluate() can still race a context teardown ("Execution context was
+  // destroyed") even though the URL already matched — retry past that
+  // exactly like the highlight assertions below already do.
+  await expect(async () => {
+    await tab.evaluate(() => {
+      const el = document.querySelector('[data-testid="a11y-contrast-low"]') as HTMLElement;
+      el.id = 'a:b';
+      el.style.outline = '2px dashed blue';
+    });
+  }).toPass({ timeout: 5_000 });
 
   await window.click('#consoleTabA11y');
   await window.click('#a11yViewContrastBtn');

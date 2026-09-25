@@ -38,7 +38,21 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     });
   });
 
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  // '::' gives a dual-stack socket on platforms that support it (accepting
+  // both 127.0.0.1 and ::1/"localhost" on the same port) — needed by the
+  // #237 host-agnostic-matching e2e test, which deliberately loads the same
+  // path from both hostnames. Some sandboxes have no IPv6 stack at all
+  // (EAFNOSUPPORT), so fall back to the plain IPv4-only bind those
+  // environments already worked under. Either way, the listener used only
+  // to detect *this* bind attempt's outcome is removed once it resolves, so
+  // it never intercepts a real runtime server error later.
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => { server.removeListener('error', onError); reject(err); };
+    server.once('error', onError);
+    server.listen(0, '::', () => { server.removeListener('error', onError); resolve(); });
+  }).catch(async () => {
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  });
   const port = (server.address() as { port: number }).port;
 
   return {
