@@ -10,6 +10,10 @@ export interface RGB {
   b: number;
 }
 
+export interface RGBA extends RGB {
+  a: number;
+}
+
 export const WCAG_AA_NORMAL = 4.5;
 export const WCAG_AA_LARGE = 3;
 export const WCAG_AAA_NORMAL = 7;
@@ -30,6 +34,20 @@ export function contrastRatio(rgb1: RGB, rgb2: RGB): number {
   const lighter = Math.max(l1, l2);
   const darker = Math.min(l1, l2);
   return (lighter + 0.05) / (darker + 0.05);
+}
+
+// Mirrors the alpha-compositing formula the in-page contrast collector's
+// effectiveBackground() applies (sessionManager.ts's CONTRAST_SCAN_SCRIPT) —
+// kept here purely so that formula has an independently unit-testable
+// equivalent. The in-page script can't import this module (it runs via
+// executeJavaScript with no access to Node code), so the two are hand-kept
+// in sync rather than sharing code.
+export function compositeOver(fg: RGBA, bg: RGB): RGB {
+  return {
+    r: Math.round(fg.r * fg.a + bg.r * (1 - fg.a)),
+    g: Math.round(fg.g * fg.a + bg.g * (1 - fg.a)),
+    b: Math.round(fg.b * fg.a + bg.b * (1 - fg.a)),
+  };
 }
 
 // WCAG's "large text" bar: >=24px at any weight, or >=18.66px (~14pt) at

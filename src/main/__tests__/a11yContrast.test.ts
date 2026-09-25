@@ -1,4 +1,4 @@
-import { relativeLuminance, contrastRatio, isLargeText, parseCssColor } from '../a11yContrast';
+import { relativeLuminance, contrastRatio, isLargeText, parseCssColor, compositeOver } from '../a11yContrast';
 
 describe('relativeLuminance / contrastRatio (#194 — WCAG contrast checker)', () => {
   it('pure black vs pure white is 21:1', () => {
@@ -67,5 +67,36 @@ describe('parseCssColor', () => {
     expect(parseCssColor('transparent')).toBeNull();
     expect(parseCssColor(null)).toBeNull();
     expect(parseCssColor('')).toBeNull();
+  });
+});
+
+describe('compositeOver (#239 — alpha-blending a semi-transparent background)', () => {
+  it('50%-alpha black over white composites to mid-gray, not opaque black', () => {
+    const result = compositeOver({ r: 0, g: 0, b: 0, a: 0.5 }, { r: 255, g: 255, b: 255 });
+    expect(result).toEqual({ r: 128, g: 128, b: 128 });
+  });
+
+  it('the composited color contrasts correctly against the same white it was blended over', () => {
+    // This is the ticket's own regression case: text at 50% opacity over a
+    // white background should score against mid-gray (~3.95:1 — an AA-fail
+    // for normal text, 4.5:1), not against opaque black (21:1, comfortably
+    // passing) the old unblended code would have used instead.
+    const white = { r: 255, g: 255, b: 255 };
+    const composited = compositeOver({ r: 0, g: 0, b: 0, a: 0.5 }, white);
+    const ratio = contrastRatio(composited, white);
+    expect(ratio).toBeCloseTo(3.95, 1);
+    expect(ratio).toBeLessThan(4.5); // fails AA normal text
+    expect(ratio).not.toBeCloseTo(21, 1);
+  });
+
+  it('fully opaque foreground composites to itself, regardless of the background', () => {
+    const fg = { r: 10, g: 20, b: 30, a: 1 };
+    expect(compositeOver(fg, { r: 255, g: 255, b: 255 })).toEqual({ r: 10, g: 20, b: 30 });
+    expect(compositeOver(fg, { r: 0, g: 0, b: 0 })).toEqual({ r: 10, g: 20, b: 30 });
+  });
+
+  it('fully transparent foreground composites to exactly the background', () => {
+    const bg = { r: 40, g: 50, b: 60 };
+    expect(compositeOver({ r: 200, g: 0, b: 0, a: 0 }, bg)).toEqual(bg);
   });
 });

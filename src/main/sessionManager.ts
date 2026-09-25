@@ -189,31 +189,54 @@ const CONTRAST_SCAN_SCRIPT = `
     }
     return false;
   }
+  function parseRGBA(colorStr) {
+    var m = colorStr && colorStr.match(/rgba?\\(([^)]+)\\)/);
+    if (!m) return { r: 255, g: 255, b: 255, a: 0 };
+    var parts = m[1].split(',').map(function(s) { return parseFloat(s.trim()); });
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+  }
   function isTransparent(colorStr) {
-    if (!colorStr) return true;
-    const m = colorStr.match(/rgba?\\(([^)]+)\\)/);
-    if (!m) return true;
-    const parts = m[1].split(',').map(function(s) { return parseFloat(s.trim()); });
-    const a = parts.length > 3 ? parts[3] : 1;
-    return a === 0;
+    return parseRGBA(colorStr).a === 0;
   }
+  // Walks up from el, alpha-compositing every semi-transparent backgroundColor
+  // with whatever's behind it (result = fg*alpha + bg*(1-alpha) per channel),
+  // so e.g. rgba(0,0,0,0.5) over a white ancestor contrasts as mid-gray, not
+  // as opaque black. Stops at the first fully opaque background or a
+  // background-image (returned as-is — can't composite against an image), or
+  // falls back to white once it runs off the top of the document.
   function effectiveBackground(el) {
-    var node = el;
-    while (node) {
-      var cs = getComputedStyle(node);
-      if (cs.backgroundImage && cs.backgroundImage !== 'none') return { backgroundImage: true };
-      if (!isTransparent(cs.backgroundColor)) return { color: cs.backgroundColor };
-      node = node.parentElement;
-    }
-    return { color: 'rgb(255, 255, 255)' };
+    if (!el) return { color: 'rgb(255, 255, 255)' };
+    var cs = getComputedStyle(el);
+    if (cs.backgroundImage && cs.backgroundImage !== 'none') return { backgroundImage: true };
+    var c = parseRGBA(cs.backgroundColor);
+    if (c.a === 0) return effectiveBackground(el.parentElement);
+    if (c.a >= 1) return { color: 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')' };
+    var behind = effectiveBackground(el.parentElement);
+    if (behind.backgroundImage) return { color: 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')' };
+    var bg = parseRGBA(behind.color);
+    var r = c.r * c.a + bg.r * (1 - c.a);
+    var g = c.g * c.a + bg.g * (1 - c.a);
+    var b = c.b * c.a + bg.b * (1 - c.a);
+    return { color: 'rgb(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ')' };
   }
+  // CSS.escape(el.id) so an id that's legal HTML but not a bare CSS
+  // identifier (e.g. "a:b", "1st") still produces a selector that resolves.
+  // With no id, walks up building an nth-of-type-qualified path — the same
+  // pattern RECORDING_SCRIPT's genSel() already uses for its own non-id
+  // fallback — so the result always resolves back to exactly this element,
+  // not just the first tag+class match on the page.
   function selectorFor(el) {
-    var sel = el.tagName.toLowerCase();
-    if (el.id) return sel + '#' + el.id;
-    if (el.className && typeof el.className === 'string' && el.className.trim()) {
-      sel += '.' + el.className.trim().split(/\\s+/).join('.');
+    if (el.id) return el.tagName.toLowerCase() + '#' + CSS.escape(el.id);
+    var parts = [], cur = el;
+    while (cur && cur !== document.body && parts.length < 6) {
+      if (cur.id) { parts.unshift('#' + CSS.escape(cur.id)); break; }
+      var s = cur.tagName.toLowerCase();
+      var sibs = cur.parentElement ? [].slice.call(cur.parentElement.children).filter(function(x) { return x.tagName === cur.tagName; }) : [];
+      if (sibs.length > 1) s += ':nth-of-type(' + (sibs.indexOf(cur) + 1) + ')';
+      parts.unshift(s);
+      cur = cur.parentElement;
     }
-    return sel;
+    return parts.join(' > ');
   }
 
   var results = [];
@@ -2464,9 +2487,11 @@ export class SessionManager {
             const el = document.querySelector(sel);
             if (!el) return false;
             el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            const prevOutline = el.style.outline;
+            const prevOutlineOffset = el.style.outlineOffset;
             el.style.outline = '3px solid #ff5252';
             el.style.outlineOffset = '2px';
-            setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 2000);
+            setTimeout(() => { el.style.outline = prevOutline; el.style.outlineOffset = prevOutlineOffset; }, 2000);
             return true;
           } catch { return false; }
         })(${JSON.stringify(selector)})

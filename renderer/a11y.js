@@ -154,7 +154,7 @@ async function enableA11yFocusOrder() {
     const items = await testerBrowser.a11y.setFocusOverlay(id, true);
     if (content) renderA11yFocusOrder(content, items ?? []);
   } catch (e) {
-    if (content) content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    if (content) content.innerHTML = `<div class="a11y-empty">Error: ${escHtml(e?.message ?? 'unknown')}</div>`;
   }
 }
 
@@ -263,7 +263,7 @@ export async function loadA11yTree() {
     renderA11yTree(content, nodes);
   } catch (e) {
     nodeRowMap.clear();
-    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    content.innerHTML = `<div class="a11y-empty">Error: ${escHtml(e?.message ?? 'unknown')}</div>`;
   } finally {
     updateInspectAvailability();
   }
@@ -512,7 +512,7 @@ async function loadA11yContrast() {
     const issues = await testerBrowser.a11y.getContrastIssues(getActiveId());
     renderA11yContrast(content, issues ?? []);
   } catch (e) {
-    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    content.innerHTML = `<div class="a11y-empty">Error: ${escHtml(e?.message ?? 'unknown')}</div>`;
   }
 }
 
@@ -687,7 +687,7 @@ async function loadA11yStructure() {
     const ordered = flattenAxTree(nodes);
     renderA11yStructure(content, extractHeadings(ordered), extractLandmarks(ordered));
   } catch (e) {
-    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    content.innerHTML = `<div class="a11y-empty">Error: ${escHtml(e?.message ?? 'unknown')}</div>`;
   }
 }
 
@@ -826,7 +826,7 @@ async function loadA11yAltLabels() {
     const issues = await testerBrowser.a11y.getAltLabelIssues(getActiveId());
     renderA11yAltLabels(content, issues ?? { images: [], fields: [] });
   } catch (e) {
-    content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    content.innerHTML = `<div class="a11y-empty">Error: ${escHtml(e?.message ?? 'unknown')}</div>`;
   }
 }
 
@@ -925,7 +925,7 @@ async function runA11yFocusTrapCheck() {
     const result = await testerBrowser.a11y.detectFocusTrap(id);
     if (content) renderA11yFocusTrap(content, result);
   } catch (e) {
-    if (content) content.innerHTML = `<div class="a11y-empty">Error: ${e?.message ?? 'unknown'}</div>`;
+    if (content) content.innerHTML = `<div class="a11y-empty">Error: ${escHtml(e?.message ?? 'unknown')}</div>`;
   }
 }
 

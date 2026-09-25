@@ -154,6 +154,51 @@ test('Contrast view lists failing/unknown-background elements but not fully-pass
   await expect(content).not.toContainText('Normal contrast text that passes AA and AAA');
 });
 
+test('highlighting a contrast finding lands on the exact element for a non-identifier id, and restores its own outline afterward (#239)', async () => {
+  const urlPath = '/accessibility/contrast.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  // A colon in the id is legal HTML but not a bare CSS identifier — the old
+  // unescaped `tag + '#' + el.id` selectorFor would either throw or resolve
+  // to the wrong element. An inline outline exercises the highlight's
+  // restore path (it used to hardcode outline: '' instead of putting this
+  // back).
+  await tab.evaluate(() => {
+    const el = document.querySelector('[data-testid="a11y-contrast-low"]') as HTMLElement;
+    el.id = 'a:b';
+    el.style.outline = '2px dashed blue';
+  });
+
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yViewContrastBtn');
+  await window.click('#a11yRefreshBtn');
+
+  const content = window.locator('#a11yContent');
+  await expect(content).toContainText('Low contrast text that fails AA', { timeout: 10_000 });
+
+  const row = content.locator('.a11y-contrast-row', { hasText: 'Low contrast text that fails AA' });
+  await row.click();
+
+  // The highlight actually landed on #a:b — not silently failed (a thrown,
+  // unescaped selector) and not some other tag+class match on the page.
+  await expect(async () => {
+    const outline = await tab.evaluate(() => document.getElementById('a:b')?.style.outline);
+    expect(outline).toContain('255, 82, 82'); // #ff5252
+  }).toPass({ timeout: 3_000 });
+
+  // Once the highlight's own 2s timeout fires, the element's original
+  // outline comes back — not cleared to nothing.
+  await expect(async () => {
+    const outline = await tab.evaluate(() => document.getElementById('a:b')?.style.outline);
+    expect(outline).toContain('dashed');
+    expect(outline).not.toContain('255, 82, 82');
+  }).toPass({ timeout: 4_000 });
+});
+
 test('Structure view lists headings/landmarks in document order and flags a heading skip + missing <main> (#195)', async () => {
   const urlPath = '/accessibility/structure.html';
   await window.click('#urlbar');
