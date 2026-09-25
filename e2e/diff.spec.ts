@@ -206,23 +206,38 @@ test('Reset also clears the free-text filter input', async () => {
 
 // ── Host-agnostic matching (#237) ────────────────────────────────────────
 
+// Local to this file (shortcuts.spec.ts has its own copy) — earlier tests
+// in this file can leave an arbitrary number of tabs open, and the tests
+// below need to know exactly which two sessions they're comparing rather
+// than guessing from sessions.list() order.
+async function resetToSingleTab() {
+  for (let i = 0; i < 20 && (await window.locator('.tab').count()) > 1; i++) {
+    await window.keyboard.press('Control+w');
+  }
+  await expect.poll(() => window.locator('.tab').count()).toBe(1);
+}
+
+async function activeTabId(): Promise<string> {
+  const id = await window.evaluate(() => document.querySelector('.tab.active')?.getAttribute('data-id'));
+  if (!id) throw new Error('No active tab found');
+  return id;
+}
+
 test('"Path only" matching treats the same path on two different hosts as the same request', async () => {
+  await resetToSingleTab();
   const sharedPath = '/network/status-codes.html';
 
-  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const sessionAId = sessions[0].id;
-
-  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionAId);
+  const sessionAId = await activeTabId();
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, sharedPath)).waitForLoadState('load');
 
   await window.click('#newSessionBtn');
-  const allSessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const sessionBId = allSessions.find((s: { id: string }) => s.id !== sessionAId).id;
+  await expect.poll(() => window.locator('.tab').count()).toBe(2);
+  const sessionBId = await activeTabId();
+  expect(sessionBId).not.toBe(sessionAId);
 
-  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionBId);
   await window.click('#urlbar');
   // Same path, a different host — localhost and 127.0.0.1 are distinct
   // origins even though they resolve to the same server here.
@@ -247,17 +262,18 @@ test('"Path only" matching treats the same path on two different hosts as the sa
 });
 
 test('expanding a matched row shows a changed response header, once its query param is ignored (#237)', async () => {
-  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const sessionAId = sessions[0].id;
-  const sessionBId = sessions[1].id;
-
-  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionAId);
+  await resetToSingleTab();
+  const sessionAId = await activeTabId();
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url('/network/header?v=1'));
   await window.press('#urlbar', 'Enter');
   await window.waitForTimeout(500);
 
-  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionBId);
+  await window.click('#newSessionBtn');
+  await expect.poll(() => window.locator('.tab').count()).toBe(2);
+  const sessionBId = await activeTabId();
+  expect(sessionBId).not.toBe(sessionAId);
+
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url('/network/header?v=2'));
   await window.press('#urlbar', 'Enter');
