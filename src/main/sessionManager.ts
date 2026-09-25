@@ -32,20 +32,100 @@ export interface MockRule {
   // only as read-only provenance in the panel — never used for matching.
   // Undefined for a rule composed by hand rather than from a real request.
   requestHeaders?: Record<string, string>;
+  // #235: adds access-control-allow-* headers on fulfilment and answers a
+  // matching OPTIONS preflight — see buildMockFulfillParams/buildMockPreflightParams.
+  cors?: boolean;
   enabled: boolean;
   hitCount: number;
   lastHitAt: number | null;
 }
 
+// #235: a captured response's own content-length/content-encoding/transfer-encoding
+// are for the *original* (often compressed) body — fulfilling with the decoded,
+// possibly-edited rule.body under those headers corrupts or truncates it, so
+// they're never prefilled (openMockFromRequest, renderer/mock.js) and stripped
+// again here as a backstop for rules saved before that existed. `connection`
+// is stripped alongside them since it's equally a transport-layer header a
+// mock response shouldn't be echoing. The renderer keeps its own copy of this
+// same list (renderer/utils.js) rather than sharing one across the IPC
+// boundary — see that file's comment.
+const STRIPPED_MOCK_RESPONSE_HEADERS = ['content-length', 'content-encoding', 'transfer-encoding', 'connection'];
+
+function findHeaderCI(headers: Record<string, string> | undefined, name: string): string | undefined {
+  if (!headers) return undefined;
+  const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
+  return key ? headers[key] : undefined;
+}
+
+// application/json when the body parses as JSON, text/html when it looks
+// like markup, text/plain otherwise — only used when the rule doesn't
+// already set its own Content-Type.
+function inferMockContentType(body: string): string {
+  try { JSON.parse(body); return 'application/json; charset=utf-8'; } catch {}
+  if (body.trim().startsWith('<')) return 'text/html; charset=utf-8';
+  return 'text/plain; charset=utf-8';
+}
+
+// Adds the CORS response headers for a `cors: true` rule, unless the rule
+// already sets them itself. Shared between an ordinary fulfilment
+// (buildMockFulfillParams) and an OPTIONS preflight response
+// (buildMockPreflightParams) so the two can never disagree on what "CORS on"
+// means. `existingHeaderNames` is checked case-insensitively.
+function buildCorsHeaders(
+  requestHeaders: Record<string, string> | undefined,
+  existingHeaderNames: Set<string>
+): { name: string; value: string }[] {
+  const out: { name: string; value: string }[] = [];
+  const origin = findHeaderCI(requestHeaders, 'origin');
+  if (!existingHeaderNames.has('access-control-allow-origin')) {
+    out.push({ name: 'access-control-allow-origin', value: origin || '*' });
+    // Only echoing a specific origin (rather than the '*' wildcard) is a
+    // valid combination with allow-credentials per the Fetch spec.
+    if (origin) out.push({ name: 'access-control-allow-credentials', value: 'true' });
+  }
+  if (!existingHeaderNames.has('access-control-allow-headers')) {
+    out.push({ name: 'access-control-allow-headers', value: '*' });
+  }
+  return out;
+}
+
 // Pulled out as a pure function so the Fetch.fulfillRequest shape a mock rule
 // produces can be unit-tested without the CDP debugger/session plumbing
 // around it. responseHeaders defaults to {} for a rule saved before that
-// field existed (or built by hand without one).
-export function buildMockFulfillParams(rule: MockRule): { responseCode: number; responseHeaders: { name: string; value: string }[]; body: string } {
+// field existed (or built by hand without one). `request` is optional (the
+// #233 replay path may not always have headers) and is only consulted for
+// its `Origin` header when the rule has CORS on.
+export function buildMockFulfillParams(
+  rule: MockRule,
+  request?: { headers?: Record<string, string> }
+): { responseCode: number; responseHeaders: { name: string; value: string }[]; body: string } {
+  const kept = Object.fromEntries(
+    Object.entries(rule.responseHeaders || {}).filter(([name]) => !STRIPPED_MOCK_RESPONSE_HEADERS.includes(name.toLowerCase()))
+  );
+  if (!findHeaderCI(kept, 'content-type')) {
+    kept['content-type'] = inferMockContentType(rule.body);
+  }
+  const responseHeaders = Object.entries(kept).map(([name, value]) => ({ name, value }));
+  if (rule.cors) {
+    const existing = new Set(Object.keys(kept).map((h) => h.toLowerCase()));
+    responseHeaders.push(...buildCorsHeaders(request?.headers, existing));
+  }
   return {
     responseCode: rule.statusCode,
-    responseHeaders: Object.entries(rule.responseHeaders || {}).map(([name, value]) => ({ name, value })),
+    responseHeaders,
     body: Buffer.from(rule.body).toString('base64'),
+  };
+}
+
+// A CORS preflight (OPTIONS) doesn't go through the rule's own method/body/status
+// at all — it's answered 204 with just the access-control-allow-* headers, per
+// the acceptance criteria. Only called for a `cors: true` rule.
+export function buildMockPreflightParams(
+  request?: { headers?: Record<string, string> }
+): { responseCode: number; responseHeaders: { name: string; value: string }[] } {
+  return {
+    responseCode: 204,
+    responseHeaders: buildCorsHeaders(request?.headers, new Set()),
   };
 }
 
@@ -1009,7 +1089,11 @@ export class SessionManager {
         return;
       }
       if (method !== 'Fetch.requestPaused') return;
-      const { requestId, request, networkId } = params as { requestId: string; request: { url: string; method: string }; networkId?: string };
+      const { requestId, request, networkId } = params as {
+        requestId: string;
+        request: { url: string; method: string; headers?: Record<string, string> };
+        networkId?: string;
+      };
       const dbg = view.webContents.debugger;
       // Safety cap (#210): a rule pattern that's broad in effect (e.g. '*ad*'
       // matching any URL containing "ad") can flood this handler with paused
@@ -1028,12 +1112,25 @@ export class SessionManager {
       // correlated network event exists) so the recorded response/failure
       // event actually carries the mock/resilience tag.
       const tagId = networkId || requestId;
+      // A CORS preflight never carries the rule's own method (it's always
+      // OPTIONS), so it can't be found by findMatchingMockRule's method
+      // match — it's answered directly from any enabled cors:true rule
+      // whose URL pattern matches, regardless of that rule's configured
+      // method.
+      if (request.method === 'OPTIONS') {
+        const preflightRule = this.getMockRules(testSession.id)
+          .find(r => r.enabled && r.cors && matchesGlob(r.urlPattern, request.url));
+        if (preflightRule) {
+          dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockPreflightParams({ headers: request.headers }) }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
+          return;
+        }
+      }
       const rule = this.findMatchingMockRule(testSession.id, request.method, request.url);
       if (rule) {
         rule.hitCount = (rule.hitCount || 0) + 1;
         rule.lastHitAt = Date.now();
         testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
-        dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule) }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
+        dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule, { headers: request.headers }) }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
         return;
       }
       const resilienceRules = this.resilienceRulesByPartition.get(testSession.partition) ?? [];
@@ -2555,15 +2652,18 @@ export class SessionManager {
     this.log.info('mock', `Mock rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
   }
 
-  // A ruleId that doesn't match any rule is a no-op (nothing to update,
-  // nothing to re-apply).
-  updateMockRule(id: string, ruleId: string, patch: Partial<MockRule>): void {
+  // Returns whether the update actually applied — #235: the renderer needs
+  // to tell "saved" apart from "silently did nothing" (the owning tab was
+  // closed since the edit row was opened, or the rule itself is gone) so it
+  // can show an inline error instead of pretending the edit went through.
+  updateMockRule(id: string, ruleId: string, patch: Partial<MockRule>): boolean {
     const rules = this.mockRulesForId(id);
-    if (!rules) return;
+    if (!rules) return false;
     const idx = rules.findIndex(r => r.id === ruleId);
-    if (idx === -1) return;
+    if (idx === -1) return false;
     rules[idx] = applyMockRulePatch(rules[idx], patch);
     this._applyMocks(id);
+    return true;
   }
 
   private _applyFetch(id: string): void {

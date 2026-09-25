@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { escHtml } from './utils.js';
+import { escHtml, MOCK_STRIPPED_RESPONSE_HEADERS } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 
@@ -79,7 +79,13 @@ export function openMockFromRequest(method, url, statusCode, body, opts = {}) {
 
   if (resHeaders) {
     resHeaders.innerHTML = '';
-    for (const [k, v] of Object.entries(opts.responseHeaders || {})) addKvRow(resHeaders, k, v);
+    for (const [k, v] of Object.entries(opts.responseHeaders || {})) {
+      // The captured call's own encoding headers describe the original,
+      // often-compressed body — fulfilling with them still attached corrupts
+      // or truncates the decoded (possibly edited) body actually sent.
+      if (MOCK_STRIPPED_RESPONSE_HEADERS.includes(k.toLowerCase())) continue;
+      addKvRow(resHeaders, k, v);
+    }
   }
 
   capturedRequestHeaders = opts.requestHeaders || null;
@@ -114,6 +120,12 @@ export function initMock() {
         <div class="mock-body-note" id="mockBodyNote" hidden>
           This call's body wasn't captured (binary content, or the response hadn't finished) — nothing to prefill here.
         </div>
+        <div class="mock-form-row mock-cors-row">
+          <label class="mock-cors-label">
+            <input type="checkbox" id="mockCors" />
+            Add CORS headers
+          </label>
+        </div>
         <div class="mock-headers-row">
           <div class="mock-headers-col">
             <div class="mock-headers-label">Response headers</div>
@@ -145,6 +157,7 @@ export function initMock() {
       statusCode: parseInt(document.getElementById('mockStatus').value, 10) || 200,
       body: document.getElementById('mockBody').value,
       responseHeaders: readKvTable(document.getElementById('mockResponseHeadersTable')),
+      cors: document.getElementById('mockCors').checked,
       enabled: true,
     };
     if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
@@ -154,6 +167,7 @@ export function initMock() {
     document.getElementById('mockBody').value = '';
     document.getElementById('mockResponseHeadersTable').innerHTML = '';
     document.getElementById('mockBodyNote').hidden = true;
+    document.getElementById('mockCors').checked = false;
     capturedRequestHeaders = null;
     renderCapturedRequestHeaders();
 
@@ -173,12 +187,18 @@ export function initMock() {
 }
 
 async function loadRules() {
-  if (!getActiveId()) return;
-  const rules = await testerBrowser.mock.getRules(getActiveId());
-  renderRules(rules);
+  const sessionId = getActiveId();
+  if (!sessionId) return;
+  const rules = await testerBrowser.mock.getRules(sessionId);
+  renderRules(rules, sessionId);
 }
 
-function renderRules(rules) {
+// #235: sessionId is the tab loadRules() fetched these rules for — captured
+// here and threaded through every row so a later toggle/remove/save acts on
+// the tab the row was actually rendered for, not whatever tab happens to be
+// active by the time the user clicks (getActiveId() may have moved on if
+// they switched tabs while a row or its edit form was still open).
+function renderRules(rules, sessionId) {
   const container = document.getElementById('mockRules');
   const empty = document.getElementById('mockEmpty');
   if (!container) return;
@@ -193,11 +213,11 @@ function renderRules(rules) {
   if (empty) empty.hidden = true;
 
   for (const rule of rules) {
-    container.appendChild(buildMockRuleRow(rule));
+    container.appendChild(buildMockRuleRow(rule, sessionId));
   }
 }
 
-function buildMockRuleRow(rule) {
+function buildMockRuleRow(rule, sessionId) {
   const row = document.createElement('div');
   row.className = `mock-rule-row${rule.enabled ? '' : ' rule-row-disabled'}`;
   row.dataset.id = rule.id;
@@ -216,20 +236,31 @@ function buildMockRuleRow(rule) {
     <button class="mock-btn mock-del-btn" title="Remove">✕</button>`;
 
   row.querySelector('.mock-enable').addEventListener('change', async (e) => {
-    await testerBrowser.mock.toggleRule(getActiveId(), rule.id, e.target.checked);
+    await testerBrowser.mock.toggleRule(sessionId, rule.id, e.target.checked);
     await loadRules();
   });
   row.querySelector('.mock-del-btn').addEventListener('click', async () => {
-    await testerBrowser.mock.removeRule(getActiveId(), rule.id);
+    await testerBrowser.mock.removeRule(sessionId, rule.id);
     await loadRules();
   });
   row.querySelector('.mock-edit-btn').addEventListener('click', () => {
-    row.replaceWith(buildMockEditRow(rule));
+    row.replaceWith(buildMockEditRow(rule, sessionId));
   });
   return row;
 }
 
-function buildMockEditRow(rule) {
+function showMockRowError(row, message) {
+  let err = row.querySelector('.mock-row-error');
+  if (!err) {
+    err = document.createElement('div');
+    err.className = 'mock-row-error';
+    row.appendChild(err);
+  }
+  err.textContent = message;
+  setTimeout(() => err.remove(), 6000);
+}
+
+function buildMockEditRow(rule, sessionId) {
   const row = document.createElement('div');
   row.className = 'mock-rule-row mock-rule-row-editing';
   row.dataset.id = rule.id;
@@ -243,6 +274,12 @@ function buildMockEditRow(rule) {
     </div>
     <div class="mock-form-row">
       <textarea class="mock-input mock-body mock-edit-body" rows="2">${escHtml(rule.body)}</textarea>
+    </div>
+    <div class="mock-form-row mock-cors-row">
+      <label class="mock-cors-label">
+        <input type="checkbox" class="mock-edit-cors" ${rule.cors ? 'checked' : ''} />
+        Add CORS headers
+      </label>
     </div>
     <div class="mock-headers-row">
       <div class="mock-headers-col">
@@ -261,7 +298,7 @@ function buildMockEditRow(rule) {
   row.querySelector('.mock-edit-add-header').addEventListener('click', () => addKvRow(headersTable, '', ''));
 
   row.querySelector('.mock-cancel-btn').addEventListener('click', () => {
-    row.replaceWith(buildMockRuleRow(rule));
+    row.replaceWith(buildMockRuleRow(rule, sessionId));
   });
   row.querySelector('.mock-save-btn').addEventListener('click', async () => {
     const patch = {
@@ -270,8 +307,10 @@ function buildMockEditRow(rule) {
       statusCode: parseInt(row.querySelector('.mock-edit-status').value, 10) || 200,
       body: row.querySelector('.mock-edit-body').value,
       responseHeaders: readKvTable(headersTable),
+      cors: row.querySelector('.mock-edit-cors').checked,
     };
-    await testerBrowser.mock.updateRule(getActiveId(), rule.id, patch);
+    const ok = await testerBrowser.mock.updateRule(sessionId, rule.id, patch);
+    if (!ok) { showMockRowError(row, 'That tab was closed — rule not saved'); return; }
     await loadRules();
   });
   return row;

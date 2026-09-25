@@ -108,6 +108,17 @@ export function formatAppLogBlock(appLog) {
   return `<details><summary>${summary}</summary>\n\n\`\`\`\n${appLog.text}\n\`\`\`\n</details>`;
 }
 
+// #235: transport-layer headers from a captured response that don't belong
+// on a mock fulfilment — content-length/content-encoding/transfer-encoding
+// describe the *original* (often compressed) body, not the decoded,
+// possibly-edited rule.body actually sent, and connection is equally not
+// ours to echo. Filtered out of the "⇒ Mock" prefill (renderer/mock.js) so
+// they never make it into a saved rule in the first place; sessionManager.ts
+// keeps its own copy of this same list as a backstop for rules saved before
+// this existed, rather than sharing one across the IPC boundary — two short
+// lists, each tested where it lives.
+export const MOCK_STRIPPED_RESPONSE_HEADERS = ['content-length', 'content-encoding', 'transfer-encoding', 'connection'];
+
 export function cookieMatchesDomain(cookie, hostname) {
   if (!hostname) return true;
   const d = (cookie.domain || '').replace(/^\./, '');

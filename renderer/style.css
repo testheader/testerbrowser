@@ -1195,6 +1195,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-del-btn:hover { color: var(--error-strong); }
 .mock-edit-btn { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; font-size: 13px; }
 .mock-edit-btn:hover { color: var(--accent); }
+.mock-cors-row { align-items: center; }
+.mock-cors-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-primary); cursor: pointer; }
+.mock-row-error { font-size: 11px; color: var(--error-strong); background: var(--error-surface);
+                   border: 1px solid var(--error-border); border-radius: 3px; padding: 3px 8px; }
 
 /* Jira panel */
 #jiraPanel { flex: 1; overflow: auto; }

@@ -378,3 +378,104 @@ test('a mock rule for a URL containing "?" actually matches and intercepts that 
   const out = JSON.parse((await tab.locator('#apiOut').textContent()) || '{}');
   expect(out.body).toContain('"mocked":true');
 });
+
+test('"⇒ Mock" from a gzip-encoded response leaves out encoding headers, and an edited body round-trips (#235)', async () => {
+  for (let i = 0; i < 10 && (await window.locator('.tab').count()) > 1; i++) {
+    await window.keyboard.press('Control+w');
+  }
+  await expect.poll(() => window.locator('.tab').count()).toBe(1);
+
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await tab.fill('#apiPath', '/network/gzip-json');
+  await tab.click('#apiFetchBtn');
+  await expect(tab.locator('#apiOut')).toContainText('"status":200', { timeout: 5_000 });
+  await window.waitForTimeout(1_500); // pollTimeline
+
+  const requestRow = window.locator('.evt.network-request', { hasText: 'gzip-json' });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
+  const detailMockBtn = window.locator('#detailMockBtn');
+  await expect(async () => {
+    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(detailMockBtn).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await detailMockBtn.click();
+
+  await expect(window.locator('#mockPanel')).toBeVisible();
+  const resHeaderKeys = await window.locator('#mockResponseHeadersTable .kv-key').evaluateAll(
+    els => (els as HTMLInputElement[]).map(el => el.value.toLowerCase())
+  );
+  expect(resHeaderKeys).not.toContain('content-encoding');
+  expect(resHeaderKeys).not.toContain('content-length');
+
+  // Edit the prefilled body to something longer than the original gzipped
+  // payload decodes to — the old bug truncated/corrupted this via a stale
+  // content-length carried into the fulfilled response.
+  const longerBody = JSON.stringify({ from: 'server', edited: true, padding: 'x'.repeat(200) });
+  await window.fill('#mockUrl', fixtures.url('/network/gzip-json'));
+  await window.fill('#mockBody', longerBody);
+  await window.click('.mock-add-btn');
+  await expect(window.locator('.mock-rule-row', { hasText: 'gzip-json' })).toBeVisible();
+
+  const fetched = await tab.evaluate(async (url) => {
+    const r = await fetch(url);
+    return { body: await r.text(), contentType: r.headers.get('content-type') };
+  }, fixtures.url('/network/gzip-json'));
+  expect(JSON.parse(fetched.body)).toEqual(JSON.parse(longerBody));
+  expect(fetched.contentType).toContain('application/json');
+});
+
+test('a mock rule row keeps the tab it was rendered for, even after switching tabs (#235)', async () => {
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await getTabPage(app, urlPath);
+  const tabAId = await window.locator('.tab.active').getAttribute('data-id');
+
+  await window.click('#consoleTabMock');
+  await window.fill('#mockUrl', '*/api/owning-tab');
+  await window.fill('#mockStatus', '200');
+  await window.fill('#mockBody', '{"v":1}');
+  await window.click('.mock-add-btn');
+  const row = window.locator('.mock-rule-row', { hasText: 'owning-tab' });
+  await expect(row).toBeVisible();
+
+  await row.locator('.mock-edit-btn').click();
+  const editRow = window.locator('.mock-rule-row-editing');
+  await editRow.locator('.mock-edit-status').fill('202');
+
+  // Switch to a different tab and back before saving — the edit must still
+  // apply to the tab (and partition) it was actually opened for, not
+  // whichever tab happens to be active at save time. Note: re-clicking the
+  // Mock console tab (rather than just switching browser tabs) would itself
+  // re-run initMock()'s loadRules() and blow away the open edit row, so this
+  // deliberately never touches #consoleTabMock again once the row is open.
+  const tabCountBefore = await window.locator('.tab').count();
+  await window.click('#newSessionBtn');
+  await expect.poll(() => window.locator('.tab').count()).toBe(tabCountBefore + 1);
+  await window.keyboard.press('Control+Tab');
+  await expect.poll(() => window.locator('.tab.active').getAttribute('data-id')).toBe(tabAId);
+
+  await window.locator('.mock-rule-row-editing .mock-save-btn').click();
+  await expect(window.locator('.mock-rule-row', { hasText: 'owning-tab' }).locator('.mock-status-badge')).toHaveText('202');
+
+  // Now edit again, but this time close the owning tab before saving. The
+  // active tab right now is still the owning tab (tabA) — the Ctrl+Tab
+  // above went *to* it from the new tab, so this row's edit captures its id.
+  await window.locator('.mock-rule-row', { hasText: 'owning-tab' }).locator('.mock-edit-btn').click();
+  const editRow2 = window.locator('.mock-rule-row-editing');
+  await editRow2.locator('.mock-edit-status').fill('204');
+
+  await window.keyboard.press('Control+w'); // closes the owning tab (still active); auto-switches to the other tab
+  await expect.poll(() => window.locator('.tab.active').getAttribute('data-id')).not.toBe(tabAId);
+  await window.locator('.mock-rule-row-editing .mock-save-btn').click();
+
+  await expect(window.locator('.mock-row-error')).toHaveText('That tab was closed — rule not saved');
+});

@@ -11,6 +11,7 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http';
 import { readFile } from 'fs/promises';
 import path from 'path';
+import zlib from 'zlib';
 
 const TEST_PAGES_ROOT = path.join(__dirname, '..', '..', 'test-pages');
 
@@ -60,6 +61,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/perf/echo') return handleEcho(u, res);
   if (u.pathname === '/echo/user-agent') return handleUserAgentEcho(req, res);
   if (u.pathname === '/echo/headers') return handleHeadersEcho(req, res);
+  if (u.pathname === '/network/gzip-json') return handleGzipJson(res);
 
   return handleStatic(u, res);
 }
@@ -141,6 +143,15 @@ function handleHeadersEcho(req: IncomingMessage, res: ServerResponse): void {
   }
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify(headers));
+}
+
+// #235: a real gzip-encoded JSON response, so the Mock panel's "⇒ Mock"
+// prefill can be proven to leave out content-encoding/content-length rather
+// than copying them onto a rule whose fulfilled body is the *decoded* text.
+function handleGzipJson(res: ServerResponse): void {
+  const body = zlib.gzipSync(Buffer.from(JSON.stringify({ from: 'server' })));
+  res.writeHead(200, { 'content-type': 'application/json', 'content-encoding': 'gzip', 'content-length': String(body.length) });
+  res.end(body);
 }
 
 async function handleStatic(u: URL, res: ServerResponse): Promise<void> {

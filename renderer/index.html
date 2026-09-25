@@ -359,7 +359,7 @@
             </div>
             <div class="feature-item">
               <div class="feature-name">Mock tab</div>
-              <p>Define request-interception rules — a URL glob pattern, an HTTP method (or Any), a fake status code and a response body — then <b>Add rule</b> to apply it immediately to the active session's traffic. Rules track live hit counts and last-hit time, can be toggled on/off, and matched requests show a MOCK badge in the timeline.</p>
+              <p>Define request-interception rules — a URL glob pattern, an HTTP method (or Any), a fake status code and a response body — then <b>Add rule</b> to apply it immediately to the active session's traffic. A response without an explicit Content-Type gets one inferred from the body; <b>Add CORS headers</b> adds access-control-allow-* headers to the response (echoing the request's Origin) and answers a matching preflight. Rules track live hit counts and last-hit time, can be toggled on/off, and matched requests show a MOCK badge in the timeline.</p>
             </div>
             <div class="feature-item">
               <div class="feature-name">Resilience tab</div>
