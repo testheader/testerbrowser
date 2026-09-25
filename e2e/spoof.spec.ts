@@ -308,3 +308,102 @@ test('the user-agent presets are a dropdown grouped by optgroup, including this 
   await window.fill('#spoofUserAgent', 'MyCustomAgent/1.0');
   await expect(uaSelect).toHaveValue('');
 });
+
+// Local to this file (other spec files have their own copy) — earlier tests
+// can leave an arbitrary number of tabs open, and the tests below need to
+// know exactly which tab/group they're working with.
+async function resetToSingleTab() {
+  for (let i = 0; i < 20 && (await window.locator('.tab').count()) > 1; i++) {
+    await window.keyboard.press('Control+w');
+  }
+  await expect.poll(() => window.locator('.tab').count()).toBe(1);
+}
+
+test('clearing one field and re-applying clears just that override, leaving another field\'s override in place (#241)', async () => {
+  await resetToSingleTab();
+  await window.click('#consoleTabSpoof');
+  for (const id of ['#spoofTimezone', '#spoofLocale', '#spoofLat', '#spoofLon']) {
+    await window.fill(id, '');
+  }
+  await window.fill('#spoofTimezone', 'Asia/Tokyo');
+  await window.fill('#spoofLocale', 'ja-JP');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect(window.locator('#spoofCurrent')).toContainText('timezone Asia/Tokyo');
+  await expect(window.locator('#spoofCurrent')).toContainText('locale ja-JP');
+
+  // Clear just the timezone field and re-apply — this used to be a silent
+  // no-op (setEmulation's `timezone !== undefined` guard skipped an
+  // `undefined` value), leaving the stale timezone override in effect while
+  // the field showed empty.
+  await window.fill('#spoofTimezone', '');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+
+  await expect(window.locator('#spoofCurrent')).not.toContainText('timezone');
+  await expect(window.locator('#spoofCurrent')).toContainText('locale ja-JP');
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});
+
+test('a "New tab in this session" popup shares the spoofed tab\'s overrides, not empty ones (#241)', async () => {
+  await resetToSingleTab();
+  await window.click('#consoleTabSpoof');
+  for (const id of ['#spoofTimezone', '#spoofLocale', '#spoofLat', '#spoofLon']) {
+    await window.fill(id, '');
+  }
+  await window.fill('#spoofTimezone', 'Asia/Tokyo');
+  await window.fill('#spoofLocale', 'ja-JP');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+
+  // "New tab in this session" — the '+' at the end of the tab's same-partition
+  // group (renderer/tabs.js), which calls sessions.create() with that same
+  // partition. Emulation overrides are a property of the partition (#241),
+  // not of the TestSession object created for the first tab, so a same-
+  // partition popup/new tab must start with them already applied.
+  await window.locator('.tab-group-add').first().click();
+  await expect.poll(() => window.locator('.tab').count()).toBe(2);
+
+  await window.click('#consoleTabSpoof');
+  await expect(window.locator('#spoofCurrent')).toContainText('timezone Asia/Tokyo', { timeout: 5_000 });
+  await expect(window.locator('#spoofCurrent')).toContainText('locale ja-JP');
+  await expect(window.locator('#spoofTimezone')).toHaveValue('Asia/Tokyo');
+  await expect(window.locator('#spoofLocale')).toHaveValue('ja-JP');
+  await expect(window.locator('#spoofDirty')).toBeHidden();
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});
+
+test('Accept-Language reaches the real request header when locale is applied, even with no User-Agent override active (#241)', async () => {
+  // Unlike navigator.language (Emulation-domain, scoped to a separate CDP
+  // session per the "Tokyo preset" test's own note above), Accept-Language
+  // is a real request header — genuinely observable via a plain fetch and
+  // the fixture server's own /echo/headers route.
+  await resetToSingleTab();
+  const urlPath = '/network/status-codes.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  await window.click('#consoleTabSpoof');
+  for (const id of ['#spoofTimezone', '#spoofLocale', '#spoofLat', '#spoofLon']) {
+    await window.fill(id, '');
+  }
+  await window.fill('#spoofLocale', 'fr-FR');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+
+  const echoUrl = fixtures.url('/echo/headers');
+  await expect.poll(async () => {
+    const body = await tab.evaluate((url) => fetch(url).then((r) => r.json()), echoUrl) as Record<string, string>;
+    return body['accept-language'];
+  }, { timeout: 10_000 }).toBe('fr-FR,fr;q=0.9');
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});

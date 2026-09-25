@@ -296,34 +296,61 @@ function updateDirtyState() {
   dirty.hidden = !changed;
 }
 
+// #241: every field's error key, mapped to the label used in the
+// "Could not apply <field>: <reason>" status message.
+const FIELD_ERROR_LABELS = {
+  timezone: 'timezone',
+  locale: 'locale',
+  latitude: 'location',
+  userAgent: 'User-Agent',
+  timeOffsetMs: 'clock offset',
+};
+
 async function applySpoof() {
   if (!getActiveId()) { showStatus('No active session.', true); return; }
-  const timezone  = document.getElementById('spoofTimezone').value.trim() || undefined;
-  const locale    = document.getElementById('spoofLocale').value.trim()   || undefined;
+  const timezoneRaw  = document.getElementById('spoofTimezone').value.trim();
+  const localeRaw    = document.getElementById('spoofLocale').value.trim();
   const latRaw    = document.getElementById('spoofLat').value.trim();
   const lonRaw    = document.getElementById('spoofLon').value.trim();
-  const latitude  = latRaw !== '' ? parseFloat(latRaw)  : undefined;
-  const longitude = lonRaw !== '' ? parseFloat(lonRaw) : undefined;
-  // Unlike the other fields, an empty User-Agent field is a meaningful,
-  // always-sent value ('' — "restore the default"), not "leave unchanged":
-  // clearing it and hitting Apply must revert navigator.userAgent and the
-  // request header, same as Reset overrides does.
-  const userAgent = document.getElementById('spoofUserAgent').value.trim();
+  const latitude  = latRaw !== '' ? parseFloat(latRaw)  : null;
+  const longitude = lonRaw !== '' ? parseFloat(lonRaw) : null;
+  const userAgentRaw = document.getElementById('spoofUserAgent').value.trim();
   const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
   const unitMs    = Number(document.getElementById('spoofOffsetUnit').value);
   const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
-  const timeOffsetMs = offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : undefined;
 
-  if (latitude !== undefined && isNaN(latitude))  { showStatus('Invalid latitude.',  true); return; }
-  if (longitude !== undefined && isNaN(longitude)) { showStatus('Invalid longitude.', true); return; }
+  if (latRaw !== '' && isNaN(latitude))  { showStatus('Invalid latitude.',  true); return; }
+  if (lonRaw !== '' && isNaN(longitude)) { showStatus('Invalid longitude.', true); return; }
   if (offsetRaw !== '' && isNaN(offsetNum)) { showStatus('Invalid clock offset.', true); return; }
+
+  // Every Apply sends the full current form state, mapping an empty field
+  // to null (explicitly clear that one override) rather than omitting the
+  // key — omitting a key means "leave whatever was already applied alone,"
+  // which is exactly the bug this ticket fixes: clearing a field and
+  // clicking Apply now actually clears it.
+  const patch = {
+    timezone: timezoneRaw !== '' ? timezoneRaw : null,
+    locale: localeRaw !== '' ? localeRaw : null,
+    latitude,
+    longitude,
+    timeOffsetMs: offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : null,
+    userAgent: userAgentRaw !== '' ? userAgentRaw : null,
+  };
 
   const btn = document.getElementById('spoofApply');
   btn.disabled = true;
   try {
-    await testerBrowser.emulation.set(getActiveId(), { timezone, locale, latitude, longitude, timeOffsetMs, userAgent });
+    const errors = await testerBrowser.emulation.set(getActiveId(), patch);
     await refreshSpoofStatus();
-    showStatus('Overrides applied. Reload the page for full effect.', false);
+    const failedFields = Object.keys(errors ?? {});
+    if (failedFields.length > 0) {
+      showStatus(
+        failedFields.map(f => `Could not apply ${FIELD_ERROR_LABELS[f] ?? f}: ${errors[f]}`).join('; '),
+        true
+      );
+    } else {
+      showStatus('Overrides applied. Reload the page for full effect.', false);
+    }
   } catch {
     showStatus('Failed to apply overrides.', true);
   } finally {

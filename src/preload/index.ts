@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MockRule, ResilienceRule, EmulationOverrides } from '../main/sessionManager';
+import type { MockRule, ResilienceRule, EmulationOverrides, EmulationPatch } from '../main/sessionManager';
 
 contextBridge.exposeInMainWorld('testerBrowser', {
   sessions: {
@@ -204,8 +204,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   },
 
   emulation: {
-    set:   (id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; timeOffsetMs?: number; userAgent?: string; clear?: boolean }) =>
-             ipcRenderer.invoke('session:setEmulation', id, opts),
+    set:   (id: string, opts: EmulationPatch) => ipcRenderer.invoke('session:setEmulation', id, opts),
     get:   (id: string) => ipcRenderer.invoke('session:getEmulation', id),
   },
 

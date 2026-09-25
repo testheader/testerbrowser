@@ -18,7 +18,7 @@ jest.mock('electron', () => ({
 }));
 
 import { SessionManager } from '../sessionManager';
-import type { TestSession } from '../sessionManager';
+import type { TestSession, EmulationOverrides } from '../sessionManager';
 
 function makeManager(): SessionManager {
   const win = { on: jest.fn() } as unknown as BrowserWindow;
@@ -28,15 +28,18 @@ function makeManager(): SessionManager {
 // Installs a fake TestSession directly into the manager's private session
 // map, bypassing the real createSession() (which needs a real
 // WebContentsView) so setEmulation() can be exercised in isolation with a
-// mock CDP debugger.
-function installFakeSession(sm: SessionManager, id: string, sendCommand: jest.Mock) {
+// mock CDP debugger. `partition` defaults to the session's own id — good
+// enough for tests that don't care about partition sharing; tests that do
+// pass the same partition to two installed sessions explicitly.
+function installFakeSession(sm: SessionManager, id: string, sendCommand: jest.Mock, partition = id) {
   const session = {
     id,
+    partition,
     view: { webContents: { debugger: { sendCommand }, setUserAgent: jest.fn(), getUserAgent: jest.fn(() => 'real-ua') } },
-    emulation: null,
     defaultUserAgent: 'real-ua',
   };
   (sm as unknown as { sessions: Map<string, unknown> }).sessions.set(id, session);
+  return session;
 }
 
 // Fuller "win" mock for tests that exercise loadAndRestoreSessions(), which
@@ -54,7 +57,7 @@ function makeManagerWithWin(): SessionManager {
 
 function installFakeSessionFull(
   sm: SessionManager,
-  opts: { id: string; partition: string; persistent: boolean; emulation?: unknown }
+  opts: { id: string; partition: string; persistent: boolean; emulation?: EmulationOverrides }
 ) {
   const session = {
     id: opts.id,
@@ -68,10 +71,13 @@ function installFakeSessionFull(
         getUserAgent: jest.fn(() => 'real-ua'),
       },
     },
-    emulation: opts.emulation ?? null,
     defaultUserAgent: 'real-ua',
   };
   (sm as unknown as { sessions: Map<string, unknown> }).sessions.set(opts.id, session);
+  if (opts.emulation) {
+    (sm as unknown as { emulationByPartition: Map<string, EmulationOverrides> })
+      .emulationByPartition.set(opts.partition, opts.emulation);
+  }
 }
 
 describe('setEmulation — signed clock offset', () => {
@@ -135,9 +141,106 @@ describe('setEmulation — signed clock offset', () => {
     expect(sendCommand).toHaveBeenCalledWith('Page.removeScriptToEvaluateOnNewDocument', { identifier: 'script-4a' });
     expect(sm.getEmulation('s4')).toEqual({ timeOffsetMs: 2000 });
   });
+
+  it('a null timeOffsetMs clears just the offset, leaving other applied fields untouched (#241)', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({ identifier: 'script-5' });
+    installFakeSession(sm, 's5', sendCommand);
+
+    await sm.setEmulation('s5', { timeOffsetMs: 1000, timezone: 'Asia/Tokyo' });
+    const errors = await sm.setEmulation('s5', { timeOffsetMs: null });
+
+    expect(errors).toEqual({});
+    expect(sm.getEmulation('s5')).toEqual({ timezone: 'Asia/Tokyo' });
+  });
+
+  it('a rejected Page.addScriptToEvaluateOnNewDocument reports an error and applies nothing (#241)', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockRejectedValue(new Error('boom'));
+    installFakeSession(sm, 's6', sendCommand);
+
+    const errors = await sm.setEmulation('s6', { timeOffsetMs: 5000 });
+
+    expect(errors.timeOffsetMs).toBeTruthy();
+    expect(sm.getEmulation('s6')).toEqual({});
+  });
 });
 
-describe('setEmulation — user-agent override (#163)', () => {
+describe('setEmulation — timezone (#241)', () => {
+  it('a rejected Emulation.setTimezoneOverride leaves the field as it was before the call', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn(async (cmd: string) => {
+      if (cmd === 'Emulation.setTimezoneOverride') throw new Error('rejected');
+      return {};
+    });
+    installFakeSession(sm, 'tz1', sendCommand);
+
+    await sm.setEmulation('tz1', { locale: 'ja-JP' }); // some other field already applied
+    const errors = await sm.setEmulation('tz1', { timezone: 'Asia/Tokyo' });
+
+    expect(errors.timezone).toBe('rejected');
+    expect(sm.getEmulation('tz1')).toEqual({ locale: 'ja-JP' }); // unchanged, not partially set
+  });
+
+  it('null clears the timezone override', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'tz2', sendCommand);
+
+    await sm.setEmulation('tz2', { timezone: 'Asia/Tokyo', locale: 'ja-JP' });
+    sendCommand.mockClear();
+    const errors = await sm.setEmulation('tz2', { timezone: null });
+
+    expect(errors).toEqual({});
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setTimezoneOverride', { timezoneId: '' });
+    // The other field, not part of this patch, is left alone.
+    expect(sm.getEmulation('tz2')).toEqual({ locale: 'ja-JP' });
+  });
+});
+
+describe('setEmulation — geolocation clears as one combined field (#241)', () => {
+  it('sets geolocation only once both latitude and longitude are real numbers', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'geo1', sendCommand);
+
+    await sm.setEmulation('geo1', { latitude: 35.6762, longitude: 139.6503 });
+
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setGeolocationOverride', { latitude: 35.6762, longitude: 139.6503, accuracy: 10 });
+    expect(sm.getEmulation('geo1')).toEqual({ latitude: 35.6762, longitude: 139.6503 });
+  });
+
+  it('a lone coordinate (the other left null) clears geolocation entirely, not a partial set', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'geo2', sendCommand);
+
+    await sm.setEmulation('geo2', { latitude: 35.6762, longitude: 139.6503 });
+    sendCommand.mockClear();
+    const errors = await sm.setEmulation('geo2', { latitude: null, longitude: null });
+
+    expect(errors).toEqual({});
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.clearGeolocationOverride');
+    expect(sm.getEmulation('geo2')).toEqual({});
+  });
+
+  it('a rejected clear leaves both coordinates as they were', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn(async (cmd: string) => {
+      if (cmd === 'Emulation.clearGeolocationOverride') throw new Error('nope');
+      return {};
+    });
+    installFakeSession(sm, 'geo3', sendCommand);
+
+    await sm.setEmulation('geo3', { latitude: 1, longitude: 2 });
+    const errors = await sm.setEmulation('geo3', { latitude: null, longitude: null });
+
+    expect(errors.latitude).toBe('nope');
+    expect(sm.getEmulation('geo3')).toEqual({ latitude: 1, longitude: 2 });
+  });
+});
+
+describe('setEmulation — user-agent override (#163, #241)', () => {
   it('applies a UA override via webContents.setUserAgent and CDP, with derived Client Hints metadata', async () => {
     const sm = makeManager();
     const sendCommand = jest.fn().mockResolvedValue({});
@@ -162,7 +265,7 @@ describe('setEmulation — user-agent override (#163)', () => {
     expect(sm.getEmulation('ua1')).toEqual({ userAgent: androidUa });
   });
 
-  it('applying an empty-string userAgent restores the captured default UA and clears the override', async () => {
+  it('applying a null userAgent restores the captured default UA and clears the override', async () => {
     const sm = makeManager();
     const sendCommand = jest.fn().mockResolvedValue({});
     installFakeSession(sm, 'ua2', sendCommand);
@@ -172,10 +275,13 @@ describe('setEmulation — user-agent override (#163)', () => {
     sendCommand.mockClear();
     (s.view.webContents.setUserAgent as jest.Mock).mockClear();
 
-    await sm.setEmulation('ua2', { userAgent: '' });
+    await sm.setEmulation('ua2', { userAgent: null });
 
     expect(s.view.webContents.setUserAgent).toHaveBeenCalledWith('real-ua');
-    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', { userAgent: 'real-ua' });
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', {
+      userAgent: 'real-ua',
+      userAgentMetadata: { brands: [], platform: '', platformVersion: '', architecture: '', model: '', mobile: false },
+    });
     expect(sm.getEmulation('ua2')).toEqual({});
   });
 
@@ -211,6 +317,95 @@ describe('setEmulation — user-agent override (#163)', () => {
         mobile: true,
       },
     });
+  });
+
+  it('a rejected Emulation.setUserAgentOverride reports an error and leaves the previous UA applied', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'ua5', sendCommand);
+
+    await sm.setEmulation('ua5', { userAgent: 'first-ua' });
+    sendCommand.mockImplementation(async (cmd: string) => {
+      if (cmd === 'Emulation.setUserAgentOverride') throw new Error('cdp down');
+      return {};
+    });
+    const errors = await sm.setEmulation('ua5', { userAgent: 'second-ua' });
+
+    expect(errors.userAgent).toBe('cdp down');
+    expect(sm.getEmulation('ua5')).toEqual({ userAgent: 'first-ua' });
+  });
+});
+
+describe('setEmulation — Accept-Language from locale (#241)', () => {
+  it('acceptLanguage is included in the Network.setUserAgentOverride call when locale is set', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'loc1', sendCommand);
+
+    await sm.setEmulation('loc1', { locale: 'fr-FR' });
+
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', expect.objectContaining({
+      acceptLanguage: 'fr-FR,fr',
+    }));
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setLocaleOverride', { locale: 'fr-FR' });
+    expect(sm.getEmulation('loc1')).toEqual({ locale: 'fr-FR' });
+  });
+
+  it('is issued with the current effective UA (default) when no explicit User-Agent override is active', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'loc2', sendCommand);
+
+    await sm.setEmulation('loc2', { locale: 'de-DE' });
+
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', expect.objectContaining({
+      userAgent: 'real-ua',
+      acceptLanguage: 'de-DE,de',
+    }));
+  });
+
+  it('carries a previously-set UA override alongside the new acceptLanguage, without clobbering it', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'loc3', sendCommand);
+
+    await sm.setEmulation('loc3', { userAgent: 'spoofed-ua' });
+    sendCommand.mockClear();
+    await sm.setEmulation('loc3', { locale: 'ja-JP' });
+
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setUserAgentOverride', expect.objectContaining({
+      userAgent: 'spoofed-ua',
+      acceptLanguage: 'ja-JP,ja',
+    }));
+    expect(sm.getEmulation('loc3')).toEqual({ userAgent: 'spoofed-ua', locale: 'ja-JP' });
+  });
+});
+
+describe('setEmulation — partition sharing (#241)', () => {
+  it('two tabs sharing one partition see the same emulation overrides, without calling setEmulation for the second', async () => {
+    const sm = makeManager();
+    const sendCommandA = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'tab-a', sendCommandA, 'persist:shared-emu');
+
+    await sm.setEmulation('tab-a', { timezone: 'Asia/Tokyo', locale: 'ja-JP' });
+
+    const sendCommandB = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'tab-b', sendCommandB, 'persist:shared-emu');
+
+    expect(sm.getEmulation('tab-b')).toEqual(sm.getEmulation('tab-a'));
+    expect(sendCommandB).not.toHaveBeenCalled();
+  });
+
+  it('two tabs on genuinely different partitions never see each other\'s overrides', async () => {
+    const sm = makeManager();
+    const sendCommandA = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'tab-c', sendCommandA, 'persist:one');
+    const sendCommandB = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'tab-d', sendCommandB, 'persist:two');
+
+    await sm.setEmulation('tab-c', { timezone: 'Asia/Tokyo' });
+
+    expect(sm.getEmulation('tab-d')).toBeNull();
   });
 });
 
@@ -257,7 +452,7 @@ describe('persisting and restoring spoof overrides across sessions (#161)', () =
       emulation: { 'persist:restore-1': overrides },
     }));
 
-    const setEmulationSpy = jest.spyOn(sm, 'setEmulation').mockResolvedValue();
+    const setEmulationSpy = jest.spyOn(sm, 'setEmulation').mockResolvedValue({});
     jest.spyOn(sm, 'createSession').mockImplementation((name: string, opts?: { partition?: string }) => {
       const session = {
         id: 'restored-id',
@@ -273,7 +468,6 @@ describe('persisting and restoring spoof overrides across sessions (#161)', () =
           },
           setBounds: jest.fn(),
         },
-        emulation: null,
       } as unknown as TestSession;
       (sm as unknown as { sessions: Map<string, TestSession> }).sessions.set(session.id, session);
       return session;
@@ -295,7 +489,7 @@ describe('persisting and restoring spoof overrides across sessions (#161)', () =
       emulation: {},
     }));
 
-    const setEmulationSpy = jest.spyOn(sm, 'setEmulation').mockResolvedValue();
+    const setEmulationSpy = jest.spyOn(sm, 'setEmulation').mockResolvedValue({});
     jest.spyOn(sm, 'createSession').mockImplementation((name: string, opts?: { partition?: string }) => {
       const session = {
         id: 'plain-id',
@@ -311,7 +505,6 @@ describe('persisting and restoring spoof overrides across sessions (#161)', () =
           },
           setBounds: jest.fn(),
         },
-        emulation: null,
       } as unknown as TestSession;
       (sm as unknown as { sessions: Map<string, TestSession> }).sessions.set(session.id, session);
       return session;

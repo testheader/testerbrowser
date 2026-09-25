@@ -716,7 +716,6 @@ export interface TestSession {
   a11yInspecting: boolean;
   devToolsOpen: boolean;
   a11yFocusOverlayOn: boolean;
-  emulation: EmulationOverrides | null;
   // Real UA captured at session creation, before any override — the only
   // way to restore it once webContents.setUserAgent() has been called,
   // since Electron doesn't expose "reset to default" directly.
@@ -770,6 +769,40 @@ export interface EmulationOverrides {
   longitude?: number;
   timeOffsetMs?: number;
   userAgent?: string;
+}
+
+// #241: a patch, not the applied state — undefined (the key absent) means
+// "leave this field's current override alone" (used when re-applying a
+// partition's existing overrides to a fresh same-partition tab, and when
+// restoring from disk), null explicitly clears just that one field, and a
+// real value sets it. `clear: true` is sugar for "clear every field."
+// Latitude/longitude are one combined field in practice — CDP has no way to
+// override just one coordinate — so either being null/absent while the
+// other is a real number clears geolocation entirely; both present as
+// numbers sets it.
+export interface EmulationPatch {
+  timezone?: string | null;
+  locale?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracy?: number;
+  timeOffsetMs?: number | null;
+  userAgent?: string | null;
+  clear?: boolean;
+}
+
+// e.g. 'fr-FR' -> 'fr-FR,fr' — CDP's acceptLanguage takes a plain
+// comma-separated preference list with no quality values; Chromium derives
+// the real Accept-Language header's descending ";q=" weights from position
+// itself. Adding our own here double-appends one (observed empirically:
+// "fr-FR,fr;q=0.9;q=0.9" over the wire) rather than being an inert no-op.
+function acceptLanguageForLocale(locale: string): string {
+  const base = locale.split('-')[0];
+  return base && base !== locale ? `${locale},${base}` : locale;
+}
+
+function emulationErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 // Overrides window.Date/Date.now() on every new document with a fixed
@@ -997,6 +1030,11 @@ export class SessionManager {
   // the entry. Not persisted to disk (see #209's "Out of scope").
   private mockRulesByPartition = new Map<string, MockRule[]>();
   private resilienceRulesByPartition = new Map<string, ResilienceRule[]>();
+  // #241: emulation overrides, scoped like the two maps above — a partition
+  // with no entry here has never had setEmulation() applied; a present
+  // (possibly empty) object records whatever individual fields are actually
+  // in force. Only the bulk `clear: true` path removes the entry entirely.
+  private emulationByPartition = new Map<string, EmulationOverrides>();
   // Lazily-read, cached contents of the vendored axe-core bundle — read once
   // per app run rather than on every violations scan. '' (not null) marks a
   // failed read so we don't retry the disk hit on every call.
@@ -1098,7 +1136,6 @@ export class SessionManager {
       loadedDomains: new Set<string>(),
       a11yInspecting: false,
       a11yFocusOverlayOn: false,
-      emulation: null,
       defaultUserAgent: view.webContents.getUserAgent(),
       devToolsOpen: false,
     };
@@ -1266,6 +1303,16 @@ export class SessionManager {
     // intercept requests from this tab too, not just the tab that originally
     // added them.
     this._applyFetch(id);
+    // #241: same idea as _applyFetch() just above, for emulation — this
+    // tab's own CDP debugger has never had any Emulation.* override pushed
+    // to it, so a partition with existing overrides (popup, "new tab in
+    // this session," reopen) needs them re-applied to actually take effect
+    // on this specific tab's page, not just be remembered in the map.
+    const existingEmulation = this.emulationByPartition.get(partition);
+    if (existingEmulation && Object.keys(existingEmulation).length > 0) {
+      this.setEmulation(id, { ...existingEmulation })
+        .catch((e) => this.log.warn('sessions', 'Failed to re-apply emulation overrides to a new same-partition tab', { sessionId: id, error: String(e) }));
+    }
 
     // webRequest allows one listener per event, so register it once per
     // partition and route by the requesting webContents.
@@ -1592,7 +1639,8 @@ export class SessionManager {
       }
       const emulation: Record<string, EmulationOverrides> = {};
       for (const s of persistentSessions) {
-        if (s.emulation) emulation[s.partition] = s.emulation;
+        const applied = this.emulationByPartition.get(s.partition);
+        if (applied && Object.keys(applied).length > 0) emulation[s.partition] = applied;
       }
       fs.writeFileSync(this.sessionsFile, JSON.stringify({ sessions, notes, emulation }));
     } catch (e) {
@@ -2064,85 +2112,126 @@ export class SessionManager {
     this.injectTestData(s.view, resolveTemplate(template));
   }
 
-  async setEmulation(id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; timeOffsetMs?: number; userAgent?: string; clear?: boolean }): Promise<void> {
+  // #241: returns a per-field error map (empty when everything requested
+  // actually succeeded) — a field only lands in the partition's recorded
+  // state (and getEmulation()'s result) if its own CDP command resolved;
+  // a rejected command leaves that one field exactly as it was before this
+  // call, so the panel can never claim an override that never took effect.
+  async setEmulation(id: string, opts: EmulationPatch): Promise<Record<string, string>> {
     const s = this.sessions.get(id);
-    if (!s) return;
+    if (!s) return {};
+    const clearingEverything = !!opts.clear;
+    if (clearingEverything) {
+      opts = { timezone: null, locale: null, latitude: null, longitude: null, timeOffsetMs: null, userAgent: null };
+    }
     const dbg = s.view.webContents.debugger;
-    if (opts.clear) {
-      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: '' }).catch((e) => this.warnCdpFailure(id, 'Emulation.setTimezoneOverride', e));
-      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: '' }).catch((e) => this.warnCdpFailure(id, 'Emulation.setLocaleOverride', e));
-      await dbg.sendCommand('Emulation.clearGeolocationOverride').catch((e) => this.warnCdpFailure(id, 'Emulation.clearGeolocationOverride', e));
-      s.view.webContents.setUserAgent(s.defaultUserAgent);
-      await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch((e) => this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e));
-      const existingScriptId = this.dateOverrideScripts.get(id);
-      if (existingScriptId) {
-        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
-        this.dateOverrideScripts.delete(id);
-      }
-      s.emulation = null;
-      return;
-    }
-    const applied: EmulationOverrides = { ...(s.emulation ?? {}) };
+    const partition = s.partition;
+    const applied: EmulationOverrides = { ...(this.emulationByPartition.get(partition) ?? {}) };
+    const errors: Record<string, string> = {};
+
     if (opts.timezone !== undefined) {
-      await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone }).catch((e) => this.warnCdpFailure(id, 'Emulation.setTimezoneOverride', e));
-      applied.timezone = opts.timezone;
+      const ok = await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone ?? '' })
+        .then(() => true)
+        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setTimezoneOverride', e); errors.timezone = emulationErrorMessage(e); return false; });
+      if (ok) { if (opts.timezone === null) delete applied.timezone; else applied.timezone = opts.timezone; }
     }
-    if (opts.locale !== undefined) {
-      await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale }).catch((e) => this.warnCdpFailure(id, 'Emulation.setLocaleOverride', e));
-      applied.locale = opts.locale;
-    }
-    if (opts.latitude !== undefined && opts.longitude !== undefined) {
-      await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude: opts.latitude, longitude: opts.longitude, accuracy: opts.accuracy ?? 10 }).catch((e) => this.warnCdpFailure(id, 'Emulation.setGeolocationOverride', e));
-      applied.latitude = opts.latitude;
-      applied.longitude = opts.longitude;
-    }
-    if (opts.userAgent !== undefined) {
-      // An explicit empty string (the field cleared, then Apply) means
-      // "restore the default UA", not "leave it unchanged" — unlike the
-      // other fields, this one has an explicit clear-via-Apply acceptance
-      // criterion, not just the Reset button above.
-      if (opts.userAgent === '') {
-        s.view.webContents.setUserAgent(s.defaultUserAgent);
-        await dbg.sendCommand('Emulation.setUserAgentOverride', { userAgent: s.defaultUserAgent }).catch((e) => this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e));
-        delete applied.userAgent;
+
+    if (opts.latitude !== undefined || opts.longitude !== undefined) {
+      const bothSet = typeof opts.latitude === 'number' && typeof opts.longitude === 'number';
+      if (bothSet) {
+        const latitude = opts.latitude as number;
+        const longitude = opts.longitude as number;
+        const ok = await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude, longitude, accuracy: opts.accuracy ?? 10 })
+          .then(() => true)
+          .catch((e) => { this.warnCdpFailure(id, 'Emulation.setGeolocationOverride', e); errors.latitude = emulationErrorMessage(e); return false; });
+        if (ok) { applied.latitude = latitude; applied.longitude = longitude; }
       } else {
-        s.view.webContents.setUserAgent(opts.userAgent);
-        await dbg.sendCommand('Emulation.setUserAgentOverride', {
-          userAgent: opts.userAgent,
-          userAgentMetadata: buildUserAgentMetadata(opts.userAgent),
-        }).catch((e) => this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e));
-        applied.userAgent = opts.userAgent;
+        // A lone coordinate (the other left null/absent) is meaningless —
+        // clear geolocation entirely rather than half-apply it.
+        const ok = await dbg.sendCommand('Emulation.clearGeolocationOverride')
+          .then(() => true)
+          .catch((e) => { this.warnCdpFailure(id, 'Emulation.clearGeolocationOverride', e); errors.latitude = emulationErrorMessage(e); return false; });
+        if (ok) { delete applied.latitude; delete applied.longitude; }
       }
     }
+
     if (opts.timeOffsetMs !== undefined) {
       const existingScriptId = this.dateOverrideScripts.get(id);
       if (existingScriptId) {
         await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
         this.dateOverrideScripts.delete(id);
       }
-      await dbg.sendCommand('Page.enable').catch((e) => this.warnCdpFailure(id, 'Page.enable', e));
-      // The CDP command occasionally fails transiently under system load
-      // (observed in CI) — retry once before giving up, and only report the
-      // offset as applied if the script genuinely got registered, so the UI
-      // never claims an override is active when it silently isn't.
-      let result: { identifier: string } | null = null;
-      for (let attempt = 0; attempt < 2 && !result; attempt++) {
-        result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-          source: buildDateOverrideScript(opts.timeOffsetMs),
-        }).catch(() => null) as { identifier: string } | null;
-      }
-      if (result?.identifier) {
-        this.dateOverrideScripts.set(id, result.identifier);
-        applied.timeOffsetMs = opts.timeOffsetMs;
+      if (opts.timeOffsetMs === null) {
+        delete applied.timeOffsetMs;
       } else {
-        this.log.error('sessions', 'Failed to apply clock offset override', { sessionId: id });
+        const offsetMs = opts.timeOffsetMs;
+        await dbg.sendCommand('Page.enable').catch((e) => this.warnCdpFailure(id, 'Page.enable', e));
+        // The CDP command occasionally fails transiently under system load
+        // (observed in CI) — retry once before giving up, and only report the
+        // offset as applied if the script genuinely got registered, so the UI
+        // never claims an override is active when it silently isn't.
+        let result: { identifier: string } | null = null;
+        for (let attempt = 0; attempt < 2 && !result; attempt++) {
+          result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+            source: buildDateOverrideScript(offsetMs),
+          }).catch(() => null) as { identifier: string } | null;
+        }
+        if (result?.identifier) {
+          this.dateOverrideScripts.set(id, result.identifier);
+          applied.timeOffsetMs = offsetMs;
+        } else {
+          this.log.error('sessions', 'Failed to apply clock offset override', { sessionId: id });
+          errors.timeOffsetMs = 'Failed to register the clock override script';
+        }
       }
     }
-    s.emulation = applied;
+
+    // Locale and User-Agent both ultimately funnel through the same single
+    // CDP command — Accept-Language only ever travels as
+    // Network.setUserAgentOverride's own acceptLanguage parameter, never a
+    // separate call — so issue exactly one combined call reflecting the
+    // *final* state whenever either is touched. Two separate calls (one per
+    // field) would have the second silently clobber the first's
+    // acceptLanguage, since each call fully replaces the prior override.
+    if (opts.locale !== undefined || opts.userAgent !== undefined) {
+      const nextLocale = opts.locale !== undefined ? (opts.locale === null ? undefined : opts.locale) : applied.locale;
+      const nextUa = opts.userAgent !== undefined
+        ? (opts.userAgent === null ? s.defaultUserAgent : opts.userAgent)
+        : (applied.userAgent ?? s.defaultUserAgent);
+
+      s.view.webContents.setUserAgent(nextUa);
+      const params: Record<string, unknown> = { userAgent: nextUa, userAgentMetadata: buildUserAgentMetadata(nextUa) };
+      if (nextLocale) params.acceptLanguage = acceptLanguageForLocale(nextLocale);
+      let uaError: string | undefined;
+      const uaOk = await dbg.sendCommand('Emulation.setUserAgentOverride', params)
+        .then(() => true)
+        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e); uaError = emulationErrorMessage(e); return false; });
+
+      if (opts.userAgent !== undefined) {
+        if (uaOk) { if (opts.userAgent === null) delete applied.userAgent; else applied.userAgent = opts.userAgent; }
+        else errors.userAgent = uaError ?? 'Failed to apply User-Agent override';
+      }
+
+      // Intl/navigator.language is a separate CDP surface from the header
+      // above — apply it independently so a failure in one doesn't also
+      // block the other from taking effect.
+      if (opts.locale !== undefined) {
+        const localeOk = await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale ?? '' })
+          .then(() => true)
+          .catch((e) => { this.warnCdpFailure(id, 'Emulation.setLocaleOverride', e); errors.locale = emulationErrorMessage(e); return false; });
+        if (localeOk) { if (opts.locale === null) delete applied.locale; else applied.locale = opts.locale; }
+      }
+    }
+
+    if (clearingEverything) this.emulationByPartition.delete(partition);
+    else this.emulationByPartition.set(partition, applied);
+    return errors;
   }
 
   getEmulation(id: string): EmulationOverrides | null {
-    return this.sessions.get(id)?.emulation ?? null;
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    return this.emulationByPartition.get(s.partition) ?? null;
   }
 
   private addHistoryEntry(id: string, url: string, failed = false) {

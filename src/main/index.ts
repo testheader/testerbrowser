@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
-import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides, buildMockFulfillParams } from './sessionManager';
+import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides, EmulationPatch, buildMockFulfillParams } from './sessionManager';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
@@ -643,7 +643,7 @@ ipcMain.handle('resilience:addRule',     (_e, id: string, rule: ResilienceRule) 
 ipcMain.handle('resilience:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeResilienceRule(id, ruleId));
 ipcMain.handle('resilience:toggleRule',  (_e, id: string, ruleId: string, enabled: boolean) => sessionManager?.toggleResilienceRule(id, ruleId, enabled));
 ipcMain.handle('resilience:updateRule',  (_e, id: string, ruleId: string, patch: Partial<ResilienceRule>) => sessionManager?.updateResilienceRule(id, ruleId, patch));
-ipcMain.handle('session:setEmulation', (_e, id: string, opts: { timezone?: string; locale?: string; latitude?: number; longitude?: number; accuracy?: number; timeOffsetMs?: number; userAgent?: string; clear?: boolean }) => sessionManager?.setEmulation(id, opts));
+ipcMain.handle('session:setEmulation', (_e, id: string, opts: EmulationPatch) => sessionManager?.setEmulation(id, opts) ?? {});
 ipcMain.handle('session:getEmulation', (_e, id: string) => sessionManager?.getEmulation(id) ?? null);
 ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.getCookies(id) ?? []);
 ipcMain.handle('sessions:getHistory',      (_e, id: string) => sessionManager?.getHistory(id) ?? []);
