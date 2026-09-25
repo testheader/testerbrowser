@@ -71,6 +71,17 @@ export function initJira() {
             <label class="jira-label">Description</label>
             <textarea class="jira-input jira-textarea" id="jiraBugDesc" rows="4" placeholder="Steps to reproduce, expected vs actual…"></textarea>
           </div>
+          <div class="jira-field jira-attach-group">
+            <label class="jira-label">Attach</label>
+            <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachScreenshot" /> Screenshot of the page</label>
+            <label class="jira-checkbox-row">
+              <input type="checkbox" id="jiraAttachHar" /> Network (HAR), last
+              <input type="number" id="jiraAttachHarMinutes" class="jira-input jira-minutes-input" min="1" max="120" value="15" /> minutes
+            </label>
+            <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachConsole" /> Console errors</label>
+            <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachSteps" /> Recorded steps</label>
+            <div class="jira-attach-warning" id="jiraAttachHarWarning" hidden>HAR may contain cookies and tokens — enable header redaction in Settings to strip them.</div>
+          </div>
           <div class="jira-setup-actions">
             <button class="jira-btn jira-btn-primary" id="jiraSubmitBugBtn">Submit Bug</button>
             <button class="jira-btn" id="jiraCancelBugBtn">Cancel</button>
@@ -94,6 +105,87 @@ export function initJira() {
   document.getElementById('jiraAddBugBtn').addEventListener('click', openBugForm);
   document.getElementById('jiraCancelBugBtn').addEventListener('click', closeBugForm);
   document.getElementById('jiraSubmitBugBtn').addEventListener('click', submitBug);
+
+  for (const id of ['jiraAttachScreenshot', 'jiraAttachHar', 'jiraAttachHarMinutes', 'jiraAttachConsole', 'jiraAttachSteps']) {
+    document.getElementById(id).addEventListener('change', saveAttachPrefs);
+  }
+}
+
+// #245: the four Attach checkboxes are remembered across bug reports —
+// default all on except Steps (a live recording isn't always what the
+// tester wants attached, and is often empty).
+const ATTACH_PREFS_KEY = 'tb-jira-attach-prefs';
+
+function loadAttachPrefs() {
+  try {
+    const raw = localStorage.getItem(ATTACH_PREFS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveAttachPrefs() {
+  try {
+    localStorage.setItem(ATTACH_PREFS_KEY, JSON.stringify({
+      screenshot: document.getElementById('jiraAttachScreenshot').checked,
+      har: document.getElementById('jiraAttachHar').checked,
+      harMinutes: document.getElementById('jiraAttachHarMinutes').value,
+      consoleErrors: document.getElementById('jiraAttachConsole').checked,
+      steps: document.getElementById('jiraAttachSteps').checked,
+    }));
+  } catch { /* localStorage unavailable — just don't persist */ }
+}
+
+function applyAttachPrefs() {
+  const prefs = loadAttachPrefs() || {};
+  document.getElementById('jiraAttachScreenshot').checked = prefs.screenshot ?? true;
+  document.getElementById('jiraAttachHar').checked = prefs.har ?? true;
+  document.getElementById('jiraAttachHarMinutes').value = prefs.harMinutes ?? '15';
+  document.getElementById('jiraAttachConsole').checked = prefs.consoleErrors ?? true;
+  document.getElementById('jiraAttachSteps').checked = prefs.steps ?? false;
+}
+
+function readAttachOptions() {
+  const harChecked = document.getElementById('jiraAttachHar').checked;
+  let minutes = parseInt(document.getElementById('jiraAttachHarMinutes').value, 10);
+  if (!Number.isFinite(minutes)) minutes = 15;
+  minutes = Math.min(120, Math.max(1, minutes));
+  return {
+    screenshot: document.getElementById('jiraAttachScreenshot').checked,
+    harMinutes: harChecked ? minutes : null,
+    consoleErrors: document.getElementById('jiraAttachConsole').checked,
+    steps: document.getElementById('jiraAttachSteps').checked,
+  };
+}
+
+// The Steps checkbox is disabled (with a title explaining why) when the
+// active tab has no current-or-most-recent recording to attach.
+async function updateStepsAvailability() {
+  const checkbox = document.getElementById('jiraAttachSteps');
+  let steps = [];
+  try { steps = await testerBrowser.tests.getEvidenceSteps(getActiveId()); } catch { /* treat as unavailable */ }
+  const hasSteps = Array.isArray(steps) && steps.length > 0;
+  checkbox.disabled = !hasSteps;
+  checkbox.title = hasSteps ? '' : 'No recorded steps for this tab yet';
+  if (!hasSteps) checkbox.checked = false;
+}
+
+async function updateHarRedactionWarning() {
+  let settings = {};
+  try { settings = await testerBrowser.settings.get(); } catch { /* show the warning by default */ }
+  document.getElementById('jiraAttachHarWarning').hidden = !!settings.redactSensitiveHeaders;
+}
+
+// #245: mirrors summarizeAttachmentResults() in src/main/jira.ts — the
+// renderer has no access to that TS module, so the small formatting logic
+// is duplicated here (see CLAUDE.md's note on in-page/cross-runtime pure
+// mirror functions), kept in sync by hand.
+function summarizeAttachments(results) {
+  if (!results || results.length === 0) return '';
+  const attached = results.filter(r => r.ok).length;
+  const failed = results.filter(r => !r.ok);
+  let summary = `attached ${attached}/${results.length}`;
+  if (failed.length) summary += ` (${failed.map(f => `${f.filename}: ${f.reason}`).join(', ')})`;
+  return summary;
 }
 
 async function loadSettings() {
@@ -207,6 +299,9 @@ function openBugForm() {
   document.getElementById('jiraBugDesc').value =
     `URL: ${currentUrl}\n\nSteps to reproduce:\n1. \n\nExpected:\n\nActual:\n`;
   document.getElementById('jiraBugMsg').textContent = '';
+  applyAttachPrefs();
+  updateStepsAvailability();
+  updateHarRedactionWarning();
 }
 
 function closeBugForm() {
@@ -225,7 +320,11 @@ async function submitBug() {
   msg.textContent = 'Creating…';
   msg.className = 'jira-msg';
 
-  const result = await testerBrowser.jira.createIssue(summary, desc, lastFetchedKey ? { linkTo: lastFetchedKey } : undefined);
+  const result = await testerBrowser.jira.createIssue(summary, desc, {
+    ...(lastFetchedKey ? { linkTo: lastFetchedKey } : {}),
+    sessionId: getActiveId(),
+    attach: readAttachOptions(),
+  });
   if (!result.ok) {
     msg.textContent = `Error: ${result.error}`;
     msg.className = 'jira-msg jira-msg-error';
@@ -233,10 +332,12 @@ async function submitBug() {
   }
 
   const issueUrl = `${cachedSettings?.baseUrl ?? ''}/browse/${result.key}`;
+  const attachSummary = summarizeAttachments(result.attachments);
   const linkNote = result.linkError
     ? ` (could not link to ${escHtml(lastFetchedKey)}: ${escHtml(result.linkError)})`
     : '';
-  msg.innerHTML = `Created: <a href="#" id="jiraCreatedLink">${escHtml(result.key)}</a>${linkNote}`;
+  msg.innerHTML = `Created: <a href="#" id="jiraCreatedLink">${escHtml(result.key)}</a>`
+    + `${attachSummary ? ` — ${escHtml(attachSummary)}` : ''}${linkNote}`;
   msg.className = 'jira-msg jira-msg-ok';
   document.getElementById('jiraCreatedLink').addEventListener('click', (e) => {
     e.preventDefault();

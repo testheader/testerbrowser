@@ -201,8 +201,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     saveSettings: (s: { baseUrl: string; email: string; projectKey: string; issueType: string; apiToken?: string }) =>
                     ipcRenderer.invoke('jira:saveSettings', s),
     fetchTicket:  (key: string) => ipcRenderer.invoke('jira:fetchTicket', key),
-    createIssue:  (summary: string, description: string, opts?: { linkTo?: string }) =>
-                    ipcRenderer.invoke('jira:createIssue', summary, description, opts),
+    createIssue:  (summary: string, description: string, opts?: {
+      linkTo?: string; sessionId?: string;
+      attach?: { screenshot: boolean; harMinutes: number | null; consoleErrors: boolean; steps: boolean };
+    }) => ipcRenderer.invoke('jira:createIssue', summary, description, opts),
   },
 
   emulation: {
@@ -230,6 +232,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     startRecording:    (id: string) => ipcRenderer.invoke('session:startRecording', id),
     stopRecording:     (id: string) => ipcRenderer.invoke('session:stopRecording', id),
     pollRecordingSteps:(id: string) => ipcRenderer.invoke('session:pollRecordingSteps', id),
+    getEvidenceSteps:  (id: string) => ipcRenderer.invoke('session:getEvidenceSteps', id),
     playbackStep:      (id: string, step: object) => ipcRenderer.invoke('session:playbackStep', id, step),
     countSelectorMatches: (id: string, selector: string) => ipcRenderer.invoke('session:countSelectorMatches', id, selector),
     captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),

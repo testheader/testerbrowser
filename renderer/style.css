@@ -1248,6 +1248,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .jira-msg-error { color: var(--error-strong); }
 .jira-msg-ok a { color: inherit; text-decoration: underline; }
 .jira-token-saved { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--success-strong); }
+.jira-attach-group { gap: 5px; }
+.jira-checkbox-row { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-primary); font-weight: normal; text-transform: none; letter-spacing: normal; }
+.jira-minutes-input { width: 48px; padding: 2px 5px; }
+.jira-attach-warning { font-size: 11px; color: var(--warn-strong); background: var(--warn-surface); border: 1px solid var(--warn-border); border-radius: 4px; padding: 4px 8px; }
 .jira-ticket-bar { display: flex; gap: 6px; }
 .jira-ticket-input { flex: 1; }
 .jira-ticket-display { margin-top: 2px; }

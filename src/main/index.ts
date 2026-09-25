@@ -14,7 +14,10 @@ import {
   RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX,
   RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX,
 } from './settingsPatch';
-import { migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile } from './jira';
+import {
+  migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile,
+  formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
+} from './jira';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -737,7 +740,63 @@ ipcMain.handle('jira:fetchTicket', async (_e, key: string) => {
   }
 });
 
-ipcMain.handle('jira:createIssue', async (_e, summary: string, description: string, opts?: { linkTo?: string }) => {
+interface JiraAttachOptions { screenshot: boolean; harMinutes: number | null; consoleErrors: boolean; steps: boolean; }
+
+// #245: one multipart POST per file, field name "file" — Jira Cloud's
+// attachment endpoint requires the X-Atlassian-Token: no-check header (it
+// otherwise rejects the request as a suspected XSRF attempt) and returns a
+// non-2xx (e.g. 413) for an attachment the site itself rejects, which is
+// reported back rather than thrown.
+async function uploadJiraAttachment(
+  baseUrl: string, email: string, token: string, issueKey: string,
+  filename: string, data: Buffer, contentType: string
+): Promise<JiraAttachmentUploadResult> {
+  const tooLarge = checkAttachmentSize(filename, data.byteLength);
+  if (tooLarge) return tooLarge;
+  try {
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(data)], { type: contentType }), filename);
+    const res = await net.fetch(`${baseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(issueKey)}/attachments`, {
+      method: 'POST',
+      headers: { 'Authorization': jiraAuthHeader(email, token), 'X-Atlassian-Token': 'no-check', 'Accept': 'application/json' },
+      body: form,
+    });
+    if (!res.ok) return { filename, ok: false, reason: `${res.status} ${res.statusText || 'error'}`.trim() };
+    return { filename, ok: true };
+  } catch (e) {
+    return { filename, ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Builds every evidence file the caller asked for (#245) — each builder is
+// independent and best-effort, so one failing to produce data (e.g. no
+// steps recorded) just means that file is left out, not that the whole
+// attach step fails.
+async function buildJiraEvidenceFiles(sessionId: string, attach: JiraAttachOptions): Promise<{ filename: string; data: Buffer; contentType: string }[]> {
+  const files: { filename: string; data: Buffer; contentType: string }[] = [];
+  if (!sessionManager) return files;
+
+  if (attach.screenshot) {
+    const png = await sessionManager.capturePageScreenshot(sessionId);
+    if (png) files.push({ filename: 'screenshot.png', data: png, contentType: 'image/png' });
+  }
+  if (attach.harMinutes != null) {
+    const sinceTs = Date.now() - attach.harMinutes * 60_000;
+    const harJson = sessionManager.buildHarSince(sessionId, sinceTs);
+    if (harJson) files.push({ filename: 'network.har', data: Buffer.from(harJson, 'utf-8'), contentType: 'application/json' });
+  }
+  if (attach.consoleErrors) {
+    const text = formatConsoleErrors(sessionManager.getConsoleErrorRows(sessionId));
+    if (text) files.push({ filename: 'console-errors.txt', data: Buffer.from(text, 'utf-8'), contentType: 'text/plain' });
+  }
+  if (attach.steps) {
+    const steps = sessionManager.getEvidenceSteps(sessionId);
+    if (steps.length) files.push({ filename: 'steps.json', data: Buffer.from(JSON.stringify(steps, null, 2), 'utf-8'), contentType: 'application/json' });
+  }
+  return files;
+}
+
+ipcMain.handle('jira:createIssue', async (_e, summary: string, description: string, opts?: { linkTo?: string; sessionId?: string; attach?: JiraAttachOptions }) => {
   const s = jiraStore.get();
   const token = getJiraToken();
   if (!s.baseUrl || !s.email || !token || !s.projectKey) return { ok: false, error: 'Jira not configured' };
@@ -779,7 +838,19 @@ ipcMain.handle('jira:createIssue', async (_e, summary: string, description: stri
       });
       if (!linkResult.ok) linkError = linkResult.error;
     }
-    return { ok: true, key, linkError };
+
+    // Attachments are best-effort and never retroactively fail the issue
+    // that already exists — each file's own outcome is reported instead.
+    let attachments: JiraAttachmentUploadResult[] | undefined;
+    if (opts?.attach && opts.sessionId) {
+      const files = await buildJiraEvidenceFiles(opts.sessionId, opts.attach);
+      attachments = [];
+      for (const f of files) {
+        attachments.push(await uploadJiraAttachment(s.baseUrl, s.email, token, key, f.filename, f.data, f.contentType));
+      }
+    }
+
+    return { ok: true, key, linkError, attachments };
   } catch (e: unknown) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -1337,6 +1408,11 @@ ipcMain.handle('tests:delete', (_e, id: string) => testsStore.update(all => all.
 ipcMain.handle('session:startRecording',     (_e, id: string) => sessionManager?.startRecording(id) ?? null);
 ipcMain.handle('session:stopRecording',      (_e, id: string) => sessionManager?.stopRecording(id) ?? []);
 ipcMain.handle('session:pollRecordingSteps', (_e, id: string) => sessionManager?.pollRecordingSteps(id) ?? []);
+// #245: the tab's current-or-most-recent recording, for the Jira bug
+// report's "Recorded steps" attachment checkbox to know whether there's
+// anything to enable/attach without side effects (unlike pollRecordingSteps,
+// this never harvests from the live page).
+ipcMain.handle('session:getEvidenceSteps',   (_e, id: string) => sessionManager?.getEvidenceSteps(id) ?? []);
 ipcMain.handle('session:playbackStep',       (_e, id: string, step: TestStep) => sessionManager?.playbackStep(id, step) ?? null);
 ipcMain.handle('session:countSelectorMatches', (_e, id: string, selector: string) => sessionManager?.countSelectorMatches(id, selector) ?? -1);
 

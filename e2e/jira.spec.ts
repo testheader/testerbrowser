@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import fs from 'fs';
 import path from 'path';
-import { getMainWindow, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -117,4 +117,92 @@ test('creating a bug while a ticket is loaded links to it and shows a clickable 
   await expect.poll(async () =>
     app.evaluate(() => (globalThis as unknown as { __openExternalCalls: string[] }).__openExternalCalls)
   ).toEqual([fixtures.url('/browse/TEST-2')]);
+});
+
+interface RecordedAttachment {
+  filename: string; size: number; contentType: string; hadAtlassianToken: boolean; dataBase64: string;
+}
+
+async function getRecordedAttachments(): Promise<RecordedAttachment[]> {
+  return (await fetch(fixtures.url('/rest/api/3/__debug/attachments'))).json();
+}
+
+// #245: real evidence, actually uploaded — not just that the app claims to
+// have attached something. Steps stays disabled since nothing was recorded
+// on this tab; screenshot/HAR/console-errors are on by default and get
+// genuinely uploaded, each with the required X-Atlassian-Token header.
+test('creating a bug with the evidence checkboxes checked attaches screenshot, HAR and console errors; Steps stays disabled with nothing recorded (#245)', async () => {
+  // Every earlier bug-report submission in this file also uploaded the
+  // (default-on) screenshot/HAR/console-errors evidence as a side effect,
+  // without ever reading this debug endpoint — drain that backlog first so
+  // this test only sees what its own submission below actually uploads.
+  await getRecordedAttachments();
+
+  const urlPath = '/console/logs.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+  // logs.html emits console.error('error on load') plus a missing-image
+  // Log.entryAdded (level error) on load — captured by the always-on
+  // recorder regardless of whether the console panel is even open.
+  await window.waitForTimeout(1_500);
+
+  await window.click('#consoleTabJira');
+  await window.click('#jiraAddBugBtn');
+
+  const stepsCheckbox = window.locator('#jiraAttachSteps');
+  await expect(stepsCheckbox).toBeDisabled();
+  await expect(stepsCheckbox).not.toBeChecked();
+  await expect(stepsCheckbox).toHaveAttribute('title', /no recorded steps/i);
+
+  await expect(window.locator('#jiraAttachScreenshot')).toBeChecked();
+  await expect(window.locator('#jiraAttachHar')).toBeChecked();
+  await expect(window.locator('#jiraAttachConsole')).toBeChecked();
+
+  await window.fill('#jiraBugSummary', 'Evidence bug');
+  await window.click('#jiraSubmitBugBtn');
+
+  await expect(window.locator('#jiraBugMsg')).toContainText('attached 3/3', { timeout: 10_000 });
+
+  const attachments = await getRecordedAttachments();
+  expect(attachments.map((a) => a.filename).sort()).toEqual(['console-errors.txt', 'network.har', 'screenshot.png']);
+  for (const a of attachments) {
+    expect(a.hadAtlassianToken).toBe(true);
+    expect(a.size).toBeGreaterThan(0);
+  }
+
+  const har = JSON.parse(
+    Buffer.from(attachments.find((a) => a.filename === 'network.har')!.dataBase64, 'base64').toString('utf-8')
+  );
+  expect(har.log.version).toBe('1.2');
+
+  const consoleErrorsText = Buffer.from(
+    attachments.find((a) => a.filename === 'console-errors.txt')!.dataBase64, 'base64'
+  ).toString('utf-8');
+  expect(consoleErrorsText).toContain('error on load');
+});
+
+// #245: a rejected attachment (413) never loses the already-created issue,
+// and the failure names the specific file — not a generic error.
+test('a rejected attachment is reported as a partial failure, naming the file, without losing the created issue (#245)', async () => {
+  await fetch(fixtures.url('/rest/api/3/__debug/attachmentStatus'), {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ filename: 'network.har', status: 413 }),
+  });
+
+  await window.click('#consoleTabJira');
+  await window.click('#jiraAddBugBtn');
+  await window.fill('#jiraBugSummary', 'Partial failure bug');
+  await window.click('#jiraSubmitBugBtn');
+
+  await expect(window.locator('#jiraBugMsg')).toContainText('attached 2/3', { timeout: 10_000 });
+  await expect(window.locator('#jiraBugMsg')).toContainText('network.har');
+  await expect(window.locator('#jiraCreatedLink')).toBeVisible();
+
+  // Reset the override so it doesn't leak into any later run of this file.
+  await fetch(fixtures.url('/rest/api/3/__debug/attachmentStatus'), {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}),
+  });
 });

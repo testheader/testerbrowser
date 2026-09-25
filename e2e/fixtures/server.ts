@@ -82,6 +82,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/rest/api/3/issue' && req.method === 'POST') return handleJiraCreateIssue(res);
   if (u.pathname === '/rest/api/3/issueLink' && req.method === 'POST') return handleJiraIssueLink(req, res);
   if (u.pathname === '/rest/api/3/__debug/issueLinks') return handleJiraIssueLinksDebug(res);
+  if (/^\/rest\/api\/3\/issue\/[^/]+\/attachments$/.test(u.pathname) && req.method === 'POST') {
+    return handleJiraAttachmentUpload(req, res);
+  }
+  if (u.pathname === '/rest/api/3/__debug/attachments') return handleJiraAttachmentsDebug(res);
+  if (u.pathname === '/rest/api/3/__debug/attachmentStatus' && req.method === 'POST') {
+    return handleJiraSetAttachmentStatus(req, res);
+  }
 
   return handleStatic(u, res);
 }
@@ -232,6 +239,96 @@ function handleJiraIssueLinksDebug(res: ServerResponse): void {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify(jiraIssueLinks));
   jiraIssueLinks = [];
+}
+
+// #245: evidence attachments. jiraAttachmentStatusOverrides lets a test make
+// the "upload" of one specific filename fail (e.g. 413) without touching
+// the others, to exercise the app's partial-failure reporting.
+interface RecordedAttachment { filename: string; size: number; contentType: string; hadAtlassianToken: boolean; dataBase64: string; }
+let jiraAttachments: RecordedAttachment[] = [];
+let jiraAttachmentStatusOverrides: Record<string, number> = {};
+
+async function readBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks);
+}
+
+// A hand-rolled, single-file-part multipart/form-data parser — enough to
+// read back what Electron's net.fetch(FormData/Blob) actually sent, without
+// pulling in a parsing dependency just for this fixture. Splits on the
+// boundary as raw bytes (not strings) so a binary part, e.g. screenshot.png,
+// round-trips intact.
+function parseMultipartFile(body: Buffer, contentType: string | undefined): { filename: string; contentType: string; data: Buffer } | null {
+  const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType ?? '');
+  const boundary = boundaryMatch ? (boundaryMatch[1] ?? boundaryMatch[2]).trim() : null;
+  if (!boundary) return null;
+  const delimiter = Buffer.from(`--${boundary}`);
+
+  const parts: Buffer[] = [];
+  let start = body.indexOf(delimiter);
+  while (start !== -1) {
+    const next = body.indexOf(delimiter, start + delimiter.length);
+    if (next === -1) break;
+    parts.push(body.subarray(start + delimiter.length, next));
+    start = next;
+  }
+
+  for (const part of parts) {
+    const headerEnd = part.indexOf('\r\n\r\n');
+    if (headerEnd === -1) continue;
+    const headerText = part.subarray(0, headerEnd).toString('utf-8');
+    const filenameMatch = /filename="([^"]*)"/.exec(headerText);
+    if (!filenameMatch) continue; // not the file field (e.g. a text field part)
+    const partContentType = /content-type:\s*([^\r\n]+)/i.exec(headerText)?.[1]?.trim() ?? 'application/octet-stream';
+    // Body runs from after the blank line to the trailing \r\n before the next boundary.
+    let dataEnd = part.length;
+    if (part[dataEnd - 2] === 0x0d && part[dataEnd - 1] === 0x0a) dataEnd -= 2;
+    const data = part.subarray(headerEnd + 4, dataEnd);
+    return { filename: filenameMatch[1], contentType: partContentType, data };
+  }
+  return null;
+}
+
+async function handleJiraAttachmentUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readBody(req);
+  const file = parseMultipartFile(body, req.headers['content-type']);
+  if (!file) {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ errorMessages: ['No file part found'] }));
+    return;
+  }
+
+  jiraAttachments.push({
+    filename: file.filename,
+    size: file.data.length,
+    contentType: file.contentType,
+    hadAtlassianToken: req.headers['x-atlassian-token'] === 'no-check',
+    dataBase64: file.data.toString('base64'),
+  });
+
+  const override = jiraAttachmentStatusOverrides[file.filename];
+  if (override) {
+    res.writeHead(override, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ errorMessages: [`fixture override: ${override}`] }));
+    return;
+  }
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify([{ filename: file.filename, size: file.data.length }]));
+}
+
+function handleJiraAttachmentsDebug(res: ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(jiraAttachments));
+  jiraAttachments = [];
+}
+
+async function handleJiraSetAttachmentStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = await readJsonBody(req) as { filename?: string; status?: number } | null;
+  if (body?.filename && body.status) jiraAttachmentStatusOverrides[body.filename] = body.status;
+  else jiraAttachmentStatusOverrides = {};
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end('{}');
 }
 
 async function handleStatic(u: URL, res: ServerResponse): Promise<void> {

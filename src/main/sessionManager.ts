@@ -10,6 +10,7 @@ import { AppLog } from './appLogger';
 
 import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
 import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
+import { filterRowsSince } from './jira';
 import {
   RGB, WCAG_AA_NORMAL, WCAG_AA_LARGE, WCAG_AAA_NORMAL, WCAG_AAA_LARGE,
   contrastRatio, isLargeText, parseCssColor,
@@ -1080,6 +1081,9 @@ export class SessionManager {
   // Accumulates recorded steps (keyed by step id) across a session's recording, so
   // steps survive a full page navigation destroying the page's own JS context.
   private recordingBuffers = new Map<string, Map<string, TestStep>>();
+  // Cached by stopRecording() before it clears the live buffer — backs
+  // getEvidenceSteps()'s "current or most recent recording" (#245).
+  private lastRecordingSteps = new Map<string, TestStep[]>();
   // Live leader→follower links ("Follow Along"), keyed by leader session id.
   private followPairings = new Map<string, FollowPairing>();
   // CDP script identifier of the injected Date-override shim, keyed by session id.
@@ -2167,6 +2171,47 @@ export class SessionManager {
     }
   }
 
+  // --- Evidence for the Jira "Attach" group (#245) ---
+
+  async capturePageScreenshot(id: string): Promise<Buffer | null> {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    try {
+      const img = await s.view.webContents.capturePage();
+      return img.toPNG();
+    } catch (e) {
+      this.log.warn('sessions', 'Failed to capture screenshot for Jira attachment', { sessionId: id, error: String(e) });
+      return null;
+    }
+  }
+
+  // HAR built from every stored network-* row at or after sinceTs (or the
+  // full history when sinceTs is null) — the same buildHar() the manual
+  // "Export HAR" button uses (#232), just returned as a string instead of
+  // written to a file.
+  buildHarSince(id: string, sinceTs: number | null): string | null {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    const rows = s.recorder.getAllNetworkRows();
+    const filtered = sinceTs != null ? filterRowsSince(rows, sinceTs) : rows;
+    const har = buildHar(filtered, { creatorVersion: app.getVersion(), pageUrl: s.currentUrl });
+    return JSON.stringify(har, null, 2);
+  }
+
+  getConsoleErrorRows(id: string) {
+    return this.sessions.get(id)?.recorder.getConsoleErrorRows() ?? [];
+  }
+
+  // The active tab's *current* in-progress recording if one is running,
+  // else its most recently *stopped* recording (stopRecording() below
+  // caches the result here before clearing the live buffer) — "current or
+  // most recent" per #245's acceptance criteria. Empty when neither exists.
+  getEvidenceSteps(id: string): TestStep[] {
+    const live = this.getBufferedSteps(id);
+    if (live.length) return live;
+    return this.lastRecordingSteps.get(id) ?? [];
+  }
+
   // Creates a brand-new session from an exported snapshot file, rather than
   // overwriting an existing tab — the entry point for File → Import session.
   async importSessionAsNewDialog(): Promise<void> {
@@ -3043,6 +3088,7 @@ export class SessionManager {
     this.sessionNotes.delete(id);
     this.recordingHandlers.delete(id);
     this.recordingBuffers.delete(id);
+    this.lastRecordingSteps.delete(id);
     this.dateOverrideScripts.delete(id);
     this.sessionHistory.delete(id);
     const hung = this.hungRequests.get(id);
@@ -3126,6 +3172,7 @@ export class SessionManager {
       this.log.warn('recording', 'Failed to harvest final recording steps on stop', { sessionId: id, error: String(e) });
     }
     const result = this.getBufferedSteps(id);
+    if (result.length) this.lastRecordingSteps.set(id, result);
     this.recordingBuffers.delete(id);
     this.log.info('recording', 'Recording stopped', { sessionId: id });
     return result;

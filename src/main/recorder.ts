@@ -317,6 +317,16 @@ export class SessionRecorder {
       .all(this.sessionId) as EventRow[];
   }
 
+  /** Every stored console/log/exception row for this session, unbounded by
+   *  getTimeline()'s limit and its all-kinds cap — #245's "Console errors"
+   *  bug-report attachment needs the full console-error history, not just
+   *  whatever survived inside the most recent 500 events across every kind. */
+  getConsoleErrorRows(): EventRow[] {
+    return this.db
+      .prepare(`SELECT * FROM events WHERE session_id = ? AND kind IN ('console','log','exception') ORDER BY ts ASC, id ASC`)
+      .all(this.sessionId) as EventRow[];
+  }
+
   destroy() {
     try {
       this.wc.debugger.detach();
