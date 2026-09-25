@@ -882,6 +882,23 @@ function isSafeUrl(url: string): boolean {
 
 // ─── Recording/Playback ───────────────────────────────────────────────────────
 
+// #242: pure mirror of RECORDING_SCRIPT's genSel() — specifically the
+// data-*-attribute branch that shipped the bug this ticket fixes (it always
+// named the selector "data-testid" regardless of which attribute actually
+// matched). The in-page script can't import real code (it runs via
+// executeJavaScript with no access to Node modules), so the two are
+// hand-kept in sync rather than sharing code — this one exists purely so
+// the priority-order/escaping logic has a unit-tested equivalent.
+// `getAttr` mirrors `el.getAttribute`; returns null when none of the four
+// attributes are present, same as genSel falling through to its next branch.
+export function dataAttrSelector(getAttr: (name: string) => string | null): string | null {
+  for (const attr of ['data-testid', 'data-test', 'data-cy', 'data-qa']) {
+    const value = getAttr(attr);
+    if (value) return `[${attr}="${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`;
+  }
+  return null;
+}
+
 const RECORDING_SCRIPT = `(function(){
   if(window.__tbRecording)return;
   window.__tbRecording=true;
@@ -889,8 +906,11 @@ const RECORDING_SCRIPT = `(function(){
   function esc(s){return(s||'').replace(/\\\\/g,'\\\\').replace(/"/g,'\\"');}
   function genSel(el){
     if(!el)return'';
-    var td=el.getAttribute('data-testid')||el.getAttribute('data-test')||el.getAttribute('data-cy')||el.getAttribute('data-qa');
-    if(td)return'[data-testid="'+esc(td)+'"]';
+    var dataAttrs=['data-testid','data-test','data-cy','data-qa'];
+    for(var di=0;di<dataAttrs.length;di++){
+      var dv=el.getAttribute(dataAttrs[di]);
+      if(dv)return'['+dataAttrs[di]+'="'+esc(dv)+'"]';
+    }
     if(el.id&&/^[a-zA-Z_-]/.test(el.id)&&el.id.length<80)return'#'+CSS.escape(el.id);
     var nm=el.getAttribute('name');
     if(nm)return el.tagName.toLowerCase()+'[name="'+esc(nm)+'"]';
@@ -911,8 +931,20 @@ const RECORDING_SCRIPT = `(function(){
     var el=e.target;if(!el||el===document.documentElement||el===document.body)return;
     addStep({type:'click',selector:genSel(el),description:((el.textContent||el.value||el.getAttribute('aria-label')||'').trim()).slice(0,60),tagName:el.tagName.toLowerCase()});
   },true);
+  function upsertCheck(el){
+    var sel=genSel(el);
+    var steps=window.__tbTestSteps;
+    var last=steps.length?steps[steps.length-1]:null;
+    if(last&&last.type==='check'&&last.selector===sel){
+      last.value=el.checked;last.timestamp=Date.now();
+    }else{
+      addStep({type:'check',selector:sel,value:el.checked,tagName:el.tagName.toLowerCase()});
+    }
+  }
   function upsertFill(el){
-    if(!el||!('value' in el))return;
+    if(!el)return;
+    if(el.type==='checkbox'||el.type==='radio'){upsertCheck(el);return;}
+    if(!('value' in el))return;
     var pw=el.type==='password';
     var sel=genSel(el);
     var steps=window.__tbTestSteps;
@@ -932,14 +964,22 @@ const RECORDING_SCRIPT = `(function(){
 
 export interface TestStep {
   id: string;
-  type: 'navigate' | 'click' | 'fill' | 'assert-visible' | 'assert-not-visible' | 'assert-text' | 'assert-value' | 'assert-url' | 'assert-attr' | 'assert-enabled' | 'wait-visible' | 'wait-navigation';
+  type: 'navigate' | 'click' | 'fill' | 'check' | 'assert-visible' | 'assert-not-visible' | 'assert-text' | 'assert-value' | 'assert-url' | 'assert-attr' | 'assert-enabled' | 'wait-visible' | 'wait-navigation';
   selector?: string;
-  value?: string;
+  // string for every step except 'check', which records the resulting
+  // el.checked state as a real boolean (#242) — not the checkbox/radio's
+  // DOM `value` attribute (typically the meaningless string "on").
+  value?: string | boolean;
   url?: string;
   attr?: string;
   timestamp?: number;
   description?: string;
   tagName?: string;
+  // A password field's 'fill' step — its recorded/saved value is always the
+  // literal placeholder '[hidden]', never the real keystrokes. Playback
+  // never types that placeholder (#242); the renderer substitutes a real,
+  // never-persisted value collected from the tester before calling
+  // playbackStep for this step.
   sensitive?: boolean;
 }
 
@@ -968,14 +1008,34 @@ interface FollowPairing {
   navInPageHandler: (_e: unknown, url: string) => void;
 }
 
-function buildPlaybackScript(step: TestStep): string {
+// Exported so #242's fixes (the sensitive-fill guard and the 'check' step
+// type) have a unit-tested equivalent, since this function's actual work —
+// picking the right generated-script branch per step — lives in real,
+// directly importable TypeScript rather than trapped in an in-page template
+// string the way RECORDING_SCRIPT's genSel() is (see dataAttrSelector below
+// for that one).
+export function buildPlaybackScript(step: TestStep): string {
   const sel = JSON.stringify(step.selector ?? '');
   const val = JSON.stringify(step.value ?? '');
   const helpers = `var __wait=function(fn,ms){return new Promise(function(res,rej){var s=Date.now();(function poll(){try{var r=fn();if(r!==null&&r!==false&&r!==undefined){res(r);return;}}catch(ex){}if(Date.now()-s>(ms||10000)){rej(new Error('Timeout'));return;}setTimeout(poll,120);})();});};var __find=function(sel){var el=document.querySelector(sel);if(!el)throw new Error('Element not found: '+sel);return el;};var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};`;
   switch (step.type) {
     case 'navigate': return `(function(){try{location.href=${JSON.stringify(step.url??'')};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'click': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});__find(${sel}).click();return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
-    case 'fill': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});el.focus();el.value=${val};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'fill':
+      // #242: the literal '[hidden]' placeholder must never be typed —
+      // callers (executeTest's sensitive-value prompt in record-playback.js)
+      // are responsible for substituting a real, never-persisted value onto
+      // a *copy* of the step before calling playbackStep. If one somehow
+      // reaches here un-substituted, fail loudly instead of typing the
+      // placeholder text into the field.
+      if (step.sensitive && (step.value === '[hidden]' || step.value === undefined)) {
+        return `(function(){return {success:false,error:'Sensitive step has no real value to type — it should have been substituted before playback.'};})()`;
+      }
+      return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});el.focus();el.value=${val};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'check': {
+      const checked = step.value === true;
+      return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});el.checked=${JSON.stringify(checked)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    }
     case 'assert-visible': return `(function(){var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};try{var el=document.querySelector(${sel});if(!el||!__vis(el))return {success:false,error:'Not visible: '+${sel}};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'assert-not-visible': return `(function(){var el=document.querySelector(${sel});function v(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0;}if(el&&v(el))return {success:false,error:'Element visible: '+${sel}};return {success:true};})()`;
     case 'assert-text': return `(function(){try{var el=document.querySelector(${sel});if(!el)return {success:false,error:'Not found: '+${sel}};var t=(el.textContent||'').trim();if(!t.includes(${val}))return {success:false,error:'Text "'+t+'" does not contain "'+${val}+'"'};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
@@ -3153,14 +3213,21 @@ export class SessionManager {
     for (const step of steps) {
       // Full navigations are mirrored separately (see navHandler above) — the
       // recorded 'navigate' step type only covers in-page history API calls.
-      if (step.type !== 'click' && step.type !== 'fill') continue;
+      if (step.type !== 'click' && step.type !== 'fill' && step.type !== 'check') continue;
+      // #242: never relay the literal '[hidden]' placeholder as a keystroke
+      // onto the follower — there's no interactive pause here (unlike a
+      // saved-test Run), so a sensitive fill is silently skipped rather than
+      // typed; the follower's own tester types the real credential.
+      if (step.type === 'fill' && step.sensitive) continue;
       const lastRelayedValue = pairing.relayedSteps.get(step.id);
       if (step.type === 'click') {
         if (lastRelayedValue !== undefined) continue;
+      } else if (step.type === 'check') {
+        if (lastRelayedValue === String(step.value)) continue;
       } else if (lastRelayedValue === (step.value ?? '')) {
         continue;
       }
-      pairing.relayedSteps.set(step.id, step.value ?? '');
+      pairing.relayedSteps.set(step.id, step.type === 'check' ? String(step.value) : ((step.value as string) ?? ''));
       const result = await this.playbackStep(pairing.followerId, step);
       this.win.webContents.send('followAlong:stepResult', {
         leaderId, followerId: pairing.followerId, step, result,

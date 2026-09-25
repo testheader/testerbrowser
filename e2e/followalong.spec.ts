@@ -100,6 +100,17 @@ test('leader interactions are mirrored onto the follower in near real time', asy
 
   await leaderTab.evaluate(() => (document.querySelector('[data-testid="rp-btn"]') as HTMLElement).click());
   await expect(window.locator('#followLog')).toContainText('mirrored', { timeout: 20_000 });
+
+  // #242: a checkbox interaction relays as a real checked-state change
+  // ('check' step type, dispatched the same way the fill/click cases
+  // above are), not a meaningless "on" string typed into a text field.
+  await leaderTab.evaluate(() => {
+    const el = document.querySelector('[data-testid="rp-checkbox"]') as HTMLInputElement;
+    el.checked = true;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(followerTab.locator('[data-testid="rp-checkbox"]')).toBeChecked({ timeout: 20_000 });
 });
 
 test('mirrored navigation logs the destination URL, and stops logging once disabled (#186)', async () => {

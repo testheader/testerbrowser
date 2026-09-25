@@ -80,6 +80,116 @@ test('recording a fill + click and running it back actually replays successfully
   await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
 });
 
+// ── #242: genSel names whichever data-* attribute actually matched ─────────
+
+test('a click on a data-cy element records the selector [data-cy="..."], not [data-testid="..."] (#242)', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'data-cy selector');
+  await window.click('#rpStartBtn');
+
+  await tab.click('[data-cy="submit"]');
+
+  await window.click('#rpStopBtn');
+  await expect(window.locator('#rpLiveSteps .rp-step-desc')).toHaveText('[data-cy="submit"]');
+
+  await window.click('#rpSaveBtn');
+  const testItem = window.locator('.rp-test-item', { hasText: 'data-cy selector' });
+  await testItem.locator('.rp-test-expand').click();
+  await expect(window.locator('.rp-saved-steps .rp-step-desc')).toHaveValue('[data-cy="submit"]');
+  // Collapse again — an expanded saved test renders its own .rp-live-step
+  // rows (renderSavedStepsHtml reuses that class), and later tests in this
+  // file query that class unscoped, assuming nothing is left expanded.
+  await testItem.locator('.rp-test-expand').click();
+});
+
+// ── #242: checkboxes/radios record as a boolean 'check' step, not 'fill' ───
+
+test('recording check then uncheck replays back to the unchecked state, not "on" typed anywhere (#242)', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'check uncheck');
+  await window.click('#rpStartBtn');
+
+  await tab.check('[data-testid="rp-checkbox"]');
+  await tab.uncheck('[data-testid="rp-checkbox"]');
+
+  await window.click('#rpStopBtn');
+
+  // Each check()/uncheck() is its own real click, so — unlike fill's
+  // keystroke coalescing — this records click, check(true), click,
+  // check(false): 4 steps, not 1. What matters here is the *type* and
+  // *value* the last one recorded, not a step count.
+  const liveSteps = window.locator('#rpLiveSteps .rp-live-step');
+  await expect(liveSteps).toHaveCount(4);
+  await expect(liveSteps.last().locator('.rp-step-type')).toHaveText('uncheck ☐');
+
+  await window.click('#rpSaveBtn');
+
+  // Leave the checkbox checked before Run, so playback replaying "unchecked"
+  // is a real, observable state change — not a no-op against the default.
+  await tab.check('[data-testid="rp-checkbox"]');
+  await expect(tab.locator('[data-testid="rp-checkbox"]')).toBeChecked();
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'check uncheck' });
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+  await expect(tab.locator('[data-testid="rp-checkbox"]')).not.toBeChecked();
+});
+
+// ── #242: a password field's saved value is never typed literally ──────────
+
+test('recording a password field masks the saved step, and Run prompts for the real value instead of typing "[hidden]" (#242)', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'password field');
+  await window.click('#rpStartBtn');
+
+  await tab.fill('[data-testid="rp-password"]', 'super-secret-value');
+
+  await window.click('#rpStopBtn');
+  await expect(window.locator('#rpLiveSteps .rp-step-val')).toHaveText('[hidden]');
+
+  await window.click('#rpSaveBtn');
+  const testItem = window.locator('.rp-test-item', { hasText: 'password field' });
+  await testItem.locator('.rp-test-expand').click();
+  // The saved step's editable value field also never shows the real value —
+  // rendered empty (masked), not the literal '[hidden]' text either.
+  await expect(window.locator('.rp-saved-steps input[placeholder*="hidden"]')).toHaveValue('');
+  // Collapse again — an expanded saved test renders its own .rp-live-step
+  // rows (renderSavedStepsHtml reuses that class), and later tests in this
+  // file query that class unscoped, assuming nothing is left expanded.
+  await testItem.locator('.rp-test-expand').click();
+
+  await testItem.locator('.rp-run-once').click();
+
+  // Run pauses on an inline prompt for the real value instead of running
+  // straight through and typing the placeholder into the field.
+  const dlg = window.locator('#rpSensitiveDlg');
+  await expect(dlg).toBeVisible();
+  await dlg.locator('input[type="password"]').fill('the-real-value');
+  await dlg.locator('#rpSensitiveContinue').click();
+  await expect(dlg).toBeHidden();
+
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+  await expect(tab.locator('[data-testid="rp-password"]')).toHaveValue('the-real-value');
+});
+
 // ── #224: the 600ms poll must merge, not replace, currentSteps ─────────────
 
 test('deleting a step mid-recording keeps it removed as new steps keep arriving (#224)', async () => {

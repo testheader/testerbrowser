@@ -25,6 +25,22 @@
      instead of 1 each time, exposing state bleed from the previous run. -->
 <p id="rp-counter" data-testid="rp-counter">0</p>
 
+<!-- data-cy, not data-testid — exercises genSel()'s "use whichever data-*
+     attribute actually matched" fix (#242). -->
+<p>
+  <button data-cy="submit">Submit (data-cy)</button>
+</p>
+
+<!-- Unchecked by default — recording check/uncheck exercises the 'check'
+     step type (#242). -->
+<p>
+  <input type="checkbox" data-testid="rp-checkbox" />
+</p>
+
+<p>
+  <input type="password" data-testid="rp-password" />
+</p>
+
 <script>
   let rpClickCount = 0;
   document.querySelector('[data-testid="rp-btn"]').addEventListener('click', () => {

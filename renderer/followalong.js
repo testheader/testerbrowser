@@ -119,7 +119,8 @@ function logStepResult(step, result) {
   const log = document.getElementById('followLog');
   if (!log) return;
   const desc = step.type === 'click' ? `click ${step.selector}`
-    : step.type === 'fill' ? `fill ${step.selector}`
+    : step.type === 'check' ? `${step.value ? 'check' : 'uncheck'} ${step.selector}`
+    : step.type === 'fill' ? (step.sensitive ? `fill ${step.selector} (hidden — not relayed)` : `fill ${step.selector}`)
     : step.type === 'navigate' ? `navigate to ${truncateUrl(step.url || '')}`
     : step.type === 'navigate-in-page' ? `in-page navigate to ${truncateUrl(step.url || '')}`
     : step.type;

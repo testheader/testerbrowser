@@ -299,11 +299,13 @@ function renderLiveSteps() {
 // actually understands for that step's type (STEP_TYPE_DEFS).
 function stepRowFieldsHtml(step, idx, editable) {
   const isAssertType = step.type.startsWith('assert');
+  const isCheckType = step.type === 'check';
   if (!editable) {
+    const typeLabel = isCheckType ? (step.value ? 'check ☑' : 'uncheck ☐') : step.type;
     return `
-      <span class="rp-step-type ${isAssertType ? 'rp-type-assert' : ''}">${step.type}</span>
+      <span class="rp-step-type ${isAssertType ? 'rp-type-assert' : ''}">${escHtml(typeLabel)}</span>
       <span class="rp-step-desc">${escHtml(step.selector || step.url || step.description || '')}</span>
-      ${step.value && !step.sensitive ? `<span class="rp-step-val">${escHtml(String(step.value).slice(0, 40))}</span>` : ''}
+      ${step.value && !step.sensitive && !isCheckType ? `<span class="rp-step-val">${escHtml(String(step.value).slice(0, 40))}</span>` : ''}
       ${step.sensitive ? '<span class="rp-step-val">[hidden]</span>' : ''}
     `;
   }
@@ -322,9 +324,11 @@ function stepRowFieldsHtml(step, idx, editable) {
     ${def.needsAttr
       ? `<input class="rp-input rp-step-val rp-step-field" data-step-idx="${idx}" data-field="attr" value="${escHtml(step.attr || '')}" placeholder="Attribute" />`
       : ''}
-    ${def.needsValue
-      ? `<input class="rp-input rp-step-val rp-step-field" data-step-idx="${idx}" data-field="value" value="${step.sensitive ? '' : escHtml(step.value || '')}" placeholder="${step.sensitive ? '[hidden] — type to replace' : (def.valuePlaceholder || 'Value')}" />`
-      : ''}
+    ${isCheckType
+      ? `<label class="rp-step-check-editor"><input type="checkbox" class="rp-step-field" data-step-idx="${idx}" data-field="value" ${step.value ? 'checked' : ''} /> checked</label>`
+      : def.needsValue
+        ? `<input class="rp-input rp-step-val rp-step-field" data-step-idx="${idx}" data-field="value" value="${step.sensitive ? '' : escHtml(step.value || '')}" placeholder="${step.sensitive ? '[hidden] — type to replace' : (def.valuePlaceholder || 'Value')}" />`
+        : ''}
     <button class="rp-saved-step-del" data-step-idx="${idx}" title="Delete step">×</button>
   `;
 }
@@ -384,6 +388,7 @@ const STEP_TYPE_DEFS = {
   navigate: { needsSelector: false, needsUrl: true, needsValue: false },
   click:    { needsSelector: true,  needsValue: false },
   fill:     { needsSelector: true,  needsValue: true, valuePlaceholder: 'Value to type' },
+  check:    { needsSelector: true,  needsValue: true },
   ...Object.fromEntries(ASSERT_TYPES.map(a => [a.type, { needsSelector: a.needsSelector, needsValue: a.needsValue, needsAttr: a.needsAttr, valuePlaceholder: a.valuePlaceholder }])),
   'wait-navigation': { needsSelector: false, needsValue: false },
 };
@@ -586,12 +591,16 @@ async function handleSavedStepFieldChange(test, field) {
     if (!def.needsUrl) delete step.url;
     if (!def.needsAttr) delete step.attr;
     if (!def.needsValue) { delete step.value; step.sensitive = false; }
+    // A leftover string value from before the switch (e.g. from 'fill')
+    // would otherwise render as a misleadingly truthy checkbox state.
+    if (step.type === 'check') step.value = typeof step.value === 'boolean' ? step.value : false;
   } else if (field.dataset.field === 'value') {
-    // A sensitive step's value field is rendered empty (masked); leaving it
-    // empty and blurring away must not overwrite the real value with ''.
-    // Only a non-empty edit replaces it — and it stays sensitive/masked.
-    if (step.sensitive && field.value === '') {
-      // untouched — keep the existing (masked) value
+    if (field.type === 'checkbox') {
+      step.value = field.checked;
+    } else if (step.sensitive && field.value === '') {
+      // A sensitive step's value field is rendered empty (masked); leaving
+      // it empty and blurring away must not overwrite the real value with
+      // '' — only a non-empty edit replaces it, and it stays sensitive/masked.
     } else {
       step.value = field.value;
     }
@@ -630,10 +639,62 @@ function resolveStepAdvance(action) {
   resolve(action);
 }
 
+// #242: a password 'fill' step's saved value is always the literal
+// placeholder '[hidden]' — nothing is stored anywhere. Every Run (including
+// each repeat of a Run N×, which all reuse the one value typed here) needs
+// the tester to supply the real value up front rather than have the
+// recorded run type '[hidden]' into the field. Resolves a Map<stepId,
+// string> of the values typed, or null if the tester cancelled the run
+// entirely. Resolves an empty Map immediately when the test has no
+// sensitive steps, without showing anything.
+function promptForSensitiveValues(steps) {
+  const sensitiveSteps = steps.filter(s => s.sensitive);
+  if (sensitiveSteps.length === 0) return Promise.resolve(new Map());
+
+  return new Promise((resolve) => {
+    const dlg = document.createElement('div');
+    dlg.id = 'rpSensitiveDlg';
+    dlg.className = 'rp-assert-dlg';
+    dlg.innerHTML = `
+      <div class="rp-assert-dlg-inner">
+        <div class="rp-assert-dlg-title">This test types into ${sensitiveSteps.length} password field${sensitiveSteps.length === 1 ? '' : 's'}</div>
+        <div class="rp-hint">Nothing is saved with the test — type the real value${sensitiveSteps.length === 1 ? '' : 's'} for this run.</div>
+        ${sensitiveSteps.map((s, i) => `
+          <label class="rp-step-desc" for="rpSensitiveInput-${i}">${escHtml(s.selector || 'password field')}</label>
+          <input class="rp-input" type="password" id="rpSensitiveInput-${i}" data-step-id="${escHtml(s.id)}" autocomplete="off" />
+        `).join('')}
+        <div class="rp-assert-dlg-btns">
+          <button class="rp-btn" id="rpSensitiveContinue">Continue</button>
+          <button class="rp-btn" id="rpSensitiveCancel">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(dlg);
+
+    const cleanup = () => dlg.remove();
+    document.getElementById('rpSensitiveContinue').addEventListener('click', () => {
+      const values = new Map();
+      dlg.querySelectorAll('input[data-step-id]').forEach((input) => {
+        values.set(input.dataset.stepId, input.value);
+      });
+      cleanup();
+      resolve(values);
+    });
+    document.getElementById('rpSensitiveCancel').addEventListener('click', () => {
+      cleanup();
+      resolve(null);
+    });
+    dlg.querySelector('input')?.focus();
+  });
+}
+
 async function runTest(testId, runCount) {
   const test = savedTests.find(t => t.id === testId);
   if (!test) return;
   if (!getActiveId()) { showFormStatus('No active session', true); return; }
+
+  const sensitiveValues = await promptForSensitiveValues(test.steps);
+  if (sensitiveValues === null) return; // tester cancelled the run
 
   const runView = document.getElementById('rpRunView');
   const placeholder = document.getElementById('rpRunPlaceholder');
@@ -670,7 +731,7 @@ async function runTest(testId, runCount) {
     if (run > 0 && test.steps[0]?.type !== 'navigate') {
       await testerBrowser.sessions.reload(getActiveId());
     }
-    const result = await executeTest(test, runCount > 1, stepByStep);
+    const result = await executeTest(test, runCount > 1, stepByStep, sensitiveValues);
     allRunResults.push(result);
     if (result.passed) passed++; else failed++;
     if (runCount > 1) {
@@ -683,7 +744,16 @@ async function runTest(testId, runCount) {
   }
 }
 
-async function executeTest(test, silent, stepByStep = false) {
+// A sensitive step's stored value is always the placeholder '[hidden]' — for
+// actual playback, substitute the real value the tester typed into the
+// pre-run prompt onto a *copy* of the step, never mutating (and so never
+// persisting) the saved test's own step object.
+function stepForPlayback(step, sensitiveValues) {
+  if (!step.sensitive) return step;
+  return { ...step, value: sensitiveValues?.get(step.id) ?? '' };
+}
+
+async function executeTest(test, silent, stepByStep = false, sensitiveValues = new Map()) {
   const sessionId = getActiveId();
   const stepEls = document.getElementById('rpStepsList');
   if (!silent) stepEls.innerHTML = '';
@@ -706,7 +776,7 @@ async function executeTest(test, silent, stepByStep = false) {
       stepEls.appendChild(row);
       stepEls.scrollTop = stepEls.scrollHeight;
 
-      const result = await testerBrowser.tests.playbackStep(sessionId, step);
+      const result = await testerBrowser.tests.playbackStep(sessionId, stepForPlayback(step, sensitiveValues));
       row.classList.remove('rp-step-running');
       row.classList.add(result.success ? 'rp-step-pass' : 'rp-step-fail');
       // The full error (and which selector it was) gets its own readable
@@ -756,7 +826,7 @@ async function executeTest(test, silent, stepByStep = false) {
         if (action === 'stop' || stepStopped) { stopped = true; break; }
       }
     } else {
-      const result = await testerBrowser.tests.playbackStep(sessionId, step);
+      const result = await testerBrowser.tests.playbackStep(sessionId, stepForPlayback(step, sensitiveValues));
       stepResults.push({ step: i + 1, type: step.type, selector: step.selector, success: result.success, error: result.error });
       if (!result.success) { failed = true; break; }
     }

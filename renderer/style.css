@@ -1403,6 +1403,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .rp-del-step { background: transparent; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 0 2px; line-height: 1; flex-shrink: 0; }
 .rp-del-step:hover { color: var(--error-strong); }
 .rp-hint { color: var(--text-faint); font-size: 11px; font-style: italic; padding: 4px 2px; }
+.rp-step-check-editor { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
 .rp-confidence-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .rp-confidence-pending { background: var(--text-faint); opacity: 0.5; }
 .rp-confidence-green   { background: var(--success-strong); }
