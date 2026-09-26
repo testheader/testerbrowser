@@ -30,7 +30,7 @@ export async function initDebugLog() {
         </div>
         <select id="debugLogSourceFilter" title="Filter by source"><option value="">All sources</option></select>
         <select id="debugLogSessionFilter" title="Filter by session"><option value="">All sessions</option></select>
-        <button class="console-icon-btn" id="copyDebugLogBtn" title="Copy debug log to clipboard">&#128203;</button>
+        <button class="console-icon-btn" id="copyDebugLogBtn" title="Copy debug log to clipboard" aria-label="Copy debug log to clipboard">&#128203;</button>
       </div>
       <div class="debuglog-wrap"><div id="debugLogList" class="debuglog-list"></div></div>`;
 

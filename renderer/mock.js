@@ -71,7 +71,7 @@ export function initMock() {
       <form class="mock-form" id="mockForm">
         <div class="mock-form-row">
           <input class="mock-input mock-url" id="mockUrl" type="text" placeholder="URL pattern (e.g. https://api.example.com/*)" spellcheck="false" required />
-          <select class="mock-select" id="mockMethod">
+          <select class="mock-select" id="mockMethod" aria-label="HTTP method">
             <option value="*">Any method</option>
             <option value="GET">GET</option>
             <option value="POST">POST</option>
@@ -198,8 +198,8 @@ function buildMockRuleRow(rule, sessionId) {
     <span class="mock-rule-body" title="${escHtml(rule.body)}">${escHtml(rule.body.slice(0, 40))}${rule.body.length > 40 ? '…' : ''}</span>
     ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
     <span class="mock-badge mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
-    <button class="mock-btn mock-edit-btn" title="Edit rule">✎</button>
-    <button class="mock-btn mock-del-btn" title="Remove">✕</button>`;
+    <button class="mock-btn mock-edit-btn" title="Edit rule" aria-label="Edit rule">✎</button>
+    <button class="mock-btn mock-del-btn" title="Remove" aria-label="Remove rule">✕</button>`;
 
   row.querySelector('.mock-enable').addEventListener('change', async (e) => {
     await testerBrowser.mock.toggleRule(sessionId, rule.id, e.target.checked);

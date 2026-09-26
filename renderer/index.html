@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'none'">
@@ -9,7 +9,7 @@
 <body>
   <div id="titlebar">
     <div id="appMenuWrapper">
-      <button id="appName" title="Application menu">
+      <button id="appName" title="Application menu" aria-label="Application menu">
         <img id="appLogo" class="app-logo" src="app-logo.png" alt="" aria-hidden="true">
         <span id="appMenuCaret">&#9662;</span>
       </button>
@@ -30,7 +30,7 @@
         </div>
       </div>
     </div>
-    <div id="tabs"><button id="newSessionBtn" title="New tab (Ctrl+T)">+</button></div>
+    <div id="tabs" role="group" aria-label="Browser tabs"><button id="newSessionBtn" title="New tab (Ctrl+T)" aria-label="New tab">+</button></div>
     <div id="titlebarDrag"></div>
     <div id="updateReadyWrapper">
       <button id="updateReadyBtn" hidden></button>
@@ -43,20 +43,20 @@
       </div>
     </div>
     <div id="titlebarControls">
-      <button id="themeToggleBtn" title="Toggle light/dark mode">&#9728;</button>
-      <button id="winMinBtn" title="Minimize">&#8211;</button>
-      <button id="winMaxBtn" title="Maximize">
+      <button id="themeToggleBtn" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">&#9728;</button>
+      <button id="winMinBtn" title="Minimize" aria-label="Minimize">&#8211;</button>
+      <button id="winMaxBtn" title="Maximize" aria-label="Maximize">
         <svg id="winMaxIcon" class="win-icon" viewBox="0 0 10 10" width="10" height="10"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1"/></svg>
         <svg id="winRestoreIcon" class="win-icon" viewBox="0 0 10 10" width="10" height="10" hidden><rect x="3" y="1" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"/><rect x="1" y="3" width="6" height="6" fill="none" stroke="currentColor" stroke-width="1"/></svg>
       </button>
-      <button id="winCloseBtn" title="Close">&#10005;</button>
+      <button id="winCloseBtn" title="Close" aria-label="Close window">&#10005;</button>
     </div>
   </div>
   <div id="topbar">
     <div id="toolbar">
-      <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"    disabled>&#8592;</button>
-      <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)"  disabled>&#8594;</button>
-      <button class="nav-btn" id="reloadBtn" title="Reload (F5)">&#8635;</button>
+      <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"    aria-label="Back"    disabled>&#8592;</button>
+      <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)"  aria-label="Forward"  disabled>&#8594;</button>
+      <button class="nav-btn" id="reloadBtn" title="Reload (F5)" aria-label="Reload">&#8635;</button>
       <div id="urlbarWrap">
         <span id="urlbarLock" class="neutral" title="Connection security"></span>
         <input id="urlbar" placeholder="Enter URL and press Enter  (Ctrl+L)" list="urlHistoryList" autocomplete="off" />
@@ -64,20 +64,20 @@
       </div>
       <datalist id="urlHistoryList"></datalist>
       <span id="zoomIndicator" title="Click to reset zoom (Ctrl+0)">100%</span>
-      <button id="bookmarkBtn" title="Bookmark this page (Ctrl+D)">&#9734;</button>
+      <button id="bookmarkBtn" title="Bookmark this page (Ctrl+D)" aria-label="Bookmark this page" aria-pressed="false">&#9734;</button>
       <div id="downloadsWrapper">
-        <button id="downloadsBtn" title="Downloads">&#8595;</button>
+        <button id="downloadsBtn" title="Downloads" aria-label="Downloads">&#8595;</button>
         <span id="downloadsBadge"></span>
       </div>
-      <button class="nav-btn" id="devtoolsBtn" title="DevTools (F12)">&#9881;</button>
+      <button class="nav-btn" id="devtoolsBtn" title="DevTools (F12)" aria-label="DevTools">&#9881;</button>
       <div id="viewWrapper">
-        <button class="nav-btn" id="viewBtn" title="View panels">View &#9662;</button>
-        <div id="viewDropdown">
-          <div class="view-item" id="viewToggleConsole">
+        <button class="nav-btn" id="viewBtn" title="View panels" aria-haspopup="true" aria-expanded="false">View &#9662;</button>
+        <div id="viewDropdown" role="menu">
+          <div class="view-item" id="viewToggleConsole" role="menuitemcheckbox" tabindex="0" aria-checked="true">
             <span class="view-check" id="viewConsoleCheck">&#10003;</span>
             <span>Console panel</span>
           </div>
-          <div class="view-item" id="viewToggleBookmarks">
+          <div class="view-item" id="viewToggleBookmarks" role="menuitemcheckbox" tabindex="0" aria-checked="false">
             <span class="view-check" id="viewBookmarksCheck"></span>
             <span>Bookmarks bar</span>
             <span class="view-shortcut">Ctrl+Shift+B</span>
@@ -89,9 +89,9 @@
     <div id="findBar">
       <input id="findInput" placeholder="Find in page…" />
       <span id="findCount"></span>
-      <button class="find-btn" id="findPrevBtn" title="Previous (Shift+F3)">&#8593;</button>
-      <button class="find-btn" id="findNextBtn" title="Next (F3)">&#8595;</button>
-      <button class="find-btn" id="findCloseBtn">&#10005;</button>
+      <button class="find-btn" id="findPrevBtn" title="Previous (Shift+F3)" aria-label="Previous match">&#8593;</button>
+      <button class="find-btn" id="findNextBtn" title="Next (F3)" aria-label="Next match">&#8595;</button>
+      <button class="find-btn" id="findCloseBtn" title="Close find bar" aria-label="Close find bar">&#10005;</button>
     </div>
     <div id="loadingBar"></div>
   </div>
@@ -110,7 +110,7 @@
     <div id="downloadsPanelHeader">
       <span>Downloads</span>
       <button class="dl-hdr-btn" id="clearDownloadsBtn" title="Clear completed">Clear</button>
-      <button class="dl-hdr-btn" id="closeDownloadsBtn">&#10005;</button>
+      <button class="dl-hdr-btn" id="closeDownloadsBtn" title="Close downloads panel" aria-label="Close downloads panel">&#10005;</button>
     </div>
     <div id="downloadsList"></div>
   </div>
@@ -119,26 +119,26 @@
     <div id="consoleDragHandle"></div>
     <div id="consoleHeader">
       <div id="consoleTabsWrap">
-      <button class="console-tabs-chevron" id="consoleTabsPrevBtn" title="Scroll tabs left" hidden>&#8249;</button>
-      <div class="console-tabs" id="consoleTabsStrip">
-        <button class="console-tab active" id="consoleTabConsole">Console</button>
-        <button class="console-tab" id="consoleTabNetwork">Network</button>
-        <button class="console-tab" id="consoleTabStorage">Storage</button>
-        <button class="console-tab" id="consoleTabA11y">A11y</button>
-        <button class="console-tab" id="consoleTabDiff">Network diff</button>
-        <button class="console-tab" id="consoleTabVR">UI diff</button>
-        <button class="console-tab" id="consoleTabSpoof">Spoof</button>
-        <button class="console-tab" id="consoleTabSecurity">Security</button>
-        <button class="console-tab" id="consoleTabMock">Mock</button>
-        <button class="console-tab" id="consoleTabResilience">Resilience</button>
-        <button class="console-tab" id="consoleTabJira">Jira</button>
-        <button class="console-tab" id="consoleTabTests">Record Playback</button>
-        <button class="console-tab" id="consoleTabFollow">Follow Along</button>
-        <button class="console-tab" id="consoleTabDebugLog">Debug Log</button>
+      <button class="console-tabs-chevron" id="consoleTabsPrevBtn" title="Scroll tabs left" aria-label="Scroll tabs left" hidden>&#8249;</button>
+      <div class="console-tabs" id="consoleTabsStrip" role="tablist" aria-label="Console panel">
+        <button class="console-tab active" id="consoleTabConsole" role="tab" aria-selected="true">Console</button>
+        <button class="console-tab" id="consoleTabNetwork" role="tab" aria-selected="false">Network</button>
+        <button class="console-tab" id="consoleTabStorage" role="tab" aria-selected="false">Storage</button>
+        <button class="console-tab" id="consoleTabA11y" role="tab" aria-selected="false">A11y</button>
+        <button class="console-tab" id="consoleTabDiff" role="tab" aria-selected="false">Network diff</button>
+        <button class="console-tab" id="consoleTabVR" role="tab" aria-selected="false">UI diff</button>
+        <button class="console-tab" id="consoleTabSpoof" role="tab" aria-selected="false">Spoof</button>
+        <button class="console-tab" id="consoleTabSecurity" role="tab" aria-selected="false">Security</button>
+        <button class="console-tab" id="consoleTabMock" role="tab" aria-selected="false">Mock</button>
+        <button class="console-tab" id="consoleTabResilience" role="tab" aria-selected="false">Resilience</button>
+        <button class="console-tab" id="consoleTabJira" role="tab" aria-selected="false">Jira</button>
+        <button class="console-tab" id="consoleTabTests" role="tab" aria-selected="false">Record Playback</button>
+        <button class="console-tab" id="consoleTabFollow" role="tab" aria-selected="false">Follow Along</button>
+        <button class="console-tab" id="consoleTabDebugLog" role="tab" aria-selected="false">Debug Log</button>
       </div>
-      <button class="console-tabs-chevron" id="consoleTabsNextBtn" title="Scroll tabs right" hidden>&#8250;</button>
+      <button class="console-tabs-chevron" id="consoleTabsNextBtn" title="Scroll tabs right" aria-label="Scroll tabs right" hidden>&#8250;</button>
       </div>
-      <button class="console-icon-btn" id="consolePanelMinBtn" title="Minimize / restore panel">&#8964;</button>
+      <button class="console-icon-btn" id="consolePanelMinBtn" title="Minimize / restore panel" aria-label="Minimize / restore panel">&#8964;</button>
     </div>
     <div id="consolePanelBody">
       <div id="timelinePanelWrapper">
@@ -152,7 +152,7 @@
             <button class="filter-pill on" data-level="log"   title="Log">Log<span class="pill-count"></span></button>
             <button class="filter-pill on" data-level="debug" title="Debug">Debug<span class="pill-count"></span></button>
           </div>
-          <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console">&#10005;</button>
+          <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console" aria-label="Clear console">&#10005;</button>
           <button class="diff-har-btn" id="harExportBtn" title="Export everything recorded for this tab as a HAR 1.2 file">HAR</button>
           <span id="harExportStatus" class="har-export-status"></span>
         </div>
@@ -166,7 +166,7 @@
             <button class="filter-pill"    data-type="mock"             title="Requests served by a Mock rule">Mock<span class="pill-count"></span></button>
             <button class="filter-pill"    data-type="resilience"       title="Requests altered by a Resilience rule">Resilience<span class="pill-count"></span></button>
           </div>
-          <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log">&#10005;</button>
+          <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log" aria-label="Clear network log">&#10005;</button>
         </div>
         <div id="networkControlsRow2">
           <div class="filter-pills" id="networkMethodPills">
@@ -180,7 +180,7 @@
           <span class="filter-label">Min ms</span>
           <input id="networkMinDuration" type="number" min="0" placeholder="0" />
         </div>
-        <div id="timelinePanel"></div>
+        <div id="timelinePanel" tabindex="0"></div>
         <button id="scrollToBottomBtn" title="Scroll to bottom">&#8595; Latest</button>
       </div>
       <div id="storagePanel">
@@ -189,7 +189,7 @@
           <input id="storageFilter" placeholder="Filter…" />
           <button class="storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
           <button class="storage-domain-btn" id="storageAutoRefreshBtn" title="Poll cookies, storage and IndexedDB every 2s while this tab is visible">Auto-refresh</button>
-          <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage">&#8635;</button>
+          <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage" aria-label="Refresh storage">&#8635;</button>
         </div>
         <div id="storagePanelContent"></div>
       </div>
@@ -215,7 +215,7 @@
   <!-- Settings -->
   <div id="settingsOverlay">
     <div id="settingsModal">
-      <button class="modal-close-btn" id="settingsCloseXBtn" title="Close">&#10005;</button>
+      <button class="modal-close-btn" id="settingsCloseXBtn" title="Close" aria-label="Close settings">&#10005;</button>
       <h2>Settings</h2>
       <div class="settings-body">
         <div class="settings-sidebar" id="settingsSidebar">
@@ -230,9 +230,9 @@
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Theme</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Appearance of the browser chrome.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Appearance of the browser chrome.</div>
               </div>
-              <select id="themeSelect" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
+              <select id="themeSelect" style="margin-left:auto;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;">
                 <option value="system">System default</option>
                 <option value="dark">Dark</option>
                 <option value="light">Light</option>
@@ -242,9 +242,9 @@
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Default search engine</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Used when the URL bar is given a plain search term instead of a URL.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Used when the URL bar is given a plain search term instead of a URL.</div>
               </div>
-              <select id="searchEngineSelect" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
+              <select id="searchEngineSelect" style="margin-left:auto;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;">
                 <option value="google">Google</option>
                 <option value="duckduckgo">DuckDuckGo</option>
               </select>
@@ -253,7 +253,7 @@
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Redact sensitive headers</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Replaces Authorization, Cookie, Set-Cookie, and similar values with [REDACTED] in the timeline. Takes effect immediately, in every open tab.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Replaces Authorization, Cookie, Set-Cookie, and similar values with [REDACTED] in the timeline. Takes effect immediately, in every open tab.</div>
               </div>
               <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
                 <input type="checkbox" id="redactHeadersToggle" />
@@ -264,7 +264,7 @@
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Debug mode</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Shows TesterBrowser's own internal logs (main process, IPC, recorder) — not this page's console, which is on the Console tab.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Shows TesterBrowser's own internal logs (main process, IPC, recorder) — not this page's console, which is on the Console tab.</div>
               </div>
               <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
                 <input type="checkbox" id="debugModeToggle" />
@@ -275,7 +275,7 @@
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Auto-open downloads panel</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Open the downloads panel automatically when a download starts. Off by default, so a download triggered incidentally by a page under test doesn't narrow the active page mid-test.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Open the downloads panel automatically when a download starts. Off by default, so a download triggered incidentally by a page under test doesn't narrow the active page mid-test.</div>
               </div>
               <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
                 <input type="checkbox" id="autoOpenDownloadsPanelToggle" />
@@ -287,32 +287,32 @@
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Max events per tab</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Network/console events kept per tab before the oldest are evicted (1,000&ndash;200,000). Applies to tabs opened after the change.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Network/console events kept per tab before the oldest are evicted (1,000&ndash;200,000). Applies to tabs opened after the change.</div>
               </div>
               <input type="number" id="recorderMaxEventsInput" min="1000" max="200000" step="1000"
-                     style="margin-left:auto;width:90px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
+                     style="margin-left:auto;width:90px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;" />
             </div>
 
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Recording retention (days)</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">How long a closed tab's recording is kept on disk before automatic cleanup (1&ndash;365).</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">How long a closed tab's recording is kept on disk before automatic cleanup (1&ndash;365).</div>
               </div>
               <input type="number" id="recordingRetentionDaysInput" min="1" max="365" step="1"
-                     style="margin-left:auto;width:90px;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;" />
+                     style="margin-left:auto;width:90px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;" />
             </div>
 
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">GitHub (bug reporter)</div>
-                <div style="font-size:11px;color:#555;margin-top:3px">Sign in with GitHub to file bug reports directly from TesterBrowser. Token stored encrypted via your OS keychain.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Sign in with GitHub to file bug reports directly from TesterBrowser. Token stored encrypted via your OS keychain.</div>
               </div>
               <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-                <span id="githubTokenStatus" style="font-size:11px;color:#555"></span>
+                <span id="githubTokenStatus" style="font-size:11px;color:var(--text-muted)"></span>
                 <button class="btn btn-secondary" id="githubSignInBtn" style="padding:2px 10px;font-size:11px" hidden>Sign in with GitHub</button>
                 <div id="githubOAuthPending" hidden style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-                  <div style="font-size:11px;color:var(--fg,#ccc)">Enter this code at <b>github.com/login/device</b>:</div>
-                  <div id="githubUserCode" style="font-size:15px;font-weight:bold;letter-spacing:3px;color:var(--fg,#ccc);font-family:monospace"></div>
+                  <div style="font-size:11px;color:var(--text-primary)">Enter this code at <b>github.com/login/device</b>:</div>
+                  <div id="githubUserCode" style="font-size:15px;font-weight:bold;letter-spacing:3px;color:var(--text-primary);font-family:monospace"></div>
                   <div style="font-size:11px;color:#888">Waiting for authorisation&hellip;</div>
                 </div>
                 <button class="btn btn-secondary" id="githubSignOutBtn" style="padding:2px 10px;font-size:11px" hidden>Sign out</button>
@@ -449,7 +449,7 @@
   <!-- Request Replay -->
   <div id="replayOverlay">
     <div id="replayModal">
-      <button class="modal-close-btn" id="replayCloseXBtn" title="Close">&#10005;</button>
+      <button class="modal-close-btn" id="replayCloseXBtn" title="Close" aria-label="Close replay dialog">&#10005;</button>
       <div class="replay-head">
         <h2>Replay Request</h2>
         <div class="replay-url-row">
@@ -510,7 +510,7 @@
   <!-- Test data template prompt -->
   <div id="testdataOverlay">
     <div id="testdataModal">
-      <button class="modal-close-btn" id="testdataCloseXBtn" title="Close">&#10005;</button>
+      <button class="modal-close-btn" id="testdataCloseXBtn" title="Close" aria-label="Close test data dialog">&#10005;</button>
       <h2>Custom template</h2>
       <p id="testdataHint">Use tokens: {firstName} {lastName} {email} {uuid} {date} {phone} {address}</p>
       <input id="testdataInput" placeholder="{firstName} {lastName}" autocomplete="off" />
@@ -524,7 +524,7 @@
   <!-- Notes -->
   <div id="notesOverlay">
     <div id="notesModal">
-      <button class="modal-close-btn" id="notesCloseXBtn" title="Close">&#10005;</button>
+      <button class="modal-close-btn" id="notesCloseXBtn" title="Close" aria-label="Close notes">&#10005;</button>
       <h2 id="notesTitle">Notes</h2>
       <textarea id="notesTextarea" placeholder="Session notes…"></textarea>
       <div class="modal-actions" id="notesActions" style="margin-top:12px">
@@ -543,7 +543,7 @@
        thumbnails — see renderer/image-overlay.js) -->
   <div id="imageOverlay">
     <div id="imageOverlayModal">
-      <button class="modal-close-btn" id="imageOverlayCloseBtn" title="Close">&#10005;</button>
+      <button class="modal-close-btn" id="imageOverlayCloseBtn" title="Close" aria-label="Close image preview">&#10005;</button>
       <img id="imageOverlayImg" alt="Enlarged screenshot" />
     </div>
   </div>
@@ -551,7 +551,7 @@
   <!-- History -->
   <div id="historyOverlay">
     <div id="historyModal">
-      <button class="modal-close-btn" id="historyCloseXBtn" title="Close">&#10005;</button>
+      <button class="modal-close-btn" id="historyCloseXBtn" title="Close" aria-label="Close history">&#10005;</button>
       <h2 id="historyTitle">History</h2>
       <div id="historyList"></div>
       <div class="modal-actions" style="margin-top:12px">
@@ -585,7 +585,7 @@
       <div id="bugReportFormView">
         <div class="setting-row" style="align-items:center;padding:6px 0">
           <span class="setting-label" style="flex-shrink:0">Feature area</span>
-          <select id="bugReportArea" style="margin-left:auto;background:var(--bg2,#1e1e1e);color:var(--fg,#ccc);border:1px solid var(--border,#333);border-radius:4px;padding:4px 8px;font-size:12px;">
+          <select id="bugReportArea" style="margin-left:auto;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;">
             <option>Console / Network</option>
             <option>Storage</option>
             <option>A11y</option>

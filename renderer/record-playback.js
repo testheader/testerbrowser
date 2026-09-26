@@ -66,7 +66,7 @@ export function initRecordPlayback() {
               <button class="rp-btn rp-btn-sm" id="rpNextStepBtn">Next</button>
               <button class="rp-btn rp-btn-sm rp-btn-stop" id="rpStopStepBtn">Stop</button>
             </div>
-            <button class="rp-btn rp-btn-sm" id="rpRunClose">&#10005;</button>
+            <button class="rp-btn rp-btn-sm" id="rpRunClose" title="Close" aria-label="Close">&#10005;</button>
           </div>
           <div class="rp-progress-bar"><div class="rp-progress-fill" id="rpProgressFill"></div></div>
           <div id="rpRunStatus" class="rp-run-status"></div>
@@ -259,7 +259,7 @@ function renderLiveSteps() {
       <span class="rp-step-num">${i + 1}</span>
       ${s.selector ? `<span class="rp-confidence-dot rp-confidence-pending" data-selector-idx="${i}" title="Checking selector…"></span>` : ''}
       ${stepRowFieldsHtml(s, i, false)}
-      <button class="rp-del-step" data-idx="${i}" title="Remove step">×</button>
+      <button class="rp-del-step" data-idx="${i}" title="Remove step" aria-label="Remove step">×</button>
     </div>
   `).join('');
 
@@ -325,7 +325,7 @@ function stepRowFieldsHtml(step, idx, editable) {
       : def.needsValue
         ? `<input class="rp-input rp-step-val rp-step-field" data-step-idx="${idx}" data-field="value" value="${step.sensitive ? '' : escHtml(step.value || '')}" placeholder="${step.sensitive ? '[hidden] — type to replace' : (def.valuePlaceholder || 'Value')}" />`
         : ''}
-    <button class="rp-saved-step-del" data-step-idx="${idx}" title="Delete step">×</button>
+    <button class="rp-saved-step-del" data-step-idx="${idx}" title="Delete step" aria-label="Delete step">×</button>
   `;
 }
 
@@ -501,7 +501,7 @@ function renderTestList() {
         <button class="rp-btn rp-btn-sm rp-run-once" data-id="${t.id}">Run</button>
         <input class="rp-input rp-repeat-input" type="number" min="1" max="500" value="10" data-id="${t.id}" title="Number of times to run" />
         <button class="rp-btn rp-btn-sm rp-run-many" data-id="${t.id}">Run N×</button>
-        <button class="rp-btn rp-btn-sm rp-btn-del" data-id="${t.id}">&#10005;</button>
+        <button class="rp-btn rp-btn-sm rp-btn-del" data-id="${t.id}" title="Delete test" aria-label="Delete test">&#10005;</button>
       </div>
       ${t.id === expandedTestId ? `<div class="rp-saved-steps" id="rpSavedSteps-${t.id}">${renderSavedStepsHtml(t)}</div>` : ''}
     </div>
@@ -861,7 +861,7 @@ function showRepeatResults(test, allRunResults, passed, failed, total) {
   el.hidden = false;
   el.innerHTML = `
     <div class="rp-repeat-header ${isFlaky ? 'rp-flaky' : (passed === total ? 'rp-stable' : 'rp-failing')}">
-      ${test.name} — ${status}
+      ${escHtml(test.name)} — ${status}
     </div>
     <div class="rp-repeat-summary">
       <span>Runs: <b>${total}</b></span>

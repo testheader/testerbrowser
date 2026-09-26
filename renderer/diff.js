@@ -65,7 +65,7 @@ export function initDiff() {
       <input type="text" class="diff-filter-text" id="diffFilterText"
         placeholder="Filter URLs, e.g. api -analytics" />
       <button class="diff-har-btn" id="diffHarBtn" disabled>Export diff (JSON)</button>
-      <button class="console-icon-btn" id="diffResetBtn" title="Reset comparison">&#10005;</button>
+      <button class="console-icon-btn" id="diffResetBtn" title="Reset comparison" aria-label="Reset comparison">&#10005;</button>
     </div>
     <div class="diff-toolbar diff-toolbar-row2">
       <label class="diff-label">Match by

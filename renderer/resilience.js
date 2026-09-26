@@ -260,8 +260,8 @@ function buildRuleRow(rule) {
     ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
     <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
     <button class="res-btn res-network-btn" title="View matching calls in the Network tab">⇒ Network</button>
-    <button class="res-btn res-edit-btn" title="Edit rule">✎</button>
-    <button class="res-btn res-del-btn" title="Remove">✕</button>`;
+    <button class="res-btn res-edit-btn" title="Edit rule" aria-label="Edit rule">✎</button>
+    <button class="res-btn res-del-btn" title="Remove" aria-label="Remove rule">✕</button>`;
 
   row.querySelector('.res-enable').addEventListener('change', async (e) => {
     await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, e.target.checked);

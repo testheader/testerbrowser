@@ -79,7 +79,7 @@ export function initSpoof() {
           <label class="spoof-label">Clock offset</label>
           <div class="spoof-offset-row">
             <input class="spoof-input" id="spoofOffsetValue" type="number" step="any" placeholder="e.g. 7 or -1" />
-            <select class="spoof-input spoof-offset-unit" id="spoofOffsetUnit">
+            <select class="spoof-input spoof-offset-unit" id="spoofOffsetUnit" aria-label="Clock offset unit">
               <option value="1000">seconds</option>
               <option value="60000">minutes</option>
               <option value="3600000">hours</option>
@@ -90,7 +90,7 @@ export function initSpoof() {
         <div class="spoof-field spoof-field-ua">
           <label class="spoof-label">User-Agent</label>
           <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="e.g. Mozilla/5.0 (...)" spellcheck="false" />
-          <select class="spoof-input spoof-ua-select" id="spoofUaPresets"></select>
+          <select class="spoof-input spoof-ua-select" id="spoofUaPresets" aria-label="User-Agent presets"></select>
         </div>
       </div>
       <div class="spoof-actions">

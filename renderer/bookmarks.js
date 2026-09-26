@@ -123,6 +123,8 @@ function makeBookmarkButton(bm) {
   rm.className   = 'bm-remove';
   rm.textContent = '×';
   rm.title       = 'Remove bookmark';
+  rm.setAttribute('role', 'button');
+  rm.setAttribute('aria-label', 'Remove bookmark');
   rm.onclick = (e) => { e.stopPropagation(); removeBookmark(bm.url); };
   btn.appendChild(rm);
 
@@ -236,6 +238,8 @@ export function updateBookmarkStar() {
   starBtn.title      = bookmarkable
     ? (isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this page (Ctrl+D)')
     : 'Nothing to bookmark yet';
+  starBtn.setAttribute('aria-label', starBtn.title);
+  starBtn.setAttribute('aria-pressed', String(isBookmarked));
   starBtn.classList.toggle('bookmarked', isBookmarked);
   starBtn.disabled = !bookmarkable;
 }

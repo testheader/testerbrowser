@@ -176,6 +176,14 @@ function buildIndicator(s) {
 // as cheap as flipping a class — no per-tab element churn.
 function updateTabElement(tab, s) {
   tab.classList.toggle('active', s.id === activeId);
+  // Not role="tab" (see #tabs' role="group" above): #tabs interleaves each
+  // tab with per-group "New tab in this session" buttons, which a real
+  // role="tablist" ancestor may not directly contain per ARIA's
+  // aria-required-children (axe flags this as a critical violation) — so
+  // aria-current, valid on any element, communicates "this is the active
+  // one" without claiming a tab-widget pattern this DOM can't fully support.
+  if (s.id === activeId) tab.setAttribute('aria-current', 'true');
+  else tab.removeAttribute('aria-current');
   if (s.color) tab.style.setProperty('--tab-color', s.color);
   tab.dataset.pinned = s.pinned ? '1' : '';
 
@@ -223,6 +231,8 @@ function updateTabElement(tab, s) {
     closeBtn.className = 'tab-close';
     closeBtn.textContent = '×';
     closeBtn.title = 'Close (Ctrl+W)';
+    closeBtn.setAttribute('role', 'button');
+    closeBtn.setAttribute('aria-label', 'Close tab');
     closeBtn.onclick = (e) => { e.stopPropagation(); closeTab(s.id); };
     tab.appendChild(closeBtn);
   } else if (s.pinned && closeBtn) {
@@ -277,6 +287,8 @@ export async function refreshTabs() {
     const addBtn = document.createElement('span');
     addBtn.className = 'tab-group-add';
     addBtn.title = 'New tab in this session';
+    addBtn.setAttribute('role', 'button');
+    addBtn.setAttribute('aria-label', 'New tab in this session');
     addBtn.textContent = '+';
     addBtn.onclick = async () => {
       const lastId = run.ids[run.ids.length - 1];

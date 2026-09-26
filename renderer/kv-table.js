@@ -24,6 +24,7 @@ export function addKvRow(container, key, val) {
   del.type        = 'button'; // never submit an enclosing form
   del.textContent = '×';
   del.title       = 'Remove';
+  del.setAttribute('aria-label', 'Remove');
   del.onclick     = () => row.remove();
   row.appendChild(kInput);
   row.appendChild(vInput);

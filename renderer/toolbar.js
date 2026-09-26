@@ -22,10 +22,12 @@ export function updateReloadBtn() {
   if (isTabLoading(activeId)) {
     btn.innerHTML = '&#10005;';
     btn.title     = 'Stop loading (Esc)';
+    btn.setAttribute('aria-label', 'Stop loading');
     btn.onclick   = () => activeId && testerBrowser.sessions.stop(activeId);
   } else {
     btn.innerHTML = '&#8635;';
     btn.title     = 'Reload (F5)';
+    btn.setAttribute('aria-label', 'Reload');
     btn.onclick   = () => activeId && testerBrowser.sessions.reload(activeId);
   }
 }

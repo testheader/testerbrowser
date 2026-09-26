@@ -31,6 +31,7 @@ export function applyTheme(scheme) {
     btn.title = scheme === 'system'
       ? `Following system theme (currently ${light ? 'light' : 'dark'}) — click to switch to ${nextScheme} mode`
       : `Switch to ${nextScheme} mode`;
+    btn.setAttribute('aria-label', btn.title);
     // Icon shows the resolved theme; a dot marks "system" so the toggle can
     // represent all three states instead of forcing a concrete choice.
     btn.textContent = light ? '☽' : '☀';
@@ -72,6 +73,7 @@ function applyMaximizedState(maximized) {
   const btn = document.getElementById('winMaxBtn');
   if (!btn) return;
   btn.title = maximized ? 'Restore' : 'Maximize';
+  btn.setAttribute('aria-label', btn.title);
   document.getElementById('winMaxIcon').hidden = maximized;
   document.getElementById('winRestoreIcon').hidden = !maximized;
 }

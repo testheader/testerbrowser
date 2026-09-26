@@ -16,7 +16,7 @@ export function initJira() {
     <div class="jira-wrap">
       <div class="jira-settings-bar">
         <span class="jira-title">Jira</span>
-        <button class="jira-icon-btn" id="jiraSettingsBtn" title="Configure Jira">&#9881;</button>
+        <button class="jira-icon-btn" id="jiraSettingsBtn" title="Configure Jira" aria-label="Configure Jira">&#9881;</button>
       </div>
 
       <div id="jiraSetupView" hidden>

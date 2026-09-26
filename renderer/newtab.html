@@ -353,7 +353,7 @@
   </div>
 
   <!-- Background settings -->
-  <button id="bgSettingsBtn" title="Customize background">&#9881;</button>
+  <button id="bgSettingsBtn" title="Customize background" aria-label="Customize background">&#9881;</button>
   <div id="bgPanel">
     <h3>Background</h3>
     <div class="bg-presets" id="bgPresets"></div>
@@ -436,6 +436,7 @@
         const removeBtn = document.createElement('button');
         removeBtn.className = 'tile-remove';
         removeBtn.title = 'Remove';
+        removeBtn.setAttribute('aria-label', 'Remove site');
         removeBtn.textContent = '×';
         removeBtn.onclick = (e) => { e.stopPropagation(); removeTile(tile.id); };
         el.appendChild(removeBtn);
@@ -644,6 +645,7 @@
       rm.className = 'bm-row-remove';
       rm.textContent = '×';
       rm.title = 'Remove bookmark';
+      rm.setAttribute('aria-label', 'Remove bookmark');
       rm.onclick = async (e) => {
         e.stopPropagation();
         await window.bookmarksApi.remove(bm.url);

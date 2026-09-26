@@ -41,8 +41,14 @@ export function getConsoleLevel(e) {
 }
 
 export function wirePillGroup(containerEl, onChange) {
-  containerEl.querySelectorAll('.filter-pill').forEach(btn =>
-    btn.addEventListener('click', () => { btn.classList.toggle('on'); onChange(); }));
+  containerEl.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.setAttribute('aria-pressed', String(btn.classList.contains('on')));
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('on');
+      btn.setAttribute('aria-pressed', String(btn.classList.contains('on')));
+      onChange();
+    });
+  });
 }
 
 export function activePillValues(containerEl, dataAttr) {

@@ -79,6 +79,9 @@ function renderDetailTabs() {
     const cls = document.createElement('span');
     cls.className   = 'detail-tab-close';
     cls.textContent = '×';
+    cls.title       = 'Close';
+    cls.setAttribute('role', 'button');
+    cls.setAttribute('aria-label', 'Close');
     cls.onclick = (ev) => { ev.stopPropagation(); closeDetailTab(tab.id); };
 
     btn.appendChild(lbl);

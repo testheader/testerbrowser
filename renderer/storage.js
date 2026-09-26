@@ -205,6 +205,7 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     cancelBtn.className   = 'storage-delete-btn';
     cancelBtn.textContent = '×';
     cancelBtn.title       = 'Cancel';
+    cancelBtn.setAttribute('aria-label', 'Cancel');
     cancelTd.appendChild(cancelBtn);
     addTr.appendChild(cancelTd);
     cookieTbody.prepend(addTr);
@@ -351,6 +352,7 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     delBtn.className   = 'storage-delete-btn';
     delBtn.textContent = '×';
     delBtn.title       = 'Delete this cookie';
+    delBtn.setAttribute('aria-label', 'Delete this cookie');
     delBtn.onclick = async () => {
       await testerBrowser.sessions.deleteCookie(sessionId, c.name, c.domain || '', c.path || '/', !!c.secure);
       fetchStorageData();
@@ -418,6 +420,7 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
     cancelBtn.className   = 'storage-delete-btn';
     cancelBtn.textContent = '×';
     cancelBtn.title       = 'Cancel';
+    cancelBtn.setAttribute('aria-label', 'Cancel');
     cancelTd.appendChild(cancelBtn);
     addTr.appendChild(cancelTd);
     lsTbody.prepend(addTr);
@@ -514,6 +517,7 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
     delBtn.className   = 'storage-delete-btn';
     delBtn.textContent = '×';
     delBtn.title       = 'Delete this entry';
+    delBtn.setAttribute('aria-label', 'Delete this entry');
     delBtn.onclick = async () => {
       await testerBrowser.sessions.deleteLocalStorageKey(sessionId, k);
       fetchStorageData();

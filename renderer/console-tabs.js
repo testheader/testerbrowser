@@ -25,20 +25,18 @@ export function switchConsoleTab(tab) {
   activeConsoleTab = tab;
   if (prevTab === 'a11y' && tab !== 'a11y') { disableA11yHover(); disableA11yFocusOrder(); }
   if (prevTab === 'storage' && tab !== 'storage') stopStorageAutoRefreshPolling();
-  document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
-  document.getElementById('consoleTabNetwork').classList.toggle('active', tab === 'network');
-  document.getElementById('consoleTabStorage').classList.toggle('active', tab === 'storage');
-  document.getElementById('consoleTabA11y').classList.toggle('active', tab === 'a11y');
-  document.getElementById('consoleTabDiff').classList.toggle('active', tab === 'diff');
-  document.getElementById('consoleTabVR').classList.toggle('active', tab === 'vr');
-  document.getElementById('consoleTabSpoof').classList.toggle('active', tab === 'spoof');
-  document.getElementById('consoleTabSecurity').classList.toggle('active', tab === 'security');
-  document.getElementById('consoleTabMock').classList.toggle('active', tab === 'mock');
-  document.getElementById('consoleTabResilience').classList.toggle('active', tab === 'resilience');
-  document.getElementById('consoleTabJira').classList.toggle('active', tab === 'jira');
-  document.getElementById('consoleTabTests').classList.toggle('active', tab === 'tests');
-  document.getElementById('consoleTabFollow').classList.toggle('active', tab === 'follow');
-  document.getElementById('consoleTabDebugLog').classList.toggle('active', tab === 'debuglog');
+  const consoleTabButtons = {
+    console: 'consoleTabConsole', network: 'consoleTabNetwork', storage: 'consoleTabStorage',
+    a11y: 'consoleTabA11y', diff: 'consoleTabDiff', vr: 'consoleTabVR', spoof: 'consoleTabSpoof',
+    security: 'consoleTabSecurity', mock: 'consoleTabMock', resilience: 'consoleTabResilience',
+    jira: 'consoleTabJira', tests: 'consoleTabTests', follow: 'consoleTabFollow', debuglog: 'consoleTabDebugLog',
+  };
+  for (const [tabName, id] of Object.entries(consoleTabButtons)) {
+    const el = document.getElementById(id);
+    const selected = tab === tabName;
+    el.classList.toggle('active', selected);
+    el.setAttribute('aria-selected', String(selected));
+  }
   const timelineVisible = tab === 'console' || tab === 'network';
   document.getElementById('consoleControls').style.display      = tab === 'console'  ? ''      : 'none';
   document.getElementById('networkControls').style.display      = tab === 'network'  ? 'flex'  : 'none';
