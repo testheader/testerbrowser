@@ -73,14 +73,40 @@ test.describe('minimize.spec', () => {
 // which was broken when min-height: 0 was missing from the flex item.
 test.describe('scrollbar.spec', () => {
   test('timeline panel is visible on initial load', async () => {
+    // logger.spec (above, in this same file) switches to the Network
+    // sub-tab and leaves it there — the Console sub-tab isn't actually
+    // guaranteed to be active by file position, so switch to it explicitly
+    // rather than assuming it, which is also what "on initial load" is
+    // meant to exercise.
+    await window.click('#consoleTabConsole');
+    await expect(window.locator('#consoleTabConsole')).toHaveClass(/active/);
+
+    // #timelinePanel is the only flex:1 child of #timelinePanelWrapper that
+    // isn't the (also-visible, on the Console sub-tab) #consoleControls
+    // toolbar row — with min-height: 0 doing its job, the panel's own height
+    // should be the wrapper's height minus that toolbar's, not just "some"
+    // nonzero value. The ±2px tolerance covers rounding/borders.
     const panel = window.locator('#timelinePanel');
+    const wrapper = window.locator('#timelinePanelWrapper');
+    const consoleControls = window.locator('#consoleControls');
     await expect(panel).toBeVisible();
-    const box = await panel.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThan(0);
+    const [panelBox, wrapperBox, controlsBox] = await Promise.all([
+      panel.boundingBox(), wrapper.boundingBox(), consoleControls.boundingBox(),
+    ]);
+    expect(panelBox).not.toBeNull();
+    expect(wrapperBox).not.toBeNull();
+    expect(controlsBox).not.toBeNull();
+    expect(panelBox!.height).toBeGreaterThan(50);
+    const expectedHeight = wrapperBox!.height - controlsBox!.height;
+    expect(Math.abs(panelBox!.height - expectedHeight)).toBeLessThanOrEqual(2);
   });
 
   test('timeline panel remains scrollable after switching tabs', async () => {
+    const panel = window.locator('#timelinePanel');
+    await expect(panel).toBeVisible();
+    const heightBefore = (await panel.boundingBox())!.height;
+    expect(heightBefore).toBeGreaterThan(50);
+
     // Switch to Storage tab then back to Console. switchConsoleTab() toggles
     // the tab buttons' "active" class and panel display synchronously, so
     // waiting for the button's own active state is a real (and immediate)
@@ -90,24 +116,41 @@ test.describe('scrollbar.spec', () => {
     await window.click('#consoleTabConsole');
     await expect(window.locator('#consoleTabConsole')).toHaveClass(/active/);
 
-    const panel = window.locator('#timelinePanel');
-    await expect(panel).toBeVisible();
+    // The regression this guards: min-height: 0 missing from the flex chain
+    // let #timelinePanel collapse to 0 (or some other unrelated height) once
+    // its sibling panel had been displayed — proving it's back to the SAME
+    // height it had before switching is a much stronger signal than "> 0".
     const box = await panel.boundingBox();
     expect(box).not.toBeNull();
-    // Height must be > 0, proving min-height: 0 allows overflow-y to take effect
-    expect(box!.height).toBeGreaterThan(0);
+    expect(Math.abs(box!.height - heightBefore)).toBeLessThanOrEqual(2);
   });
 
-  test('timeline panel wrapper is visible after multiple tab switches', async () => {
-    for (const tab of ['#consoleTabStorage', '#consoleTabA11y', '#consoleTabConsole']) {
-      await window.click(tab);
-      await expect(window.locator(tab)).toHaveClass(/active/);
+  test('timeline panel wrapper stays scrollable (scrollHeight > clientHeight) after multiple tab switches and enough events', async () => {
+    // Flood the active tab's own console so the timeline has more entries
+    // than fit in the panel — proving overflow-y actually works, not just
+    // that the panel has *a* nonzero height. Directly evaluating console.log
+    // in the tab's page is deterministic and fast, unlike driving the
+    // performance/console-flood.html fixture's own chunked-setTimeout UI.
+    const tab = await getTabPage(app, 'newtab.html');
+    await tab.evaluate(() => {
+      for (let i = 0; i < 300; i++) console.log('scrollbar-spec flood log', i);
+    });
+
+    for (const tabSel of ['#consoleTabStorage', '#consoleTabA11y', '#consoleTabConsole']) {
+      await window.click(tabSel);
+      await expect(window.locator(tabSel)).toHaveClass(/active/);
     }
 
     const wrapper = window.locator('#timelinePanelWrapper');
     await expect(wrapper).toBeVisible();
-    const box = await wrapper.boundingBox();
-    expect(box!.height).toBeGreaterThan(10);
+
+    // pollTimeline() only picks up new events on its own 1s interval —
+    // poll on the panel's own scrollHeight rather than waiting a guessed
+    // amount of time for "enough" events to have arrived and rendered.
+    await expect.poll(
+      () => window.locator('#timelinePanel').evaluate((el) => el.scrollHeight > el.clientHeight),
+      { timeout: 15_000 },
+    ).toBe(true);
   });
 });
 

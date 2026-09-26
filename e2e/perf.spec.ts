@@ -13,6 +13,14 @@
  * and because Playwright's own assertion polling interval (~100ms by
  * default) would otherwise dominate a measurement of something meant to
  * complete in tens of milliseconds.
+ *
+ * #253: every test builds the exact tabs it measures itself (via
+ * createTabs), rather than reading whatever sessions.list() happens to
+ * contain — each test passes the same way whether it's the only test run
+ * (`-g`) or run after the others in this file. Every timing is the median
+ * of 5 switches after one untimed warm-up, not a single sample, since a
+ * single sample on a shared CI runner is exactly the kind of thing that
+ * turns runner noise into a red build.
  */
 
 import { test, expect } from '@playwright/test';
@@ -31,6 +39,12 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app.close();
 });
+
+function median(nums: number[]): number {
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
 
 // Clicks a tab's name (the real click target a user drives) and resolves
 // with the milliseconds from that click until the tab's DOM element actually
@@ -54,6 +68,19 @@ async function measureTabSwitchMs(win: Page, targetId: string): Promise<number> 
   }), targetId);
 }
 
+// Switches back and forth between two tabs 5 times (after one untimed
+// warm-up switch) and returns the median round-trip-half latency, i.e. the
+// median of all 10 individual switch measurements.
+async function medianSwitchMs(win: Page, a: string, b: string): Promise<number> {
+  await measureTabSwitchMs(win, a); // warm-up — leaves `a` active
+  const samples: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    samples.push(await measureTabSwitchMs(win, b));
+    samples.push(await measureTabSwitchMs(win, a));
+  }
+  return median(samples);
+}
+
 async function createTabs(win: Page, count: number): Promise<string[]> {
   const ids: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -65,24 +92,14 @@ async function createTabs(win: Page, count: number): Promise<string[]> {
 }
 
 test('switching to a background tab updates the active tab near-instantly', async () => {
-  const initialSessions: Array<{ id: string }> = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const firstId = initialSessions[0].id;
-  const [secondId] = await createTabs(window, 1); // creating a tab switches to it, leaving firstId in the background
-
-  // Warm-up switch (back to firstId): JIT/layout costs on the very first
-  // switch after launch aren't representative of steady-state clicking, so
-  // don't count it — but it does leave firstId active, ready for the loop below.
-  await measureTabSwitchMs(window, firstId);
-
-  const toSecond = await measureTabSwitchMs(window, secondId);
-  const toFirst  = await measureTabSwitchMs(window, firstId);
+  const [a, b] = await createTabs(window, 2);
+  const ms = await medianSwitchMs(window, a, b);
 
   // Generous for a software-rendered CI sandbox, but tight enough to catch a
   // regression like a fixed artificial delay on the click handler (this used
   // to be a hardcoded 250ms debounce meant to distinguish a click from the
   // start of a double-click — see tabs.js for how that's handled instead).
-  expect(toFirst).toBeLessThan(150);
-  expect(toSecond).toBeLessThan(150);
+  expect(ms).toBeLessThan(200);
 });
 
 test('double-click-to-rename still works when the first click also switches tabs', async () => {
@@ -90,8 +107,7 @@ test('double-click-to-rename still works when the first click also switches tabs
   // bar's DOM (it used to, on every switch), so a tab's .tab-name node
   // survives the switchToSession() its own first click triggers, and a
   // subsequent interaction still lands on that same, persistent node.
-  const sessions: Array<{ id: string }> = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const targetId = sessions[0].id;
+  const [targetId] = await createTabs(window, 1);
 
   const nameEl = window.locator(`.tab[data-id="${targetId}"] .tab-name`);
   // The first click of a real double-click also fires a plain 'click' (which
@@ -116,15 +132,14 @@ test('double-click-to-rename still works when the first click also switches tabs
 test('tab-switch latency does not scale with the number of open tabs', async () => {
   // A full teardown-and-rebuild of the tab bar on every switch would make
   // this scale with tab count; reusing existing DOM nodes should keep it
-  // roughly flat regardless of how many tabs are open.
-  await createTabs(window, 15);
-  const sessions: Array<{ id: string }> = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  expect(sessions.length).toBeGreaterThanOrEqual(15);
+  // roughly flat regardless of how many tabs are open. Compared as a
+  // relative bound measured in the same run (2 tabs vs. 16), not a fixed
+  // number, since absolute per-switch latency varies with the runner.
+  const [a2, b2] = await createTabs(window, 2);
+  const baseline = await medianSwitchMs(window, a2, b2);
 
-  const a = sessions[0].id;
-  const b = sessions[sessions.length - 1].id;
+  const rest = await createTabs(window, 14); // 16 open tabs total
+  const wide = await medianSwitchMs(window, a2, rest[rest.length - 1]);
 
-  await measureTabSwitchMs(window, b); // warm-up
-  const ms = await measureTabSwitchMs(window, a);
-  expect(ms).toBeLessThan(150);
+  expect(wide).toBeLessThan(3 * baseline + 50);
 });

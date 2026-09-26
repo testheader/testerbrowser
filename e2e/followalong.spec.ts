@@ -146,6 +146,7 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   await window.click('#newSessionBtn');
   sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
   const followerId = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+  idsBefore.add(followerId);
 
   await switchToTab(followerId);
   await window.click('#urlbar');
@@ -185,6 +186,42 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   // Disabling mirror navigation for the pair stops further mirroring, and
   // stops the log from growing for navigation steps.
   await pairRow.locator('.follow-nav-check').uncheck();
+
+  // #253: set up a SECOND, still-enabled leader/follower pair now, before
+  // triggering the first pair's post-disable navigation below. Starting a
+  // pair (followStartBtn -> startFollow()) clears #followLog as a side
+  // effect (see followalong.js), so countBefore must be captured *after*
+  // this pair exists, not before — otherwise the log-clear itself would
+  // wipe out the very evidence being protected.
+  await window.click('#newSessionBtn');
+  sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const leader2Id = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+  idsBefore.add(leader2Id);
+
+  await switchToTab(leader2Id);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(leaderStart));
+  await window.press('#urlbar', 'Enter');
+  await expectSessionUrl(leader2Id, leaderStart);
+
+  await window.click('#newSessionBtn');
+  sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const follower2Id = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+  idsBefore.add(follower2Id);
+
+  await switchToTab(follower2Id);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(followerStart));
+  await window.press('#urlbar', 'Enter');
+  await expectSessionUrl(follower2Id, followerStart);
+
+  await window.click('#consoleTabFollow');
+  await window.selectOption('#followPickLeader', leader2Id);
+  await window.selectOption('#followPickFollower', follower2Id);
+  await window.check('#followMirrorNav');
+  await window.click('#followStartBtn');
+  await expect(window.locator(`.follow-pair[data-leader="${leader2Id}"]`)).toBeVisible();
+
   const countBefore = await window.locator('#followLog .follow-log-line').count();
 
   await switchToTab(leaderId);
@@ -194,10 +231,22 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   await window.press('#urlbar', 'Enter');
   await expectSessionUrl(leaderId, afterDisableDest);
 
-  // Give the (now-disabled) mirror a moment to fire if it incorrectly still
-  // would — a deliberate negative wait (proving nothing changes within a
-  // window), out of scope for #249's web-first-wait cleanup; owned by #253.
-  await window.waitForTimeout(1000);
-  await expect(window.locator('#followLog .follow-log-line')).toHaveCount(countBefore);
+  // Rather than sleeping a fixed window and hoping it was long enough for
+  // the (now-disabled) mirror to have fired if it incorrectly still would,
+  // navigate the second, still-enabled pair and wait for ITS OWN new
+  // follow-log-line. Both navigations are dispatched before either wait, so
+  // the relay (which processes queued events in order on its own poll loop)
+  // has had a full cycle to mirror the first pair's navigation too, if it
+  // were going to. Asserting the count grew by exactly 1 (the second pair's
+  // own line) rather than 2 is the proof the first pair stayed silent.
+  await switchToTab(leader2Id);
+  await expect(window.locator('#urlbar')).toHaveValue(fixtures.url(leaderStart), { timeout: 5_000 });
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(mirrorDest));
+  await window.press('#urlbar', 'Enter');
+  await expectSessionUrl(leader2Id, mirrorDest);
+  await expectSessionUrl(follower2Id, mirrorDest);
+
+  await expect(window.locator('#followLog .follow-log-line')).toHaveCount(countBefore + 1);
   await expect(await sessionUrl(followerId)).toContain(mirrorDest);
 });

@@ -101,13 +101,24 @@ test('Reset clears the comparison back to its initial state and disables HAR exp
 
 // ── Free-text filtering of the diff table (#164) ─────────────────────────────
 
-test('a positive free-text term narrows the table to matching URLs, and clearing restores every row', async () => {
+// #253: each free-text filter test below calls this itself rather than
+// relying on whichever test happened to run before it leaving the right
+// comparison behind — every session this creates is a fresh one (tracked via
+// idsBefore, the same pattern used elsewhere in this suite for order
+// independence), so each test passes identically alone (`-g`) or as part of
+// the full file, in any order.
+async function setupDiffFreeTextComparison(): Promise<{ sessionAId: string; sessionBId: string }> {
   const sharedPath = '/network/status-codes.html';
   const onlyAPath = '/downloads/sample.txt';
 
-  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const sessionAId = sessions[0].id;
-  const sessionBId = sessions[1].id;
+  const idsBefore = new Set(
+    (await window.evaluate(() => (window as any).testerBrowser.sessions.list())).map((s: { id: string }) => s.id)
+  );
+
+  await window.click('#newSessionBtn');
+  let sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const sessionAId = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+  idsBefore.add(sessionAId);
 
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionAId);
   await window.click('#urlbar');
@@ -120,6 +131,10 @@ test('a positive free-text term narrows the table to matching URLs, and clearing
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, onlyAPath)).waitForLoadState('load');
 
+  await window.click('#newSessionBtn');
+  sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const sessionBId = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+
   await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), sessionBId);
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(sharedPath));
@@ -130,6 +145,12 @@ test('a positive free-text term narrows the table to matching URLs, and clearing
   await window.selectOption('#diffPickA', sessionAId);
   await window.selectOption('#diffPickB', sessionBId);
   await window.click('#diffRunBtn');
+
+  return { sessionAId, sessionBId };
+}
+
+test('a positive free-text term narrows the table to matching URLs, and clearing restores every row', async () => {
+  await setupDiffFreeTextComparison();
 
   const totalRows = await window.locator('.diff-row').count();
   expect(totalRows).toBeGreaterThan(1);
@@ -150,6 +171,8 @@ test('a negative -term hides matching URLs', async () => {
   // positive+negative terms and the lone-"-" literal case are pure
   // matchesFreeText logic, already covered by
   // src/__tests__/matches-free-text.test.ts (#251).
+  await setupDiffFreeTextComparison();
+
   await window.fill('#diffFilterText', '-sample');
   await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toHaveCount(0);
   await expect(window.locator('.diff-row', { hasText: '/network/status-codes.html' }).first()).toBeVisible();
@@ -157,6 +180,8 @@ test('a negative -term hides matching URLs', async () => {
 });
 
 test('Reset also clears the free-text filter input', async () => {
+  await setupDiffFreeTextComparison();
+
   await window.fill('#diffFilterText', 'sample');
   await expect(window.locator('#diffFilterText')).toHaveValue('sample');
 

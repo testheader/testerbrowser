@@ -65,13 +65,29 @@ test('window opens with TesterBrowser title', async () => {
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 
+// #253: this file's beforeAll launches one shared app for hundreds of tests,
+// so "the app's tab count" is never guaranteed to be pristine by the time a
+// given test runs (test order, --repeat-each, or an earlier test's own tabs
+// all affect it). Reset down to a single tab first rather than assuming one.
+async function resetToSingleTab() {
+  while ((await window.locator('.tab').count()) > 1) {
+    await window.locator('.tab .tab-close').first().click();
+  }
+  await expect(window.locator('.tab')).toHaveCount(1);
+}
+
 test('initial tab is present on startup', async () => {
+  await resetToSingleTab();
   await expect(window.locator('.tab')).toHaveCount(1);
 });
 
 test('new tab button creates a second tab', async () => {
+  // Compares against a count read at the start of the test, not an assumed
+  // baseline — passes the same whether this is the first tab-creating test
+  // in the file or the fiftieth.
+  const before = await window.locator('.tab').count();
   await window.click('#newSessionBtn');
-  await expect(window.locator('.tab')).toHaveCount(2);
+  await expect(window.locator('.tab')).toHaveCount(before + 1);
 });
 
 test('tab strip opts out of the titlebar drag region', async () => {
@@ -91,11 +107,7 @@ test('tab strip opts out of the titlebar drag region', async () => {
 });
 
 test('closing the last remaining tab opens a fresh one instead of leaving the window empty', async () => {
-  // Close down to exactly one tab first, in case an earlier test left more than one open.
-  while ((await window.locator('.tab').count()) > 1) {
-    await window.locator('.tab .tab-close').first().click();
-  }
-  await expect(window.locator('.tab')).toHaveCount(1);
+  await resetToSingleTab();
 
   await window.locator('.tab .tab-close').first().click();
 
@@ -137,10 +149,16 @@ test('timeline receives events after navigation', async () => {
   await window.press('#urlbar', 'Enter');
   const tab = await getTabPage(app, `127.0.0.1:${testPort}`, window);
   await tab.waitForLoadState('load');
-  await expect(window.locator('#timelinePanel .evt').first()).toBeVisible();
-
-  const count = await window.locator('#timelinePanel .evt').count();
-  expect(count).toBeGreaterThan(0);
+  // #253: a specific row for this navigation, not just "some row exists" —
+  // the timeline can easily be non-empty from an earlier test's own traffic
+  // regardless of whether this navigation was ever actually recorded. The
+  // default Console sub-tab only renders console/log/exception kinds (see
+  // renderTimeline() in timeline.js), so a network-request row needs the
+  // Network sub-tab active to be visible at all.
+  await window.click('#consoleTabNetwork');
+  await expect(
+    window.locator('#timelinePanel .evt', { hasText: `127.0.0.1:${testPort}` }).first()
+  ).toBeVisible();
 });
 
 // ── Replay overlay ───────────────────────────────────────────────────────────
