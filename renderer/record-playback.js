@@ -2,6 +2,7 @@
 import { getActiveId } from './tabs.js';
 import { escHtml, mergeRecordedSteps } from './utils.js';
 import { openImageOverlay } from './image-overlay.js';
+import { showStatus } from './status-msg.js';
 
 let initialized = false;
 let isRecording = false;
@@ -40,7 +41,7 @@ export function initRecordPlayback() {
             <button class="rp-btn" id="rpSaveBtn" disabled>Save</button>
             <button class="rp-btn" id="rpDiscardBtn" disabled>Discard</button>
           </div>
-          <span class="rp-form-status" id="rpFormStatus"></span>
+          <span class="status-msg" id="rpFormStatus"></span>
         </div>
         <div id="rpLiveSteps" class="rp-live-steps"></div>
       </div>
@@ -178,12 +179,7 @@ function initColumnResize() {
 // Inline status pattern used throughout the app (spoofStatus, secStatus,
 // rp-run-status) instead of blocking alert()/prompt() dialogs.
 function showFormStatus(msg, isError) {
-  const el = document.getElementById('rpFormStatus');
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.toggle('rp-form-status-error', !!isError);
-  clearTimeout(el._t);
-  el._t = setTimeout(() => { el.textContent = ''; }, 4000);
+  showStatus('rpFormStatus', msg, isError);
 }
 
 // ─── Recording ─────────────────────────────────────────────────────────────

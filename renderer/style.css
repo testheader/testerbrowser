@@ -1117,7 +1117,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .spoof-apply:hover:not([disabled]) { background: var(--info-surface); }
 .spoof-reset { background: var(--error-surface); border-color: var(--error-border); }
 .spoof-reset:hover:not([disabled]) { background: var(--error-surface); }
-.spoof-status { font-size: 11px; }
 .spoof-current { font-size: 11px; color: var(--text-muted); padding: 6px 8px; border-radius: 3px;
                   background: var(--bg-hover); border: 1px solid var(--border-color); }
 .spoof-current.spoof-current-active { color: var(--info-strong); background: var(--info-surface); border-color: var(--info-border); }
@@ -1392,8 +1391,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
             padding: 4px 7px; font-size: 12px; width: 100%; box-sizing: border-box; }
 .rp-input:focus { outline: none; border-color: var(--accent); }
 .rp-record-btns { display: flex; gap: 4px; flex-wrap: wrap; }
-.rp-form-status { font-size: 11px; color: var(--text-muted); }
-.rp-form-status-error { color: var(--error-strong); }
+.status-msg { font-size: 11px; color: var(--text-muted); }
+.status-msg-error { color: var(--error-strong); }
 .rp-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 3px;
           padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .rp-btn:hover:not(:disabled) { background: var(--bg-tertiary); }

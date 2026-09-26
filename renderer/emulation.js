@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
+import { showStatus as showStatusMsg } from './status-msg.js';
 
 const PRESETS = [
   { label: 'New York',    timezone: 'America/New_York',      locale: 'en-US', latitude:  40.7128, longitude:  -74.0060 },
@@ -97,7 +98,7 @@ export function initSpoof() {
         <button class="spoof-btn spoof-reset" id="spoofReset">Reset overrides</button>
         <button class="spoof-btn spoof-current-btn" id="spoofUseCurrent" title="Fill the fields with this machine's real timezone, locale and location">Use current values</button>
         <span class="spoof-dirty" id="spoofDirty" hidden>Unapplied changes</span>
-        <span class="spoof-status" id="spoofStatus"></span>
+        <span class="status-msg" id="spoofStatus"></span>
       </div>
     </div>`;
 
@@ -372,9 +373,5 @@ async function resetSpoof() {
 }
 
 function showStatus(msg, isError) {
-  const el = document.getElementById('spoofStatus');
-  el.textContent = msg;
-  el.style.color = isError ? 'var(--err-color, #e05)' : 'var(--ok-color, #4c4)';
-  clearTimeout(el._t);
-  el._t = setTimeout(() => { el.textContent = ''; }, 4000);
+  showStatusMsg('spoofStatus', msg, isError);
 }
