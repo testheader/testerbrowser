@@ -13,15 +13,38 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
       # Native modules not needed for type-checking or unit tests — skip postinstall.
       # better-sqlite3 is mocked in Jest, so no native compilation is required.
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
+
+  lint:
+    if: "github.actor != 'github-actions[bot]'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
       - run: npm run lint
+
+  unit-test:
+    if: "github.actor != 'github-actions[bot]'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
       - run: npm run test
 
   bump-version:
-    needs: [typecheck]
+    needs: [typecheck, lint, unit-test]
     if: "github.actor != 'github-actions[bot]' && github.ref == 'refs/heads/main'"
     runs-on: ubuntu-latest
     permissions:
@@ -36,6 +59,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
       - run: npm ci --ignore-scripts
       - name: Bump version and create draft GitHub release
         id: bump
@@ -77,6 +101,16 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+      # electron-rebuild needs a real Electron binary (to rebuild native modules
+      # against its ABI) — under --ignore-scripts that's a lazy download the
+      # first time node_modules/electron is required, cached by @electron/get
+      # at its own default path (env-paths' Windows cache dir), not npm's cache.
+      - name: Cache Electron download
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LOCALAPPDATA }}\electron\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       # Skip postinstall (would compile better-sqlite3 against Node instead of Electron)
       - run: npm ci --ignore-scripts
       # Rebuild better-sqlite3 against Electron's ABI
@@ -141,24 +175,44 @@ jobs:
           path: release/TesterBrowser-Setup-*.exe
 
   e2e:
-    needs: [bump-version]
-    if: "always() && needs.bump-version.result != 'failure'"
+    # No longer needs bump-version — that commit only touches package.json/
+    # package-lock.json's version, which no e2e spec reads (grep -n version
+    # e2e/*.spec.ts is empty), so waiting for it just delays the start for
+    # nothing. Checks out this push's own commit directly instead.
+    if: "github.actor != 'github-actions[bot]'"
     runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
-      # On main, check out the branch so the bump-version commit is included.
-      # Anywhere else bump-version is skipped and there is no such commit, so
-      # checking out main would test main's code instead of the code that was
-      # actually pushed — making every branch/PR run report main's failures.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref == 'refs/heads/main' && 'main' || github.sha }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+      # See build-windows's identical step above for why this path/why it's
+      # not npm's own cache.
+      - name: Cache Electron download
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LOCALAPPDATA }}\electron\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npm ci --ignore-scripts
       - run: npx electron-rebuild -f -w better-sqlite3
       - run: npm run build
-      - run: npx playwright test
+      - run: npx playwright test --shard=${{ matrix.shard }}/2
+      - name: Upload Playwright report and results on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-shard-${{ matrix.shard }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
 
   publish-release:
     needs: [bump-version, build-windows, e2e]

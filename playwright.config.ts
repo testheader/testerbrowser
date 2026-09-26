@@ -17,6 +17,13 @@ export default defineConfig({
   // carried between tests.
   workers: process.env.CI ? 2 : 4,
   fullyParallel: false,
-  reporter: 'list',
+  // #250: retain-on-failure keeps a trace.zip (with screenshots/DOM
+  // snapshots/network) per failing test in test-results/, viewable via
+  // `npx playwright show-trace`. The html reporter writes playwright-report/
+  // for the same purpose in CI (never opened automatically there — nothing
+  // to open on a headless runner); the plain list reporter is enough when
+  // running locally with a terminal in front of you.
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  use: { trace: 'retain-on-failure' },
   projects: [{ name: 'electron', use: {} }],
 });

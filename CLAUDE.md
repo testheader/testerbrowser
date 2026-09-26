@@ -43,7 +43,8 @@ test-pages/                Static HTML fixtures for testing TesterBrowser itself
                            build.files in package.json. See test-pages/README.md.
 e2e/fixtures/server.ts     Shared HTTP server serving test-pages/ + dynamic routes (status
                            codes, delay, redirects, generated downloads) for e2e tests.
-.github/workflows/build.yml  CI: typecheck → bump-version → build-windows + e2e → publish-release
+.github/workflows/build.yml  CI: {typecheck,lint,unit-test} → bump-version → build-windows,
+                           e2e (2 shards, starts immediately) → publish-release
 ```
 
 ---
@@ -188,12 +189,14 @@ Each session is assigned a colour from `TAB_COLORS` in `sessionManager.ts` (10 c
 
 Every push (by a non-bot actor) runs:
 
-1. **typecheck** — `npm run typecheck`, `npm run lint` **and** `npm test`. All three must pass.
-2. **bump-version** (main only) — parses commit message, runs `npm version [patch|minor|major]`, pushes the bump commit and a draft release.
+1. **typecheck**, **lint**, **unit-test** — `npm run typecheck` / `npm run lint` / `npm run test`, three separate jobs in parallel. All three must pass.
+2. **bump-version** (main only, needs all three above) — parses commit message, runs `npm version [patch|minor|major]`, pushes the bump commit and a draft release.
    - `feat:` → minor | `feat!:` / `BREAKING CHANGE` → major | anything else → patch
 3. **build-windows** — builds the NSIS installer and uploads it to the draft release.
-4. **e2e** — Playwright against the built app on Windows.
-5. **publish-release** — promotes the draft to a prerelease once the rest are green.
+4. **e2e** — Playwright against the built app on Windows, sharded 2-way (`--shard=N/2`, `fail-fast: false`); starts immediately rather than waiting on `bump-version`, since no spec reads `package.json`'s version. A failing shard uploads its `playwright-report/`/`test-results/` (trace included) as a shard-numbered artifact.
+5. **publish-release** — promotes the draft to a prerelease once `bump-version`, `build-windows` and every `e2e` shard are green.
+
+`actions/setup-node` caches npm's own store (`cache: npm`) in every job that runs `npm ci`. `build-windows` and `e2e` additionally cache Electron's own binary download (`actions/cache` on `%LOCALAPPDATA%\electron\Cache`, keyed on the lockfile hash) — under `--ignore-scripts` that download happens lazily the first time `node_modules/electron` is required (by `electron-rebuild` or Playwright's `_electron.launch()`), not at `npm ci` time, so it isn't covered by npm's own cache.
 
 ---
 

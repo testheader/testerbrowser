@@ -62,8 +62,11 @@ box run it under `xvfb-run`.
   leaks between spec files and produces intermittent, run-order-dependent
   failures.
 - Electron is mocked for unit tests via `src/__mocks__/electron.ts`.
-- Playwright runs with `workers: 1` and `retries: 0` by design — a flaky test is
-  a bug to fix, not to retry away.
+- Playwright runs with `workers: process.env.CI ? 2 : 4` and `retries: 0` by
+  design (#249) — a flaky test is a bug to fix, not to retry away. Tests
+  *within* one spec file still run serially against that file's one shared
+  app launch (`fullyParallel: false`); only different files run in parallel,
+  since each gets its own isolated profile dir and fixture server.
 
 **After adding a test file, confirm it actually ran** (see it named in the Jest
 or Playwright output). A green run that never executed your test proves nothing.
@@ -73,18 +76,27 @@ or Playwright output). A green run that never executed your test proves nothing.
 `.github/workflows/build.yml`, on every push:
 
 ```
-typecheck ─→ bump-version ─→ build-windows ─┐
-                          └─→ e2e ──────────┴─→ publish-release
+typecheck ┐
+lint      ├─→ bump-version ─→ build-windows ─┐
+unit-test ┘                                  ├─→ publish-release
+e2e (shard 1/2, 2/2) ────────────────────────┘
 ```
 
-- **typecheck** runs `npm run typecheck`, `npm run lint` **and** `npm test`.
-  When this job fails, one of those three is the cause.
+- **typecheck**, **lint** and **unit-test** run in parallel, each its own job
+  (`npm run typecheck` / `npm run lint` / `npm run test`). `bump-version`
+  needs all three, so a failure in any of them still blocks the release.
 - **bump-version** (main only) parses the commit message and pushes a
   `chore: bump version …` commit back to `main` as `github-actions[bot]`:
   `feat:` → minor, `feat!:` / `BREAKING CHANGE` → major, everything else →
   patch. **Never edit the version in `package.json` by hand.**
-- **e2e** runs Playwright on Windows.
-- **publish-release** promotes the draft release once the others are green.
+- **e2e** runs Playwright on Windows, sharded across 2 runners
+  (`--shard=N/2`, `fail-fast: false`) and starting immediately rather than
+  waiting on `bump-version` (#250) — the bump commit only touches
+  `package.json`/`package-lock.json`'s version, which no spec reads. Each
+  shard uploads `playwright-report/`/`test-results/` (trace included) as an
+  artifact, named with its shard number, only `if: failure()`.
+- **publish-release** promotes the draft release once `bump-version`,
+  `build-windows` and `e2e` (all shards) are green.
 
 Because `bump-version` pushes to `main`, your local clone goes stale after every
 successful run — pull with rebase before pushing.
