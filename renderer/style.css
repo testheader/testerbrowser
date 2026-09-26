@@ -1038,8 +1038,9 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .follow-stop-btn:hover { background: var(--error-surface); }
 .follow-log { flex: 1; overflow-y: auto; padding: 6px 12px; font-family: monospace; font-size: 11px; border-top: 1px solid var(--border-color); }
 .follow-log-line { padding: 2px 0; }
-.follow-log-line.ok  { color: var(--success-strong); }
-.follow-log-line.err { color: var(--error-strong); }
+.follow-log-line.ok   { color: var(--success-strong); }
+.follow-log-line.err  { color: var(--error-strong); }
+.follow-log-line.warn { color: var(--warn-strong); }
 
 /* ── Test data template overlay ── */
 #testdataOverlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);

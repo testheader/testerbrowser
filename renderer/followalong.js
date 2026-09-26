@@ -28,7 +28,13 @@ export function initFollow() {
     <div class="follow-pairs" id="followPairs"></div>
     <div class="follow-log" id="followLog"></div>`;
 
-  populatePickers();
+  // #258: don't also fire-and-forget populatePickers() here — console-tabs.js
+  // always calls refreshFollowPickers() right after initFollow(), which
+  // awaits its own populatePickers() call. Racing an un-awaited call here
+  // against that one let whichever resolved second read the other's
+  // already-mutated picker value as its own "previous selection", excluding
+  // a real session from the OTHER picker's option list entirely on the
+  // panel's first-ever open in a session.
   document.getElementById('followStartBtn').addEventListener('click', startFollow);
   document.getElementById('followClearLogBtn').addEventListener('click', () => {
     document.getElementById('followLog').innerHTML = '';
@@ -54,13 +60,23 @@ async function startFollow() {
   const leaderId   = document.getElementById('followPickLeader')?.value;
   const followerId = document.getElementById('followPickFollower')?.value;
   const mirrorNavigation = document.getElementById('followMirrorNav')?.checked ?? false;
-  const hint = document.getElementById('followLog');
-  if (!leaderId || !followerId) { setLog('Pick both a leader and a follower session.', true); return; }
-  if (leaderId === followerId) { setLog('Pick two different sessions.', true); return; }
+  if (!leaderId || !followerId) { setLog('Pick both a leader and a follower session.', 'err'); return; }
+  if (leaderId === followerId) { setLog('Pick two different sessions.', 'err'); return; }
 
   const result = await testerBrowser.followAlong.start(leaderId, followerId, mirrorNavigation);
-  if (!result.ok) { setLog(result.error || 'Could not start Follow Along.', true); return; }
-  if (hint) hint.innerHTML = '';
+  if (!result.ok) { setLog(result.error || 'Could not start Follow Along.', 'err'); return; }
+
+  // #258: leader and follower sharing a partition (e.g. a middle-clicked tab)
+  // share cookies/storage too — mirrored logins and form posts then act on
+  // the same account twice, silently, unless flagged here.
+  const leaderSession = cachedSessions.find(s => s.id === leaderId);
+  const followerSession = cachedSessions.find(s => s.id === followerId);
+  if (leaderSession && followerSession && leaderSession.partition === followerSession.partition) {
+    setLog('Leader and follower share cookies/storage — actions will affect the same account.', 'warn');
+  } else {
+    const log = document.getElementById('followLog');
+    if (log) log.innerHTML = '';
+  }
   await refreshFollowPanel();
 }
 
@@ -102,10 +118,10 @@ async function refreshFollowPanel() {
   }
 }
 
-function setLog(text, isError) {
+function setLog(text, kind = 'ok') {
   const log = document.getElementById('followLog');
   if (!log) return;
-  log.innerHTML = `<div class="follow-log-line ${isError ? 'err' : 'ok'}">${escHtml(text)}</div>`;
+  log.innerHTML = `<div class="follow-log-line ${kind}">${escHtml(text)}</div>`;
 }
 
 // Long URLs would otherwise wrap the whole log line and push older lines

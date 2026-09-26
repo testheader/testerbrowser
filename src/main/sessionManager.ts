@@ -1008,6 +1008,36 @@ export function buildNavMirrorStepResult(
   };
 }
 
+// #258: a single-flight setTimeout loop, not setInterval — a tick function
+// like relayFollowSteps awaits harvestRecordingSteps() plus follower
+// playback (which can wait up to 10s for a selector), so a fixed-period
+// interval could start a second tick while the first was still running,
+// relaying the same step twice or relaying a stale value after a newer one
+// landed. The next tick is only scheduled once the previous one has fully
+// settled (resolved or rejected), and stop() cancels the pending timeout —
+// a tick already in flight when stop() is called checks `stopped` before
+// rescheduling, so it never reschedules after stop. Exported standalone
+// (rather than left as inline scheduling logic in startFollowAlong) so it's
+// unit-testable with fake timers and a hand-resolvable stub, without
+// constructing a full SessionManager.
+export function startSingleFlightPoll(tick: () => Promise<void>, intervalMs: number): { stop: () => void } {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const run = () => {
+    if (stopped) return;
+    // A caller-side rejection is expected to already be caught (so it can be
+    // logged with context); this is a defensive fallback so a tick function
+    // that forgets to catch its own errors still reschedules, rather than
+    // silently stopping the loop or surfacing an unhandled rejection.
+    tick().catch(() => {}).finally(() => {
+      if (stopped) return;
+      timer = setTimeout(run, intervalMs);
+    });
+  };
+  timer = setTimeout(run, intervalMs);
+  return { stop: () => { stopped = true; if (timer) clearTimeout(timer); } };
+}
+
 interface FollowPairing {
   leaderId: string;
   followerId: string;
@@ -1016,7 +1046,7 @@ interface FollowPairing {
   // mutated in place as the user types (see upsertFill), so the same step id
   // must be re-relayed each time its value grows, not just once.
   relayedSteps: Map<string, string>;
-  pollTimer: ReturnType<typeof setInterval>;
+  poller: { stop: () => void };
   navHandler: (_e: unknown, url: string) => void;
   navInPageHandler: (_e: unknown, url: string) => void;
 }
@@ -3276,11 +3306,16 @@ export class SessionManager {
     leader.view.webContents.on('did-navigate', navHandler);
     leader.view.webContents.on('did-navigate-in-page', navInPageHandler);
 
-    // silent: polls every 300ms while Follow Along is active — too high-frequency to log
-    const pollTimer = setInterval(() => { this.relayFollowSteps(leaderId).catch(() => {}); }, 300);
+    // silent: polls roughly every 300ms while Follow Along is active — too
+    // high-frequency to log each tick, but a rejected tick still gets a warn.
+    const poller = startSingleFlightPoll(
+      () => this.relayFollowSteps(leaderId)
+        .catch((e: unknown) => this.log.warn('sessions', 'Follow Along relay tick failed', { leaderId, error: String(e) })),
+      300,
+    );
 
     this.followPairings.set(leaderId, {
-      leaderId, followerId, mirrorNavigation, relayedSteps: new Map(), pollTimer, navHandler, navInPageHandler,
+      leaderId, followerId, mirrorNavigation, relayedSteps: new Map(), poller, navHandler, navInPageHandler,
     });
     return { ok: true };
   }
@@ -3288,7 +3323,7 @@ export class SessionManager {
   async stopFollowAlong(leaderId: string): Promise<boolean> {
     const pairing = this.followPairings.get(leaderId);
     if (!pairing) return false;
-    clearInterval(pairing.pollTimer);
+    pairing.poller.stop();
     const leader = this.sessions.get(leaderId);
     if (leader) {
       leader.view.webContents.off('did-navigate', pairing.navHandler);

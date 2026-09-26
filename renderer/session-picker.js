@@ -1,17 +1,39 @@
 /* global testerBrowser */
 import { escHtml } from './utils.js';
 
+function hostOf(url) {
+  if (!url) return '';
+  try {
+    return new URL(url).host; // '' for file:// URLs (e.g. newtab.html) — no host to show
+  } catch {
+    return '';
+  }
+}
+
+// #258: two tabs on the same site, or two tabs sharing a partition (e.g. a
+// middle-clicked link), used to be visually indistinguishable in these
+// pickers — a tester could easily compare/pair the wrong two sessions.
+// Exported standalone (pure, no DOM) for unit testing.
+export function pickerLabel(session, allSessions) {
+  const host = hostOf(session.url);
+  const shared = allSessions.some(s => s.id !== session.id && s.partition === session.partition);
+  return `${session.name}${host ? ` — ${host}` : ''}${shared ? ' · shared session' : ''}`;
+}
+
 // Builds a <select>'s <option> list from a session array — the one bit
 // diff.js/followalong.js's paired pickers and visual-regression.js's single
 // "compare against" picker all actually share. `excludeId` drops one
 // session (used by the paired pickers, below, so A can't also be B);
 // `extraFirstOption` prepends a synthetic non-session choice (a "— pick
 // session —" placeholder here, "This session" in visual-regression.js).
+// `allSessions` (defaulting to `sessions` itself) is the pool pickerLabel()
+// checks for a shared partition — passed separately so an excluded session
+// is still considered when flagging "shared session".
 export function buildSessionOptions(select, sessions, opts = {}) {
-  const { excludeId, extraFirstOption } = opts;
+  const { excludeId, extraFirstOption, allSessions = sessions } = opts;
   const current = select.value;
   const filtered = excludeId ? sessions.filter(s => s.id !== excludeId) : sessions;
-  const optsHtml = filtered.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+  const optsHtml = filtered.map(s => `<option value="${s.id}">${escHtml(pickerLabel(s, allSessions))}</option>`).join('');
   const firstHtml = extraFirstOption ? `<option value="${extraFirstOption.value}">${escHtml(extraFirstOption.label)}</option>` : '';
   select.innerHTML = firstHtml + optsHtml;
   if (current && current !== excludeId) select.value = current;

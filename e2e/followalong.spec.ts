@@ -250,3 +250,80 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   await expect(window.locator('#followLog .follow-log-line')).toHaveCount(countBefore + 1);
   await expect(await sessionUrl(followerId)).toContain(mirrorDest);
 });
+
+// ── Disambiguating session pickers, and a shared-partition warning (#258) ──
+
+test('session picker options are labelled with the session name and current host, so two tabs on the same site are distinguishable', async () => {
+  const sharedPath = '/record/target.html';
+
+  const idsBefore = new Set(
+    (await window.evaluate(() => (window as any).testerBrowser.sessions.list())).map((s: { id: string }) => s.id)
+  );
+
+  await window.click('#newSessionBtn');
+  let sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const idA = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+  idsBefore.add(idA);
+
+  await window.click(`.tab[data-id="${idA}"] .tab-name`);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(sharedPath));
+  await window.press('#urlbar', 'Enter');
+  const tabA = await getTabPage(app, sharedPath);
+  await tabA.waitForLoadState('load');
+
+  await window.click('#newSessionBtn');
+  sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const idB = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+  idsBefore.add(idB);
+
+  await window.click(`.tab[data-id="${idB}"] .tab-name`);
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(sharedPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, sharedPath, tabA)).waitForLoadState('load');
+
+  await window.click('#consoleTabFollow');
+  const host = new URL(fixtures.url(sharedPath)).host;
+  const textA = await window.locator(`#followPickLeader option[value="${idA}"]`).textContent();
+  const textB = await window.locator(`#followPickLeader option[value="${idB}"]`).textContent();
+
+  expect(textA).toContain(`— ${host}`);
+  expect(textB).toContain(`— ${host}`);
+  // Both tabs are on the exact same URL — the tab name is what keeps the two
+  // option texts apart, proving the label isn't just "always show the host"
+  // with the name lost in the process.
+  expect(textA).not.toBe(textB);
+});
+
+test('starting Follow Along on a shared-partition pair shows a warning in the log', async () => {
+  const idsBefore = new Set(
+    (await window.evaluate(() => (window as any).testerBrowser.sessions.list())).map((s: { id: string }) => s.id)
+  );
+
+  await window.click('#newSessionBtn');
+  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const leaderId = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+  idsBefore.add(leaderId);
+
+  // "New tab in this session" — the '+' immediately after a solo tab's own
+  // run (renderer/tabs.js) creates a new tab sharing that tab's partition,
+  // i.e. its cookies and storage.
+  await window.locator(`.tab[data-id="${leaderId}"] + .tab-group-add`).click();
+  await expect.poll(
+    () => window.evaluate(() => (window as any).testerBrowser.sessions.list().then((l: unknown[]) => l.length))
+  ).toBe(sessions.length + 1);
+  const afterCreate = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  const followerId = afterCreate.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
+
+  await window.click('#consoleTabFollow');
+  await window.selectOption('#followPickLeader', leaderId);
+  await window.selectOption('#followPickFollower', followerId);
+  await window.click('#followStartBtn');
+
+  const warningLine = window.locator('#followLog .follow-log-line.warn');
+  await expect(warningLine).toBeVisible();
+  await expect(warningLine).toContainText('Leader and follower share cookies/storage — actions will affect the same account.');
+
+  await window.locator(`.follow-pair[data-leader="${leaderId}"] .follow-stop-btn`).click();
+});
