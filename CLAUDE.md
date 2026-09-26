@@ -133,6 +133,14 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 
 ## Keyboard shortcuts
 
+Canonical key-combo → action mapping lives in `renderer/shortcut-table.js`
+(mirrored in `src/main/shortcutTable.ts` — the renderer is unbundled ESM and
+can't import a TS-compiled module from `src/`, so the two can't literally
+share one file; `src/main/__tests__/shortcutTableSync.test.ts` keeps them
+from drifting apart). Ctrl+Tab and Ctrl+1–9 aren't flat key matches (they
+carry extra data) and stay as their own branches in both
+`sessionManager.ts`'s `before-input-event` handler and `renderer/shortcuts.js`.
+
 | Keys | Behaviour |
 |---|---|
 | `Ctrl+T` | New tab |

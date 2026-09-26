@@ -12,6 +12,7 @@ import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, gen
 import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 import { filterRowsSince } from './jira';
 import { writeJsonAtomic } from './jsonFile';
+import { matchShortcut } from './shortcutTable';
 import {
   RGB, WCAG_AA_NORMAL, WCAG_AA_LARGE, WCAG_AAA_NORMAL, WCAG_AAA_LARGE,
   contrastRatio, isLargeText, parseCssColor,
@@ -1583,27 +1584,26 @@ export class SessionManager {
     view.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') return;
       const { control: ctrl, shift, alt, key } = input;
-      const send = (name: string) => { event.preventDefault(); this.win.webContents.send('app:shortcut', name); };
 
+      // Ctrl+Tab (needs the reverse-direction flag) and Ctrl+1–9 (needs the
+      // digit) carry extra data a flat key match can't express — see
+      // shortcutTable.ts for why these two stay their own branches ahead of
+      // the shared table instead of being entries in it.
       if (ctrl && key === 'Tab')            { event.preventDefault(); this.win.webContents.send('tabs:cycle', { reverse: shift }); return; }
-      if (ctrl && !shift && key === 't')    { send('newTab'); return; }
-      if (ctrl && !shift && key === 'w')    { send('closeTab'); return; }
-      if (ctrl && shift  && key === 'T')    { send('reopenTab'); return; }
-      if (ctrl && key === 'l')              { send('focusUrl'); return; }
-      if (ctrl && key === 'f')              { send('findToggle'); return; }
-      if (ctrl && !shift && key === 'd')    { send('bookmark'); return; }
-      if (ctrl && shift  && key === 'B')    { send('toggleBookmarksBar'); return; }
-      if (key === 'F3')                     { send(shift ? 'findPrev' : 'findNext'); return; }
-      if ((ctrl && key === 'r') || key === 'F5') { send('reload'); return; }
-      if (key === 'Escape')                 { send('stopOrEsc'); return; }
-      if (key === 'F12')                    { event.preventDefault(); this.toggleDevTools(this.activeId ?? ''); return; }
-      if (ctrl && (key === '=' || key === '+')) { event.preventDefault(); this.setZoom(this.activeId ?? '', 0.1); return; }
-      if (ctrl && key === '-')              { event.preventDefault(); this.setZoom(this.activeId ?? '', -0.1); return; }
-      if (ctrl && key === '0')              { event.preventDefault(); this.resetZoom(this.activeId ?? ''); return; }
-      if (alt && key === 'ArrowLeft')       { event.preventDefault(); this.back(this.activeId ?? ''); return; }
-      if (alt && key === 'ArrowRight')      { event.preventDefault(); this.forward(this.activeId ?? ''); return; }
-      // Ctrl+1–9 tab switching
-      if (ctrl && key >= '1' && key <= '9') { send(`switchTab:${key}`); return; }
+      if (ctrl && key >= '1' && key <= '9') { event.preventDefault(); this.win.webContents.send('app:shortcut', `switchTab:${key}`); return; }
+
+      const match = matchShortcut({ ctrl, shift, alt, key });
+      if (!match) return;
+      event.preventDefault();
+      if (!match.direct) { this.win.webContents.send('app:shortcut', match.action); return; }
+      switch (match.action) {
+        case 'devtools':  this.toggleDevTools(this.activeId ?? ''); break;
+        case 'zoomIn':    this.setZoom(this.activeId ?? '', 0.1); break;
+        case 'zoomOut':   this.setZoom(this.activeId ?? '', -0.1); break;
+        case 'zoomReset': this.resetZoom(this.activeId ?? ''); break;
+        case 'back':      this.back(this.activeId ?? ''); break;
+        case 'forward':   this.forward(this.activeId ?? ''); break;
+      }
     });
 
     view.webContents.on('zoom-changed', (_event, zoomDirection) => {

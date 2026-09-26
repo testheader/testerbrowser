@@ -3,6 +3,7 @@ import { closeTab, reopenTab, switchToSession, cycleTab, getActiveId, getTabOrde
 import { openFind, closeFind, doFind } from './find.js';
 import { toggleBookmark, toggleBookmarksBar } from './bookmarks.js';
 import { isFindOpen } from './layout.js';
+import { matchShortcut } from './shortcut-table.js';
 
 function handleShortcut(key) {
   const activeId = getActiveId();
@@ -36,26 +37,36 @@ function handleShortcut(key) {
   }
 }
 
+// The `direct` shortcuts (devtools/zoom/back-forward) are handled here too,
+// not just by main's before-input-event — this listener covers the
+// chrome-focused case (urlbar, console panel, no tab view underneath),
+// where there's nothing to forward to and testerBrowser is called directly.
+function dispatchDirect(action) {
+  const id = getActiveId();
+  if (!id) return;
+  switch (action) {
+    case 'devtools':  testerBrowser.sessions.devtools(id); break;
+    case 'zoomIn':    testerBrowser.sessions.setZoom(id, 0.1); break;
+    case 'zoomOut':   testerBrowser.sessions.setZoom(id, -0.1); break;
+    case 'zoomReset': testerBrowser.sessions.resetZoom(id); break;
+    case 'back':      testerBrowser.sessions.back(id); break;
+    case 'forward':   testerBrowser.sessions.forward(id); break;
+  }
+}
+
 export function initShortcuts() {
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'Tab')              { e.preventDefault(); cycleTab(e.shiftKey); return; }
-    if (e.ctrlKey && !e.shiftKey && e.key === 't') { e.preventDefault(); handleShortcut('newTab');    return; }
-    if (e.ctrlKey && !e.shiftKey && e.key === 'w') { e.preventDefault(); handleShortcut('closeTab');  return; }
-    if (e.ctrlKey && e.shiftKey  && e.key === 'T') { e.preventDefault(); handleShortcut('reopenTab'); return; }
-    if (e.ctrlKey && e.key === 'l')                { e.preventDefault(); handleShortcut('focusUrl');          return; }
-    if (e.ctrlKey && e.key === 'f')                { e.preventDefault(); handleShortcut('findToggle');        return; }
-    if (e.ctrlKey && !e.shiftKey && e.key === 'd') { e.preventDefault(); handleShortcut('bookmark');    return; }
-    if (e.ctrlKey && e.shiftKey && e.key === 'B')  { e.preventDefault(); handleShortcut('toggleBookmarksBar'); return; }
-    if (e.key === 'F3')                            { e.preventDefault(); handleShortcut(e.shiftKey ? 'findPrev' : 'findNext'); return; }
-    if ((e.ctrlKey && e.key === 'r') || e.key === 'F5') { e.preventDefault(); handleShortcut('reload'); return; }
-    if (e.key === 'Escape')                        { e.preventDefault(); handleShortcut('stopOrEsc'); return; }
-    if (e.key === 'F12')                           { e.preventDefault(); if (getActiveId()) testerBrowser.sessions.devtools(getActiveId()); return; }
-    if (e.ctrlKey && (e.key === '=' || e.key === '+')) { e.preventDefault(); if (getActiveId()) testerBrowser.sessions.setZoom(getActiveId(),  0.1); return; }
-    if (e.ctrlKey && e.key === '-')                { e.preventDefault(); if (getActiveId()) testerBrowser.sessions.setZoom(getActiveId(), -0.1); return; }
-    if (e.ctrlKey && e.key === '0')                { e.preventDefault(); if (getActiveId()) testerBrowser.sessions.resetZoom(getActiveId());    return; }
-    if (e.altKey  && e.key === 'ArrowLeft')        { e.preventDefault(); if (getActiveId()) testerBrowser.sessions.back(getActiveId());         return; }
-    if (e.altKey  && e.key === 'ArrowRight')       { e.preventDefault(); if (getActiveId()) testerBrowser.sessions.forward(getActiveId());      return; }
+    // Ctrl+Tab and Ctrl+1–9 carry extra data a flat key match can't express
+    // — see shortcut-table.js for why these stay their own branches ahead
+    // of the shared table instead of being entries in it.
+    if (e.ctrlKey && e.key === 'Tab') { e.preventDefault(); cycleTab(e.shiftKey); return; }
     if (e.ctrlKey && e.key >= '1' && e.key <= '9') { e.preventDefault(); handleShortcut(`switchTab:${e.key}`); return; }
+
+    const match = matchShortcut({ ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, key: e.key });
+    if (!match) return;
+    e.preventDefault();
+    if (match.direct) dispatchDirect(match.action);
+    else handleShortcut(match.action);
   });
 
   testerBrowser.sessions.onShortcut((key) => handleShortcut(key));
