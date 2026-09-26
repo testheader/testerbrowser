@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { switchToSession } from './tabs.js';
 import { escHtml } from './utils.js';
+import { initModal, openModal, closeModal } from './modal.js';
 
 // historySessionId (which session's history overlay is open, if any) is
 // entirely private to this file — nothing else reads or writes it.
@@ -12,8 +13,7 @@ export async function openHistory(id) {
   const s = sessions.find((x) => x.id === id);
   document.getElementById('historyTitle').textContent = 'History — ' + (s?.name || id);
   await renderHistoryList(id);
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('historyOverlay').classList.add('open');
+  await openModal('historyOverlay');
 }
 
 async function renderHistoryList(id) {
@@ -32,17 +32,14 @@ async function renderHistoryList(id) {
 }
 
 async function closeHistory() {
-  document.getElementById('historyOverlay').classList.remove('open');
-  await testerBrowser.layout.setViewerVisible(true);
+  await closeModal('historyOverlay');
   historySessionId = null;
 }
 
 export function initHistory() {
+  initModal('historyOverlay', closeHistory);
   document.getElementById('closeHistoryBtn').onclick  = () => closeHistory();
   document.getElementById('historyCloseXBtn').onclick = () => closeHistory();
-  document.getElementById('historyOverlay').onclick = (e) => {
-    if (e.target === document.getElementById('historyOverlay')) closeHistory();
-  };
   document.getElementById('historyList').addEventListener('click', async (e) => {
     const entry = e.target.closest('.history-entry');
     if (!entry || !historySessionId) return;
@@ -50,8 +47,5 @@ export function initHistory() {
     await testerBrowser.sessions.navigate(sessionId, entry.dataset.url);
     await switchToSession(sessionId);
     closeHistory();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.getElementById('historyOverlay').classList.contains('open')) closeHistory();
   });
 }

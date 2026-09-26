@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { openBugReport } from './bugreport.js';
 import { formatAppLogBlock, redactUrlForReport } from './utils.js';
+import { openModal, closeModal } from './modal.js';
 
 let pendingCrashLog = null;
 
@@ -31,13 +32,11 @@ async function showModal(log) {
   const ts = detectedAt ? new Date(detectedAt).toLocaleString() : 'unknown time';
   document.getElementById('crashReportTimestamp').textContent = ts;
   document.getElementById('crashReportFullUrls').checked = false;
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('crashReportOverlay').classList.add('open');
+  await openModal('crashReportOverlay');
 }
 
 async function dismissCrash() {
-  document.getElementById('crashReportOverlay').classList.remove('open');
-  await testerBrowser.layout.setViewerVisible(true);
+  await closeModal('crashReportOverlay');
   testerBrowser.crash.clear();
   pendingCrashLog = null;
 }

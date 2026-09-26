@@ -1,4 +1,5 @@
 /* global testerBrowser */
+import { initModal, requestClose, openModal, closeModal } from './modal.js';
 
 // notesSessionId (which session's notes overlay is open, if any) is entirely
 // private to this file — nothing else reads or writes it.
@@ -8,6 +9,9 @@ let notesSessionId = null;
 // live session's saved notes wouldn't work, since Save doesn't touch that
 // until the modal is already closing.
 let loadedText = '';
+// Resolved by the Discard/Keep-editing buttons below, while confirmClose()
+// (passed to modal.js's initModal()) has one pending.
+let pendingDiscardResolve = null;
 
 export async function openNotes(id) {
   notesSessionId = id;
@@ -17,9 +21,7 @@ export async function openNotes(id) {
   loadedText = await testerBrowser.sessions.getNotes(id);
   document.getElementById('notesTextarea').value = loadedText;
   hideDiscardConfirm();
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('notesOverlay').classList.add('open');
-  document.getElementById('notesTextarea').focus();
+  await openModal('notesOverlay', () => document.getElementById('notesTextarea').focus());
 }
 
 function hasUnsavedChanges() {
@@ -37,34 +39,38 @@ function hideDiscardConfirm() {
 }
 
 async function closeNotes() {
-  document.getElementById('notesOverlay').classList.remove('open');
-  await testerBrowser.layout.setViewerVisible(true);
+  await closeModal('notesOverlay');
   notesSessionId = null;
 }
 
-// Esc, the backdrop, the × button and the Close button all funnel through
-// here rather than calling closeNotes() directly — unlike Save, none of them
-// otherwise know the textarea has drifted from what was loaded.
-async function requestClose() {
-  if (hasUnsavedChanges()) { showDiscardConfirm(); return; }
-  await closeNotes();
+// #268/#254: modal.js's initModal() calls this before honoring Esc, the
+// backdrop, or the × / Close buttons — none of those otherwise know the
+// textarea has drifted from what was loaded. Resolves once the tester picks
+// Discard (proceed — true) or Keep editing (veto — false) below.
+function confirmClose() {
+  if (!hasUnsavedChanges()) return true;
+  showDiscardConfirm();
+  return new Promise((resolve) => { pendingDiscardResolve = resolve; });
 }
 
 export function initNotes() {
+  initModal('notesOverlay', closeNotes, { confirmClose });
+
   document.getElementById('saveNotesBtn').onclick  = async () => {
     if (notesSessionId) {
       await testerBrowser.sessions.setNotes(notesSessionId, document.getElementById('notesTextarea').value);
     }
     await closeNotes();
   };
-  document.getElementById('closeNotesBtn').onclick  = () => requestClose();
-  document.getElementById('notesCloseXBtn').onclick = () => requestClose();
-  document.getElementById('notesOverlay').onclick  = (e) => {
-    if (e.target === document.getElementById('notesOverlay')) requestClose();
+  document.getElementById('closeNotesBtn').onclick  = () => requestClose('notesOverlay');
+  document.getElementById('notesCloseXBtn').onclick = () => requestClose('notesOverlay');
+  document.getElementById('notesKeepEditingBtn').onclick = () => {
+    hideDiscardConfirm();
+    pendingDiscardResolve?.(false);
+    pendingDiscardResolve = null;
   };
-  document.getElementById('notesKeepEditingBtn').onclick = () => hideDiscardConfirm();
-  document.getElementById('notesDiscardBtn').onclick     = () => closeNotes();
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.getElementById('notesOverlay').classList.contains('open')) requestClose();
-  });
+  document.getElementById('notesDiscardBtn').onclick = () => {
+    pendingDiscardResolve?.(true);
+    pendingDiscardResolve = null;
+  };
 }

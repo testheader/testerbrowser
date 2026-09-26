@@ -1,4 +1,5 @@
 /* global testerBrowser */
+import { initModal, openModal, closeModal } from './modal.js';
 
 let pendingSessionId = null;
 
@@ -11,35 +12,30 @@ let pendingSessionId = null;
 export async function openTestdataModal(sessionId) {
   pendingSessionId = sessionId;
   document.getElementById('testdataInput').value = '';
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('testdataOverlay').classList.add('open');
-  setTimeout(() => document.getElementById('testdataInput').focus(), 50);
+  await openModal('testdataOverlay', () => {
+    setTimeout(() => document.getElementById('testdataInput').focus(), 50);
+  });
 }
 
 async function close() {
-  document.getElementById('testdataOverlay').classList.remove('open');
-  await testerBrowser.layout.setViewerVisible(true);
+  await closeModal('testdataOverlay');
   pendingSessionId = null;
 }
 
 export function initTestdata() {
-  const overlay    = document.getElementById('testdataOverlay');
   const input      = document.getElementById('testdataInput');
   const fillBtn    = document.getElementById('testdataFillBtn');
   const cancelBtn  = document.getElementById('testdataCancelBtn');
   const closeXBtn  = document.getElementById('testdataCloseXBtn');
 
+  initModal('testdataOverlay', close);
   testerBrowser.testdata.onPromptTemplate(({ sessionId }) => openTestdataModal(sessionId));
 
   fillBtn.addEventListener('click', applyTemplate);
   cancelBtn.addEventListener('click', close);
   closeXBtn.addEventListener('click', close);
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') applyTemplate();
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && overlay.classList.contains('open')) close();
   });
 
   function applyTemplate() {

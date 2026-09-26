@@ -3,6 +3,7 @@ import { escHtml, cookieMatchesDomain, stripRedactedHeaders } from './utils.js';
 import { openMockFromRequest } from './mock.js';
 import { openResilienceFromRequest } from './resilience.js';
 import { addKvRow, readKvTable } from './kv-table.js';
+import { initModal, openModal, closeModal } from './modal.js';
 
 // Last successful ("ok") response from this Replay session's Send ↵, used to
 // prefill status/response headers/body when handing off to Mock. Reset on
@@ -139,17 +140,17 @@ export async function openReplay(evt, sessionId) {
   try { reqHost = new URL(url.startsWith('http') ? url : 'https://' + url).hostname; } catch {}
   sessionPick.dataset.reqHost = reqHost;
 
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('replayOverlay').classList.add('open');
-  document.getElementById('replayUrl').focus();
+  await openModal('replayOverlay', () => document.getElementById('replayUrl').focus());
 }
 
 function closeReplay() {
-  document.getElementById('replayOverlay').classList.remove('open');
-  testerBrowser.layout.setViewerVisible(true);
+  closeModal('replayOverlay');
 }
 
 export function initReplay() {
+  // No backdrop-click-to-close here: an in-flight replay request should not
+  // be dismissed by an accidental click outside the modal.
+  initModal('replayOverlay', closeReplay, { backdrop: false });
   document.getElementById('replayAddHeader').onclick = () =>
     addKvRow(document.getElementById('replayHeadersTable'), '', '');
   document.getElementById('replayAddCookie').onclick = () =>
@@ -178,11 +179,6 @@ export function initReplay() {
 
   document.getElementById('closeReplayBtn').onclick  = closeReplay;
   document.getElementById('replayCloseXBtn').onclick = closeReplay;
-  // No backdrop-click-to-close here: an in-flight replay request should not be
-  // dismissed by an accidental click outside the modal.
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.getElementById('replayOverlay').classList.contains('open')) closeReplay();
-  });
 
   document.getElementById('sendReplayBtn').onclick = async () => {
     const method = document.getElementById('replayMethod').value;

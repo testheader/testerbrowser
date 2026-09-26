@@ -1,6 +1,15 @@
 /* global testerBrowser */
 import { getActiveConsoleTab } from './console-tabs.js';
 import { formatAppLogBlock } from './utils.js';
+import { openModal, closeModal } from './modal.js';
+
+// #254: this modal deliberately does NOT go through initModal()'s shared
+// Escape-key wiring — handleBugReportKeydown below is registered before
+// shortcuts.js's own document-level listener specifically so its
+// stopImmediatePropagation() pre-empts the global Escape handler (stop
+// loading / close find bar) while this modal is open, and it also handles
+// Ctrl+Enter to submit in the same handler. Only the setViewerVisible+.open
+// toggling (openModal/closeModal) and backdrop-click are shared here.
 
 let screenshotB64 = null;
 
@@ -15,8 +24,7 @@ export async function openBugReport() {
   // Capture the app's current state before the modal ever appears — capturing
   // after showing it means the screenshot mostly just shows the report form.
   const captured = await testerBrowser.bugReport.captureScreenshot();
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('bugReportOverlay').classList.add('open');
+  await openModal('bugReportOverlay');
   resetForm();
   document.getElementById('bugReportArea').value = AREA_BY_CONSOLE_TAB[getActiveConsoleTab()] || 'Other';
   setScreenshot(captured);
@@ -35,14 +43,12 @@ function setScreenshot(b64) {
 async function retakeScreenshot() {
   const btn = document.getElementById('bugReportRetakeBtn');
   btn.disabled = true;
-  document.getElementById('bugReportOverlay').classList.remove('open');
-  await testerBrowser.layout.setViewerVisible(true);
+  await closeModal('bugReportOverlay');
   // capturePage() reads whatever is currently composited, so wait a couple of
   // frames for the window to actually repaint with the modal hidden first.
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   const captured = await testerBrowser.bugReport.captureScreenshot();
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('bugReportOverlay').classList.add('open');
+  await openModal('bugReportOverlay');
   setScreenshot(captured);
   btn.disabled = false;
 }
@@ -94,8 +100,7 @@ function resetForm() {
 }
 
 function closeBugReport() {
-  document.getElementById('bugReportOverlay').classList.remove('open');
-  testerBrowser.layout.setViewerVisible(true);
+  closeModal('bugReportOverlay');
 }
 
 async function submitBugReport() {

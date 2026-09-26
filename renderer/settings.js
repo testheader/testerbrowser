@@ -1,5 +1,6 @@
 /* global testerBrowser */
 import { applyTheme, getStoredScheme } from './theme.js';
+import { initModal, openModal, closeModal } from './modal.js';
 
 const STATUS_CONFIG = {
   checking:          { cls: 'info', text: 'Checking for updates…' },
@@ -32,8 +33,7 @@ function applyUpdateStatus({ status, current, latest }) {
 }
 
 export async function openSettings() {
-  await testerBrowser.layout.setViewerVisible(false);
-  document.getElementById('settingsOverlay').classList.add('open');
+  await openModal('settingsOverlay');
   applyUpdateStatus(await testerBrowser.app.getVersionInfo());
   const settings = await testerBrowser.settings.get();
   document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
@@ -85,23 +85,17 @@ function switchSettingsTab(pane) {
 }
 
 function closeSettings() {
-  document.getElementById('settingsOverlay').classList.remove('open');
-  testerBrowser.layout.setViewerVisible(true);
+  closeModal('settingsOverlay');
 }
 
 export function initSettings() {
+  initModal('settingsOverlay', closeSettings);
   document.querySelectorAll('.settings-nav-btn').forEach((btn) =>
     btn.addEventListener('click', () => switchSettingsTab(btn.dataset.pane))
   );
 
   document.getElementById('closeSettingsBtn').onclick  = closeSettings;
   document.getElementById('settingsCloseXBtn').onclick = closeSettings;
-  document.getElementById('settingsOverlay').onclick   = (e) => {
-    if (e.target === document.getElementById('settingsOverlay')) closeSettings();
-  };
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.getElementById('settingsOverlay').classList.contains('open')) closeSettings();
-  });
   document.getElementById('checkUpdatesBtn').onclick   = async () => {
     document.getElementById('updateStatusText').className   = 'info';
     document.getElementById('updateStatusText').textContent = 'Checking for updates…';
