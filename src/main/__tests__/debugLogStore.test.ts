@@ -1,99 +1,34 @@
 import os from 'os';
+import fs from 'fs';
 import path from 'path';
+import Database from 'better-sqlite3';
 import { DebugLogStore, toUpdateLogEntry } from '../debugLogStore';
 
-// better-sqlite3 is compiled against Electron's ABI via electron-rebuild, which
-// may differ from Jest's Node runtime. Mock it with a faithful in-memory store,
-// keyed by db path so closing and reopening the "same file" (as a restart does)
-// sees the same rows — unlike recorder.test.ts's mock, which is fine giving each
-// `new Database()` call a fresh store since SessionRecorder never reopens one.
-jest.mock('better-sqlite3', () => {
-  interface Row { id: number; ts: number; message: string; level: string; source: string; session_id: string | null; ctx: string | null; }
-  const dbs = new Map<string, { rows: Row[]; nextId: number }>();
-
-  return jest.fn().mockImplementation((dbPath: string) => {
-    if (!dbs.has(dbPath)) dbs.set(dbPath, { rows: [], nextId: 1 });
-    const state = dbs.get(dbPath)!;
-
-    const projected = (r: Row) => ({ id: r.id, ts: r.ts, message: r.message, level: r.level, source: r.source, session_id: r.session_id, ctx: r.ctx });
-
-    const makeStmt = (sql: string) => {
-      if (/INSERT INTO entries/.test(sql)) {
-        return {
-          run: jest.fn((ts: number, message: string, level: string, source: string, session_id: string | null, ctx: string | null) => {
-            const id = state.nextId++;
-            state.rows.push({ id, ts, message, level, source, session_id, ctx });
-            return { lastInsertRowid: id };
-          }),
-        };
-      }
-      if (/SELECT COUNT/.test(sql)) {
-        return { get: jest.fn(() => ({ c: state.rows.length })) };
-      }
-      if (/DELETE FROM entries WHERE id IN/.test(sql)) {
-        return {
-          run: jest.fn((limit: number) => {
-            const toDelete = new Set(
-              state.rows.slice().sort((a, b) => a.id - b.id).slice(0, limit).map((r) => r.id)
-            );
-            state.rows = state.rows.filter((r) => !toDelete.has(r.id));
-          }),
-        };
-      }
-      if (/DELETE FROM entries WHERE ts/.test(sql)) {
-        return {
-          run: jest.fn((cutoff: number) => {
-            state.rows = state.rows.filter((r) => r.ts >= cutoff);
-          }),
-        };
-      }
-      if (/WHERE id > \?/.test(sql)) {
-        return {
-          all: jest.fn((afterId: number, limit: number) =>
-            state.rows
-              .filter((r) => r.id > afterId)
-              .sort((a, b) => a.id - b.id)
-              .slice(0, limit)
-              .map(projected)
-          ),
-        };
-      }
-      if (/WHERE source = \?/.test(sql)) {
-        return {
-          all: jest.fn((source: string) =>
-            state.rows
-              .filter((r) => r.source === source)
-              .sort((a, b) => a.id - b.id)
-              .map(projected)
-          ),
-        };
-      }
-      if (/ORDER BY id DESC/.test(sql)) {
-        return {
-          all: jest.fn((limit: number) =>
-            state.rows
-              .slice()
-              .sort((a, b) => b.id - a.id)
-              .slice(0, limit)
-              .map(projected)
-          ),
-        };
-      }
-      return { run: jest.fn(), get: jest.fn(() => null), all: jest.fn(() => []) };
-    };
-
-    return {
-      pragma: jest.fn(),
-      exec: jest.fn(),
-      prepare: jest.fn((sql: string) => makeStmt(sql)),
-      close: jest.fn(),
-    };
-  });
-});
-
+// #252: better-sqlite3 turned out to load fine under Jest's plain Node
+// runtime with no ABI issues — this package ships prebuilt binaries
+// (prebuildify-style, see node_modules/better-sqlite3/package.json's
+// "gypfile": false) selected by Node's own ABI at require time, not compiled
+// via node-gyp, so electron-rebuild's Electron-ABI output (built for the
+// packaged app) never gets in the way of a plain `node_modules` install
+// running under Jest. Confirmed with a throwaway spike test before writing
+// any of this file. Every test below uses the real driver against a real
+// temp-file database (same pattern as appLogger.test.ts (#225) and
+// jsonFile.test.ts (#248)), not a hand-rolled SQL-matching fake — the
+// previous regex-based mock here could never have caught a real schema/query
+// bug, which is exactly what this ticket exists to close.
+const tmpDbPaths: string[] = [];
 function tmpDbPath(name: string): string {
-  return path.join(os.tmpdir(), `debug-log-test-${name}-${Date.now()}-${Math.random()}.sqlite`);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `debug-log-test-${name}-`));
+  const p = path.join(dir, 'log.sqlite');
+  tmpDbPaths.push(dir);
+  return p;
 }
+
+afterEach(() => {
+  for (const dir of tmpDbPaths.splice(0)) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+});
 
 describe('DebugLogStore', () => {
   it('survives being closed and reopened (simulated app restart)', () => {
@@ -153,6 +88,34 @@ describe('DebugLogStore', () => {
     store.insert({ ts: now + 2, message: 'c', level: 'error' });
     // Third insert triggers the trim check — now capped down to 1.
     expect(store.getEntries().map((e) => e.message)).toEqual(['c']);
+  });
+
+  // #252: exercises the real ALTER TABLE migration path against a genuinely
+  // pre-#228 schema — a regex-based SQL fake never has a real schema to
+  // migrate, so it could never have caught a broken ALTER TABLE/DEFAULT.
+  it('migrates a pre-#228 database (created without level/source/session_id/ctx) — old rows read back with defaults, new inserts work', () => {
+    const dbPath = tmpDbPath('migration');
+    const raw = new Database(dbPath);
+    raw.exec(`CREATE TABLE entries (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, message TEXT NOT NULL)`);
+    raw.prepare(`INSERT INTO entries (ts, message) VALUES (?, ?)`).run(1000, 'pre-migration entry');
+    raw.close();
+
+    const store = new DebugLogStore(dbPath);
+    const [entry] = store.getEntries();
+    expect(entry.message).toBe('pre-migration entry');
+    // Backfilled by the ALTER TABLE's own DEFAULT, not application code.
+    expect(entry.level).toBe('error');
+    expect(entry.source).toBe('app');
+    expect(entry.sessionId ?? null).toBeNull();
+    expect(entry.ctx).toBeNull();
+
+    // The migrated table accepts new-shape inserts normally.
+    store.insert({ ts: 2000, message: 'post-migration', level: 'warn', source: 'sessions', sessionId: 'tab-1' });
+    const all = store.getEntries();
+    expect(all).toHaveLength(2);
+    expect(all[1]).toMatchObject({ message: 'post-migration', level: 'warn', source: 'sessions', sessionId: 'tab-1' });
+
+    store.close();
   });
 
   // #228

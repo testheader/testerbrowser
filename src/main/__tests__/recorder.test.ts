@@ -3,120 +3,42 @@ import fs from 'fs';
 import path from 'path';
 import { SessionRecorder } from '../recorder';
 
-// better-sqlite3 is compiled against Electron's ABI via electron-rebuild, which
-// may differ from Jest's Node runtime. Mock it with a faithful in-memory store
-// so tests are fast, hermetic, and ABI-independent.
-jest.mock('better-sqlite3', () => {
-  return jest.fn().mockImplementation(() => {
-    type Row = { id: number; session_id: string; ts: number; kind: string; summary: string; payload: string };
-    const rows: Row[] = [];
-    let nextId = 1;
+// #252: better-sqlite3 turned out to load fine under Jest's plain Node
+// runtime with no ABI issues — this package ships prebuilt binaries
+// (prebuildify-style, see node_modules/better-sqlite3/package.json's
+// "gypfile": false) selected by Node's own ABI at require time, not compiled
+// via node-gyp, so electron-rebuild's Electron-ABI output (built for the
+// packaged app) never gets in the way of a plain `node_modules` install
+// running under Jest. Confirmed with a throwaway spike test before writing
+// any of this file. Every test below uses the real driver against a fresh
+// temp directory per test (same pattern as appLogger.test.ts (#225) and
+// jsonFile.test.ts (#248)), not a hand-rolled SQL-matching fake — the
+// previous regex-based mock here could never have caught a real schema/query
+// bug (a broken column name, WHERE clause or trim LIMIT), which is exactly
+// what this ticket exists to close.
+const tmpDirs: string[] = [];
+function freshDbDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-test-'));
+  tmpDirs.push(dir);
+  return dir;
+}
 
-    const makeStmt = (sql: string) => {
-      if (/INSERT/.test(sql)) {
-        return {
-          run: jest.fn((session_id: string, ts: number, kind: string, summary: string, payload: string) => {
-            const id = nextId++;
-            rows.push({ id, session_id, ts, kind, summary, payload });
-            return { lastInsertRowid: id };
-          }),
-        };
-      }
-      if (/UPDATE events SET payload/.test(sql)) {
-        return {
-          run: jest.fn((payload: string, id: number) => {
-            const row = rows.find(r => r.id === id);
-            if (row) row.payload = payload;
-          }),
-        };
-      }
-      if (/SELECT payload FROM events WHERE id/.test(sql)) {
-        return {
-          get: jest.fn((id: number) => {
-            const row = rows.find(r => r.id === id);
-            return row ? { payload: row.payload } : undefined;
-          }),
-        };
-      }
-      if (/COUNT\(\*\)/.test(sql)) {
-        return {
-          get: jest.fn((session_id: string) => ({
-            c: rows.filter(r => r.session_id === session_id).length,
-          })),
-        };
-      }
-      if (/DELETE/.test(sql)) {
-        return {
-          run: jest.fn((session_id: string, limit: number) => {
-            const toDelete = rows
-              .filter(r => r.session_id === session_id)
-              .sort((a, b) => a.id - b.id)
-              .slice(0, limit)
-              .map(r => r.id);
-            for (const id of toDelete) {
-              const i = rows.findIndex(r => r.id === id);
-              if (i >= 0) rows.splice(i, 1);
-            }
-            return { changes: toDelete.length };
-          }),
-        };
-      }
-      if (/id > \?/.test(sql)) {
-        return {
-          all: jest.fn((session_id: string, sinceId: number, limit: number) =>
-            rows
-              .filter(r => r.session_id === session_id && r.id > sinceId)
-              .sort((a, b) => a.id - b.id)
-              .slice(0, limit)
-          ),
-        };
-      }
-      if (/ts > \?/.test(sql)) {
-        return {
-          all: jest.fn((session_id: string, since: number, limit: number) =>
-            rows
-              .filter(r => r.session_id === session_id && r.ts > since)
-              .sort((a, b) => a.ts - b.ts)
-              .slice(0, limit)
-          ),
-        };
-      }
-      if (/ORDER BY id DESC/.test(sql)) {
-        return {
-          all: jest.fn((session_id: string, limit: number) =>
-            rows
-              .filter(r => r.session_id === session_id)
-              .sort((a, b) => b.id - a.id)
-              .slice(0, limit)
-          ),
-        };
-      }
-      if (/kind LIKE/.test(sql)) {
-        return {
-          all: jest.fn((session_id: string) =>
-            rows
-              .filter(r => r.session_id === session_id && r.kind.startsWith('network-'))
-              .sort((a, b) => a.ts - b.ts)
-          ),
-        };
-      }
-      return { run: jest.fn(), get: jest.fn(() => null), all: jest.fn(() => []) };
-    };
-
-    return {
-      pragma: jest.fn(),
-      exec: jest.fn(),
-      prepare: jest.fn((sql: string) => makeStmt(sql)),
-      close: jest.fn(),
-    };
-  });
+afterEach(() => {
+  for (const dir of tmpDirs.splice(0)) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
 });
 
-function makeMockWc() {
+function makeMockWc(opts: { onGetResponseBody?: (requestId: string) => Promise<{ body: string; base64Encoded: boolean }> } = {}) {
   let messageListener: ((e: null, method: string, params: unknown) => void) | null = null;
   const debugger_ = {
     attach: jest.fn(),
-    sendCommand: jest.fn().mockResolvedValue({ body: '', base64Encoded: false }),
+    sendCommand: jest.fn((method: string, params?: { requestId: string }) => {
+      if (method === 'Network.getResponseBody' && opts.onGetResponseBody) {
+        return opts.onGetResponseBody(params!.requestId);
+      }
+      return Promise.resolve({ body: '', base64Encoded: false });
+    }),
     on: jest.fn((event: string, cb: (e: null, method: string, params: unknown) => void) => {
       if (event === 'message') messageListener = cb;
     }),
@@ -130,6 +52,16 @@ function makeMockWc() {
   };
 }
 
+// Network.loadingFinished's Network.getResponseBody call is fire-and-forget
+// from recorder.ts's own perspective (not awaited) — its .then()/.catch()
+// callback needs a turn of the microtask queue (the sendCommand promise
+// resolving, then its own .then() running) before the resulting record()
+// call (or lack of one) is observable. setImmediate is a macrotask, so it
+// always runs after every microtask already queued.
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('SessionRecorder', () => {
   let recorder: SessionRecorder;
   let emit: (method: string, params: unknown) => void;
@@ -137,7 +69,7 @@ describe('SessionRecorder', () => {
   beforeEach(() => {
     const mock = makeMockWc();
     emit = mock.emit;
-    recorder = new SessionRecorder(mock.wc, { sessionId: 'test-session', dbDir: os.tmpdir() });
+    recorder = new SessionRecorder(mock.wc, { sessionId: 'test-session', dbDir: freshDbDir() });
   });
 
   afterEach(() => {
@@ -249,6 +181,105 @@ describe('SessionRecorder', () => {
     });
   });
 
+  // #252: Network.loadingFinished's own Network.getResponseBody round-trip
+  // (a separate CDP call the recorder makes itself, not part of the
+  // requestWillBeSent/responseReceived payloads) had zero test coverage.
+  describe('response body recording (Network.loadingFinished)', () => {
+    it('records a network-body row once Network.getResponseBody resolves', async () => {
+      const { wc, emit: e } = makeMockWc({
+        onGetResponseBody: async () => ({ body: '{"ok":true}', base64Encoded: false }),
+      });
+      const rec = new SessionRecorder(wc, { sessionId: 'body-session', dbDir: freshDbDir() });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com/api', method: 'GET', headers: {} },
+      });
+      e('Network.loadingFinished', { requestId: 'r1' });
+      await flushMicrotasks();
+
+      const body = rec.getTimeline().find(ev => ev.kind === 'network-body')!;
+      expect(body).toBeDefined();
+      expect(body.summary).toBe('BODY GET https://example.com/api');
+      const payload = JSON.parse(body.payload);
+      expect(payload).toEqual({ requestId: 'r1', base64Encoded: false, body: '{"ok":true}' });
+
+      rec.destroy();
+    });
+
+    it('truncates a body over 51,200 characters and appends [truncated] to the body and summary', async () => {
+      const longBody = 'x'.repeat(60_000);
+      const { wc, emit: e } = makeMockWc({
+        onGetResponseBody: async () => ({ body: longBody, base64Encoded: false }),
+      });
+      const rec = new SessionRecorder(wc, { sessionId: 'truncate-session', dbDir: freshDbDir() });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com/big', method: 'GET', headers: {} },
+      });
+      e('Network.loadingFinished', { requestId: 'r1' });
+      await flushMicrotasks();
+
+      const body = rec.getTimeline().find(ev => ev.kind === 'network-body')!;
+      expect(body.summary).toContain('[truncated]');
+      const payload = JSON.parse(body.payload);
+      expect(payload.body).toBe('x'.repeat(51_200) + '\n[truncated]');
+
+      rec.destroy();
+    });
+
+    it('does not record a network-body row (and does not throw) when Network.getResponseBody rejects', async () => {
+      const { wc, emit: e } = makeMockWc({
+        onGetResponseBody: async () => { throw new Error('No resource with given identifier found'); },
+      });
+      const rec = new SessionRecorder(wc, { sessionId: 'reject-session', dbDir: freshDbDir() });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com/image.png', method: 'GET', headers: {} },
+      });
+      expect(() => e('Network.loadingFinished', { requestId: 'r1' })).not.toThrow();
+      await flushMicrotasks();
+
+      expect(rec.getTimeline().some(ev => ev.kind === 'network-body')).toBe(false);
+
+      rec.destroy();
+    });
+
+    it('does not record a network-body row when the resolved body is empty', async () => {
+      const { wc, emit: e } = makeMockWc({
+        onGetResponseBody: async () => ({ body: '', base64Encoded: false }),
+      });
+      const rec = new SessionRecorder(wc, { sessionId: 'empty-body-session', dbDir: freshDbDir() });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com/empty', method: 'GET', headers: {} },
+      });
+      e('Network.loadingFinished', { requestId: 'r1' });
+      await flushMicrotasks();
+
+      expect(rec.getTimeline().some(ev => ev.kind === 'network-body')).toBe(false);
+
+      rec.destroy();
+    });
+
+    it('does nothing when loadingFinished arrives with no matching requestWillBeSent', async () => {
+      const { wc, emit: e } = makeMockWc({
+        onGetResponseBody: async () => ({ body: 'unreachable', base64Encoded: false }),
+      });
+      const rec = new SessionRecorder(wc, { sessionId: 'no-meta-session', dbDir: freshDbDir() });
+
+      e('Network.loadingFinished', { requestId: 'unknown' });
+      await flushMicrotasks();
+
+      expect(rec.getTimeline()).toHaveLength(0);
+
+      rec.destroy();
+    });
+  });
+
   describe('log and console recording', () => {
     it('records Log.entryAdded with level and text', () => {
       emit('Log.entryAdded', { entry: { level: 'error', text: 'Unhandled exception' } });
@@ -314,7 +345,7 @@ describe('SessionRecorder', () => {
       const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, {
         sessionId: 'redact-req',
-        dbDir: os.tmpdir(),
+        dbDir: freshDbDir(),
         getRedact: () => true,
       });
 
@@ -343,7 +374,7 @@ describe('SessionRecorder', () => {
       const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, {
         sessionId: 'redact-res',
-        dbDir: os.tmpdir(),
+        dbDir: freshDbDir(),
         getRedact: () => true,
       });
 
@@ -389,7 +420,7 @@ describe('SessionRecorder', () => {
       let redact = false;
       const rec = new SessionRecorder(wc, {
         sessionId: 'live-toggle',
-        dbDir: os.tmpdir(),
+        dbDir: freshDbDir(),
         getRedact: () => redact,
       });
 
@@ -410,6 +441,52 @@ describe('SessionRecorder', () => {
 
       rec.destroy();
     });
+
+    // #252
+    it('redacts a header spelled with capital letters (Authorization), not just lowercase', () => {
+      const { wc, emit: e } = makeMockWc();
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'redact-case',
+        dbDir: freshDbDir(),
+        getRedact: () => true,
+      });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: {
+          url: 'https://api.example.com',
+          method: 'GET',
+          headers: { Authorization: 'Bearer secret', 'Content-Type': 'application/json' },
+        },
+      });
+
+      const payload = JSON.parse(rec.getTimeline()[0].payload);
+      expect(payload.request.headers.Authorization).toBe('[REDACTED]');
+      expect(payload.request.headers['Content-Type']).toBe('application/json');
+
+      rec.destroy();
+    });
+
+    // #252: redactHeaders' own `if (!headers || typeof headers !== 'object')
+    // return headers` guard — a header set that's somehow not a plain object.
+    it('does not throw when headers is not an object, and leaves the payload as-is', () => {
+      const { wc, emit: e } = makeMockWc();
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'redact-non-object',
+        dbDir: freshDbDir(),
+        getRedact: () => true,
+      });
+
+      expect(() => e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: undefined },
+      })).not.toThrow();
+
+      const payload = JSON.parse(rec.getTimeline()[0].payload);
+      expect(payload.request.headers).toBeUndefined();
+
+      rec.destroy();
+    });
   });
 
   // ── Ring buffer ────────────────────────────────────────────────────────────
@@ -419,7 +496,7 @@ describe('SessionRecorder', () => {
       const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, {
         sessionId: 'trim-session',
-        dbDir: os.tmpdir(),
+        dbDir: freshDbDir(),
         maxEventsPerSession: 50,
       });
 
@@ -446,7 +523,7 @@ describe('SessionRecorder', () => {
       const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, {
         sessionId: 'notrim-session',
-        dbDir: os.tmpdir(),
+        dbDir: freshDbDir(),
         maxEventsPerSession: 5,
       });
 
@@ -465,7 +542,7 @@ describe('SessionRecorder', () => {
       const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, {
         sessionId: 'evict-session',
-        dbDir: os.tmpdir(),
+        dbDir: freshDbDir(),
         maxEventsPerSession: 1000,
       });
 
@@ -489,7 +566,7 @@ describe('SessionRecorder', () => {
       const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, {
         sessionId: 'evict-once-session',
-        dbDir: os.tmpdir(),
+        dbDir: freshDbDir(),
         maxEventsPerSession: 100,
       });
 
@@ -509,20 +586,44 @@ describe('SessionRecorder', () => {
 
       rec.destroy();
     });
+
+    // #252: trimStmt's WHERE session_id = ? is exactly the kind of thing a
+    // regex-matching SQL fake can't meaningfully verify, since it never has a
+    // real query to get wrong. In production each session already gets its
+    // own <sessionId>.sqlite file under a shared dbDir, so two sessions never
+    // actually share one physical database — this test still exercises the
+    // WHERE clause itself as defense-in-depth against dbDir/dbPath ever
+    // changing to a shared file.
+    it('trimming one session never trims another session sharing the same dbDir', () => {
+      const dbDir = freshDbDir();
+      const { wc: wcA, emit: eA } = makeMockWc();
+      const { wc: wcB, emit: eB } = makeMockWc();
+      const recA = new SessionRecorder(wcA, { sessionId: 'session-a', dbDir, maxEventsPerSession: 5 });
+      const recB = new SessionRecorder(wcB, { sessionId: 'session-b', dbDir, maxEventsPerSession: 1000 });
+
+      for (let i = 0; i < 10; i++) eB('Log.entryAdded', { entry: { level: 'info', text: `b-${i}` } });
+      // Push session A well past its cap and through a trim check (every
+      // 100th insert) while session B's own rows sit in the same directory.
+      for (let i = 0; i < 100; i++) eA('Log.entryAdded', { entry: { level: 'info', text: `a-${i}` } });
+
+      expect(recA.getTimeline({ limit: 200 })).toHaveLength(5);
+      // Session B's 10 rows are all still there — untouched by A's trim.
+      expect(recB.getTimeline({ limit: 200 })).toHaveLength(10);
+
+      recA.destroy();
+      recB.destroy();
+    });
   });
 
   // ── inMemory (#229) ─────────────────────────────────────────────────────────
 
   describe('inMemory temp-tab recording', () => {
-    it('opens the database with :memory: rather than a file path when inMemory is true', () => {
-      // better-sqlite3 is mocked (see top of file) and never touches real
-      // disk regardless of the path it's given, so what's actually
-      // verifiable here is the argument recorder.ts passes to `new
-      // Database(...)` — the real driver (#252's job to test against) is
-      // what would turn a file path into an on-disk .sqlite file.
-      const Database = require('better-sqlite3');
-      Database.mockClear();
-      const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-inmemory-test-'));
+    it('records normally but never creates a file under dbDir when inMemory is true', () => {
+      // Against the real driver (#252), the meaningful proof isn't the
+      // constructor argument — it's that no on-disk trace of a temp tab's
+      // traffic ever appears, which a mock could only assert by trusting the
+      // argument it was given, not by checking real disk state.
+      const dbDir = freshDbDir();
       const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, {
         sessionId: 'temp-session',
@@ -532,25 +633,30 @@ describe('SessionRecorder', () => {
 
       e('Log.entryAdded', { entry: { level: 'info', text: 'hello' } });
       expect(rec.getTimeline()).toHaveLength(1);
-      expect(Database).toHaveBeenCalledWith(':memory:');
       // dbDir (used only for persistent, on-disk recorders) is never even
-      // created for an in-memory one.
-      expect(fs.existsSync(dbDir)).toBe(true); // mkdtempSync itself created it
+      // written to for an in-memory one.
       expect(fs.readdirSync(dbDir)).toEqual([]);
 
       rec.destroy();
     });
 
-    it('opens the database with a file path under dbDir when inMemory is false/omitted', () => {
-      const Database = require('better-sqlite3');
-      Database.mockClear();
-      const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recorder-persistent-test-'));
-      const { wc } = makeMockWc();
+    it('opens a real file at <dbDir>/<sessionId>.sqlite when inMemory is false/omitted', () => {
+      const dbDir = freshDbDir();
+      const { wc, emit: e } = makeMockWc();
       const rec = new SessionRecorder(wc, { sessionId: 'persist-session', dbDir });
 
-      expect(Database).toHaveBeenCalledWith(path.join(dbDir, 'persist-session.sqlite'));
+      e('Log.entryAdded', { entry: { level: 'info', text: 'hello' } });
+      const dbPath = path.join(dbDir, 'persist-session.sqlite');
+      expect(fs.existsSync(dbPath)).toBe(true);
 
       rec.destroy();
+
+      // Surviving a close/reopen against the same file is the real proof
+      // this is a genuine on-disk database, not just an empty placeholder.
+      const { wc: wc2 } = makeMockWc();
+      const rec2 = new SessionRecorder(wc2, { sessionId: 'persist-session', dbDir });
+      expect(rec2.getTimeline()[0].summary).toBe('[info] hello');
+      rec2.destroy();
     });
   });
 
@@ -687,7 +793,7 @@ describe('SessionRecorder', () => {
   describe('destroy', () => {
     it('detaches the CDP debugger', () => {
       const { wc } = makeMockWc();
-      const rec = new SessionRecorder(wc, { sessionId: 'destroy-test', dbDir: os.tmpdir() });
+      const rec = new SessionRecorder(wc, { sessionId: 'destroy-test', dbDir: freshDbDir() });
       rec.destroy();
       expect(wc.debugger.detach).toHaveBeenCalled();
     });
