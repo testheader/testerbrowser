@@ -265,12 +265,26 @@ test('session picker options are labelled with the session name and current host
   const idA = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
   idsBefore.add(idA);
 
+  // pickerLabel() reads each session's `url` from sessions.list(), which the
+  // main process only populates once its own did-navigate handler updates
+  // currentUrl — a separate event from the tab's own page 'load' event that
+  // waitForLoadState('load') below observes, and not guaranteed to have
+  // landed yet the instant it fires on a slower/contended CI runner. Poll
+  // sessions.list() itself for the url actually showing up before treating
+  // this session as "navigated", rather than relying on the tab page's own
+  // load state as a proxy for the main process's bookkeeping being current.
+  const waitForSessionUrl = (id: string) => expect.poll(async () => {
+    const list = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+    return list.find((s: { id: string }) => s.id === id)?.url;
+  }, { timeout: 10_000 }).toContain(sharedPath);
+
   await window.click(`.tab[data-id="${idA}"] .tab-name`);
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
   const tabA = await getTabPage(app, sharedPath);
   await tabA.waitForLoadState('load');
+  await waitForSessionUrl(idA);
 
   await window.click('#newSessionBtn');
   sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
@@ -282,6 +296,7 @@ test('session picker options are labelled with the session name and current host
   await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, sharedPath, tabA)).waitForLoadState('load');
+  await waitForSessionUrl(idB);
 
   await window.click('#consoleTabFollow');
   const host = new URL(fixtures.url(sharedPath)).host;
