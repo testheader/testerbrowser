@@ -2,6 +2,7 @@
 import { escHtml, cookieMatchesDomain, stripRedactedHeaders } from './utils.js';
 import { openMockFromRequest } from './mock.js';
 import { openResilienceFromRequest } from './resilience.js';
+import { addKvRow, readKvTable } from './kv-table.js';
 
 // Last successful ("ok") response from this Replay session's Send ↵, used to
 // prefill status/response headers/body when handing off to Mock. Reset on
@@ -29,40 +30,6 @@ function formatXml(xml) {
     })
     .replace(/(<[^>]+\/>)/g, (m) => '  '.repeat(indent) + m + '\n')
     .trim();
-}
-
-function addKvRow(container, key, val) {
-  const row    = document.createElement('div');
-  row.className = 'kv-row';
-  const kInput = document.createElement('input');
-  kInput.className   = 'kv-key';
-  kInput.type        = 'text';
-  kInput.value       = key;
-  kInput.placeholder = 'Name';
-  const vInput = document.createElement('input');
-  vInput.className   = 'kv-val';
-  vInput.type        = 'text';
-  vInput.value       = val;
-  vInput.placeholder = 'Value';
-  const del = document.createElement('button');
-  del.className   = 'kv-del';
-  del.textContent = '×';
-  del.title       = 'Remove';
-  del.onclick     = () => row.remove();
-  row.appendChild(kInput);
-  row.appendChild(vInput);
-  row.appendChild(del);
-  container.appendChild(row);
-}
-
-function readKvTable(container) {
-  const obj = {};
-  for (const row of container.querySelectorAll('.kv-row')) {
-    const k = row.querySelector('.kv-key').value.trim();
-    const v = row.querySelector('.kv-val').value;
-    if (k) obj[k] = v;
-  }
-  return obj;
 }
 
 function parseCookieHeader(cookieStr) {

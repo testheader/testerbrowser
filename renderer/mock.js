@@ -2,6 +2,7 @@
 import { escHtml, MOCK_STRIPPED_RESPONSE_HEADERS } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
+import { addKvRow, readKvTable } from './kv-table.js';
 
 const MOCK_METHODS = ['*', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
@@ -10,41 +11,6 @@ const MOCK_METHODS = ['*', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 // anything matching runs against. Reset on every prefill and after submit;
 // stays null for a rule composed by hand rather than from a real request.
 let capturedRequestHeaders = null;
-
-function addKvRow(container, key, val) {
-  const row = document.createElement('div');
-  row.className = 'kv-row';
-  const kInput = document.createElement('input');
-  kInput.className   = 'kv-key';
-  kInput.type        = 'text';
-  kInput.value       = key;
-  kInput.placeholder = 'Name';
-  const vInput = document.createElement('input');
-  vInput.className   = 'kv-val';
-  vInput.type        = 'text';
-  vInput.value       = val;
-  vInput.placeholder = 'Value';
-  const del = document.createElement('button');
-  del.className   = 'kv-del';
-  del.type        = 'button';
-  del.textContent = '×';
-  del.title       = 'Remove';
-  del.onclick     = () => row.remove();
-  row.appendChild(kInput);
-  row.appendChild(vInput);
-  row.appendChild(del);
-  container.appendChild(row);
-}
-
-function readKvTable(container) {
-  const obj = {};
-  for (const row of container.querySelectorAll('.kv-row')) {
-    const k = row.querySelector('.kv-key').value.trim();
-    const v = row.querySelector('.kv-val').value;
-    if (k) obj[k] = v;
-  }
-  return obj;
-}
 
 function renderCapturedRequestHeaders() {
   const col  = document.getElementById('mockRequestHeadersCol');
