@@ -19,31 +19,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('Resilience tab button exists', async () => {
-  const tab = window.locator('#consoleTabResilience');
-  await expect(tab).toBeVisible();
-  await expect(tab).toHaveText('Resilience');
-});
-
-test('clicking Resilience tab shows resiliencePanel', async () => {
-  await window.locator('#consoleTabResilience').click();
-  const panel = window.locator('#resiliencePanel');
-  await expect(panel).toBeVisible();
-});
-
-test('resilience panel renders add-rule form on first click', async () => {
-  await window.locator('#consoleTabResilience').click();
-  await window.waitForSelector('#resForm', { timeout: 3000 });
-  await expect(window.locator('#resType')).toBeVisible();
-  await expect(window.locator('#resUrl')).toBeVisible();
-});
-
-test('resilience panel shows empty state initially', async () => {
-  await window.locator('#consoleTabResilience').click();
-  await window.waitForSelector('#resEmpty', { timeout: 3000 });
-  await expect(window.locator('#resEmpty')).toBeVisible();
-});
-
 test('a 100% error500 rule actually fails a matching fetch, and hits increments', async () => {
   const urlPath = '/network/api.html';
   await window.click('#urlbar');

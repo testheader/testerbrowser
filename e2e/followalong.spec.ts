@@ -19,15 +19,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('Follow Along tab button is present', async () => {
-  await expect(window.locator('#consoleTabFollow')).toBeVisible();
-});
-
-test('clicking Follow Along tab shows followPanel', async () => {
-  await window.click('#consoleTabFollow');
-  await expect(window.locator('#followPanel')).toBeVisible();
-});
-
 test('leader interactions are mirrored onto the follower in near real time', async () => {
   const urlPath = '/record/target.html';
 

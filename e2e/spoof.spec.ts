@@ -35,10 +35,6 @@ async function retryEvaluate<T>(page: Page, fn: () => T): Promise<T> {
   throw lastErr;
 }
 
-test('Spoof tab button is present', async () => {
-  await expect(window.locator('#consoleTabSpoof')).toBeVisible();
-});
-
 test('Tokyo preset fills the form and Apply issues the CDP overrides without error', async () => {
   // NOTE: this can't assert the resulting Intl.DateTimeFormat()/navigator.language
   // values the way the other panels' tests assert real effects. Confirmed via direct

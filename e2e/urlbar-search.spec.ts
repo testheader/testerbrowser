@@ -66,17 +66,19 @@ test('switching the default engine to DuckDuckGo changes what a search term navi
   await setSearchEngine('google'); // restore default for any later tests
 });
 
-test('an actual URL still navigates directly, with or without a scheme', async () => {
+test('an actual URL still navigates directly instead of being treated as a search term', async () => {
   // sessions.navigate() is fire-and-forget (searchAndGetLastHistoryUrl's own
   // comment above), so the target doesn't need to actually load — but it
   // used to be a real external site (https://example.org), which repeatedly
   // flaked on the Windows CI runner (#150's needs-fix history). The local
   // fixture server exercises the same "URL vs. search term" logic while
   // keeping this test hermetic, like the rest of the e2e suite.
+  //
+  // Just the wiring proof (urlbar Enter -> looksLikeUrl -> navigate, not
+  // search) — the with/without-scheme and IP/host classification cases are
+  // pure looksLikeUrl logic, already covered by
+  // src/__tests__/urlbar-search.test.ts (#251).
   const target = fixtures.url('/network/status-codes.html');
-  const withScheme = await searchAndGetLastHistoryUrl(target);
-  expect(withScheme).toBe(target);
-
-  const withoutScheme = await searchAndGetLastHistoryUrl(`127.0.0.1:${fixtures.port}/network/status-codes.html`);
-  expect(withoutScheme).toBe(`https://127.0.0.1:${fixtures.port}/network/status-codes.html`);
+  const url = await searchAndGetLastHistoryUrl(target);
+  expect(url).toBe(target);
 });

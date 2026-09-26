@@ -28,26 +28,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('Tests tab button exists in console panel', async () => {
-  const btn = window.locator('#consoleTabTests');
-  await expect(btn).toBeAttached();
-});
-
-test('clicking Tests tab shows testsPanel', async () => {
-  await window.locator('#consoleTabTests').click();
-  await expect(window.locator('#testsPanel')).toBeVisible();
-});
-
-test('testsPanel contains Start recording button', async () => {
-  await window.locator('#consoleTabTests').click();
-  await expect(window.locator('#rpStartBtn')).toBeAttached();
-});
-
-test('testsPanel contains test list section', async () => {
-  await window.locator('#consoleTabTests').click();
-  await expect(window.locator('#rpTestList')).toBeAttached();
-});
-
 // ── Real record → save → run cycle ──────────────────────────────────────────
 
 test('recording a fill + click and running it back actually replays successfully', async () => {

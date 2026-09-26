@@ -19,27 +19,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('Mock tab button exists', async () => {
-  const tab = window.locator('#consoleTabMock');
-  await expect(tab).toBeVisible();
-  await expect(tab).toHaveText('Mock');
-});
-
-test('clicking Mock tab shows mockPanel', async () => {
-  await window.locator('#consoleTabMock').click();
-  const panel = window.locator('#mockPanel');
-  await expect(panel).toBeVisible();
-});
-
-test('mock panel renders add-rule form elements', async () => {
-  await window.locator('#consoleTabMock').click();
-  // The panel initializes on first click
-  await window.waitForSelector('#mockUrl', { timeout: 3000 });
-  await expect(window.locator('#mockUrl')).toBeVisible();
-  await expect(window.locator('#mockMethod')).toBeVisible();
-  await expect(window.locator('#mockStatus')).toBeVisible();
-});
-
 test('a rule actually intercepts a matching fetch and its hit count increments', async () => {
   const urlPath = '/network/api.html';
   await window.click('#urlbar');

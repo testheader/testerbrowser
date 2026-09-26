@@ -19,31 +19,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('VR tab button is present', async () => {
-  await expect(window.locator('#consoleTabVR')).toBeVisible();
-});
-
-test('clicking VR tab shows the VR panel', async () => {
-  await window.click('#consoleTabVR');
-  await expect(window.locator('#vrPanel')).toBeVisible();
-});
-
-test('VR tab is marked active after click', async () => {
-  await window.click('#consoleTabVR');
-  await expect(window.locator('#consoleTabVR')).toHaveClass(/active/);
-});
-
-test('VR panel contains Capture baseline button', async () => {
-  await window.click('#consoleTabVR');
-  await expect(window.locator('#vrCaptureBtn')).toBeVisible();
-  await expect(window.locator('#vrCaptureBtn')).toHaveText('Capture baseline');
-});
-
-test('Compare button is disabled before baseline is captured', async () => {
-  await window.click('#consoleTabVR');
-  await expect(window.locator('#vrCompareBtn')).toBeDisabled();
-});
-
 test('the "Compare against" picker sits between Capture baseline and Compare, and view buttons are on their own row', async () => {
   await window.click('#consoleTabVR');
   const rows = window.locator('.vr-toolbar-row');

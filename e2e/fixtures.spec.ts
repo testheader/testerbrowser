@@ -168,18 +168,10 @@ test('console/logs.html: a negative term in the free-text filter hides matching 
   await expect(warnRow).toHaveCount(0);
   await expect(errorRow).toBeVisible();
 
-  // Positive and negative terms combine: keep rows containing "on load" that
-  // do not also contain "error".
-  await window.fill('#filterText', 'on load -error');
-  await expect(errorRow).toHaveCount(0);
-  await expect(warnRow).toBeVisible();
-
-  // A lone "-" is literal text, not a negation — matches nothing here since
-  // no summary contains a bare hyphen, so every row disappears.
-  await window.fill('#filterText', '-');
-  await expect(warnRow).toHaveCount(0);
-  await expect(errorRow).toHaveCount(0);
-
+  // Just the wiring proof (#filterText -> renderTimeline -> matchesFreeText
+  // -> DOM) — the combined-terms and lone-"-" edge cases are pure
+  // matchesFreeText logic, already covered by
+  // src/__tests__/matches-free-text.test.ts (#251).
   await window.fill('#filterText', '');
   await expect(warnRow).toBeVisible();
   await expect(errorRow).toBeVisible();

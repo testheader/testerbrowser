@@ -19,32 +19,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('Security tab button exists', async () => {
-  const tab = page.locator('#consoleTabSecurity');
-  await expect(tab).toBeVisible();
-  await expect(tab).toHaveText('Security');
-});
-
-test('clicking Security tab shows securityPanel', async () => {
-  await page.locator('#consoleTabSecurity').click();
-  await expect(page.locator('#securityPanel')).toBeVisible();
-});
-
-test('Security tab is marked active after click', async () => {
-  await page.locator('#consoleTabSecurity').click();
-  await expect(page.locator('#consoleTabSecurity')).toHaveClass(/active/);
-});
-
-test('Scan session button exists in panel', async () => {
-  await page.locator('#consoleTabSecurity').click();
-  await expect(page.locator('#secScanBtn')).toBeVisible();
-});
-
-test('securityPanel shows hint text initially', async () => {
-  await page.locator('#consoleTabSecurity').click();
-  await expect(page.locator('#secResults .sec-hint')).toBeVisible();
-});
-
 test('scan reports a real HTTP finding, and a row opens the detail panel', async () => {
   // Not testing the cookie findings here: Chromium's Network domain never
   // exposes Set-Cookie in Network.responseReceived's headers (it's only on

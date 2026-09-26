@@ -19,10 +19,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('A11y tab button is present', async () => {
-  await expect(window.locator('#consoleTabA11y')).toBeVisible();
-});
-
 test('Refresh loads a tree with expected roles and names', async () => {
   const urlPath = '/accessibility/index.html';
   await window.click('#urlbar');

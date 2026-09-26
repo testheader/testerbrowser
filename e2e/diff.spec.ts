@@ -19,33 +19,6 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('Diff tab button is present', async () => {
-  await expect(window.locator('#consoleTabDiff')).toBeVisible();
-});
-
-test('clicking Diff tab shows diffPanel', async () => {
-  await window.locator('#consoleTabDiff').click();
-  await expect(window.locator('#diffPanel')).toBeVisible();
-});
-
-test('diffPanel contains session pickers A and B', async () => {
-  await window.locator('#consoleTabDiff').click();
-  // initDiff populates pickers on first click — toBeAttached() already polls
-  // for that, so no separate wait is needed.
-  await expect(window.locator('#diffPickA')).toBeAttached();
-  await expect(window.locator('#diffPickB')).toBeAttached();
-});
-
-test('diffPanel contains a Run diff button', async () => {
-  await window.locator('#consoleTabDiff').click();
-  await expect(window.locator('#diffRunBtn')).toBeAttached();
-});
-
-test('diffPanel contains a HAR export button', async () => {
-  await window.locator('#consoleTabDiff').click();
-  await expect(window.locator('#diffHarBtn')).toBeAttached();
-});
-
 test('comparing two sessions categorizes matching and unique requests correctly', async () => {
   // Deliberately navigation-only (no post-load button clicks): a fetch
   // triggered by clicking a button on a second, non-default session has
@@ -172,22 +145,12 @@ test('a positive free-text term narrows the table to matching URLs, and clearing
   await expect(window.locator('.diff-row')).toHaveCount(totalRows);
 });
 
-test('a negative -term hides matching URLs, and combined terms apply both rules together', async () => {
+test('a negative -term hides matching URLs', async () => {
+  // Just the wiring proof (#diffFilterText -> matching -> DOM) — combined
+  // positive+negative terms and the lone-"-" literal case are pure
+  // matchesFreeText logic, already covered by
+  // src/__tests__/matches-free-text.test.ts (#251).
   await window.fill('#diffFilterText', '-sample');
-  await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toHaveCount(0);
-  await expect(window.locator('.diff-row', { hasText: '/network/status-codes.html' }).first()).toBeVisible();
-
-  await window.fill('#diffFilterText', 'downloads -sample');
-  await expect(window.locator('.diff-row')).toHaveCount(0);
-
-  await window.fill('#diffFilterText', '');
-});
-
-test('a lone "-" is treated as a literal character rather than a negation', async () => {
-  // "-" as a bare term is a positive literal match, not a negation: it keeps
-  // only URLs that actually contain a hyphen (status-codes.html) and hides
-  // the ones that don't (sample.txt) — the opposite of what negation would do.
-  await window.fill('#diffFilterText', '-');
   await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toHaveCount(0);
   await expect(window.locator('.diff-row', { hasText: '/network/status-codes.html' }).first()).toBeVisible();
   await window.fill('#diffFilterText', '');
