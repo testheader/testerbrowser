@@ -2,6 +2,7 @@
 import { escHtml } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
+import { pollWhileVisible } from './poll.js';
 
 // Request headers/body from the captured call the add-rule form is currently
 // prefilled from — read-only provenance, shown in a rule's edit view once
@@ -204,14 +205,13 @@ export function initResilience() {
   loadRules();
   // Hit counts change as traffic flows without the user re-opening this tab;
   // keep them fresh while the Resilience tab is the one being looked at.
-  // Skip auto-refresh while a rule is being edited — the re-render would
-  // replace the edit row with a read-only row, discarding in-progress edits
-  // (same guard mock.js already has — #224).
-  setInterval(() => {
-    if (getActiveConsoleTab() !== 'resilience') return;
+  pollWhileVisible(() => {
+    // Skip auto-refresh while a rule is being edited — the re-render would
+    // replace the edit row with a read-only row, discarding in-progress edits
+    // (same guard mock.js already has — #224).
     if (document.querySelector('#resRules .res-rule-row-editing')) return;
-    loadRules();
-  }, 1500);
+    return loadRules();
+  }, 1500, () => getActiveConsoleTab() === 'resilience');
 }
 
 export async function loadRules() {

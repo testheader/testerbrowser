@@ -1,12 +1,13 @@
 /* global testerBrowser */
 import { escHtml, wirePillGroup, activePillValues, matchesFreeText } from './utils.js';
+import { getActiveConsoleTab } from './console-tabs.js';
+import { pollWhileVisible } from './poll.js';
 
 let initialized = false;
-let pollHandle = null;
 // The full set of entries fetched so far this "session" of the panel being
-// open (across tab switches, since stopDebugLogPolling() only pauses the
-// interval — it doesn't drop what's already loaded). Reset to empty only
-// when debug mode is off, so turning it back on re-fetches everything that
+// open (across tab switches — pollWhileVisible just skips fn() while
+// hidden, it doesn't drop what's already loaded). Reset to empty only when
+// debug mode is off, so turning it back on re-fetches everything that
 // accumulated while the panel wasn't polling instead of silently skipping it.
 let lastEntries = [];
 let lastSeenId = 0;
@@ -44,14 +45,12 @@ export async function initDebugLog() {
       const row = e.target.closest('.debuglog-row.has-ctx');
       if (row) row.closest('.debuglog-entry').classList.toggle('expanded');
     });
+    // #254: started once, ever — pollWhileVisible checks isVisible() fresh
+    // before every tick, so there's no need to stop/restart it on every
+    // switch to/from the Debug Log tab the way the old setInterval did.
+    pollWhileVisible(pollDebugLog, 1000, () => getActiveConsoleTab() === 'debuglog');
   }
-  await pollDebugLog();
-  stopDebugLogPolling();
-  pollHandle = setInterval(pollDebugLog, 1000);
-}
-
-export function stopDebugLogPolling() {
-  if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
+  await pollDebugLog(); // immediate refresh on switching to this tab, not up to 1s stale
 }
 
 async function pollDebugLog() {

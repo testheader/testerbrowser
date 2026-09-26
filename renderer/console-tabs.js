@@ -11,7 +11,7 @@ import { initRecordPlayback } from './record-playback.js';
 import { initFollow, refreshFollowPickers } from './followalong.js';
 import { renderTimeline } from './timeline.js';
 import { getDetailTabsCount } from './detail-panel.js';
-import { initDebugLog, stopDebugLogPolling } from './debuglog.js';
+import { initDebugLog } from './debuglog.js';
 
 // The only external readers of activeConsoleTab (many — find, timeline,
 // detail-panel, bugreport, mock, resilience, ipc-events, main) go through
@@ -24,7 +24,6 @@ export function switchConsoleTab(tab) {
   const prevTab = activeConsoleTab;
   activeConsoleTab = tab;
   if (prevTab === 'a11y' && tab !== 'a11y') { disableA11yHover(); disableA11yFocusOrder(); }
-  if (prevTab === 'debuglog' && tab !== 'debuglog') stopDebugLogPolling();
   if (prevTab === 'storage' && tab !== 'storage') stopStorageAutoRefreshPolling();
   document.getElementById('consoleTabConsole').classList.toggle('active', tab === 'console');
   document.getElementById('consoleTabNetwork').classList.toggle('active', tab === 'network');

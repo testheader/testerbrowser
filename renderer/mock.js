@@ -3,6 +3,7 @@ import { escHtml, MOCK_STRIPPED_RESPONSE_HEADERS } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { addKvRow, readKvTable } from './kv-table.js';
+import { pollWhileVisible } from './poll.js';
 
 const MOCK_METHODS = ['*', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
@@ -143,13 +144,12 @@ export function initMock() {
   loadRules();
   // Hit counts change as traffic flows without the user re-opening this tab;
   // keep them fresh while the Mock tab is the one being looked at.
-  // Skip auto-refresh while a rule is being edited — the re-render would
-  // replace the edit row with a read-only row, discarding in-progress edits.
-  setInterval(() => {
-    if (getActiveConsoleTab() !== 'mock') return;
+  pollWhileVisible(() => {
+    // Skip auto-refresh while a rule is being edited — the re-render would
+    // replace the edit row with a read-only row, discarding in-progress edits.
     if (document.querySelector('#mockRules .mock-rule-row-editing')) return;
-    loadRules();
-  }, 1500);
+    return loadRules();
+  }, 1500, () => getActiveConsoleTab() === 'mock');
 }
 
 async function loadRules() {
