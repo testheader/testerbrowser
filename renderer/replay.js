@@ -4,6 +4,7 @@ import { openMockFromRequest } from './mock.js';
 import { openResilienceFromRequest } from './resilience.js';
 import { addKvRow, readKvTable } from './kv-table.js';
 import { initModal, openModal, closeModal } from './modal.js';
+import { buildSessionOptions } from './session-picker.js';
 
 // Last successful ("ok") response from this Replay session's Send ↵, used to
 // prefill status/response headers/body when handing off to Mock. Reset on
@@ -126,16 +127,12 @@ export async function openReplay(evt, sessionId) {
   }
 
   const sessionPick = document.getElementById('replayCookieSessionPick');
-  sessionPick.innerHTML = '<option value="">Load from session…</option>';
   try {
     const sessions = await testerBrowser.sessions.list();
-    for (const s of sessions) {
-      const opt = document.createElement('option');
-      opt.value       = s.id;
-      opt.textContent = s.name;
-      sessionPick.appendChild(opt);
-    }
-  } catch {}
+    buildSessionOptions(sessionPick, sessions, { extraFirstOption: { value: '', label: 'Load from session…' } });
+  } catch {
+    sessionPick.innerHTML = '<option value="">Load from session…</option>';
+  }
   let reqHost = '';
   try { reqHost = new URL(url.startsWith('http') ? url : 'https://' + url).hostname; } catch {}
   sessionPick.dataset.reqHost = reqHost;
