@@ -1199,9 +1199,14 @@ export class SessionManager {
 
   createSession(
     name: string,
-    opts: { persistent?: boolean; startUrl?: string; partition?: string; color?: string; pinned?: boolean } = {}
+    opts: { persistent?: boolean; startUrl?: string; partition?: string; color?: string; pinned?: boolean; id?: string } = {}
   ): TestSession {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // #268: loadAndRestoreSessions() passes the id a persistent session was
+    // last saved with, so its id — and therefore its notes, keyed by id —
+    // survive a restart instead of churning on every launch. Any other
+    // caller (new tab, clone, reopen, popup) leaves this unset and gets a
+    // fresh one as before.
+    const id = opts.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
     const persistent = !!opts.persistent || partition.startsWith('persist:');
     // Seed the rule buckets for this partition if this is the first tab ever
@@ -1744,11 +1749,24 @@ export class SessionManager {
       const persistentSessions = Array.from(this.sessions.values()).filter(s => s.persistent);
       const sessions = persistentSessions
         .sort((a, b) => (orderIndex.get(a.id) ?? Infinity) - (orderIndex.get(b.id) ?? Infinity))
-        .map(s => ({ name: s.name, partition: s.partition, url: s.currentUrl, color: s.color, pinned: s.pinned }));
+        // #268: `id` is new — saved (and, on the next load, passed back into
+        // createSession) so a persistent session's id, and anything keyed by
+        // it (notes, its recording file), survives a restart instead of
+        // getting a fresh random id every launch. A file from before this
+        // field existed just has restored sessions get fresh ids again, same
+        // as always — see the notes-migration comment below.
+        .map(s => ({ id: s.id, name: s.name, partition: s.partition, url: s.currentUrl, color: s.color, pinned: s.pinned }));
+      // #268: keyed by session id, not partition — two persistent tabs
+      // sharing a partition ("New tab in this session") used to collide on
+      // a single partition-keyed slot here, silently losing whichever one
+      // didn't iterate last. Only persistent sessions are kept: a temporary
+      // session's notes have no corresponding entry in `sessions` above to
+      // ever be reattached to, so keeping them would just grow the file
+      // forever.
       const notes: Record<string, string> = {};
       for (const [id, note] of this.sessionNotes) {
         const s = this.sessions.get(id);
-        if (s && note) notes[s.partition] = note;
+        if (s && s.persistent && note) notes[id] = note;
       }
       const emulation: Record<string, EmulationOverrides> = {};
       for (const s of persistentSessions) {
@@ -1766,9 +1784,10 @@ export class SessionManager {
       if (!fs.existsSync(this.sessionsFile)) return false;
       const { sessions, notes, emulation } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
       if (!sessions?.length) return false;
+      const restored: { partition: string; sess: TestSession }[] = [];
       for (const s of sessions) {
-        const sess = this.createSession(s.name, { partition: s.partition, startUrl: s.url, color: s.color, pinned: s.pinned });
-        if (notes?.[s.partition]) this.sessionNotes.set(sess.id, notes[s.partition]);
+        const sess = this.createSession(s.name, { id: s.id, partition: s.partition, startUrl: s.url, color: s.color, pinned: s.pinned });
+        restored.push({ partition: s.partition, sess });
         // Re-apply persisted overrides through setEmulation (not just record
         // them on s.emulation) so the CDP commands / date-offset script are
         // genuinely in force on the newly-created target, not merely
@@ -1776,6 +1795,34 @@ export class SessionManager {
         if (emulation?.[s.partition]) {
           this.setEmulation(sess.id, emulation[s.partition])
             .catch((e) => this.log.warn('sessions', 'Failed to restore emulation override on load', { sessionId: sess.id, error: String(e) }));
+        }
+      }
+      // #268: a file saved before notes were id-keyed has `notes` keyed by
+      // partition instead — detected per-key, not per-file, so a file that's
+      // itself mid-migration (part id-keyed from a previous load of this
+      // exact file, part still partition-keyed because a session ID above
+      // came from a legacy `sessions` entry with no `id`) migrates whatever
+      // it still needs to. A key that doesn't match any restored session's
+      // id (every id created above is either the exact one it was last saved
+      // with, or freshly minted for a legacy entry with no `id` — a legacy
+      // key genuinely cannot collide with either) but does match a live
+      // partition is legacy: applied once to the first restored session of
+      // that partition, since nothing on disk says which of several
+      // same-partition tabs it originally belonged to. The next save writes
+      // it back id-keyed, converging permanently since ids stop churning
+      // from that point on.
+      if (notes && typeof notes === 'object') {
+        const liveIds = new Set(restored.map(r => r.sess.id));
+        const migratedPartitions = new Set<string>();
+        for (const [key, note] of Object.entries(notes as Record<string, string>)) {
+          if (!note) continue;
+          if (liveIds.has(key)) { this.sessionNotes.set(key, note); continue; }
+          if (migratedPartitions.has(key)) continue;
+          const match = restored.find(r => r.partition === key);
+          if (match) {
+            this.sessionNotes.set(match.sess.id, note);
+            migratedPartitions.add(key);
+          }
         }
       }
       const first = this.sessions.values().next().value as TestSession | undefined;

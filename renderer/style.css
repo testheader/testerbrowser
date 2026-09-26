@@ -784,6 +784,9 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
               box-shadow: 0 8px 32px rgba(0,0,0,0.5); resize: both; overflow: auto;
               display: flex; flex-direction: column; position: relative; }
 #notesModal h2 { margin: 0 0 16px; font-size: 15px; font-weight: 600; color: var(--text-strong); }
+.modal-actions[hidden] { display: none; }
+.notes-discard-confirm { align-items: center; }
+.notes-discard-msg { color: var(--warn-strong); font-size: 13px; margin-right: auto; }
 #notesTextarea { flex: 1; min-height: 160px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-strong);
                  border-radius: 4px; padding: 10px; font-family: inherit; font-size: 13px; resize: none; }
 #notesTextarea:focus { outline: none; border-color: var(--accent); }

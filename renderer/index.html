@@ -527,9 +527,14 @@
       <button class="modal-close-btn" id="notesCloseXBtn" title="Close">&#10005;</button>
       <h2 id="notesTitle">Notes</h2>
       <textarea id="notesTextarea" placeholder="Session notes…"></textarea>
-      <div class="modal-actions" style="margin-top:12px">
+      <div class="modal-actions" id="notesActions" style="margin-top:12px">
         <button class="btn btn-secondary" id="closeNotesBtn">Close</button>
         <button class="btn btn-primary"   id="saveNotesBtn">Save</button>
+      </div>
+      <div class="modal-actions notes-discard-confirm" id="notesDiscardConfirm" style="margin-top:12px" hidden>
+        <span class="notes-discard-msg">Discard unsaved notes?</span>
+        <button class="btn btn-secondary" id="notesKeepEditingBtn">Keep editing</button>
+        <button class="btn btn-primary"   id="notesDiscardBtn">Discard</button>
       </div>
     </div>
   </div>
