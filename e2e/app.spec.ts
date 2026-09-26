@@ -400,14 +400,20 @@ test('replay drops [REDACTED] headers from the prefill and never sends them (#23
   await window.press('#urlbar', 'Enter');
   const tab = await getTabPage(app, redactUrlPath, window);
   await tab.waitForLoadState('load');
+
+  await window.click('#consoleTabNetwork');
+  // The page's own navigation to redactUrlPath is itself a request that
+  // matches 'echo/headers' — capture its count before the explicit fetch
+  // below so waiting for .last() afterward can't resolve against that
+  // earlier (already-visible) row instead of this fetch's own one.
+  const echoHeadersRows = window.locator('.evt.network-request', { hasText: 'echo/headers' });
+  const beforeFetchCount = await echoHeadersRows.count();
   await tab.evaluate(
     (url) => fetch(url, { headers: { Authorization: 'Bearer secret123' } }),
     fixtures.url(redactUrlPath)
   );
-
-  await window.click('#consoleTabNetwork');
-  const echoHeadersRow = window.locator('.evt.network-request', { hasText: 'echo/headers' }).last();
-  await expect(echoHeadersRow).toBeVisible();
+  await expect.poll(() => echoHeadersRows.count(), { timeout: 10_000 }).toBeGreaterThan(beforeFetchCount);
+  const echoHeadersRow = echoHeadersRows.last();
   await echoHeadersRow.click();
   await window.locator('#detailReplayBtn').click();
   await expect(window.locator('#replayOverlay')).toHaveClass(/open/);
