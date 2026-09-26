@@ -98,8 +98,14 @@ test('#urlbarDisplay reflects the just-submitted URL immediately, without waitin
     () => window.evaluate(() => (window as any).testerBrowser.urlHistory.get().then((h: string[]) => h[0])),
     { timeout: 5_000 },
   ).not.toBe(historyBefore);
-  const displayText = await window.locator('#urlbarDisplay').textContent();
-  expect(displayText).toContain('/network/slow');
+  // updateUrlbarSecurity()+blur() run synchronously right after the same
+  // urlHistory.add() the poll above just observed landing — but on a
+  // slower/more contended runner, a single unretried read straight after is
+  // still trusting that same-tick assumption more tightly than it needs to.
+  // Poll the display text directly instead (a short, bounded retry, still
+  // nowhere near the slow response's still ~2s-away arrival), rather than
+  // asserting on the very first read.
+  await expect(window.locator('#urlbarDisplay')).toContainText('/network/slow', { timeout: 1_000 });
 
   // Let the slow response land so it doesn't bleed into the next test —
   // wait on the actual tab finishing its (still in-flight, ~2s) navigation

@@ -125,6 +125,13 @@ async function setupDiffFreeTextComparison(): Promise<{ sessionAId: string; sess
   await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
   await (await getTabPage(app, sharedPath)).waitForLoadState('load');
+  // Editing the urlbar again immediately after the previous Enter-triggered
+  // navigation races the urlbar's own async post-navigation update (see
+  // followalong.spec.ts's identical wait for the same reason) — under load
+  // (more tabs open, as later calls to this helper see), the second fill can
+  // land before that settles and get silently dropped/overwritten, causing
+  // this session to load sharedPath twice and never reach onlyAPath at all.
+  await expect(window.locator('#urlbar')).toHaveValue(fixtures.url(sharedPath), { timeout: 5_000 });
 
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(onlyAPath));
@@ -145,6 +152,15 @@ async function setupDiffFreeTextComparison(): Promise<{ sessionAId: string; sess
   await window.selectOption('#diffPickA', sessionAId);
   await window.selectOption('#diffPickB', sessionBId);
   await window.click('#diffRunBtn');
+  // #diffRunBtn's click resolving only means the click event was dispatched,
+  // not that its (async) diff computation has rendered every row yet — a
+  // download's request can land in the recording via a slightly different/
+  // slower CDP path than a plain page navigation, making the "only in A"
+  // row for onlyAPath the last one to appear. Wait for it specifically
+  // (Playwright's own retry) instead of assuming the click alone means the
+  // table is fully settled — every caller of this helper depends on that row
+  // existing.
+  await expect(window.locator('.diff-row', { hasText: onlyAPath })).toBeVisible({ timeout: 10_000 });
 
   return { sessionAId, sessionBId };
 }
