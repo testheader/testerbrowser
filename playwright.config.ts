@@ -15,7 +15,17 @@ export default defineConfig({
   // tests *within* one file still run serially against that file's single
   // shared app launch, which many specs depend on for tab/session state
   // carried between tests.
-  workers: process.env.CI ? 2 : 4,
+  //
+  // CI stays at 1 worker per shard, not 2: two concurrent electron.exe
+  // launches on the SAME windows-2022 runner reproducibly hit "Process
+  // failed to launch! ... The process cannot access the file because it is
+  // being used by another process" (observed on 3 consecutive real CI runs
+  // after this was briefly set to 2 — every run before that, at workers: 1,
+  // was clean). Most likely Windows Defender's real-time scan briefly
+  // locking electron.exe when two processes spawn it in the same instant.
+  // #250's 2-shard matrix gets the parallelism back safely instead, since
+  // each shard runs on its own separate runner VM.
+  workers: process.env.CI ? 1 : 4,
   fullyParallel: false,
   // #250: retain-on-failure keeps a trace.zip (with screenshots/DOM
   // snapshots/network) per failing test in test-results/, viewable via
