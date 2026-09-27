@@ -1,10 +1,11 @@
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, Menu, clipboard, net, safeStorage, shell, session as electronSession } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, Menu, clipboard, net, safeStorage, shell, session as electronSession, powerMonitor } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides, EmulationPatch, buildMockFulfillParams, getHostname } from './sessionManager';
 import { firstHttpUrl } from './singleInstance';
+import { canAutoInstall, IDLE_INSTALL_MINUTES } from './idleInstall';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
@@ -158,6 +159,13 @@ function persistSessionUrls() {
 type UpdateStatus = 'checking' | 'available' | 'available-manual' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
+// #259: "install downloaded updates automatically when idle". Only ever
+// running while settingsStore's autoInstallWhenIdle is on and updateStatus
+// is 'downloaded' — see maybeStartIdleInstallTimer()/checkIdleInstall().
+let idleInstallTimer: ReturnType<typeof setInterval> | null = null;
+// Reset whenever the timer (re)starts, so a still-blocked check logs its
+// reason once, not every 60s — but re-logs if the reason itself changes.
+let lastIdleInstallBlockReason: string | null = null;
 
 // Compares two "x.y.z"-style version strings. Returns true if `a` is strictly newer than `b`.
 function isVersionNewer(a: string, b: string): boolean {
@@ -256,6 +264,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoOpenDownloadsPanel: false,
   recorderMaxEvents: 20000,
   recordingRetentionDays: 30,
+  autoInstallWhenIdle: false,
 };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
@@ -514,6 +523,7 @@ if (!gotSingleInstanceLock) {
       autoUpdater.on('update-downloaded', (info) => {
         updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus();
         log.info('updater', `Update downloaded: ${info.version}`);
+        maybeStartIdleInstallTimer();
       });
       autoUpdater.on('update-not-available', (info) => {
         updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus();
@@ -1457,7 +1467,9 @@ ipcMain.handle('app:checkForUpdates', () => {
 // installer UI — by default, so no autoInstallOnAppQuit/app.on('quit')
 // override is needed for that path. This explicit path additionally
 // force-runs the new version after install.
-ipcMain.handle('app:restartAndInstall', () => {
+// Shared by the pill/Settings-triggered restart and #259's idle auto-install
+// — both just want "persist, then silently install and relaunch."
+function restartAndInstall() {
   // Persist state before quitAndInstall() tears the process down — it calls
   // app.quit() itself, but does so via setImmediate after starting the
   // installer, not through the normal before-quit path in time to matter,
@@ -1465,7 +1477,57 @@ ipcMain.handle('app:restartAndInstall', () => {
   sessionManager?.saveSessions();
   persistSessionUrls();
   autoUpdater.quitAndInstall(true, true);
-});
+}
+ipcMain.handle('app:restartAndInstall', () => restartAndInstall());
+
+// #259: started once an update reaches 'downloaded' while the setting is on
+// (see the 'update-downloaded' handler and the settings:set handler above),
+// stopped once either stops holding. Checks, rather than reacting to idle
+// events, since idle *time* (not a single idle/resume edge) and the several
+// other busy-conditions all need to hold at once, at the moment a real
+// install would happen.
+function maybeStartIdleInstallTimer() {
+  if (idleInstallTimer) return;
+  if (!settingsStore.get().autoInstallWhenIdle || updateStatus !== 'downloaded') return;
+  lastIdleInstallBlockReason = null;
+  idleInstallTimer = setInterval(checkIdleInstall, 60_000);
+}
+function stopIdleInstallTimer() {
+  if (!idleInstallTimer) return;
+  clearInterval(idleInstallTimer);
+  idleInstallTimer = null;
+}
+function checkIdleInstall() {
+  const settings = settingsStore.get();
+  if (!settings.autoInstallWhenIdle || updateStatus !== 'downloaded') {
+    // The setting was turned off, or a fresh update check moved status on —
+    // per the acceptance criteria, the check simply stops; a future
+    // 'downloaded'/settings:set will start a fresh timer as needed.
+    stopIdleInstallTimer();
+    return;
+  }
+  const downloads = sessionManager?.listDownloads() ?? [];
+  const busy = sessionManager?.isBusy() ?? { recording: false, following: false, playing: false };
+  const decision = canAutoInstall({
+    enabled: settings.autoInstallWhenIdle,
+    status: updateStatus,
+    idleSeconds: powerMonitor.getSystemIdleTime(),
+    recording: busy.recording,
+    following: busy.following,
+    playing: busy.playing,
+    downloading: downloads.some((d) => d.state === 'progressing'),
+  });
+  if (decision.ok) {
+    stopIdleInstallTimer();
+    log.info('updater', `Auto-installing update while idle (idle ${IDLE_INSTALL_MINUTES}+ min)`);
+    restartAndInstall();
+    return;
+  }
+  if (decision.reason && decision.reason !== lastIdleInstallBlockReason) {
+    lastIdleInstallBlockReason = decision.reason;
+    log.info('updater', `Auto-install blocked: ${decision.reason}`);
+  }
+}
 ipcMain.handle('app:openExternal', (_e, url: string) => {
   if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
 });
@@ -1488,6 +1550,7 @@ ipcMain.handle('session:pollRecordingSteps', (_e, id: string) => sessionManager?
 // this never harvests from the live page).
 ipcMain.handle('session:getEvidenceSteps',   (_e, id: string) => sessionManager?.getEvidenceSteps(id) ?? []);
 ipcMain.handle('session:playbackStep',       (_e, id: string, step: TestStep) => sessionManager?.playbackStep(id, step) ?? null);
+ipcMain.handle('session:setPlaybackActive',  (_e, id: string, active: boolean) => sessionManager?.setPlaybackActive(id, active));
 ipcMain.handle('session:countSelectorMatches', (_e, id: string, selector: string) => sessionManager?.countSelectorMatches(id, selector) ?? -1);
 
 ipcMain.handle('followalong:start', (_e, leaderId: string, followerId: string, mirrorNavigation: boolean) =>
@@ -1501,7 +1564,13 @@ ipcMain.handle('followalong:list', () => sessionManager?.listFollowPairings() ??
 ipcMain.handle('settings:get', (e) => rejectUntrustedSender(e, 'settings:get') ? null : settingsStore.get());
 ipcMain.handle('settings:set', (e, patch: unknown) => {
   if (rejectUntrustedSender(e, 'settings:set')) return;
-  return settingsStore.update(s => applySettingsPatch(s, patch));
+  const next = settingsStore.update(s => applySettingsPatch(s, patch));
+  // #259: covers turning the toggle on while an update is already sitting at
+  // 'downloaded' — the more common case (toggling it on before an update
+  // ever arrives) is instead picked up by maybeStartIdleInstallTimer()'s own
+  // call from the 'update-downloaded' handler once one actually does.
+  maybeStartIdleInstallTimer();
+  return next;
 });
 
 // Update log IPC — #228: the updater's own log.error('updater', …) calls

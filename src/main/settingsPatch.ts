@@ -16,6 +16,7 @@ export interface AppSettings {
   recorderMaxEvents: number;
   recordingRetentionDays: number;
   autoOpenDownloadsPanel: boolean;
+  autoInstallWhenIdle: boolean;
 }
 
 const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
@@ -53,6 +54,10 @@ export function applySettingsPatch(current: AppSettings, patch: unknown): AppSet
 
   if (typeof patch.autoOpenDownloadsPanel === 'boolean') {
     next.autoOpenDownloadsPanel = patch.autoOpenDownloadsPanel;
+  }
+
+  if (typeof patch.autoInstallWhenIdle === 'boolean') {
+    next.autoInstallWhenIdle = patch.autoInstallWhenIdle;
   }
 
   if (typeof patch.searchEngine === 'string' && SEARCH_ENGINES.has(patch.searchEngine)) {

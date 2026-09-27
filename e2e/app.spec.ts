@@ -524,6 +524,30 @@ test('turning on header redaction applies immediately to an already-open tab, wi
   await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ redactSensitiveHeaders: false }));
 });
 
+test('the "install updates automatically when idle" toggle exists in Settings and persists through settings.get() (#259)', async () => {
+  await window.click('#appName');
+  await window.click('#appMenuSettings');
+  await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
+  await window.click('[data-pane="about"]');
+
+  const toggle = window.locator('#autoInstallWhenIdleToggle');
+  await expect(toggle).not.toBeChecked();
+  // The checkbox itself is visually hidden by .toggle-switch (opacity/size
+  // zeroed out — only the sibling .toggle-slider is rendered), so Playwright
+  // won't treat it as clickable; click the visible slider instead, same as
+  // debug-mode.spec.ts does for the equivalent debugModeToggle.
+  await window.locator('#autoInstallWhenIdleToggle + .toggle-slider').click();
+  await expect(toggle).toBeChecked();
+  await expect.poll(
+    () => window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.get()
+      .then((s: { autoInstallWhenIdle: boolean }) => s.autoInstallWhenIdle))
+  ).toBe(true);
+
+  await window.click('#closeSettingsBtn');
+  // Reset so this doesn't leak into later tests in this shared-app file.
+  await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ autoInstallWhenIdle: false }));
+});
+
 test('replay times out after the configured number of seconds (#233)', async () => {
   await openReplayOverlayAt(window, fixtures.url('/network/status-codes.html'));
   await window.fill('#replayUrl', fixtures.url('/network/slow?ms=5000'));

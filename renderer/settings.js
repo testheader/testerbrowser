@@ -39,6 +39,7 @@ export async function openSettings() {
   document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
   document.getElementById('debugModeToggle').checked = !!settings.debugMode;
   document.getElementById('autoOpenDownloadsPanelToggle').checked = !!settings.autoOpenDownloadsPanel;
+  document.getElementById('autoInstallWhenIdleToggle').checked = !!settings.autoInstallWhenIdle;
   document.getElementById('searchEngineSelect').value = settings.searchEngine || 'google';
   document.getElementById('recorderMaxEventsInput').value = settings.recorderMaxEvents ?? 20000;
   document.getElementById('recordingRetentionDaysInput').value = settings.recordingRetentionDays ?? 30;
@@ -129,6 +130,9 @@ export function initSettings() {
     testerBrowser.settings.set({ debugMode: e.target.checked });
   });
 
+  document.getElementById('autoInstallWhenIdleToggle').addEventListener('change', (e) => {
+    testerBrowser.settings.set({ autoInstallWhenIdle: e.target.checked });
+  });
   document.getElementById('autoOpenDownloadsPanelToggle').addEventListener('change', (e) => {
     testerBrowser.settings.set({ autoOpenDownloadsPanel: e.target.checked });
   });

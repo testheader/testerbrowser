@@ -687,11 +687,25 @@ function promptForSensitiveValues(steps) {
 async function runTest(testId, runCount) {
   const test = savedTests.find(t => t.id === testId);
   if (!test) return;
-  if (!getActiveId()) { showFormStatus('No active session', true); return; }
+  const sessionId = getActiveId();
+  if (!sessionId) { showFormStatus('No active session', true); return; }
 
   const sensitiveValues = await promptForSensitiveValues(test.steps);
   if (sensitiveValues === null) return; // tester cancelled the run
 
+  // #259: the main process has no other signal marking a run's start/end (a
+  // run is just a sequence of individual session:playbackStep calls) but
+  // needs one to avoid auto-installing an update mid-run — always cleared,
+  // even if a step throws, so a failed run can't wedge isBusy() permanently.
+  await testerBrowser.tests.setPlaybackActive(sessionId, true);
+  try {
+    await runTestSteps(test, runCount, sensitiveValues);
+  } finally {
+    await testerBrowser.tests.setPlaybackActive(sessionId, false);
+  }
+}
+
+async function runTestSteps(test, runCount, sensitiveValues) {
   const runView = document.getElementById('rpRunView');
   const placeholder = document.getElementById('rpRunPlaceholder');
   runView.hidden = false;

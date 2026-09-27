@@ -10,6 +10,7 @@ const BASE: AppSettings = {
   recorderMaxEvents: 20000,
   recordingRetentionDays: 30,
   autoOpenDownloadsPanel: false,
+  autoInstallWhenIdle: false,
 };
 
 describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
@@ -57,6 +58,11 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
   it('applies autoOpenDownloadsPanel and ignores a wrong-typed value (#247)', () => {
     expect(applySettingsPatch(BASE, { autoOpenDownloadsPanel: true }).autoOpenDownloadsPanel).toBe(true);
     expect(applySettingsPatch(BASE, { autoOpenDownloadsPanel: 'yes' }).autoOpenDownloadsPanel).toBe(false);
+  });
+
+  it('applies autoInstallWhenIdle and ignores a wrong-typed value (#259)', () => {
+    expect(applySettingsPatch(BASE, { autoInstallWhenIdle: true }).autoInstallWhenIdle).toBe(true);
+    expect(applySettingsPatch(BASE, { autoInstallWhenIdle: 'yes' }).autoInstallWhenIdle).toBe(false);
   });
 
   it('applies securityIncludeSubresources and ignores a wrong-typed value (#240)', () => {

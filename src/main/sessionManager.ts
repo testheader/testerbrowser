@@ -1118,6 +1118,13 @@ export class SessionManager {
   private lastRecordingSteps = new Map<string, TestStep[]>();
   // Live leader→follower links ("Follow Along"), keyed by leader session id.
   private followPairings = new Map<string, FollowPairing>();
+  // #259: session ids with a Record/Playback run currently in progress —
+  // toggled by the renderer's own run loop (runTest() in record-playback.js)
+  // via session:setPlaybackActive, since a run is a sequence of individual
+  // session:playbackStep IPC calls with no other main-process signal marking
+  // its start/end. Backs isBusy() below, which the idle-auto-install check
+  // (#259) uses to avoid installing mid-run.
+  private playingIds = new Set<string>();
   // CDP script identifier of the injected Date-override shim, keyed by session id.
   private dateOverrideScripts = new Map<string, string>();
   // Per-session navigation history, newest entry last — cleared on destroy.
@@ -1633,6 +1640,26 @@ export class SessionManager {
       canBack: s.view.webContents.canGoBack(),
       canForward: s.view.webContents.canGoForward(),
     });
+  }
+
+  // #259: set by the renderer around its own playback run loop (a run is a
+  // sequence of individual session:playbackStep calls, so it — not this
+  // class — is the only thing that knows when a run starts/ends). `id` is
+  // accepted for a future per-session breakdown but isBusy() below only
+  // needs "is anything playing at all" today.
+  setPlaybackActive(id: string, active: boolean) {
+    if (active) this.playingIds.add(id); else this.playingIds.delete(id);
+  }
+
+  // #259: backs the idle-auto-install check — installing mid-recording, mid-
+  // Follow-Along or mid-playback-run would pull the rug out from under
+  // whatever the tester (or a running test) is doing.
+  isBusy(): { recording: boolean; following: boolean; playing: boolean } {
+    return {
+      recording: this.recordingHandlers.size > 0,
+      following: this.followPairings.size > 0,
+      playing: this.playingIds.size > 0,
+    };
   }
 
   // --- Download actions (delegated) ---
@@ -3167,6 +3194,7 @@ export class SessionManager {
     this.recordingHandlers.delete(id);
     this.recordingBuffers.delete(id);
     this.lastRecordingSteps.delete(id);
+    this.playingIds.delete(id);
     this.dateOverrideScripts.delete(id);
     this.sessionHistory.delete(id);
     const hung = this.hungRequests.get(id);
