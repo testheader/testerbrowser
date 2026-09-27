@@ -34,6 +34,21 @@ import type { ElectronApplication, Page } from '@playwright/test';
 // the returned app closes (best-effort — Windows can briefly hold a lock on
 // a just-closed process's own files).
 export async function launchApp(mainPath: string): Promise<ElectronApplication> {
+  const { app } = await launchAppWithProfile(mainPath);
+  return app;
+}
+
+/**
+ * Same as launchApp(), but also hands back the throwaway --user-data-dir it
+ * created — needed by single-instance.spec.ts (#257), which has to launch a
+ * *second* Electron process against that exact same directory to exercise
+ * the single-instance lock. Everything else just wants the app itself, so
+ * launchApp() stays the common entry point and this is the one spec that
+ * needs the extra detail.
+ */
+export async function launchAppWithProfile(
+  mainPath: string
+): Promise<{ app: ElectronApplication; userDataDir: string }> {
   const userDataDir  = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-'));
   const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-downloads-'));
   const app = await electron.launch({
@@ -41,7 +56,7 @@ export async function launchApp(mainPath: string): Promise<ElectronApplication> 
   });
   await app.evaluate(({ app: electronApp }, dir) => electronApp.setPath('downloads', dir), downloadsDir);
   wrapCloseForCleanup(app, [userDataDir, downloadsDir]);
-  return app;
+  return { app, userDataDir };
 }
 
 /** Shared by launchApp() and any spec that hand-rolls its own launch with an

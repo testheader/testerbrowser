@@ -3,7 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
-import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides, EmulationPatch, buildMockFulfillParams } from './sessionManager';
+import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides, EmulationPatch, buildMockFulfillParams, getHostname } from './sessionManager';
+import { firstHttpUrl } from './singleInstance';
 import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
@@ -54,6 +55,15 @@ function recordAppError(message: string, level: AppLogLevel = 'error') {
 }
 process.on('uncaughtException', (err) => recordAppError(`Uncaught exception: ${err?.stack ?? err?.message ?? String(err)}`));
 process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
+
+// #257: called as early as possible, before app.whenReady() (below) is ever
+// reached. A losing second instance runs on the exact same --user-data-dir
+// as the first (nothing distinguishes them), so without this a second
+// taskbar click/shortcut launch would race the primary instance to write
+// the same sentinel/settings/open-sessions files and open the same SQLite
+// databases. e2e's launchApp() gives every test its own --user-data-dir, so
+// parallel test workers never share a lock and are unaffected by this.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 // --- Privileged-IPC sender check (#217) ---
 // src/preload/newtab.ts's contextBridge APIs (speedDial, appTheme, bookmarksApi,
@@ -406,149 +416,170 @@ function createWindow() {
   Menu.setApplicationMenu(menu);
 }
 
-app.whenReady().then(() => {
-  sentinelPath    = path.join(app.getPath('userData'), 'running.sentinel');
-  crashLogPath    = path.join(app.getPath('userData'), 'crash-log.json');
-  appErrorsPath   = path.join(app.getPath('userData'), 'app-errors.json');
-  sessionUrlsPath = path.join(app.getPath('userData'), 'session-urls.json');
-  logsDir         = path.join(app.getPath('userData'), 'logs');
-  debugLogStore   = new DebugLogStore(path.join(app.getPath('userData'), 'debug-log.sqlite'));
+if (!gotSingleInstanceLock) {
+  // Losing the lock means another instance is already running against this
+  // same user-data dir — quit before app.whenReady() ever fires, so none of
+  // its sentinel/crash-log/store bookkeeping below runs a second time
+  // against files the primary instance already owns.
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
 
-  // If the sentinel is still present, the previous session ended abnormally.
-  // Its errors/session URLs only survive if that process wrote them through
-  // to disk as they happened (recordAppError()/persistSessionUrls()) — the
-  // in-memory ring here belongs to *this* fresh process and is always empty
-  // at this point. This must run — and so must writeCrashLog()'s own
-  // main.log tail read (#226) — before initLogger() below appends this
-  // fresh launch's own startup header, or the crash tail would end with
-  // *this* session's header line instead of the crashed one's last lines.
-  if (fs.existsSync(sentinelPath)) {
-    try {
-      const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf-8')) as { startedAt?: string };
-      const crashedErrors = readAppErrors(appErrorsPath);
-      let crashedSessionUrls: string[] = [];
-      // silent: sessionUrlsPath may not exist yet (crash occurred before the first write-through)
-      try { crashedSessionUrls = JSON.parse(fs.readFileSync(sessionUrlsPath, 'utf-8')); } catch {}
-      writeCrashLog(sentinel.startedAt ?? new Date().toISOString(), crashedErrors, crashedSessionUrls);
-    } catch (e) {
-      log.warn('app', 'Failed to process crash sentinel', { error: String(e) });
+    const url = firstHttpUrl(argv);
+    if (url && sessionManager) {
+      const ns = sessionManager.createSession(getHostname(url), { startUrl: url, persistent: true });
+      win.webContents.send('session:newTab', { id: ns.id });
     }
-  }
-  // Start this session's own durable state clean, so it doesn't inherit
-  // whatever the crashed process (or one before it) left behind.
-  writeAppErrors(appErrorsPath, []);
-  // silent: best-effort reset; a failure here just means the previous crash's already-empty state persists a bit longer
-  try { fs.writeFileSync(sessionUrlsPath, JSON.stringify([])); } catch {}
-  // Write the sentinel for this session.
-  sessionStartedAt = new Date().toISOString();
-  // silent: best-effort; a failure here means this session's own crash detection won't fire next launch, no user-visible impact now
-  try { fs.writeFileSync(sentinelPath, JSON.stringify({ startedAt: sessionStartedAt })); } catch {}
-
-  initLogger({
-    dir: logsDir,
-    debugMode: () => settingsStore.get().debugMode,
-    debugLogStore,
-    appErrorsPath,
   });
 
-  createWindow();
-  log.info('app', `App started: ${app.getVersion()} on ${process.platform}`);
+  app.whenReady().then(() => {
+    sentinelPath    = path.join(app.getPath('userData'), 'running.sentinel');
+    crashLogPath    = path.join(app.getPath('userData'), 'crash-log.json');
+    appErrorsPath   = path.join(app.getPath('userData'), 'app-errors.json');
+    sessionUrlsPath = path.join(app.getPath('userData'), 'session-urls.json');
+    logsDir         = path.join(app.getPath('userData'), 'logs');
+    debugLogStore   = new DebugLogStore(path.join(app.getPath('userData'), 'debug-log.sqlite'));
 
-  if (app.isPackaged) {
-    autoUpdater.allowPrerelease = true;
-    // electron-updater's own "update-available" signal isn't trusted blindly — a stale feed
-    // or a version tag mishap can fire it for the version already running. Downloading (and
-    // therefore reinstalling) only proceeds once we've independently confirmed it's newer.
-    autoUpdater.autoDownload = false;
-    autoUpdater.on('checking-for-update', () => {
-      updateStatus = 'checking'; latestVersion = null; pushUpdateStatus();
-      log.info('updater', 'Checking for update');
-    });
-    autoUpdater.on('update-available', (info) => {
-      latestVersion = info.version;
-      if (!isVersionNewer(info.version, app.getVersion())) {
-        updateStatus = 'not-available';
-        pushUpdateStatus();
-        log.info('updater', `Update feed reported ${info.version}, not newer than current — ignored`);
-        return;
+    // If the sentinel is still present, the previous session ended abnormally.
+    // Its errors/session URLs only survive if that process wrote them through
+    // to disk as they happened (recordAppError()/persistSessionUrls()) — the
+    // in-memory ring here belongs to *this* fresh process and is always empty
+    // at this point. This must run — and so must writeCrashLog()'s own
+    // main.log tail read (#226) — before initLogger() below appends this
+    // fresh launch's own startup header, or the crash tail would end with
+    // *this* session's header line instead of the crashed one's last lines.
+    if (fs.existsSync(sentinelPath)) {
+      try {
+        const sentinel = JSON.parse(fs.readFileSync(sentinelPath, 'utf-8')) as { startedAt?: string };
+        const crashedErrors = readAppErrors(appErrorsPath);
+        let crashedSessionUrls: string[] = [];
+        // silent: sessionUrlsPath may not exist yet (crash occurred before the first write-through)
+        try { crashedSessionUrls = JSON.parse(fs.readFileSync(sessionUrlsPath, 'utf-8')); } catch {}
+        writeCrashLog(sentinel.startedAt ?? new Date().toISOString(), crashedErrors, crashedSessionUrls);
+      } catch (e) {
+        log.warn('app', 'Failed to process crash sentinel', { error: String(e) });
       }
-      updateStatus = 'available';
-      pushUpdateStatus();
-      log.info('updater', `Update available: ${info.version}`);
-      autoUpdater.downloadUpdate();
+    }
+    // Start this session's own durable state clean, so it doesn't inherit
+    // whatever the crashed process (or one before it) left behind.
+    writeAppErrors(appErrorsPath, []);
+    // silent: best-effort reset; a failure here just means the previous crash's already-empty state persists a bit longer
+    try { fs.writeFileSync(sessionUrlsPath, JSON.stringify([])); } catch {}
+    // Write the sentinel for this session.
+    sessionStartedAt = new Date().toISOString();
+    // silent: best-effort; a failure here means this session's own crash detection won't fire next launch, no user-visible impact now
+    try { fs.writeFileSync(sentinelPath, JSON.stringify({ startedAt: sessionStartedAt })); } catch {}
+
+    initLogger({
+      dir: logsDir,
+      debugMode: () => settingsStore.get().debugMode,
+      debugLogStore,
+      appErrorsPath,
     });
-    // download-progress fires repeatedly per download (per chunk) — no
-    // breadcrumb here, same high-frequency reasoning as sessionManager.ts's
-    // CDP event handlers.
-    autoUpdater.on('download-progress', () => { updateStatus = 'downloading'; pushUpdateStatus(); });
-    autoUpdater.on('update-downloaded', (info) => {
-      updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus();
-      log.info('updater', `Update downloaded: ${info.version}`);
-    });
-    autoUpdater.on('update-not-available', (info) => {
-      updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus();
-      log.info('updater', `No update available (current: ${info.version})`);
-    });
-    autoUpdater.on('error', async (_e, message) => {
-      const fullMsg = String(message ?? 'unknown');
-      // When latest.yml is missing from the newest release, try up to 3 previous
-      // published releases before surfacing an error to the user.
-      if (fullMsg.includes('Cannot find latest.yml')) {
-        try {
-          const resp = await net.fetch(
-            'https://api.github.com/repos/testheader/testerbrowser/releases?per_page=10',
-            { headers: { 'User-Agent': 'TesterBrowser-Updater' } }
-          );
-          if (resp.ok) {
-            const releases = await resp.json() as { tag_name: string; draft: boolean; assets: { name: string }[] }[];
-            let checked = 0;
-            for (const rel of releases) {
-              if (rel.draft) continue;
-              if (rel.assets.some(a => a.name === 'latest.yml')) {
-                const foundVersion = rel.tag_name.replace(/^v/, '');
-                latestVersion = foundVersion;
-                // A release found while scanning back for a valid latest.yml can be
-                // older than what's already installed — that's not an available update.
-                // #230: electron-updater has no update info to download this from (it
-                // errored on the newest release's own latest.yml) — 'available-manual'
-                // points the user at the GitHub release page instead of pretending a
-                // real download is in progress.
-                const newer = isVersionNewer(foundVersion, app.getVersion());
-                updateStatus = newer ? 'available-manual' : 'not-available';
-                pushUpdateStatus();
-                log.info('updater', newer
-                  ? `Update found via release scan (manual download required): ${foundVersion}`
-                  : `Release scan found ${foundVersion}, not newer than current`);
-                return;
-              }
-              if (++checked >= 3) break;
-            }
-          }
-        } catch (e) {
-          log.warn('updater', 'Failed to scan previous releases for latest.yml', { error: String(e) });
+
+    createWindow();
+    log.info('app', `App started: ${app.getVersion()} on ${process.platform}`);
+
+    if (app.isPackaged) {
+      autoUpdater.allowPrerelease = true;
+      // electron-updater's own "update-available" signal isn't trusted blindly — a stale feed
+      // or a version tag mishap can fire it for the version already running. Downloading (and
+      // therefore reinstalling) only proceeds once we've independently confirmed it's newer.
+      autoUpdater.autoDownload = false;
+      autoUpdater.on('checking-for-update', () => {
+        updateStatus = 'checking'; latestVersion = null; pushUpdateStatus();
+        log.info('updater', 'Checking for update');
+      });
+      autoUpdater.on('update-available', (info) => {
+        latestVersion = info.version;
+        if (!isVersionNewer(info.version, app.getVersion())) {
+          updateStatus = 'not-available';
+          pushUpdateStatus();
+          log.info('updater', `Update feed reported ${info.version}, not newer than current — ignored`);
+          return;
         }
-      }
-      updateStatus = 'error';
-      // #228: ctx here is the update log's data source (app:getUpdateLog
-      // reconstructs { timestamp, status, message, currentVersion,
-      // latestVersion } from source='updater' rows via toUpdateLogEntry()).
-      log.error('updater', fullMsg, { status: 'error', currentVersion: app.getVersion(), latestVersion: null });
-      // Strip verbose prefix and show only the first line, capped at 120 chars
-      latestVersion = fullMsg
-        .replace(/^Cannot check for updates:\s*(Error:\s*)?/, '')
-        .split('\n')[0]
-        .slice(0, 120);
-      pushUpdateStatus();
-    });
-    autoUpdater.checkForUpdates();
-  } else {
-    updateStatus = 'not-available';
-  }
+        updateStatus = 'available';
+        pushUpdateStatus();
+        log.info('updater', `Update available: ${info.version}`);
+        autoUpdater.downloadUpdate();
+      });
+      // download-progress fires repeatedly per download (per chunk) — no
+      // breadcrumb here, same high-frequency reasoning as sessionManager.ts's
+      // CDP event handlers.
+      autoUpdater.on('download-progress', () => { updateStatus = 'downloading'; pushUpdateStatus(); });
+      autoUpdater.on('update-downloaded', (info) => {
+        updateStatus = 'downloaded'; latestVersion = info.version; pushUpdateStatus();
+        log.info('updater', `Update downloaded: ${info.version}`);
+      });
+      autoUpdater.on('update-not-available', (info) => {
+        updateStatus = 'not-available'; latestVersion = info.version; pushUpdateStatus();
+        log.info('updater', `No update available (current: ${info.version})`);
+      });
+      autoUpdater.on('error', async (_e, message) => {
+        const fullMsg = String(message ?? 'unknown');
+        // When latest.yml is missing from the newest release, try up to 3 previous
+        // published releases before surfacing an error to the user.
+        if (fullMsg.includes('Cannot find latest.yml')) {
+          try {
+            const resp = await net.fetch(
+              'https://api.github.com/repos/testheader/testerbrowser/releases?per_page=10',
+              { headers: { 'User-Agent': 'TesterBrowser-Updater' } }
+            );
+            if (resp.ok) {
+              const releases = await resp.json() as { tag_name: string; draft: boolean; assets: { name: string }[] }[];
+              let checked = 0;
+              for (const rel of releases) {
+                if (rel.draft) continue;
+                if (rel.assets.some(a => a.name === 'latest.yml')) {
+                  const foundVersion = rel.tag_name.replace(/^v/, '');
+                  latestVersion = foundVersion;
+                  // A release found while scanning back for a valid latest.yml can be
+                  // older than what's already installed — that's not an available update.
+                  // #230: electron-updater has no update info to download this from (it
+                  // errored on the newest release's own latest.yml) — 'available-manual'
+                  // points the user at the GitHub release page instead of pretending a
+                  // real download is in progress.
+                  const newer = isVersionNewer(foundVersion, app.getVersion());
+                  updateStatus = newer ? 'available-manual' : 'not-available';
+                  pushUpdateStatus();
+                  log.info('updater', newer
+                    ? `Update found via release scan (manual download required): ${foundVersion}`
+                    : `Release scan found ${foundVersion}, not newer than current`);
+                  return;
+                }
+                if (++checked >= 3) break;
+              }
+            }
+          } catch (e) {
+            log.warn('updater', 'Failed to scan previous releases for latest.yml', { error: String(e) });
+          }
+        }
+        updateStatus = 'error';
+        // #228: ctx here is the update log's data source (app:getUpdateLog
+        // reconstructs { timestamp, status, message, currentVersion,
+        // latestVersion } from source='updater' rows via toUpdateLogEntry()).
+        log.error('updater', fullMsg, { status: 'error', currentVersion: app.getVersion(), latestVersion: null });
+        // Strip verbose prefix and show only the first line, capped at 120 chars
+        latestVersion = fullMsg
+          .replace(/^Cannot check for updates:\s*(Error:\s*)?/, '')
+          .split('\n')[0]
+          .slice(0, 120);
+        pushUpdateStatus();
+      });
+      autoUpdater.checkForUpdates();
+    } else {
+      updateStatus = 'not-available';
+    }
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
   });
-});
+}
 
 // Temporary tabs are meant to vanish without ceremony (that's the point of the
 // feature — see #100) — quit saves persistent sessions and silently discards

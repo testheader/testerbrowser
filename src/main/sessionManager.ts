@@ -876,7 +876,7 @@ const TAB_COLORS = [
   '#2bbac5', '#d4896a',
 ];
 
-function getHostname(url: string): string {
+export function getHostname(url: string): string {
   try { return new URL(url).hostname || 'New tab'; } catch { return 'New tab'; }
 }
 
