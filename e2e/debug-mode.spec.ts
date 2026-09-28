@@ -243,12 +243,14 @@ test.describe('main.log survives a hard kill (#225)', () => {
       process.kill(pid as number, 'SIGKILL');
       // No app.close() — the process is already dead; closing would error.
       killedApp = undefined;
-      // Wait for Windows to release the single-instance lock held by the killed process.
-      await new Promise(r => setTimeout(r, 1000));
 
       // Relaunch against the SAME user-data dir, as a real restart after a
-      // crash would.
-      const relaunched = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+      // crash would. ELECTRON_SKIP_SINGLE_INSTANCE bypasses the stale lock
+      // that Windows may not have released yet after the SIGKILL.
+      const relaunched = await electron.launch({
+        args: [`--user-data-dir=${userDataDir}`, MAIN_PATH],
+        env: { ...process.env, ELECTRON_SKIP_SINGLE_INSTANCE: '1' },
+      });
       try {
         const relaunchedWin = await getMainWindow(relaunched);
         await relaunchedWin.waitForLoadState('domcontentloaded');

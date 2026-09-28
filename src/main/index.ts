@@ -64,7 +64,11 @@ process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection
 // the same sentinel/settings/open-sessions files and open the same SQLite
 // databases. e2e's launchApp() gives every test its own --user-data-dir, so
 // parallel test workers never share a lock and are unaffected by this.
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+// ELECTRON_SKIP_SINGLE_INSTANCE=1 lets a test relaunch the app against the same
+// user-data-dir (e.g. to check crash-log persistence) without hitting a stale
+// lock left behind by a SIGKILL'd previous instance.
+const gotSingleInstanceLock =
+  process.env.ELECTRON_SKIP_SINGLE_INSTANCE === '1' || app.requestSingleInstanceLock();
 
 // --- Privileged-IPC sender check (#217) ---
 // src/preload/newtab.ts's contextBridge APIs (speedDial, appTheme, bookmarksApi,
