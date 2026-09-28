@@ -8,7 +8,11 @@ import { DownloadManager } from './downloadManager';
 import { PermissionManager } from './permissionManager';
 import { AppLog } from './appLogger';
 
-import { genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress, resolveTemplate } from './testdata';
+import {
+  genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress,
+  genLongString, genUnicode, genRtl, genSqlInjection, genXss, genBoundaryNumber, genWhitespace, genTestCard,
+  resolveTemplate,
+} from './testdata';
 import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 import { filterRowsSince } from './jira';
 import { writeJsonAtomic } from './jsonFile';
@@ -1685,6 +1689,20 @@ export class SessionManager {
             { label: 'Date (today)', click: () => inject(genDate()) },
             { label: 'Phone',        click: () => inject(genPhone()) },
             { label: 'Address',      click: () => inject(genAddress()) },
+            { type: 'separator' },
+            {
+              label: 'Edge cases',
+              submenu: [
+                { label: 'Long string',      click: () => inject(genLongString()) },
+                { label: 'Unicode/emoji',    click: () => inject(genUnicode()) },
+                { label: 'RTL text',         click: () => inject(genRtl()) },
+                { label: 'SQL injection',    click: () => inject(genSqlInjection()) },
+                { label: 'XSS',              click: () => inject(genXss()) },
+                { label: 'Boundary number',  click: () => inject(genBoundaryNumber()) },
+                { label: 'Whitespace only',  click: () => inject(genWhitespace()) },
+                { label: 'Test card number', click: () => inject(genTestCard()) },
+              ],
+            },
             { type: 'separator' },
             { label: 'Custom template…', click: () => this.win.webContents.send('testdata:promptTemplate', { sessionId: id }) },
           ],
