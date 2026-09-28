@@ -47,4 +47,38 @@ describe('applyMockRulePatch (#182 — editing a mock rule in place)', () => {
     expect(rule.statusCode).toBe(200);
     expect(patched).not.toBe(rule);
   });
+
+  // #263: delayMs clamping.
+  describe('delayMs clamping', () => {
+    it('leaves a valid in-range value untouched', () => {
+      const patched = applyMockRulePatch(makeRule(), { delayMs: 1500 });
+      expect(patched.delayMs).toBe(1500);
+    });
+
+    it('clamps a negative value to 0', () => {
+      const patched = applyMockRulePatch(makeRule(), { delayMs: -500 });
+      expect(patched.delayMs).toBe(0);
+    });
+
+    it('clamps a value over 120,000 down to 120,000', () => {
+      const patched = applyMockRulePatch(makeRule(), { delayMs: 999_999 });
+      expect(patched.delayMs).toBe(120_000);
+    });
+
+    it('clamps NaN to 0', () => {
+      const patched = applyMockRulePatch(makeRule(), { delayMs: NaN });
+      expect(patched.delayMs).toBe(0);
+    });
+
+    it('clamps a non-numeric value to 0', () => {
+      const patched = applyMockRulePatch(makeRule(), { delayMs: 'not-a-number' as unknown as number });
+      expect(patched.delayMs).toBe(0);
+    });
+
+    it('leaves delayMs untouched when the patch does not mention it', () => {
+      const rule = makeRule({ delayMs: 2000 });
+      const patched = applyMockRulePatch(rule, { statusCode: 503 });
+      expect(patched.delayMs).toBe(2000);
+    });
+  });
 });

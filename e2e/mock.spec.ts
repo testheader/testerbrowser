@@ -454,3 +454,73 @@ test('a mock rule row keeps the tab it was rendered for, even after switching ta
 
   await expect(window.locator('.mock-row-error')).toHaveText('That tab was closed — rule not saved');
 });
+
+test('a mock rule with a delay fulfills only after that delay, with the mocked body (#263)', async () => {
+  for (let i = 0; i < 10 && (await window.locator('.tab').count()) > 1; i++) {
+    await window.keyboard.press('Control+w');
+  }
+  await expect.poll(() => window.locator('.tab').count()).toBe(1);
+
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabMock');
+  await window.fill('#mockUrl', '*/api/delayed');
+  await window.fill('#mockStatus', '200');
+  await window.fill('#mockDelay', '1500');
+  await window.fill('#mockBody', '{"delayed":true}');
+  await window.click('.mock-add-btn');
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/delayed' })).toBeVisible();
+
+  await tab.fill('#apiPath', '/api/delayed');
+  await tab.click('#apiFetchBtn');
+  await expect(tab.locator('#apiOut')).toContainText('"delayed":true', { timeout: 5_000 });
+  const out = JSON.parse((await tab.locator('#apiOut').textContent()) || '{}');
+  expect(out.ms).toBeGreaterThanOrEqual(1_400);
+});
+
+test('mock rules match top to bottom — moving a rule up changes which one wins (#263)', async () => {
+  for (let i = 0; i < 10 && (await window.locator('.tab').count()) > 1; i++) {
+    await window.keyboard.press('Control+w');
+  }
+  await expect.poll(() => window.locator('.tab').count()).toBe(1);
+
+  const urlPath = '/network/api.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabMock');
+  await expect(window.locator('.mock-hint')).toHaveText(/first enabled match wins/);
+
+  await window.fill('#mockUrl', '*/network/status/*');
+  await window.fill('#mockStatus', '200');
+  await window.fill('#mockDelay', '0');
+  await window.fill('#mockBody', 'broad');
+  await window.click('.mock-add-btn');
+  const broadRow = window.locator('.mock-rule-row', { hasText: '*/network/status/*' });
+  await expect(broadRow).toBeVisible();
+
+  await window.fill('#mockUrl', '*/network/status/200');
+  await window.fill('#mockBody', 'specific');
+  await window.click('.mock-add-btn');
+  const specificRow = window.locator('.mock-rule-row', { hasText: '*/network/status/200' });
+  await expect(specificRow).toBeVisible();
+
+  // The broad rule was added first, so it wins today — insertion order.
+  await tab.fill('#apiPath', '/network/status/200');
+  await tab.click('#apiFetchBtn');
+  await expect(tab.locator('#apiOut')).toContainText('"body":"broad"', { timeout: 5_000 });
+
+  // Moving the specific rule above the broad one flips which one wins,
+  // without deleting/recreating either.
+  await specificRow.locator('.mock-move-up-btn').click();
+  await expect(window.locator('.mock-rule-row').first()).toHaveAttribute('data-id', await specificRow.getAttribute('data-id') as string);
+
+  await tab.click('#apiFetchBtn');
+  await expect(tab.locator('#apiOut')).toContainText('"body":"specific"', { timeout: 5_000 });
+});

@@ -1192,6 +1192,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-input:focus { outline: none; border-color: var(--accent); }
 .mock-url { flex: 1; }
 .mock-status { width: 72px; }
+.mock-delay { width: 90px; }
 .mock-select { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color);
                border-radius: 3px; padding: 4px 6px; font-size: 12px; }
 .mock-body { flex: 1; resize: vertical; min-height: 40px; font-family: monospace; }
@@ -1208,10 +1209,17 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-btn:hover { background: var(--bg-raised); }
 .mock-add-btn { background: var(--info-surface); border-color: var(--info-border); align-self: flex-end; }
 .mock-add-btn:hover { background: var(--info-surface); }
+.mock-hint { font-size: 11px; color: var(--text-faint); }
 .mock-rules { display: flex; flex-direction: column; gap: 4px; }
 .mock-empty { color: var(--text-faint); font-size: 12px; padding: 4px 0; }
 .mock-rule-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
                  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 3px; }
+.mock-rule-position { font-size: 10px; color: var(--text-faint); min-width: 14px; text-align: right; }
+.mock-rule-move { display: flex; flex-direction: column; gap: 1px; }
+.mock-move-up-btn, .mock-move-down-btn { padding: 0 4px; font-size: 10px; line-height: 1.3; }
+.mock-move-up-btn:disabled, .mock-move-down-btn:disabled { opacity: 0.35; cursor: default; }
+.mock-move-up-btn:disabled:hover, .mock-move-down-btn:disabled:hover { background: var(--bg-hover); }
+.mock-delay-badge { background: var(--warn-surface); color: var(--warn-strong); }
 /* Shared with .res-rule-row — a disabled rule reads as "kept, not applied",
    not as broken or gone: dimmed, plus an explicit badge rather than relying
    on the unchecked toggle alone to communicate that. */

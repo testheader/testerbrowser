@@ -99,6 +99,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `recording:oldestId` | R→M | lowest event id still stored for the session (`null` if empty) — lets the timeline know it's reached the beginning |
 | `recording:exportHar` | R→M | build a HAR 1.2 from every stored network-* row, `dialog.showSaveDialog`, write it — `{ ok, path?, canceled?, error? }` |
 | `recording:getRequestPostData` | R→M | `Network.getRequestPostData` for a request whose body CDP omitted inline (`hasPostData` without `postData`) — `{ postData? }`, undefined if the request is no longer tracked |
+| `mock:moveRule` | R→M | reorder a Mock rule (`'up' \| 'down'`) within its partition's array — rules are matched in this order, first enabled match wins |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |

@@ -38,9 +38,24 @@ export interface MockRule {
   // #235: adds access-control-allow-* headers on fulfilment and answers a
   // matching OPTIONS preflight — see buildMockFulfillParams/buildMockPreflightParams.
   cors?: boolean;
+  // #263: 0 (default, instant) to 120,000ms — lets a mock exercise loading
+  // spinners, skeleton states or client timeouts. Absent on a rule from
+  // before this existed (or restored by #264) — always read as
+  // `rule.delayMs || 0`, never assumed present.
+  delayMs?: number;
   enabled: boolean;
   hitCount: number;
   lastHitAt: number | null;
+}
+
+// #263: 0-120,000ms — a mock's own testable delay, distinct from Resilience's
+// `latency`. A NaN/negative/huge input (a stray value from a hand-crafted
+// IPC call, since the renderer's own number input already constrains this)
+// clamps rather than producing an invalid rule.
+function clampDelayMs(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(120_000, Math.max(0, n));
 }
 
 // #235: a captured response's own content-length/content-encoding/transfer-encoding
@@ -138,7 +153,20 @@ export function buildMockPreflightParams(
 // the caller sends.
 export function applyMockRulePatch(rule: MockRule, patch: Partial<MockRule>): MockRule {
   const { id: _id, hitCount: _hitCount, lastHitAt: _lastHitAt, ...safePatch } = patch;
-  return { ...rule, ...safePatch };
+  const next: MockRule = { ...rule, ...safePatch };
+  if ('delayMs' in safePatch) next.delayMs = clampDelayMs(safePatch.delayMs);
+  return next;
+}
+
+// #263: pure so reorder edge cases (top/bottom no-ops, middle) are
+// unit-testable without SessionManager plumbing. Returns a new array —
+// never mutates `arr` — so callers can swap it straight into a Map.
+export function moveInArray<T>(arr: T[], index: number, dir: 'up' | 'down'): T[] {
+  const target = dir === 'up' ? index - 1 : index + 1;
+  if (index < 0 || index >= arr.length || target < 0 || target >= arr.length) return arr;
+  const next = arr.slice();
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
 }
 
 // Rule IDs owned by sibling A11y tab tickets, disabled in the axe-core run
@@ -1335,10 +1363,20 @@ export class SessionManager {
       }
       const rule = this.findMatchingMockRule(testSession.id, request.method, request.url);
       if (rule) {
+        // #263: counted at match time, not at fulfilment — a delayed rule's
+        // hit count/last-hit-at reflect when the request was actually
+        // intercepted, not when the (possibly much later) response goes out.
         rule.hitCount = (rule.hitCount || 0) + 1;
         rule.lastHitAt = Date.now();
         testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
-        dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule, { headers: request.headers }) }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
+        const fulfill = () =>
+          dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule, { headers: request.headers }) })
+            .catch(() => {}); // silent: the tab may have navigated/closed by the time a delayed fulfillment fires — the request is simply gone
+        if (rule.delayMs && rule.delayMs > 0) {
+          setTimeout(fulfill, rule.delayMs);
+        } else {
+          fulfill();
+        }
         return;
       }
       const resilienceRules = this.resilienceRulesByPartition.get(testSession.partition) ?? [];
@@ -3099,7 +3137,7 @@ export class SessionManager {
   addMockRule(id: string, rule: MockRule): void {
     const rules = this.mockRulesForId(id);
     if (!rules) return;
-    rules.push({ ...rule, responseHeaders: rule.responseHeaders || {}, hitCount: 0, lastHitAt: null });
+    rules.push({ ...rule, responseHeaders: rule.responseHeaders || {}, delayMs: clampDelayMs(rule.delayMs), hitCount: 0, lastHitAt: null });
     this._applyMocks(id);
     this.log.info('mock', `Mock rule added: ${rule.method} ${rule.urlPattern}`, { sessionId: id });
   }
@@ -3134,6 +3172,21 @@ export class SessionManager {
     rules[idx] = applyMockRulePatch(rules[idx], patch);
     this._applyMocks(id);
     return true;
+  }
+
+  // #263: rules are matched in array order (findMatchingMockRule's own
+  // `.find()`) — this is what makes that order visible/controllable from the
+  // panel instead of only settable by deleting and recreating rules.
+  moveMockRule(id: string, ruleId: string, dir: 'up' | 'down'): void {
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    const rules = this.mockRulesByPartition.get(partition);
+    if (!rules) return;
+    const idx = rules.findIndex(r => r.id === ruleId);
+    if (idx === -1) return;
+    this.mockRulesByPartition.set(partition, moveInArray(rules, idx, dir));
+    this._applyMocks(id);
+    this.log.info('mock', `Mock rule moved ${dir}: ${ruleId}`, { sessionId: id });
   }
 
   private _applyFetch(id: string): void {

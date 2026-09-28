@@ -80,6 +80,7 @@ export function initMock() {
             <option value="DELETE">DELETE</option>
           </select>
           <input class="mock-input mock-status" id="mockStatus" type="number" value="200" min="100" max="599" placeholder="Status" />
+          <input class="mock-input mock-delay" id="mockDelay" type="number" value="0" min="0" max="120000" placeholder="Delay (ms)" title="Delay before fulfilling this request, 0-120000ms" />
         </div>
         <div class="mock-form-row">
           <textarea class="mock-input mock-body" id="mockBody" rows="2" placeholder='Response body (e.g. {"error":"mocked"})'></textarea>
@@ -106,6 +107,7 @@ export function initMock() {
         </div>
         <button class="mock-btn mock-add-btn" type="submit">Add rule</button>
       </form>
+      <div class="mock-hint">Rules are checked top to bottom — the first enabled match wins.</div>
       <div class="mock-rules" id="mockRules">
         <div class="mock-empty" id="mockEmpty">Add a rule above to intercept requests.</div>
       </div>
@@ -122,6 +124,7 @@ export function initMock() {
       urlPattern: document.getElementById('mockUrl').value.trim(),
       method: document.getElementById('mockMethod').value,
       statusCode: parseInt(document.getElementById('mockStatus').value, 10) || 200,
+      delayMs: parseInt(document.getElementById('mockDelay').value, 10) || 0,
       body: document.getElementById('mockBody').value,
       responseHeaders: readKvTable(document.getElementById('mockResponseHeadersTable')),
       cors: document.getElementById('mockCors').checked,
@@ -132,6 +135,7 @@ export function initMock() {
 
     document.getElementById('mockUrl').value  = '';
     document.getElementById('mockBody').value = '';
+    document.getElementById('mockDelay').value = '0';
     document.getElementById('mockResponseHeadersTable').innerHTML = '';
     document.getElementById('mockBodyNote').hidden = true;
     document.getElementById('mockCors').checked = false;
@@ -178,16 +182,25 @@ function renderRules(rules, sessionId) {
   }
   if (empty) empty.hidden = true;
 
-  for (const rule of rules) {
-    container.appendChild(buildMockRuleRow(rule, sessionId));
-  }
+  rules.forEach((rule, index) => {
+    container.appendChild(buildMockRuleRow(rule, sessionId, index, rules.length));
+  });
 }
 
-function buildMockRuleRow(rule, sessionId) {
+// #263: rules are matched in this array's order (the first enabled match
+// wins) — position/total drive the row's position number and disable the
+// ↑/↓ button at either edge, making that order visible and controllable
+// instead of only settable by delete-and-recreate.
+function buildMockRuleRow(rule, sessionId, index, total) {
   const row = document.createElement('div');
   row.className = `mock-rule-row${rule.enabled ? '' : ' rule-row-disabled'}`;
   row.dataset.id = rule.id;
   row.innerHTML = `
+    <span class="mock-rule-position" title="Match order">${index + 1}</span>
+    <div class="mock-rule-move">
+      <button class="mock-btn mock-move-up-btn" title="Move up" aria-label="Move rule up"${index === 0 ? ' disabled' : ''}>↑</button>
+      <button class="mock-btn mock-move-down-btn" title="Move down" aria-label="Move rule down"${index === total - 1 ? ' disabled' : ''}>↓</button>
+    </div>
     <label class="mock-toggle" title="Enable/disable">
       <input type="checkbox" class="mock-enable" ${rule.enabled ? 'checked' : ''} />
       <span class="mock-toggle-label"></span>
@@ -195,12 +208,21 @@ function buildMockRuleRow(rule, sessionId) {
     <span class="mock-rule-method mock-badge">${escHtml(rule.method)}</span>
     <span class="mock-rule-url" title="${escHtml(rule.urlPattern)}">${escHtml(rule.urlPattern)}</span>
     <span class="mock-badge mock-status-badge">${rule.statusCode}</span>
+    ${rule.delayMs ? `<span class="mock-badge mock-delay-badge" title="Fulfilled after a delay">${rule.delayMs}ms</span>` : ''}
     <span class="mock-rule-body" title="${escHtml(rule.body)}">${escHtml(rule.body.slice(0, 40))}${rule.body.length > 40 ? '…' : ''}</span>
     ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
     <span class="mock-badge mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
     <button class="mock-btn mock-edit-btn" title="Edit rule" aria-label="Edit rule">✎</button>
     <button class="mock-btn mock-del-btn" title="Remove" aria-label="Remove rule">✕</button>`;
 
+  row.querySelector('.mock-move-up-btn').addEventListener('click', async () => {
+    await testerBrowser.mock.moveRule(sessionId, rule.id, 'up');
+    await loadRules();
+  });
+  row.querySelector('.mock-move-down-btn').addEventListener('click', async () => {
+    await testerBrowser.mock.moveRule(sessionId, rule.id, 'down');
+    await loadRules();
+  });
   row.querySelector('.mock-enable').addEventListener('change', async (e) => {
     await testerBrowser.mock.toggleRule(sessionId, rule.id, e.target.checked);
     await loadRules();
@@ -210,7 +232,7 @@ function buildMockRuleRow(rule, sessionId) {
     await loadRules();
   });
   row.querySelector('.mock-edit-btn').addEventListener('click', () => {
-    row.replaceWith(buildMockEditRow(rule, sessionId));
+    row.replaceWith(buildMockEditRow(rule, sessionId, index, total));
   });
   return row;
 }
@@ -226,7 +248,7 @@ function showMockRowError(row, message) {
   setTimeout(() => err.remove(), 6000);
 }
 
-function buildMockEditRow(rule, sessionId) {
+function buildMockEditRow(rule, sessionId, index, total) {
   const row = document.createElement('div');
   row.className = 'mock-rule-row mock-rule-row-editing';
   row.dataset.id = rule.id;
@@ -237,6 +259,7 @@ function buildMockEditRow(rule, sessionId) {
         ${MOCK_METHODS.map(m => `<option value="${m}" ${m === rule.method ? 'selected' : ''}>${m === '*' ? 'Any method' : m}</option>`).join('')}
       </select>
       <input class="mock-input mock-status mock-edit-status" type="number" value="${rule.statusCode}" min="100" max="599" />
+      <input class="mock-input mock-delay mock-edit-delay" type="number" value="${rule.delayMs || 0}" min="0" max="120000" placeholder="Delay (ms)" title="Delay before fulfilling this request, 0-120000ms" />
     </div>
     <div class="mock-form-row">
       <textarea class="mock-input mock-body mock-edit-body" rows="2">${escHtml(rule.body)}</textarea>
@@ -264,13 +287,14 @@ function buildMockEditRow(rule, sessionId) {
   row.querySelector('.mock-edit-add-header').addEventListener('click', () => addKvRow(headersTable, '', ''));
 
   row.querySelector('.mock-cancel-btn').addEventListener('click', () => {
-    row.replaceWith(buildMockRuleRow(rule, sessionId));
+    row.replaceWith(buildMockRuleRow(rule, sessionId, index, total));
   });
   row.querySelector('.mock-save-btn').addEventListener('click', async () => {
     const patch = {
       urlPattern: row.querySelector('.mock-edit-url').value.trim(),
       method: row.querySelector('.mock-edit-method').value,
       statusCode: parseInt(row.querySelector('.mock-edit-status').value, 10) || 200,
+      delayMs: parseInt(row.querySelector('.mock-edit-delay').value, 10) || 0,
       body: row.querySelector('.mock-edit-body').value,
       responseHeaders: readKvTable(headersTable),
       cors: row.querySelector('.mock-edit-cors').checked,
