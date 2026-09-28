@@ -191,6 +191,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('mock:toggleRule', id, ruleId, enabled),
     updateRule: (id: string, ruleId: string, patch: Partial<MockRule>) => ipcRenderer.invoke('mock:updateRule', id, ruleId, patch),
     moveRule:   (id: string, ruleId: string, dir: 'up' | 'down') => ipcRenderer.invoke('mock:moveRule', id, ruleId, dir),
+    exportRules: (id: string) => ipcRenderer.invoke('mock:exportRules', id),
+    importRules: (id: string) => ipcRenderer.invoke('mock:importRules', id),
   },
   resilience: {
     getRules:   (id: string) => ipcRenderer.invoke('resilience:getRules', id),

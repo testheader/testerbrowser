@@ -1209,6 +1209,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-btn:hover { background: var(--bg-raised); }
 .mock-add-btn { background: var(--info-surface); border-color: var(--info-border); align-self: flex-end; }
 .mock-add-btn:hover { background: var(--info-surface); }
+.mock-io-row { display: flex; align-items: center; gap: 8px; }
+.mock-io-status { font-size: 11px; color: var(--text-faint); }
 .mock-hint { font-size: 11px; color: var(--text-faint); }
 .mock-rules { display: flex; flex-direction: column; gap: 4px; }
 .mock-empty { color: var(--text-faint); font-size: 12px; padding: 4px 0; }

@@ -80,7 +80,7 @@ export function initMock() {
             <option value="DELETE">DELETE</option>
           </select>
           <input class="mock-input mock-status" id="mockStatus" type="number" value="200" min="100" max="599" placeholder="Status" />
-          <input class="mock-input mock-delay" id="mockDelay" type="number" value="0" min="0" max="120000" placeholder="Delay (ms)" title="Delay before fulfilling this request, 0-120000ms" />
+          <input class="mock-input mock-delay" id="mockDelay" type="number" value="0" min="0" max="120000" placeholder="Delay (ms)" aria-label="Delay in milliseconds before fulfilling this request, 0 to 120000" title="Delay before fulfilling this request, 0-120000ms" />
         </div>
         <div class="mock-form-row">
           <textarea class="mock-input mock-body" id="mockBody" rows="2" placeholder='Response body (e.g. {"error":"mocked"})'></textarea>
@@ -107,6 +107,11 @@ export function initMock() {
         </div>
         <button class="mock-btn mock-add-btn" type="submit">Add rule</button>
       </form>
+      <div class="mock-io-row">
+        <button class="mock-btn mock-export-btn" type="button">Export…</button>
+        <button class="mock-btn mock-import-btn" type="button">Import…</button>
+        <span class="mock-io-status" id="mockIoStatus"></span>
+      </div>
       <div class="mock-hint">Rules are checked top to bottom — the first enabled match wins.</div>
       <div class="mock-rules" id="mockRules">
         <div class="mock-empty" id="mockEmpty">Add a rule above to intercept requests.</div>
@@ -115,6 +120,33 @@ export function initMock() {
 
   document.getElementById('mockAddResponseHeader').addEventListener('click', () =>
     addKvRow(document.getElementById('mockResponseHeadersTable'), '', ''));
+
+  // #264: export/import a JSON file of rules — id/hitCount/lastHitAt are
+  // never round-tripped (export strips them; import always mints a fresh id
+  // and starts hit stats at zero).
+  document.getElementById('mockExportBtn').addEventListener('click', async () => {
+    const sessionId = getActiveId();
+    if (!sessionId) return;
+    const statusEl = document.getElementById('mockIoStatus');
+    const result = await testerBrowser.mock.exportRules(sessionId);
+    if (result.canceled) { statusEl.textContent = ''; return; }
+    statusEl.textContent = result.ok
+      ? `Exported to ${result.path.split(/[\\/]/).pop()}`
+      : (result.error || 'Export failed');
+  });
+
+  document.getElementById('mockImportBtn').addEventListener('click', async () => {
+    const sessionId = getActiveId();
+    if (!sessionId) return;
+    const statusEl = document.getElementById('mockIoStatus');
+    const result = await testerBrowser.mock.importRules(sessionId);
+    if (result.canceled) { statusEl.textContent = ''; return; }
+    if (!result.ok) { statusEl.textContent = result.error || 'Import failed'; return; }
+    statusEl.textContent = result.skipped
+      ? `Imported ${result.imported} rules (${result.skipped} skipped: ${result.firstSkipReason})`
+      : `Imported ${result.imported} rules`;
+    await loadRules();
+  });
 
   document.getElementById('mockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -259,7 +291,7 @@ function buildMockEditRow(rule, sessionId, index, total) {
         ${MOCK_METHODS.map(m => `<option value="${m}" ${m === rule.method ? 'selected' : ''}>${m === '*' ? 'Any method' : m}</option>`).join('')}
       </select>
       <input class="mock-input mock-status mock-edit-status" type="number" value="${rule.statusCode}" min="100" max="599" />
-      <input class="mock-input mock-delay mock-edit-delay" type="number" value="${rule.delayMs || 0}" min="0" max="120000" placeholder="Delay (ms)" title="Delay before fulfilling this request, 0-120000ms" />
+      <input class="mock-input mock-delay mock-edit-delay" type="number" value="${rule.delayMs || 0}" min="0" max="120000" placeholder="Delay (ms)" aria-label="Delay in milliseconds before fulfilling this request, 0 to 120000" title="Delay before fulfilling this request, 0-120000ms" />
     </div>
     <div class="mock-form-row">
       <textarea class="mock-input mock-body mock-edit-body" rows="2">${escHtml(rule.body)}</textarea>

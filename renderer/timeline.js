@@ -580,18 +580,16 @@ async function loadOlderEvents() {
     populateMetaFromEvents(older);
     timelineEvents.unshift(...older);
 
-    // TIMELINE_MAX still holds, but while looking backwards at history
-    // (not auto-scrolled to the live tail), an overflow here drops the
-    // *newest* rows instead of the oldest ones a live poll would drop — the
-    // just-loaded history is what the user asked for and is looking at; the
-    // live tail can be re-fetched by a later poll once they scroll back down.
+    // TIMELINE_MAX still holds, but an overflow from prepending older rows
+    // drops the *newest* rows instead of the oldest ones a live poll would
+    // drop: clicking "Load older events" is itself the signal the user wants
+    // this history, so immediately discarding what was just fetched (by
+    // dropping from the head again, the ordinary live-poll behavior) would
+    // make the click a no-op. The live tail can be re-fetched by a later
+    // poll once the user scrolls back down — lastId rewinds to match.
     if (timelineEvents.length > TIMELINE_MAX) {
-      if (autoScroll) {
-        timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
-      } else {
-        timelineEvents.length = TIMELINE_MAX;
-        lastId = timelineEvents[timelineEvents.length - 1].id;
-      }
+      timelineEvents.length = TIMELINE_MAX;
+      lastId = timelineEvents[timelineEvents.length - 1].id;
     }
 
     await refreshOlderEventsState();

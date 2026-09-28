@@ -169,6 +169,93 @@ export function moveInArray<T>(arr: T[], index: number, dir: 'up' | 'down'): T[]
   return next;
 }
 
+export type ImportableMockRule = Omit<MockRule, 'id' | 'hitCount' | 'lastHitAt'>;
+
+export interface ValidateImportedMockRulesResult {
+  rules: ImportableMockRule[];
+  skipped: { index: number; reason: string }[];
+  // Set only when the whole file is rejected outright (not JSON at the
+  // top level, or missing the testerBrowserMocks marker) — rules/skipped
+  // are both empty in that case.
+  error?: string;
+}
+
+// #264: pure so every validation branch is unit-testable without the main
+// process or dialogs around it. `json` is whatever JSON.parse() produced —
+// entirely untrusted, since it came from a file the user picked. Per rule,
+// unknown fields are dropped by construction: the returned object only ever
+// copies the fields listed here, nothing else from the source object.
+export function validateImportedMockRules(json: unknown): ValidateImportedMockRulesResult {
+  if (!json || typeof json !== 'object' || Array.isArray(json) || (json as Record<string, unknown>).testerBrowserMocks !== 1) {
+    return { rules: [], skipped: [], error: 'Not a TesterBrowser Mock rules file' };
+  }
+  const rawRules = (json as Record<string, unknown>).rules;
+  if (!Array.isArray(rawRules)) {
+    return { rules: [], skipped: [], error: 'Not a TesterBrowser Mock rules file' };
+  }
+
+  const rules: ImportableMockRule[] = [];
+  const skipped: { index: number; reason: string }[] = [];
+
+  rawRules.forEach((raw, index) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      skipped.push({ index, reason: 'rule is not an object' });
+      return;
+    }
+    const r = raw as Record<string, unknown>;
+    if (typeof r.urlPattern !== 'string' || r.urlPattern.length === 0) {
+      skipped.push({ index, reason: 'urlPattern must be a non-empty string' });
+      return;
+    }
+    if (typeof r.method !== 'string') {
+      skipped.push({ index, reason: 'method must be a string' });
+      return;
+    }
+    if (!Number.isInteger(r.statusCode) || (r.statusCode as number) < 100 || (r.statusCode as number) > 599) {
+      skipped.push({ index, reason: 'statusCode must be an integer 100-599' });
+      return;
+    }
+    if (typeof r.body !== 'string') {
+      skipped.push({ index, reason: 'body must be a string' });
+      return;
+    }
+    if (r.responseHeaders !== undefined) {
+      const rh = r.responseHeaders;
+      const rhValid = rh !== null && typeof rh === 'object' && !Array.isArray(rh)
+        && Object.values(rh as Record<string, unknown>).every(v => typeof v === 'string');
+      if (!rhValid) {
+        skipped.push({ index, reason: 'responseHeaders must be an object of strings' });
+        return;
+      }
+    }
+    if (r.cors !== undefined && typeof r.cors !== 'boolean') {
+      skipped.push({ index, reason: 'cors must be a boolean' });
+      return;
+    }
+    if (r.delayMs !== undefined && typeof r.delayMs !== 'number') {
+      skipped.push({ index, reason: 'delayMs must be a number' });
+      return;
+    }
+    if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
+      skipped.push({ index, reason: 'enabled must be a boolean' });
+      return;
+    }
+
+    rules.push({
+      urlPattern: r.urlPattern,
+      method: r.method,
+      statusCode: r.statusCode as number,
+      body: r.body,
+      responseHeaders: (r.responseHeaders as Record<string, string> | undefined) ?? {},
+      cors: r.cors as boolean | undefined,
+      delayMs: r.delayMs as number | undefined,
+      enabled: r.enabled === undefined ? true : (r.enabled as boolean),
+    });
+  });
+
+  return { rules, skipped };
+}
+
 // Rule IDs owned by sibling A11y tab tickets, disabled in the axe-core run
 // so results never duplicate what's already surfaced elsewhere in the panel:
 // color-contrast (#194), image-alt/label (#196), heading-order and the full
@@ -1838,7 +1925,19 @@ export class SessionManager {
         const applied = this.emulationByPartition.get(s.partition);
         if (applied && Object.keys(applied).length > 0) emulation[s.partition] = applied;
       }
-      writeJsonAtomic(this.sessionsFile, { sessions, notes, emulation });
+      // #264: keyed by partition, like emulation above — mockRulesByPartition
+      // already is. hitCount/lastHitAt are reset in the saved copy: a hit
+      // count is this run's traffic, not something worth restoring stale
+      // across a restart. Temp sessions never contribute here since they're
+      // filtered out of persistentSessions above.
+      const mocks: Record<string, MockRule[]> = {};
+      for (const s of persistentSessions) {
+        const rules = this.mockRulesByPartition.get(s.partition);
+        if (rules && rules.length > 0) {
+          mocks[s.partition] = rules.map(r => ({ ...r, hitCount: 0, lastHitAt: null }));
+        }
+      }
+      writeJsonAtomic(this.sessionsFile, { sessions, notes, emulation, mocks });
     } catch (e) {
       this.log.warn('sessions', 'Failed to save sessions to disk', { error: String(e) });
     }
@@ -1847,7 +1946,7 @@ export class SessionManager {
   loadAndRestoreSessions(): boolean {
     try {
       if (!fs.existsSync(this.sessionsFile)) return false;
-      const { sessions, notes, emulation } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
+      const { sessions, notes, emulation, mocks } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
       if (!sessions?.length) return false;
       const restored: { partition: string; sess: TestSession }[] = [];
       for (const s of sessions) {
@@ -1860,6 +1959,19 @@ export class SessionManager {
         if (emulation?.[s.partition]) {
           this.setEmulation(sess.id, emulation[s.partition])
             .catch((e) => this.log.warn('sessions', 'Failed to restore emulation override on load', { sessionId: sess.id, error: String(e) }));
+        }
+        // #264: restored into mockRulesByPartition (shared by every tab on
+        // this partition, same as live rules are) and _applyFetch is called
+        // for *this* session specifically — each tab has its own CDP
+        // debugger/Fetch.enable registration, so a partition with several
+        // restored tabs needs this per tab, not just once per partition.
+        const partitionMocks = mocks?.[s.partition];
+        if (Array.isArray(partitionMocks) && partitionMocks.length > 0) {
+          this.mockRulesByPartition.set(
+            s.partition,
+            partitionMocks.map((r: MockRule) => ({ ...r, hitCount: 0, lastHitAt: null }))
+          );
+          this._applyFetch(sess.id);
         }
       }
       // #268: a file saved before notes were id-keyed has `notes` keyed by
@@ -3189,6 +3301,65 @@ export class SessionManager {
     this.log.info('mock', `Mock rule moved ${dir}: ${ruleId}`, { sessionId: id });
   }
 
+  // #264: id/hitCount/lastHitAt are run-local, not something a shared rule
+  // set should carry — the exported file only has what's needed to recreate
+  // the rules elsewhere.
+  async exportMockRules(id: string): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> {
+    if (!this.sessions.get(id)) return { ok: false, error: 'Session not found' };
+    const rules = this.getMockRules(id);
+    const result = await dialog.showSaveDialog(this.win, {
+      title: 'Export Mock rules',
+      defaultPath: 'mock-rules.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    try {
+      const exportable = rules.map(({ id: _id, hitCount: _hitCount, lastHitAt: _lastHitAt, ...rest }) => rest);
+      fs.writeFileSync(result.filePath, JSON.stringify({ testerBrowserMocks: 1, rules: exportable }, null, 2));
+      this.log.info('mock', `Mock rules exported: ${rules.length}`, { sessionId: id });
+      return { ok: true, path: result.filePath };
+    } catch (e) {
+      this.log.warn('mock', 'Mock rules export failed', { sessionId: id, error: String(e) });
+      return { ok: false, error: String(e) };
+    }
+  }
+
+  // #264: valid rules are appended (with fresh ids) to the active tab's
+  // partition — an import never replaces or reorders what's already there.
+  async importMockRules(id: string): Promise<{ ok: boolean; imported?: number; skipped?: number; firstSkipReason?: string; canceled?: boolean; error?: string }> {
+    const result = await dialog.showOpenDialog(this.win, {
+      title: 'Import Mock rules',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+
+    let json: unknown;
+    try {
+      json = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf-8'));
+    } catch {
+      return { ok: false, error: 'Not valid JSON' };
+    }
+    const { rules, skipped, error } = validateImportedMockRules(json);
+    if (error) return { ok: false, error };
+
+    const target = this.mockRulesForId(id);
+    if (!target) return { ok: false, error: 'Session not found' };
+    for (const r of rules) {
+      target.push({
+        ...r,
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        responseHeaders: r.responseHeaders || {},
+        delayMs: clampDelayMs(r.delayMs),
+        hitCount: 0,
+        lastHitAt: null,
+      });
+    }
+    if (rules.length > 0) this._applyMocks(id); // also persists
+    this.log.info('mock', `Mock rules imported: ${rules.length} (skipped ${skipped.length})`, { sessionId: id });
+    return { ok: true, imported: rules.length, skipped: skipped.length, firstSkipReason: skipped[0]?.reason };
+  }
+
   private _applyFetch(id: string): void {
     const s = this.sessions.get(id);
     if (!s) return;
@@ -3214,8 +3385,15 @@ export class SessionManager {
     }
   }
 
-  /** @deprecated use _applyFetch */
-  private _applyMocks(id: string): void { this._applyFetch(id); }
+  // #264: every caller of this (the 5 Mock rule mutators — add/remove/
+  // toggle/update/move) is a rule-set change, so persisting here too means a
+  // crash (not just a graceful quit) never loses a persistent tab's rules.
+  // Resilience rule mutators call _applyFetch directly, bypassing this —
+  // persisting those rules is explicitly out of scope for #264.
+  private _applyMocks(id: string): void {
+    this._applyFetch(id);
+    this.saveSessions();
+  }
 
   getResilienceRules(id: string): ResilienceRule[] {
     return this.resilienceRulesForId(id) ?? [];

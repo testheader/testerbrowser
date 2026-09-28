@@ -477,8 +477,13 @@ test('a mock rule with a delay fulfills only after that delay, with the mocked b
 
   await tab.fill('#apiPath', '/api/delayed');
   await tab.click('#apiFetchBtn');
-  await expect(tab.locator('#apiOut')).toContainText('"delayed":true', { timeout: 5_000 });
+  // #apiOut's own body field is JSON-stringified once already (the fetch
+  // response text), so matching against the raw DOM text would need
+  // double-escaped quotes — wait on the safe top-level "status" field first,
+  // then parse and check the decoded body like every other test in this file.
+  await expect(tab.locator('#apiOut')).toContainText('"status":200', { timeout: 5_000 });
   const out = JSON.parse((await tab.locator('#apiOut').textContent()) || '{}');
+  expect(out.body).toContain('"delayed":true');
   expect(out.ms).toBeGreaterThanOrEqual(1_400);
 });
 
