@@ -138,21 +138,20 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   // tick (see the comment above), so retry the click itself, not just the
   // wait, in case one is lost to a redraw detaching the row mid-click.
   const detailMockBtn = window.locator('#detailMockBtn');
+  // Body arrives via a separate async CDP round-trip after the response — retry
+  // clicking ⇒ Mock until the detail panel has rendered with the body event and
+  // the mock panel's body field is populated.
   await expect(async () => {
     await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
     await expect(detailMockBtn).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
-
-  await detailMockBtn.click();
+    await detailMockBtn.click();
+    await expect(window.locator('#mockBody')).not.toHaveValue('', { timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
 
   await expect(window.locator('#mockPanel')).toBeVisible();
   await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
   await expect(window.locator('#mockMethod')).toHaveValue('GET');
   await expect(window.locator('#mockStatus')).toHaveValue('200');
-
-  // Body: status-codes.html's own page load is a real text response, so it
-  // has a captured, non-binary body to prefill.
-  await expect(window.locator('#mockBody')).not.toHaveValue('');
   await expect(window.locator('#mockBodyNote')).toBeHidden();
 
   // Request headers: read-only provenance, not an editable kv-table.

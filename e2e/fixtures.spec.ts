@@ -402,7 +402,7 @@ test('network/redirect: the detail panel shows a Redirect Chain section with a 3
   const finalResponseRow = window.locator('.evt.network-request', { hasText: 'hops=0' });
   await expect(finalResponseRow).toBeVisible({ timeout: 10_000 });
 
-  const redirectSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Redirect Chain' });
+  const redirectSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Redirect Chain' }).first();
   await expect(async () => {
     await finalResponseRow.locator('.evt-ts').click({ timeout: 2_000 });
     await expect(redirectSection).toBeVisible({ timeout: 1_000 });
