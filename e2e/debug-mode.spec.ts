@@ -243,6 +243,8 @@ test.describe('main.log survives a hard kill (#225)', () => {
       process.kill(pid as number, 'SIGKILL');
       // No app.close() — the process is already dead; closing would error.
       killedApp = undefined;
+      // Wait for Windows to release the single-instance lock held by the killed process.
+      await new Promise(r => setTimeout(r, 1000));
 
       // Relaunch against the SAME user-data dir, as a real restart after a
       // crash would.
