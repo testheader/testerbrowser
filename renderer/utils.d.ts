@@ -29,3 +29,24 @@ export function toCurl(req: CopyableRequest): string;
 export function toFetch(req: CopyableRequest): string;
 export function stripRedactedHeaders(headers: Record<string, string> | undefined | null): Record<string, string>;
 export function redactUrlForReport(url: string): string;
+
+export interface ResourceTimingLike {
+  dnsStart?: number;
+  dnsEnd?: number;
+  connectStart?: number;
+  connectEnd?: number;
+  sslStart?: number;
+  sslEnd?: number;
+  sendStart?: number;
+  sendEnd?: number;
+  receiveHeadersEnd?: number;
+}
+export interface TimingPhases {
+  dns: number | null;
+  connect: number | null;
+  tls: number | null;
+  send: number | null;
+  wait: number | null;
+  receive: number | null;
+}
+export function timingPhases(timing: ResourceTimingLike | undefined | null, durationMs: number | undefined): TimingPhases;

@@ -383,6 +383,78 @@ test('storage/set-cookie: the response detail panel shows set-cookie in the head
   await expect(headersTable).toContainText('detail_cookie=1');
 });
 
+// #261: a redirect chain shares one CDP requestId across every hop — the
+// detail panel used to collapse them into a single, mismatched request/
+// response pairing and never showed the intermediate 3xx at all.
+test('network/redirect: the detail panel shows a Redirect Chain section with a 302 then a 200 (#261)', async () => {
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await ensureResPillOn();
+
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/network/redirect?hops=1'));
+  await window.press('#urlbar', 'Enter');
+
+  // Only the final hop (hops=0, status 200) ever gets its own
+  // Network.responseReceived — the first hop's 302 only ever shows up via
+  // the second hop's redirectResponse field. Waiting for this response row
+  // is the signal the whole chain has actually completed.
+  const finalResponseRow = window.locator('.evt.network-response', { hasText: 'hops=0' });
+  await expect(finalResponseRow).toBeVisible({ timeout: 10_000 });
+
+  const redirectSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Redirect Chain' });
+  await expect(async () => {
+    await finalResponseRow.locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(redirectSection).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
+  await expect(redirectSection).toContainText('302');
+  await expect(redirectSection).toContainText('200');
+});
+
+// #261: CDP omits `postData` inline on Network.requestWillBeSent once a body
+// is large enough (hasPostData: true with no postData) — the detail panel
+// must fetch it separately via the new recording:getRequestPostData IPC.
+test('network/post-body.html: the detail panel fetches a large POST body via Network.getRequestPostData (#261)', async () => {
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  const tab = await navigate('/network/post-body.html');
+  await tab.click('#postBtn');
+
+  const requestRow = window.locator('.evt.network-request', { hasText: '/echo/body' });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
+
+  const bodySection = window.locator('#detailPanelContent .detail-section', { hasText: 'Request Body' });
+  await expect(async () => {
+    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(bodySection).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
+  // Loads asynchronously (a separate CDP round-trip after the tab opens) —
+  // give it a moment to resolve into the real payload rather than the
+  // "Loading request body…" placeholder.
+  await expect(bodySection).toContainText('post-body-payload-', { timeout: 10_000 });
+});
+
+test('network/status-codes.html: the response detail panel shows a Timing section with a Wait row (#261)', async () => {
+  const urlPath = '/network/status-codes.html';
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await ensureResPillOn();
+  await navigate(urlPath);
+
+  const responseRow = window.locator('.evt.network-response', { hasText: urlPath });
+  await expect(responseRow.first()).toBeVisible({ timeout: 10_000 });
+
+  const timingSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Timing' });
+  await expect(async () => {
+    await responseRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(timingSection).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
+  await expect(timingSection).toContainText('Wait (TTFB)');
+});
+
 test('network/slow.html: free-text filter also matches payload content not present in the summary line', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');
@@ -500,6 +572,26 @@ test('performance/console-flood.html: exceeding a low recorder cap shows the tim
 
   // Reset for later tests in this file.
   await window.evaluate(() => (window as any).testerBrowser.settings.set({ recorderMaxEvents: 20000 }));
+});
+
+// #261: detail tabs used to survive a session switch, showing the previous
+// tab's requests (and pointing Replay/Mock/Resilience at the wrong session).
+// Opens its own fresh tab via #newSessionBtn, same as the eviction test above.
+test('opening a detail tab, then switching to a new session, clears the detail panel', async () => {
+  const urlPath = '/network/status-codes.html';
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await navigate(urlPath);
+
+  const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
+  await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
+  await expect(async () => {
+    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(window.locator('#detailPanelTabBar .detail-tab')).toHaveCount(1, { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
+  await window.click('#newSessionBtn');
+  await expect(window.locator('#detailPanelTabBar .detail-tab')).toHaveCount(0);
 });
 
 // ── Downloads ────────────────────────────────────────────────────────────────

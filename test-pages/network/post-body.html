@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Large POST body fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / network / post-body</nav>
+<h1>Large POST body</h1>
+<p>Sends a POST with a large body to the fixture server's <code>/echo/body</code>
+route. CDP omits <code>postData</code> inline on <code>Network.requestWillBeSent</code>
+once a body is large enough (<code>hasPostData: true</code> with no <code>postData</code>) —
+useful for testing the detail panel's on-demand <code>Network.getRequestPostData</code> fetch.</p>
+
+<div class="grid">
+  <button id="postBtn">POST 70 KB body</button>
+</div>
+<pre class="out" id="out">(idle)</pre>
+
+<script>
+  document.getElementById('postBtn').onclick = async () => {
+    const out = document.getElementById('out');
+    const body = 'post-body-payload-' + 'x'.repeat(70 * 1024);
+    out.textContent = 'posting ' + body.length + ' bytes ...';
+    const res = await fetch('/echo/body', { method: 'POST', body });
+    const json = await res.json();
+    out.textContent = JSON.stringify(json);
+  };
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { escHtml, getEventTabId, getHeader, toCurl, toFetch } from './utils.js';
+import { escHtml, getEventTabId, getHeader, timingPhases, toCurl, toFetch } from './utils.js';
 import { getTimelineEvents } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 import { openMockFromRequest } from './mock.js';
@@ -26,6 +26,24 @@ function statusClass(code) {
 function methodClass(method) {
   const m = String(method || '').toUpperCase();
   return ['GET','POST','PUT','DELETE','PATCH'].includes(m) ? `detail-method-${m}` : 'detail-method-other';
+}
+
+function formatMs(v) { return v === null || v === undefined ? '—' : `${Math.round(v)} ms`; }
+
+// #261: a request with hasPostData:true and no inline postData (CDP omits it
+// for large/multipart bodies) needs a separate Network.getRequestPostData
+// round-trip. Cached on the detail tab itself (not a module-level map) so it
+// naturally goes away with the tab via closeDetailTab()/clearDetailTabs(),
+// and is fetched at most once per tab regardless of how many times
+// renderDetailContent() re-runs while the fetch is in flight.
+async function fetchPostDataFor(tab, requestId) {
+  try {
+    const result = await testerBrowser.recording.getRequestPostData(getActiveId(), requestId);
+    tab.fetchedPostData = (result && typeof result.postData === 'string') ? result.postData : false;
+  } catch {
+    tab.fetchedPostData = false;
+  }
+  if (activeDetailTabId === tab.id) renderDetailPanel();
 }
 
 function getEventTabLabel(e) {
@@ -61,6 +79,17 @@ export function closeDetailTab(tabId) {
       ? detailTabs[Math.max(0, idx - 1)].id
       : null;
   }
+  renderDetailPanel();
+}
+
+// #261: called by tabs.js on every session switch, alongside
+// resetTimelineForNewSession() — detail tabs hold requests from whichever
+// session was active when they were opened, so switching sessions without
+// clearing them left stale requests showing (and Replay/Mock/Resilience
+// acting on the wrong tab).
+export function clearDetailTabs() {
+  detailTabs.length = 0;
+  activeDetailTabId = null;
   renderDetailPanel();
 }
 
@@ -113,10 +142,39 @@ function renderDetailContent() {
     if (e.kind.startsWith('network-')) {
       const rid    = activeDetailTabId;
       const timelineEvents = getTimelineEvents();
-      const reqEvt  = timelineEvents.find(ev => ev.kind === 'network-request'  && getEventTabId(ev) === rid);
+      // #261: a redirect chain shares one CDP requestId across every hop, so
+      // more than one network-request event can share this tab id — ordered
+      // oldest first, the *last* one is the final hop, which is what the
+      // Request/Response sections below describe. Earlier hops only feed the
+      // Redirect Chain section.
+      const reqEvts = timelineEvents
+        .filter(ev => ev.kind === 'network-request' && getEventTabId(ev) === rid)
+        .sort((a, b) => (a.id ?? a.ts) - (b.id ?? b.ts));
+      const reqEvt  = reqEvts[reqEvts.length - 1];
       const resEvt  = timelineEvents.find(ev => ev.kind === 'network-response' && getEventTabId(ev) === rid);
       const bodyEvt = timelineEvents.find(ev => ev.kind === 'network-body'     && getEventTabId(ev) === rid);
       const failEvt = timelineEvents.find(ev => ev.kind === 'network-failed'   && getEventTabId(ev) === rid);
+
+      if (reqEvts.length > 1) {
+        // Each hop's outgoing status is the *next* hop's redirectResponse
+        // (CDP attaches the previous hop's 3xx response to the following
+        // requestWillBeSent) — the last hop's status comes from the final
+        // response/failure instead, since there's no further hop to carry it.
+        const finalStatus = resEvt ? (JSON.parse(resEvt.payload).response || {}).status : undefined;
+        const hops = reqEvts.map((ev, i) => {
+          const hopReq = JSON.parse(ev.payload).request || {};
+          const status = i < reqEvts.length - 1
+            ? (JSON.parse(reqEvts[i + 1].payload).request || {}).redirectResponse?.status
+            : finalStatus;
+          return { method: hopReq.method, url: hopReq.url, status };
+        });
+        html += `<div class="detail-section"><h3>Redirect Chain</h3><table class="headers-table">`;
+        for (const hop of hops) {
+          html += `<tr><td class="${statusClass(hop.status)}">${escHtml(hop.status !== null && hop.status !== undefined ? String(hop.status) : '—')}</td>` +
+            `<td>${escHtml(hop.method || '')}</td><td>${escHtml(hop.url || '')}</td></tr>`;
+        }
+        html += `</table></div>`;
+      }
 
       if (reqEvt && reqEvt.payload) {
         const reqPayload = JSON.parse(reqEvt.payload);
@@ -148,6 +206,22 @@ function renderDetailContent() {
         }
         if (req.postData) {
           html += `<div class="detail-section"><h3>Request Body</h3><pre class="detail-body-pre">${escHtml(req.postData)}</pre></div>`;
+        } else if (req.hasPostData) {
+          // #261: CDP omits postData inline for large/multipart bodies — fetch
+          // it lazily via Network.getRequestPostData, once per tab.
+          if (tab.fetchedPostData === undefined) {
+            tab.fetchedPostData = null; // sentinel: fetch in flight
+            fetchPostDataFor(tab, rid);
+          }
+          html += `<div class="detail-section"><h3>Request Body</h3>`;
+          if (tab.fetchedPostData === null) {
+            html += `<div style="color:#555;font-size:11px">Loading request body…</div>`;
+          } else if (tab.fetchedPostData === false) {
+            html += `<div style="color:#555;font-size:11px">Body no longer available</div>`;
+          } else {
+            html += `<pre class="detail-body-pre">${escHtml(tab.fetchedPostData)}</pre>`;
+          }
+          html += `</div>`;
         }
       }
 
@@ -169,6 +243,17 @@ function renderDetailContent() {
             html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
           }
           html += `</table></div>`;
+        }
+        if (res.timing) {
+          const phases = timingPhases(res.timing, resPayload.durationMs);
+          html += `<div class="detail-section"><h3>Timing</h3><table class="headers-table">
+            <tr><td>DNS</td><td>${formatMs(phases.dns)}</td></tr>
+            <tr><td>Connect</td><td>${formatMs(phases.connect)}</td></tr>
+            <tr><td>TLS</td><td>${formatMs(phases.tls)}</td></tr>
+            <tr><td>Send</td><td>${formatMs(phases.send)}</td></tr>
+            <tr><td>Wait (TTFB)</td><td>${formatMs(phases.wait)}</td></tr>
+            <tr><td>Receive</td><td>${formatMs(phases.receive)}</td></tr>
+          </table></div>`;
         }
       } else if (!resEvt && !failEvt) {
         html += `<div class="detail-section"><span style="color:#555;font-size:11px">Waiting for response…</span></div>`;

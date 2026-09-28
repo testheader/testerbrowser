@@ -12,6 +12,7 @@ import { refreshSpoofStatus } from './emulation.js';
 import { clearSecurityFindings } from './security.js';
 import { refreshTimelineNow, resetTimelineForNewSession } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
+import { clearDetailTabs } from './detail-panel.js';
 
 // tabs.js owns every piece of per-tab bookkeeping: which tab is active, MRU
 // order, drag/drop order, favicons, titles, loading state, and the closed-tab
@@ -68,6 +69,7 @@ export function recordVisit(id) {
 export async function switchToSession(id) {
   activeId = id;
   resetTimelineForNewSession();
+  clearDetailTabs();
   const activeConsoleTab = getActiveConsoleTab();
   if (activeConsoleTab === 'storage') loadStoragePanel();
   if (activeConsoleTab === 'a11y') reloadA11yIfLoaded();

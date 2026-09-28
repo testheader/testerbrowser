@@ -187,6 +187,34 @@ export function redactUrlForReport(url) {
   }
 }
 
+// #261: pure so it's unit-testable without a DOM — mirrors DevTools' own
+// Timing breakdown. CDP's Network.ResourceTiming fields are all offsets in
+// milliseconds relative to the response's `requestTime`, with -1 meaning
+// "not applicable to this request" (e.g. dnsStart/connectStart are -1 for a
+// reused connection). `durationMs` is the recorder's own wall-clock delta
+// (Network.responseReceived - Network.requestWillBeSent), used as the total
+// against which the final "Receive" phase is measured.
+export function timingPhases(timing, durationMs) {
+  const phase = (start, end) =>
+    (typeof start === 'number' && typeof end === 'number' && start >= 0 && end >= 0)
+      ? Math.max(0, end - start)
+      : null;
+
+  const receiveHeadersEnd = timing?.receiveHeadersEnd;
+  const hasHeadersEnd = typeof receiveHeadersEnd === 'number' && receiveHeadersEnd >= 0;
+
+  return {
+    dns:     phase(timing?.dnsStart, timing?.dnsEnd),
+    connect: phase(timing?.connectStart, timing?.connectEnd),
+    tls:     phase(timing?.sslStart, timing?.sslEnd),
+    send:    phase(timing?.sendStart, timing?.sendEnd),
+    wait:    phase(timing?.sendEnd, receiveHeadersEnd),
+    receive: (hasHeadersEnd && typeof durationMs === 'number')
+      ? Math.max(0, durationMs - receiveHeadersEnd)
+      : null,
+  };
+}
+
 export function toFetch(req) {
   const { method = 'GET', url = '', headers, postData } = req || {};
   const opts = { method: method || 'GET', headers: Object.fromEntries(nonRedactedHeaders(headers)) };

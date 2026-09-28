@@ -24,6 +24,7 @@ automatically with no extra build config.
   - `GET /storage/set-cookie?name=&value=&flags=` — sets a cookie via response header;
     `flags` defaults to `HttpOnly`, pass `flags=` for no flags or e.g. `flags=HttpOnly;Secure`
   - `GET /perf/echo` — near-instant response, for burst/concurrency tests
+  - `POST /echo/body` — drains the request body and reports its size as JSON
 
   The server is plain `.ts` with no build step, so it costs nothing outside
   the Playwright run itself — see `e2e/fixtures.spec.ts` for example usage.

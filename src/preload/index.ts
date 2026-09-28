@@ -102,6 +102,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
               ipcRenderer.invoke('recording:replay', req),
     status: (id: string) => ipcRenderer.invoke('recording:status', id),
     exportHar: (id: string) => ipcRenderer.invoke('recording:exportHar', id),
+    getRequestPostData: (id: string, requestId: string) =>
+      ipcRenderer.invoke('recording:getRequestPostData', id, requestId),
   },
 
   downloads: {

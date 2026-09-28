@@ -2033,6 +2033,26 @@ export class SessionManager {
     return this.sessions.get(id)?.recorder.getTimeline(opts) ?? [];
   }
 
+  // #261: CDP omits `postData` inline on Network.requestWillBeSent for
+  // large/multipart bodies (`hasPostData: true` with no `postData`) — the
+  // detail panel calls this to fetch it on demand. The request may already be
+  // gone from Chromium's own buffer by the time this is called (the debugger
+  // has to still be attached and the request still tracked internally), in
+  // which case Network.getRequestPostData rejects — that's surfaced as
+  // `postData: undefined`, not thrown, so the caller shows a plain "no longer
+  // available" message instead of an error.
+  async getRequestPostData(id: string, requestId: string): Promise<{ postData?: string }> {
+    const s = this.sessions.get(id);
+    if (!s) return { postData: undefined };
+    try {
+      const result = await s.view.webContents.debugger.sendCommand('Network.getRequestPostData', { requestId }) as { postData?: string };
+      return { postData: result?.postData };
+    } catch (e) {
+      this.warnCdpFailure(id, 'Network.getRequestPostData', e);
+      return { postData: undefined };
+    }
+  }
+
   getLoadedDomains(id: string): string[] {
     return Array.from(this.sessions.get(id)?.loadedDomains ?? []);
   }

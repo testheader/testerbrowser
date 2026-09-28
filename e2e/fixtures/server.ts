@@ -73,6 +73,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/downloads/file') return handleDownload(u, res);
   if (u.pathname === '/storage/set-cookie') return handleSetCookie(u, res);
   if (u.pathname === '/perf/echo') return handleEcho(u, res);
+  if (u.pathname === '/echo/body' && req.method === 'POST') return handleEchoBody(req, res);
   if (u.pathname === '/echo/user-agent') return handleUserAgentEcho(req, res);
   if (u.pathname === '/echo/headers') return handleHeadersEcho(req, res);
   if (u.pathname === '/network/gzip-json') return handleGzipJson(res);
@@ -154,6 +155,17 @@ function handleSetCookie(u: URL, res: ServerResponse): void {
 function handleEcho(u: URL, res: ServerResponse): void {
   res.writeHead(200, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ ok: true, i: u.searchParams.get('i') }));
+}
+
+// #261: drains and reports the size of a POST body — used by the "large POST
+// body" fixture to exercise Network.getRequestPostData (CDP omits postData
+// inline on requestWillBeSent once the body is large enough).
+async function handleEchoBody(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const size = Buffer.concat(chunks).length;
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ ok: true, size }));
 }
 
 // Reports the request's own User-Agent header back to the page, so a spoof
