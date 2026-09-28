@@ -572,6 +572,16 @@ test('performance/console-flood.html: exceeding a low recorder cap shows the tim
 
   // Reset for later tests in this file.
   await window.evaluate(() => (window as any).testerBrowser.settings.set({ recorderMaxEvents: 20000 }));
+
+  // This tab just finished emitting 10,000 console messages; its CDP session
+  // can still be draining a backlog of Runtime.consoleAPICalled notifications
+  // in the background well after the eviction banner appears. Left open, it
+  // starves a *different* tab's own debugger session of the next test below
+  // (also a console-flood.html burst) down to a handful of captured events —
+  // apparently a shared per-renderer-process (or per-browser-process) limit
+  // on in-flight CDP traffic, not something scoped to this tab alone. Close
+  // it now so the next test's flood isn't competing with this one's tail.
+  await window.keyboard.press('Control+w');
 });
 
 // #262: "Load older events" — the renderer's own in-memory window
@@ -587,17 +597,35 @@ test('performance/console-flood.html: "Load older events" recovers rows trimmed 
   const tab = await getTabPage(app, '/performance/console-flood.html');
   await window.click('#consoleTabConsole');
 
-  // Emitted directly via evaluate() rather than the page's own chunked
-  // button flow (meant for the eviction-banner test's much larger, slower
-  // 10k/25k bursts just above this test, in the same file) — this only
-  // needs to clear TIMELINE_MAX (5000), and a synchronous in-page loop is
-  // both faster and avoids CI resource contention with that heavier test
-  // running immediately before this one.
-  await tab.evaluate(() => {
-    for (let i = 0; i < 5_500; i++) console.log('flood log #' + i, { i });
-  });
+  // Chunked (500 at a time, yielding via setTimeout between batches) rather
+  // than one tight synchronous loop — a single 5,500-call burst overwhelms
+  // this tab's CDP session badly enough that Runtime.consoleAPICalled
+  // delivery for it never recovers (observed capturing well under 20 of the
+  // 5,500 calls, indefinitely), matching the page's own chunked button flow
+  // for the eviction-banner test's larger bursts just above this test.
+  await tab.evaluate(() => new Promise((resolve) => {
+    let i = 0;
+    const chunk = 500;
+    function tick() {
+      const end = Math.min(i + chunk, 5_500);
+      for (; i < end; i++) console.log('flood log #' + i, { i });
+      if (i < 5_500) setTimeout(tick, 0);
+      else resolve(undefined);
+    }
+    tick();
+  }));
 
-  await expect(window.locator('.timeline-load-older')).toBeVisible({ timeout: 15_000 });
+  // The actual clickable button (`<button class="timeline-load-older">`) and
+  // the terminal "Beginning of recording" state (`<div class="timeline-load-older
+  // exhausted">`) share this same base class — a plain `.timeline-load-older`
+  // locator matches either. A fresh session starts in the exhausted state
+  // (nothing evicted from the renderer's own window yet), so an un-tagged
+  // locator here was satisfied immediately, before the flood had even been
+  // fully ingested, making the rest of this test race the poll loop instead
+  // of actually waiting on it. `button.timeline-load-older` only matches the
+  // real load-more control, which only appears once the backend genuinely
+  // holds more than TIMELINE_MAX events.
+  await expect(window.locator('button.timeline-load-older')).toBeVisible({ timeout: 20_000 });
   await expect(window.locator('.evt', { hasText: 'flood log #0' })).toHaveCount(0);
 
   // Click through however many 500-row pages it takes to reach the true
