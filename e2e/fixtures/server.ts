@@ -138,11 +138,17 @@ function handleDownload(u: URL, res: ServerResponse): void {
 function handleSetCookie(u: URL, res: ServerResponse): void {
   const name = u.searchParams.get('name') || 'server_cookie';
   const value = u.searchParams.get('value') || '1';
+  // #260: defaults to HttpOnly (the original, pre-existing behaviour) when
+  // `flags` is omitted. Pass `flags=` for a bare cookie (no flags at all —
+  // used by the Security tab's cookie-finding e2e test) or e.g.
+  // `flags=HttpOnly;Secure` for a specific combination.
+  const flags = u.searchParams.has('flags') ? u.searchParams.get('flags') : 'HttpOnly';
+  const cookie = `${name}=${value}; Path=/${flags ? `; ${flags}` : ''}`;
   res.writeHead(200, {
     'content-type': 'text/html',
-    'set-cookie': `${name}=${value}; Path=/; HttpOnly`,
+    'set-cookie': cookie,
   });
-  res.end(`<html><body><h1>Set-Cookie: ${name}=${value} (HttpOnly)</h1></body></html>`);
+  res.end(`<html><body><h1>Set-Cookie: ${name}=${value}</h1></body></html>`);
 }
 
 function handleEcho(u: URL, res: ServerResponse): void {

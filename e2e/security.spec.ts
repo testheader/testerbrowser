@@ -20,11 +20,9 @@ test.afterAll(async () => {
 });
 
 test('scan reports a real HTTP finding, and a row opens the detail panel', async () => {
-  // Not testing the cookie findings here: Chromium's Network domain never
-  // exposes Set-Cookie in Network.responseReceived's headers (it's only on
-  // the separate Network.responseReceivedExtraInfo event, which the recorder
-  // doesn't currently listen to) — so analyze()'s cookie checks are
-  // unreachable via normal page loads regardless of what the response sends.
+  // This test only checks the HTTP finding — see the dedicated cookie-finding
+  // test below for Set-Cookie (captured via Network.responseReceivedExtraInfo,
+  // per #260).
   const urlPath = '/storage/set-cookie?name=sec_test&value=1';
   await page.click('#urlbar');
   await page.fill('#urlbar', fixtures.url(urlPath));
@@ -40,6 +38,26 @@ test('scan reports a real HTTP finding, and a row opens the detail panel', async
 
   await page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first().click();
   await expect(page.locator('#detailPanelTabBar .detail-tab')).toHaveCount(1);
+});
+
+// #260: real Set-Cookie coverage — the recorder now listens to
+// Network.responseReceivedExtraInfo (the only place Chromium ever exposes
+// Set-Cookie), so a genuine page load with no HttpOnly/Secure/SameSite on the
+// cookie should trip every cookie rule, no synthetic CDP injection needed.
+test('scan reports cookie findings for a real Set-Cookie response with no flags (#260)', async () => {
+  const urlPath = '/storage/set-cookie?name=sec_cookie&value=1&flags=';
+  await page.click('#urlbar');
+  await page.fill('#urlbar', fixtures.url(urlPath));
+  await page.press('#urlbar', 'Enter');
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
+
+  await page.click('#consoleTabSecurity');
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
+
+  await expect(page.locator('.sec-row', { hasText: 'Insecure cookie' }).first()).toBeVisible();
+  await expect(page.locator('.sec-row', { hasText: 'Cookie missing HttpOnly' }).first()).toBeVisible();
+  await expect(page.locator('.sec-row', { hasText: 'Cookie missing SameSite' }).first()).toBeVisible();
 });
 
 test('"Configure checks" lets a rule be disabled, and the override persists across settings reads', async () => {
@@ -273,15 +291,10 @@ test('header-presence findings name a Document response, not an Image response o
 });
 
 test('cookie-redaction banner appears when a response carries a redacted set-cookie (#240)', async () => {
-  // Chromium's Network domain never exposes Set-Cookie on Network.responseReceived
-  // (only on the separate ...ExtraInfo event the recorder doesn't listen to —
-  // see the "scan reports a real HTTP finding" test's own note above, and
-  // #260), so a real page load can never produce a captured set-cookie value,
-  // redacted or not, regardless of the redactSensitiveHeaders setting. Toggle
-  // the real setting anyway (documents/exercises the intended real-world
-  // trigger), then inject a synthetic already-redacted response the same way
-  // the previous test does, since that's the only way to reach this specific
-  // banner at all today.
+  // A real page load with redaction on would now also reach this banner (the
+  // recorder listens to Network.responseReceivedExtraInfo since #260), but
+  // injecting a synthetic already-redacted response keeps this test focused
+  // and deterministic, the same technique the #240 test above it uses.
   await page.evaluate(async () => {
     await (window as any).testerBrowser.settings.set({ redactSensitiveHeaders: true });
   });

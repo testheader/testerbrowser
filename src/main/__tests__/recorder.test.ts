@@ -181,6 +181,159 @@ describe('SessionRecorder', () => {
     });
   });
 
+  // #260: Set-Cookie (and the raw Cookie request header) never appear on
+  // Network.requestWillBeSent/responseReceived — Chromium only delivers them
+  // on the separate ...ExtraInfo events, which can arrive before or after
+  // their corresponding request/response event.
+  describe('ExtraInfo (Set-Cookie / Cookie headers)', () => {
+    it('patches extraInfoHeaders onto the response row when responseReceivedExtraInfo arrives after the response', () => {
+      emit('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+      emit('Network.responseReceived', {
+        requestId: 'r1',
+        response: { status: 200, url: 'https://example.com', headers: {} },
+      });
+      emit('Network.responseReceivedExtraInfo', {
+        requestId: 'r1',
+        headers: { 'set-cookie': 'sid=abc; Path=/' },
+        blockedCookies: [],
+      });
+
+      const response = recorder.getTimeline().find(e => e.kind === 'network-response')!;
+      const payload = JSON.parse(response.payload);
+      expect(payload.extraInfoHeaders['set-cookie']).toBe('sid=abc; Path=/');
+      expect(payload.blockedCookies).toEqual([]);
+    });
+
+    it('buffers responseReceivedExtraInfo arriving before responseReceived, and applies it once the response is recorded', () => {
+      emit('Network.responseReceivedExtraInfo', {
+        requestId: 'r1',
+        headers: { 'set-cookie': 'sid=abc; Path=/' },
+      });
+      emit('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+      emit('Network.responseReceived', {
+        requestId: 'r1',
+        response: { status: 200, url: 'https://example.com', headers: {} },
+      });
+
+      const response = recorder.getTimeline().find(e => e.kind === 'network-response')!;
+      const payload = JSON.parse(response.payload);
+      expect(payload.extraInfoHeaders['set-cookie']).toBe('sid=abc; Path=/');
+    });
+
+    it('patches extraInfoHeaders onto the request row when requestWillBeSentExtraInfo arrives after the request', () => {
+      emit('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+      emit('Network.requestWillBeSentExtraInfo', {
+        requestId: 'r1',
+        headers: { cookie: 'sid=abc' },
+        associatedCookies: [{ cookie: { name: 'sid', value: 'abc' } }],
+      });
+
+      const request = recorder.getTimeline().find(e => e.kind === 'network-request')!;
+      const payload = JSON.parse(request.payload);
+      expect(payload.extraInfoHeaders.cookie).toBe('sid=abc');
+      expect(payload.associatedCookies).toHaveLength(1);
+    });
+
+    it('buffers requestWillBeSentExtraInfo arriving before requestWillBeSent, and applies it once the request is recorded', () => {
+      emit('Network.requestWillBeSentExtraInfo', {
+        requestId: 'r1',
+        headers: { cookie: 'sid=abc' },
+      });
+      emit('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+
+      const request = recorder.getTimeline().find(e => e.kind === 'network-request')!;
+      expect(JSON.parse(request.payload).extraInfoHeaders.cookie).toBe('sid=abc');
+    });
+
+    it('redacts extraInfoHeaders the same way as regular headers when redaction is on', () => {
+      const { wc, emit: e } = makeMockWc();
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'redact-extra-info',
+        dbDir: freshDbDir(),
+        getRedact: () => true,
+      });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+      e('Network.responseReceived', {
+        requestId: 'r1',
+        response: { status: 200, url: 'https://example.com', headers: {} },
+      });
+      e('Network.responseReceivedExtraInfo', {
+        requestId: 'r1',
+        headers: { 'set-cookie': 'sid=abc; Path=/', 'content-type': 'text/html' },
+      });
+
+      const response = rec.getTimeline().find(ev => ev.kind === 'network-response')!;
+      const payload = JSON.parse(response.payload);
+      expect(payload.extraInfoHeaders['set-cookie']).toBe('[REDACTED]');
+      expect(payload.extraInfoHeaders['content-type']).toBe('text/html');
+
+      rec.destroy();
+    });
+
+    it('drops buffered ExtraInfo for a request that fails before the response arrives, without leaking', () => {
+      emit('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com', method: 'GET', headers: {} },
+      });
+      emit('Network.loadingFailed', { requestId: 'r1', errorText: 'net::ERR_FAILED' });
+      // A late ExtraInfo for the same (already-cleaned-up) requestId is buffered
+      // fresh rather than throwing — it just never gets consumed.
+      expect(() => emit('Network.responseReceivedExtraInfo', {
+        requestId: 'r1',
+        headers: { 'set-cookie': 'sid=abc' },
+      })).not.toThrow();
+    });
+
+    it('evicts the oldest buffered entry once pending ExtraInfo exceeds 500 requests', () => {
+      for (let i = 0; i < 501; i++) {
+        emit('Network.responseReceivedExtraInfo', {
+          requestId: `pending-${i}`,
+          headers: { 'set-cookie': `sid=${i}` },
+        });
+      }
+      // The 0th entry was evicted, so its eventual response never gets patched.
+      emit('Network.requestWillBeSent', {
+        requestId: 'pending-0',
+        request: { url: 'https://example.com/0', method: 'GET', headers: {} },
+      });
+      emit('Network.responseReceived', {
+        requestId: 'pending-0',
+        response: { status: 200, url: 'https://example.com/0', headers: {} },
+      });
+      const evicted = recorder.getTimeline().find(e => e.kind === 'network-response')!;
+      expect(JSON.parse(evicted.payload).extraInfoHeaders).toBeUndefined();
+
+      // The 500th (most recent) entry survived the cap.
+      emit('Network.requestWillBeSent', {
+        requestId: 'pending-500',
+        request: { url: 'https://example.com/500', method: 'GET', headers: {} },
+      });
+      emit('Network.responseReceived', {
+        requestId: 'pending-500',
+        response: { status: 200, url: 'https://example.com/500', headers: {} },
+      });
+      const survived = recorder.getTimeline().find(e =>
+        e.kind === 'network-response' && e.summary.includes('/500'))!;
+      expect(JSON.parse(survived.payload).extraInfoHeaders['set-cookie']).toBe('sid=500');
+    });
+  });
+
   // #252: Network.loadingFinished's own Network.getResponseBody round-trip
   // (a separate CDP call the recorder makes itself, not part of the
   // requestWillBeSent/responseReceived payloads) had zero test coverage.
@@ -207,7 +360,7 @@ describe('SessionRecorder', () => {
       rec.destroy();
     });
 
-    it('truncates a body over 51,200 characters and appends [truncated] to the body and summary', async () => {
+    it('truncates a text body over 51,200 characters, sets truncated: true and appends [truncated] to the body and summary', async () => {
       const longBody = 'x'.repeat(60_000);
       const { wc, emit: e } = makeMockWc({
         onGetResponseBody: async () => ({ body: longBody, base64Encoded: false }),
@@ -224,7 +377,54 @@ describe('SessionRecorder', () => {
       const body = rec.getTimeline().find(ev => ev.kind === 'network-body')!;
       expect(body.summary).toContain('[truncated]');
       const payload = JSON.parse(body.payload);
+      expect(payload.truncated).toBe(true);
       expect(payload.body).toBe('x'.repeat(51_200) + '\n[truncated]');
+
+      rec.destroy();
+    });
+
+    // #260: a truncated base64 string is no longer valid base64 — storing it
+    // corrupted image/font previews. Binary bodies over the cap are omitted
+    // entirely instead of being cut.
+    it('omits a base64-encoded body over 51,200 characters instead of truncating it, storing no body', async () => {
+      const longBody = 'x'.repeat(60_000);
+      const { wc, emit: e } = makeMockWc({
+        onGetResponseBody: async () => ({ body: longBody, base64Encoded: true }),
+      });
+      const rec = new SessionRecorder(wc, { sessionId: 'omit-session', dbDir: freshDbDir() });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com/image.png', method: 'GET', headers: {} },
+      });
+      e('Network.loadingFinished', { requestId: 'r1' });
+      await flushMicrotasks();
+
+      const body = rec.getTimeline().find(ev => ev.kind === 'network-body')!;
+      expect(body.summary).toContain('[omitted]');
+      const payload = JSON.parse(body.payload);
+      expect(payload).toEqual({ requestId: 'r1', base64Encoded: true, omitted: true, size: 60_000 });
+      expect(payload.body).toBeUndefined();
+
+      rec.destroy();
+    });
+
+    it('stores a base64-encoded body under the cap as-is, with no omitted/truncated flags', async () => {
+      const { wc, emit: e } = makeMockWc({
+        onGetResponseBody: async () => ({ body: 'aGVsbG8=', base64Encoded: true }),
+      });
+      const rec = new SessionRecorder(wc, { sessionId: 'small-base64-session', dbDir: freshDbDir() });
+
+      e('Network.requestWillBeSent', {
+        requestId: 'r1',
+        request: { url: 'https://example.com/icon.png', method: 'GET', headers: {} },
+      });
+      e('Network.loadingFinished', { requestId: 'r1' });
+      await flushMicrotasks();
+
+      const body = rec.getTimeline().find(ev => ev.kind === 'network-body')!;
+      const payload = JSON.parse(body.payload);
+      expect(payload).toEqual({ requestId: 'r1', base64Encoded: true, body: 'aGVsbG8=' });
 
       rec.destroy();
     });

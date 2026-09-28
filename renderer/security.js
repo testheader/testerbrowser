@@ -383,7 +383,11 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS, { includeSubresou
     try { payload = JSON.parse(ev.payload); } catch { continue; }
 
     const url     = payload.url ?? payload.response?.url ?? '';
-    const headers = payload.headers ?? payload.response?.headers ?? {};
+    // #260: Set-Cookie only ever arrives via the separate
+    // Network.responseReceivedExtraInfo event, merged in by the recorder as
+    // a sibling `extraInfoHeaders` field — merge it over the base headers so
+    // the cookie rules below can actually see it.
+    const headers = { ...(payload.headers ?? payload.response?.headers ?? {}), ...(payload.extraInfoHeaders ?? {}) };
     const norm    = Object.fromEntries(
       Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])
     );

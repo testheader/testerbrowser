@@ -119,7 +119,13 @@ function renderDetailContent() {
       const failEvt = timelineEvents.find(ev => ev.kind === 'network-failed'   && getEventTabId(ev) === rid);
 
       if (reqEvt && reqEvt.payload) {
-        const req = (JSON.parse(reqEvt.payload).request) || {};
+        const reqPayload = JSON.parse(reqEvt.payload);
+        const req = reqPayload.request || {};
+        // #260: Set-Cookie/Cookie never appear on the base request/response
+        // events — only on the separate ...ExtraInfo events, merged in by the
+        // recorder as a sibling `extraInfoHeaders` field. Merge it back over
+        // the base headers here so the table shows the real wire headers.
+        const mergedReqHeaders = { ...(req.headers || {}), ...(reqPayload.extraInfoHeaders || {}) };
         mockData = { method: req.method, url: req.url, requestHeaders: req.headers || {}, requestBody: req.postData || null };
         actionReqEvt = reqEvt;
         html += `<div class="detail-section">
@@ -133,9 +139,9 @@ function renderDetailContent() {
           <button class="detail-action-btn" id="detailCurlBtn" title="Copy this request as a curl command">⧉ cURL</button>
           <button class="detail-action-btn" id="detailFetchBtn" title="Copy this request as a fetch() call">⧉ fetch</button>
         </div>`;
-        if (req.headers && Object.keys(req.headers).length) {
+        if (Object.keys(mergedReqHeaders).length) {
           html += `<div class="detail-section"><h3>Request Headers</h3><table class="headers-table">`;
-          for (const [k, v] of Object.entries(req.headers)) {
+          for (const [k, v] of Object.entries(mergedReqHeaders)) {
             html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
           }
           html += `</table></div>`;
@@ -149,6 +155,7 @@ function renderDetailContent() {
       if (resEvt && resEvt.payload) {
         const resPayload = JSON.parse(resEvt.payload);
         res = resPayload.response || {};
+        const mergedResHeaders = { ...(res.headers || {}), ...(resPayload.extraInfoHeaders || {}) };
         if (mockData) { mockData.statusCode = res.status; mockData.responseHeaders = res.headers || {}; }
         html += `<div class="detail-section">
           <h3>Response</h3>
@@ -156,9 +163,9 @@ function renderDetailContent() {
           <span style="color:#666;margin:0 6px">${escHtml(res.statusText || '')}</span>
           ${typeof resPayload.durationMs === 'number' ? `<span class="detail-timing">${Math.round(resPayload.durationMs)} ms</span>` : ''}
         </div>`;
-        if (res.headers && Object.keys(res.headers).length) {
+        if (Object.keys(mergedResHeaders).length) {
           html += `<div class="detail-section"><h3>Response Headers</h3><table class="headers-table">`;
-          for (const [k, v] of Object.entries(res.headers)) {
+          for (const [k, v] of Object.entries(mergedResHeaders)) {
             html += `<tr><td>${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`;
           }
           html += `</table></div>`;
@@ -171,7 +178,9 @@ function renderDetailContent() {
         const bp = JSON.parse(bodyEvt.payload);
         html += `<div class="detail-section"><h3>Response Body</h3>`;
         const contentType = getHeader(res?.headers, 'content-type').toLowerCase();
-        if (bp.base64Encoded && contentType.startsWith('image/')) {
+        if (bp.omitted) {
+          html += `<div style="color:#555;font-size:11px">Binary body omitted (${Math.round(bp.size / 1024)} KB)</div>`;
+        } else if (bp.base64Encoded && contentType.startsWith('image/')) {
           html += `<img class="detail-body-image" src="data:${escHtml(contentType)};base64,${bp.body}" alt="Response image preview" />`;
         } else {
           if (bp.base64Encoded) html += `<div style="color:#555;font-size:11px;margin-bottom:4px">[base64 encoded]</div>`;

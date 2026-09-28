@@ -362,6 +362,27 @@ test('network/status-codes.html: Copy as cURL copies a curl command for the sele
   expect(clipboardText).toContain(fixtures.url(urlPath));
 });
 
+// #260: Set-Cookie only ever arrives via Network.responseReceivedExtraInfo,
+// which the recorder merges onto the response row as `extraInfoHeaders` —
+// the detail panel's headers table must show it merged over the base headers.
+test('storage/set-cookie: the response detail panel shows set-cookie in the headers table (#260)', async () => {
+  const urlPath = '/storage/set-cookie?name=detail_cookie&value=1&flags=';
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await ensureResPillOn();
+  await navigate(urlPath);
+
+  const responseRow = window.locator('.evt.network-response', { hasText: urlPath });
+  await expect(responseRow.first()).toBeVisible({ timeout: 10_000 });
+
+  const headersTable = window.locator('#detailPanelContent .headers-table').filter({ hasText: 'set-cookie' });
+  await expect(async () => {
+    await responseRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await expect(headersTable).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await expect(headersTable).toContainText('detail_cookie=1');
+});
+
 test('network/slow.html: free-text filter also matches payload content not present in the summary line', async () => {
   const tab = await navigate('/network/slow.html');
   await window.click('#consoleTabNetwork');

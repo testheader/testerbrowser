@@ -21,7 +21,8 @@ automatically with no extra build config.
   - `GET /network/slow?ms=N` — delay N ms before responding
   - `GET /network/redirect?hops=N` — chain of N redirects
   - `GET /downloads/file?name=&size=&type=` — generated download of a given size
-  - `GET /storage/set-cookie?name=&value=` — sets an HttpOnly cookie via response header
+  - `GET /storage/set-cookie?name=&value=&flags=` — sets a cookie via response header;
+    `flags` defaults to `HttpOnly`, pass `flags=` for no flags or e.g. `flags=HttpOnly;Secure`
   - `GET /perf/echo` — near-instant response, for burst/concurrency tests
 
   The server is plain `.ts` with no build step, so it costs nothing outside

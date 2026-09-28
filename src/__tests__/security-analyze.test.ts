@@ -117,6 +117,26 @@ describe('analyze', () => {
     expect(issues).toContain('Cookie missing HttpOnly');
   });
 
+  // #260: Set-Cookie is never on Network.responseReceived itself — the
+  // recorder merges Network.responseReceivedExtraInfo's headers onto the row
+  // as a sibling `extraInfoHeaders` field. The cookie rules must still fire
+  // when a Set-Cookie only shows up there.
+  it('flags a cookie that only appears in extraInfoHeaders, not in response.headers', () => {
+    const event = {
+      kind: 'network-response',
+      ts: 1700000000000,
+      summary: 'test',
+      payload: JSON.stringify({
+        requestId: '1',
+        response: { url: 'https://example.com/', status: 200, headers: secureHeaders },
+        extraInfoHeaders: { 'set-cookie': 'sid=abc; Path=/' },
+      }),
+    };
+    const issues = analyze([event]).findings.map(f => f.issue);
+    expect(issues).toContain('Insecure cookie');
+    expect(issues).toContain('Cookie missing HttpOnly');
+  });
+
   it('accepts a cookie carrying Secure, HttpOnly and SameSite', () => {
     const findings = findingsOf(
       responseEvent({

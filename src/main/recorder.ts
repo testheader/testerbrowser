@@ -66,6 +66,17 @@ export class SessionRecorder {
   // that arrives (Fetch.requestPaused) after the request was already recorded
   // can be stamped onto that same row instead of only the eventual response.
   private requestRowId = new Map<string, number>();
+  // Row id of the still-open network-response event for a requestId, so a
+  // Network.responseReceivedExtraInfo that arrives after the response was
+  // already recorded can patch that same row.
+  private responseRowId = new Map<string, number>();
+  // Network.requestWillBeSentExtraInfo / Network.responseReceivedExtraInfo
+  // can each arrive before their corresponding requestWillBeSent/
+  // responseReceived event — buffer them per requestId until the row exists.
+  // Capped so a request that never completes can't leak forever.
+  private static readonly MAX_PENDING_EXTRA_INFO = 500;
+  private pendingRequestExtraInfo = new Map<string, { headers: Record<string, string>; associatedCookies?: unknown }>();
+  private pendingResponseExtraInfo = new Map<string, { headers: Record<string, string>; blockedCookies?: unknown }>();
   private updatePayloadStmt!: Database.Statement;
   private getRedact: () => boolean;
   // #229: set the first time trimIfNeeded() evicts rows for this session —
@@ -139,13 +150,37 @@ export class SessionRecorder {
             ? { ...params, request: { ...params.request, headers: redactHeaders(params.request.headers) } }
             : params;
           const tag = this.requestTags.get(params.requestId);
+          const pendingExtra = this.pendingRequestExtraInfo.get(params.requestId);
+          this.pendingRequestExtraInfo.delete(params.requestId);
+          const extra = pendingExtra
+            ? {
+                extraInfoHeaders: this.getRedact() ? redactHeaders(pendingExtra.headers) : pendingExtra.headers,
+                associatedCookies: pendingExtra.associatedCookies,
+              }
+            : undefined;
           const rowId = this.record({
             kind: 'network-request',
             ts,
             summary: `${params.request.method} ${params.request.url}`,
-            payload: JSON.stringify(tag ? { ...reqPayload, ...tag } : reqPayload),
+            payload: JSON.stringify({ ...reqPayload, ...tag, ...extra }),
           });
           this.requestRowId.set(params.requestId, rowId);
+          break;
+        }
+        case 'Network.requestWillBeSentExtraInfo': {
+          const rowId = this.requestRowId.get(params.requestId);
+          const extra = {
+            extraInfoHeaders: this.getRedact() ? redactHeaders(params.headers) : params.headers,
+            associatedCookies: params.associatedCookies,
+          };
+          if (rowId !== undefined) {
+            this.patchPayload(rowId, extra);
+          } else {
+            this.setPending(this.pendingRequestExtraInfo, params.requestId, {
+              headers: params.headers,
+              associatedCookies: params.associatedCookies,
+            });
+          }
           break;
         }
         case 'Network.responseReceived': {
@@ -155,12 +190,37 @@ export class SessionRecorder {
           const resPayload = this.getRedact()
             ? { ...params, response: { ...params.response, headers: redactHeaders(params.response.headers) } }
             : params;
-          this.record({
+          const pendingExtra = this.pendingResponseExtraInfo.get(params.requestId);
+          this.pendingResponseExtraInfo.delete(params.requestId);
+          const extra = pendingExtra
+            ? {
+                extraInfoHeaders: this.getRedact() ? redactHeaders(pendingExtra.headers) : pendingExtra.headers,
+                blockedCookies: pendingExtra.blockedCookies,
+              }
+            : undefined;
+          const rowId = this.record({
             kind: 'network-response',
             ts,
             summary: `${params.response.status} ${meta?.url ?? params.response.url}`,
-            payload: JSON.stringify({ ...resPayload, ...tag, durationMs }),
+            payload: JSON.stringify({ ...resPayload, ...tag, durationMs, ...extra }),
           });
+          this.responseRowId.set(params.requestId, rowId);
+          break;
+        }
+        case 'Network.responseReceivedExtraInfo': {
+          const rowId = this.responseRowId.get(params.requestId);
+          const extra = {
+            extraInfoHeaders: this.getRedact() ? redactHeaders(params.headers) : params.headers,
+            blockedCookies: params.blockedCookies,
+          };
+          if (rowId !== undefined) {
+            this.patchPayload(rowId, extra);
+          } else {
+            this.setPending(this.pendingResponseExtraInfo, params.requestId, {
+              headers: params.headers,
+              blockedCookies: params.blockedCookies,
+            });
+          }
           break;
         }
         case 'Network.loadingFailed': {
@@ -174,29 +234,49 @@ export class SessionRecorder {
           });
           this.requestTags.delete(params.requestId);
           this.requestRowId.delete(params.requestId);
+          this.responseRowId.delete(params.requestId);
+          this.pendingRequestExtraInfo.delete(params.requestId);
+          this.pendingResponseExtraInfo.delete(params.requestId);
           break;
         }
         case 'Network.loadingFinished': {
           const meta = this.requestMeta.get(params.requestId);
           this.requestTags.delete(params.requestId);
           this.requestRowId.delete(params.requestId);
+          this.responseRowId.delete(params.requestId);
+          this.pendingRequestExtraInfo.delete(params.requestId);
+          this.pendingResponseExtraInfo.delete(params.requestId);
           if (!meta) break;
           // Only fetch body for text-like responses (skip images, fonts, etc.)
           // We check the stored response kind by looking up the request meta
           this.wc.debugger.sendCommand('Network.getResponseBody', { requestId: params.requestId })
             .then((body: { body: string; base64Encoded: boolean }) => {
               if (!body?.body) return;
-              const truncated = body.body.length > 51200; // 50 KB cap
-              const content = truncated ? body.body.slice(0, 51200) + '\n[truncated]' : body.body;
+              const overCap = body.body.length > 51200; // 50 KB cap
+              let payload: Record<string, unknown>;
+              let summarySuffix = '';
+              if (body.base64Encoded && overCap) {
+                // A truncated base64 string is no longer valid base64 — storing
+                // it would corrupt the body (e.g. break an image preview), so
+                // binary bodies over the cap are omitted entirely instead.
+                payload = { requestId: params.requestId, base64Encoded: true, omitted: true, size: body.body.length };
+                summarySuffix = ' [omitted]';
+              } else if (overCap) {
+                payload = {
+                  requestId: params.requestId,
+                  base64Encoded: false,
+                  truncated: true,
+                  body: body.body.slice(0, 51200) + '\n[truncated]',
+                };
+                summarySuffix = ' [truncated]';
+              } else {
+                payload = { requestId: params.requestId, base64Encoded: body.base64Encoded, body: body.body };
+              }
               this.record({
                 kind: 'network-body',
                 ts: Date.now(),
-                summary: `BODY ${meta.method} ${meta.url}${truncated ? ' [truncated]' : ''}`,
-                payload: JSON.stringify({
-                  requestId: params.requestId,
-                  base64Encoded: body.base64Encoded,
-                  body: content,
-                }),
+                summary: `BODY ${meta.method} ${meta.url}${summarySuffix}`,
+                payload: JSON.stringify(payload),
               });
             })
             .catch(() => {}); // body unavailable (e.g. redirect, image) — silently ignore
@@ -248,12 +328,29 @@ export class SessionRecorder {
     this.requestTags.set(requestId, tag);
     const rowId = this.requestRowId.get(requestId);
     if (rowId === undefined) return;
+    this.patchPayload(rowId, tag);
+  }
+
+  /** Merges `extra` onto an already-recorded row's JSON payload. Used both by
+   *  tagRequest() and by the ExtraInfo handlers above to patch a row that was
+   *  recorded before the patching data arrived. */
+  private patchPayload(rowId: number, extra: Record<string, unknown>) {
     const row = this.db.prepare(`SELECT payload FROM events WHERE id = ?`).get(rowId) as { payload: string } | undefined;
     if (!row) return;
     try {
-      const payload = { ...JSON.parse(row.payload), ...tag };
+      const payload = { ...JSON.parse(row.payload), ...extra };
       this.updatePayloadStmt.run(JSON.stringify(payload), rowId);
     } catch {}
+  }
+
+  /** Inserts into a pending-ExtraInfo buffer, evicting the oldest entry once
+   *  the cap is exceeded so a request that never completes can't leak. */
+  private setPending<V>(map: Map<string, V>, requestId: string, value: V) {
+    map.set(requestId, value);
+    if (map.size > SessionRecorder.MAX_PENDING_EXTRA_INFO) {
+      const oldestKey = map.keys().next().value;
+      if (oldestKey !== undefined) map.delete(oldestKey);
+    }
   }
 
   private record(row: Omit<EventRow, 'session_id' | 'id'>): number {
