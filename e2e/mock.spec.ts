@@ -580,7 +580,11 @@ test('exporting then importing mock rules round-trips a rule (#264)', async () =
   }, tmpPath);
   await window.click('.mock-import-btn');
 
-  await expect(window.locator('#mockIoStatus')).toHaveText('Imported 1 rules');
+  // exportMockRules() exports every rule on the session, not just the one
+  // this test added — earlier tests in this file share the same session and
+  // never clean up after themselves, so the file legitimately holds however
+  // many rules existed at export time.
+  await expect(window.locator('#mockIoStatus')).toHaveText(`Imported ${exported.rules.length} rules`);
   await expect(window.locator('.mock-rule-row', { hasText: '/api/export-roundtrip' })).toBeVisible();
 
   fs.rmSync(tmpPath, { force: true });

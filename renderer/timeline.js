@@ -540,10 +540,22 @@ async function refreshOlderEventsState() {
     return;
   }
   if (checkedOldestId === oldestLoaded.id) return;
+  const queriedForId   = oldestLoaded.id;
   const storedOldestId = await testerBrowser.recording.oldestId(activeId);
   if (getActiveId() !== activeId) return; // switched tabs mid-flight
-  checkedOldestId = oldestLoaded.id;
-  const next = typeof storedOldestId === 'number' && storedOldestId < oldestLoaded.id;
+  // ingestEvents() fires this off without awaiting it, so a live poll tick
+  // and a "Load older events" click can each have one of these in flight at
+  // once. If the loaded window moved (either one's own head/tail trim) while
+  // this call was awaiting the IPC round-trip, timelineEvents[0] is no longer
+  // the row this result is about — applying it would stamp checkedOldestId
+  // with a now-stale id and could latch hasOlderEvents to the wrong value
+  // with nothing left to ever re-check it (a live tail with no new events
+  // never calls this again, and the button itself disappears once
+  // hasOlderEvents is wrongly false). Discard it instead: whichever
+  // operation moved the window already triggers its own fresh check.
+  if (timelineEvents[0]?.id !== queriedForId) return;
+  checkedOldestId = queriedForId;
+  const next = typeof storedOldestId === 'number' && storedOldestId < queriedForId;
   if (next !== hasOlderEvents) {
     hasOlderEvents = next;
     renderTimeline();
