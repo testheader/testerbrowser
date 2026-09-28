@@ -163,8 +163,10 @@ function renderDetailContent() {
         const finalStatus = resEvt ? (JSON.parse(resEvt.payload).response || {}).status : undefined;
         const hops = reqEvts.map((ev, i) => {
           const hopReq = JSON.parse(ev.payload).request || {};
+          // redirectResponse is a top-level field on requestWillBeSent's own
+          // params, a sibling of `request` — not nested inside it.
           const status = i < reqEvts.length - 1
-            ? (JSON.parse(reqEvts[i + 1].payload).request || {}).redirectResponse?.status
+            ? JSON.parse(reqEvts[i + 1].payload).redirectResponse?.status
             : finalStatus;
           return { method: hopReq.method, url: hopReq.url, status };
         });

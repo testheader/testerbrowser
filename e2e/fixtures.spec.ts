@@ -575,10 +575,10 @@ test('performance/console-flood.html: exceeding a low recorder cap shows the tim
 });
 
 // #262: "Load older events" — the renderer's own in-memory window
-// (TIMELINE_MAX = 5000) is well under this page's 10,000-log burst, but
-// under the recorder's default 20,000-event cap, so nothing is evicted
-// server-side: everything is still there to reload, just not currently
-// in the renderer's own window.
+// (TIMELINE_MAX = 5000) is well under a burst just past it, but under the
+// recorder's default 20,000-event cap, so nothing is evicted server-side:
+// everything is still there to reload, just not currently in the
+// renderer's own window.
 test('performance/console-flood.html: "Load older events" recovers rows trimmed from the renderer\'s in-memory window (#262)', async () => {
   await window.click('#newSessionBtn');
   await window.click('#urlbar');
@@ -587,8 +587,15 @@ test('performance/console-flood.html: "Load older events" recovers rows trimmed 
   const tab = await getTabPage(app, '/performance/console-flood.html');
   await window.click('#consoleTabConsole');
 
-  await tab.click('button:text("10,000 logs")');
-  await expect(tab.locator('#status')).toHaveText(/^done:/, { timeout: 30_000 });
+  // Emitted directly via evaluate() rather than the page's own chunked
+  // button flow (meant for the eviction-banner test's much larger, slower
+  // 10k/25k bursts just above this test, in the same file) — this only
+  // needs to clear TIMELINE_MAX (5000), and a synchronous in-page loop is
+  // both faster and avoids CI resource contention with that heavier test
+  // running immediately before this one.
+  await tab.evaluate(() => {
+    for (let i = 0; i < 5_500; i++) console.log('flood log #' + i, { i });
+  });
 
   await expect(window.locator('.timeline-load-older')).toBeVisible({ timeout: 15_000 });
   await expect(window.locator('.evt', { hasText: 'flood log #0' })).toHaveCount(0);
