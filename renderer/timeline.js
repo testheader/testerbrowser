@@ -585,11 +585,18 @@ async function loadOlderEvents() {
     // drop: clicking "Load older events" is itself the signal the user wants
     // this history, so immediately discarding what was just fetched (by
     // dropping from the head again, the ordinary live-poll behavior) would
-    // make the click a no-op. The live tail can be re-fetched by a later
-    // poll once the user scrolls back down — lastId rewinds to match.
+    // make the click a no-op.
+    //
+    // lastId is deliberately left untouched here — it's the 1s poller's own
+    // high-water mark against the live tail, independent of what
+    // timelineEvents currently holds. Rewinding it to the new (trimmed)
+    // newest id would make the very next poll tick immediately re-fetch and
+    // re-append the rows just dropped, which would then push the array back
+    // over the cap and trigger ingestEvents' own oldest-drop trim — undoing
+    // this newest-drop and fighting the poller forever. The trimmed rows
+    // simply aren't visible again until a session switch reloads everything.
     if (timelineEvents.length > TIMELINE_MAX) {
       timelineEvents.length = TIMELINE_MAX;
-      lastId = timelineEvents[timelineEvents.length - 1].id;
     }
 
     await refreshOlderEventsState();

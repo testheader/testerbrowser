@@ -526,9 +526,19 @@ test('mock rules match top to bottom — moving a rule up changes which one wins
   await expect(tab.locator('#apiOut')).toContainText('"body":"broad"', { timeout: 5_000 });
 
   // Moving the specific rule above the broad one flips which one wins,
-  // without deleting/recreating either.
+  // without deleting/recreating either. moveMockRule only swaps with the
+  // immediate neighbor, so check relative order between the two (this file's
+  // earlier tests leave plenty of other rules ahead of both in the full
+  // list — "specific" isn't expected to become the very first row overall).
+  const specificId = await specificRow.getAttribute('data-id');
+  const broadId = await broadRow.getAttribute('data-id');
   await specificRow.locator('.mock-move-up-btn').click();
-  await expect(window.locator('.mock-rule-row').first()).toHaveAttribute('data-id', await specificRow.getAttribute('data-id') as string);
+  await expect(async () => {
+    const ids = await window.locator('.mock-rule-row').evaluateAll(
+      els => els.map(el => el.getAttribute('data-id'))
+    );
+    expect(ids.indexOf(specificId)).toBeLessThan(ids.indexOf(broadId));
+  }).toPass({ timeout: 5_000 });
 
   await tab.click('#apiFetchBtn');
   await expect(tab.locator('#apiOut')).toContainText('"body":"specific"', { timeout: 5_000 });
