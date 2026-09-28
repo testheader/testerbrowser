@@ -464,7 +464,7 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .evt.exception .evt-line2::before { content: '⚠ '; }
 
 /* Pill count badges */
-.pill-count { font-size: 10px; color: inherit; opacity: 0.85; margin-left: 2px; }
+.pill-count { font-size: 10px; color: inherit; margin-left: 2px; }
 
 /* Auto-scroll button */
 #scrollToBottomBtn { display: none; position: absolute; bottom: 8px; right: 12px;
