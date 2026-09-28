@@ -108,8 +108,8 @@ export function initMock() {
         <button class="mock-btn mock-add-btn" type="submit">Add rule</button>
       </form>
       <div class="mock-io-row">
-        <button class="mock-btn mock-export-btn" type="button">Export…</button>
-        <button class="mock-btn mock-import-btn" type="button">Import…</button>
+        <button class="mock-btn mock-export-btn" id="mockExportBtn" type="button">Export…</button>
+        <button class="mock-btn mock-import-btn" id="mockImportBtn" type="button">Import…</button>
         <span class="mock-io-status" id="mockIoStatus"></span>
       </div>
       <div class="mock-hint">Rules are checked top to bottom — the first enabled match wins.</div>
