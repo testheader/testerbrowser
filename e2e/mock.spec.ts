@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
+import { _electron as electron } from 'playwright';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
@@ -528,4 +532,135 @@ test('mock rules match top to bottom — moving a rule up changes which one wins
 
   await tab.click('#apiFetchBtn');
   await expect(tab.locator('#apiOut')).toContainText('"body":"specific"', { timeout: 5_000 });
+});
+
+test('exporting then importing mock rules round-trips a rule (#264)', async () => {
+  for (let i = 0; i < 10 && (await window.locator('.tab').count()) > 1; i++) {
+    await window.keyboard.press('Control+w');
+  }
+  await expect.poll(() => window.locator('.tab').count()).toBe(1);
+
+  await window.click('#consoleTabMock');
+  await window.fill('#mockUrl', '*/api/export-roundtrip');
+  await window.fill('#mockStatus', '200');
+  await window.fill('#mockBody', '{"exported":true}');
+  await window.click('.mock-add-btn');
+  const row = window.locator('.mock-rule-row', { hasText: '/api/export-roundtrip' });
+  await expect(row).toBeVisible();
+
+  const tmpPath = path.join(os.tmpdir(), `testerbrowser-e2e-mock-rules-${Date.now()}.json`);
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
+  }, tmpPath);
+  await window.click('.mock-export-btn');
+  await expect.poll(() => fs.existsSync(tmpPath), { timeout: 5_000 }).toBe(true);
+
+  const exported = JSON.parse(fs.readFileSync(tmpPath, 'utf-8'));
+  expect(exported.testerBrowserMocks).toBe(1);
+  const exportedRule = exported.rules.find((r: { urlPattern: string }) => r.urlPattern === '*/api/export-roundtrip');
+  expect(exportedRule).toBeTruthy();
+  expect(exportedRule.id).toBeUndefined();
+  expect(exportedRule.hitCount).toBeUndefined();
+
+  await row.locator('.mock-del-btn').click();
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/export-roundtrip' })).toHaveCount(0);
+
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
+  }, tmpPath);
+  await window.click('.mock-import-btn');
+
+  await expect(window.locator('#mockIoStatus')).toHaveText('Imported 1 rules');
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/export-roundtrip' })).toBeVisible();
+
+  fs.rmSync(tmpPath, { force: true });
+});
+
+test('importing a file with an invalid rule alongside a valid one imports the valid one and reports the skip (#264)', async () => {
+  const tmpPath = path.join(os.tmpdir(), `testerbrowser-e2e-mock-rules-invalid-${Date.now()}.json`);
+  fs.writeFileSync(tmpPath, JSON.stringify({
+    testerBrowserMocks: 1,
+    rules: [
+      { urlPattern: '*/api/import-valid', method: 'GET', statusCode: 200, body: '{}' },
+      { urlPattern: '', method: 'GET', statusCode: 200, body: '{}' },
+    ],
+  }));
+
+  await window.click('#consoleTabMock');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
+  }, tmpPath);
+  await window.click('.mock-import-btn');
+
+  await expect(window.locator('#mockIoStatus')).toContainText('Imported 1 rules');
+  await expect(window.locator('#mockIoStatus')).toContainText('1 skipped');
+  await expect(window.locator('.mock-rule-row', { hasText: '/api/import-valid' })).toBeVisible();
+
+  fs.rmSync(tmpPath, { force: true });
+});
+
+test('importing a file that is not a TesterBrowser Mock rules file is rejected without changing anything (#264)', async () => {
+  const tmpPath = path.join(os.tmpdir(), `testerbrowser-e2e-mock-rules-bad-${Date.now()}.json`);
+  fs.writeFileSync(tmpPath, JSON.stringify({ not: 'a mock rules file' }));
+
+  await window.click('#consoleTabMock');
+  const ruleCountBefore = await window.locator('.mock-rule-row').count();
+
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
+  }, tmpPath);
+  await window.click('.mock-import-btn');
+
+  await expect(window.locator('#mockIoStatus')).not.toHaveText('');
+  await expect(window.locator('#mockIoStatus')).not.toContainText('Imported');
+  await expect(window.locator('.mock-rule-row')).toHaveCount(ruleCountBefore);
+
+  fs.rmSync(tmpPath, { force: true });
+});
+
+// #264: independent launch with a fixed --user-data-dir it reuses across
+// quit + relaunch, same technique as debug-mode.spec.ts's hard-kill test —
+// the shared `app`/`window` above are a single long-lived process and can't
+// exercise an actual restart.
+test.describe('Mock rules persist across a full app restart (#264)', () => {
+  test('a mock rule added to the default (persistent) tab survives quit and relaunch, and still intercepts', async () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-mock-persist-'));
+    let restartApp: ElectronApplication | undefined;
+    try {
+      restartApp = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+      const win = await getMainWindow(restartApp);
+      await win.waitForLoadState('domcontentloaded');
+
+      await win.click('#consoleTabMock');
+      await win.fill('#mockUrl', '*/api/restart-survives');
+      await win.fill('#mockStatus', '200');
+      await win.fill('#mockBody', '{"restarted":true}');
+      await win.click('.mock-add-btn');
+      await expect(win.locator('.mock-rule-row', { hasText: '/api/restart-survives' })).toBeVisible();
+
+      await restartApp.close(); // triggers before-quit -> saveSessions()
+      restartApp = undefined;
+
+      restartApp = await electron.launch({ args: [`--user-data-dir=${userDataDir}`, MAIN_PATH] });
+      const relaunchedWin = await getMainWindow(restartApp);
+      await relaunchedWin.waitForLoadState('domcontentloaded');
+
+      await relaunchedWin.click('#consoleTabMock');
+      await expect(relaunchedWin.locator('.mock-rule-row', { hasText: '/api/restart-survives' }))
+        .toBeVisible({ timeout: 10_000 });
+
+      await relaunchedWin.click('#urlbar');
+      await relaunchedWin.fill('#urlbar', fixtures.url('/network/api.html'));
+      await relaunchedWin.press('#urlbar', 'Enter');
+      const apiTab = await getTabPage(restartApp, '/network/api.html');
+      await apiTab.fill('#apiPath', '/api/restart-survives');
+      await apiTab.click('#apiFetchBtn');
+      await expect(apiTab.locator('#apiOut')).toContainText('"status":200', { timeout: 5_000 });
+      const out = JSON.parse((await apiTab.locator('#apiOut').textContent()) || '{}');
+      expect(out.body).toContain('"restarted":true');
+    } finally {
+      if (restartApp) await restartApp.close();
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
 });
