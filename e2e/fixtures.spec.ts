@@ -372,7 +372,7 @@ test('storage/set-cookie: the response detail panel shows set-cookie in the head
   await ensureResPillOn();
   await navigate(urlPath);
 
-  const responseRow = window.locator('.evt.network-response', { hasText: urlPath });
+  const responseRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(responseRow.first()).toBeVisible({ timeout: 10_000 });
 
   const headersTable = window.locator('#detailPanelContent .headers-table').filter({ hasText: 'set-cookie' });
@@ -399,7 +399,7 @@ test('network/redirect: the detail panel shows a Redirect Chain section with a 3
   // Network.responseReceived — the first hop's 302 only ever shows up via
   // the second hop's redirectResponse field. Waiting for this response row
   // is the signal the whole chain has actually completed.
-  const finalResponseRow = window.locator('.evt.network-response', { hasText: 'hops=0' });
+  const finalResponseRow = window.locator('.evt.network-request', { hasText: 'hops=0' });
   await expect(finalResponseRow).toBeVisible({ timeout: 10_000 });
 
   const redirectSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Redirect Chain' });
@@ -443,7 +443,7 @@ test('network/status-codes.html: the response detail panel shows a Timing sectio
   await ensureResPillOn();
   await navigate(urlPath);
 
-  const responseRow = window.locator('.evt.network-response', { hasText: urlPath });
+  const responseRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(responseRow.first()).toBeVisible({ timeout: 10_000 });
 
   const timingSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Timing' });
