@@ -688,6 +688,7 @@ ipcMain.handle('sessions:contextMenu', (_e, id: string) => sessionManager?.showC
 
 ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
 ipcMain.handle('recording:status',    (_e, id: string) => sessionManager?.getRecordingStatus(id) ?? null);
+ipcMain.handle('recording:oldestId',  (_e, id: string) => sessionManager?.getOldestEventId(id) ?? null);
 ipcMain.handle('recording:exportHar', (_e, id: string) => sessionManager?.exportHarDialog(id) ?? { ok: false, error: 'No session manager' });
 ipcMain.handle('recording:getRequestPostData', (_e, id: string, requestId: string) =>
   sessionManager?.getRequestPostData(id, requestId) ?? { postData: undefined }

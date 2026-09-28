@@ -432,6 +432,12 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .timeline-eviction-banner { padding: 8px 12px; margin-bottom: 4px; color: var(--warn-strong);
                              background: var(--warn-surface); border-bottom: 1px solid var(--warn-border);
                              font-size: 12px; }
+.timeline-load-older { display: block; width: 100%; padding: 6px 10px; margin: 0; font-size: 11px;
+                        font-family: inherit; text-align: center; color: var(--text-faint);
+                        background: none; border: none; border-bottom: 1px solid var(--border-color); }
+button.timeline-load-older { cursor: pointer; }
+button.timeline-load-older:hover { color: var(--text-primary); background: var(--bg-hover); }
+.timeline-load-older.loading, .timeline-load-older.exhausted { font-style: italic; }
 
 /* ── Storage panel ── */
 #storagePanel { flex: 1; display: none; flex-direction: column; min-height: 0; }

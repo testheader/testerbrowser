@@ -94,8 +94,9 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `sessions:contextMenu` | R→M | show tab right-click menu |
 | `devtools:toggle` | R→M | open/close DevTools for session |
 | `find:start/stop` | R→M | findInPage / stopFindInPage |
-| `recording:timeline` | R→M | query events (optional `sinceId` id cursor, `since` timestamp, `limit`) |
+| `recording:timeline` | R→M | query events (optional `sinceId` id cursor, `beforeId` cursor for "Load older events", `since` timestamp, `limit`) |
 | `recording:status` | R→M | `{ cap, evictedAt, evictedCount }` — recorder ring-buffer cap/eviction state |
+| `recording:oldestId` | R→M | lowest event id still stored for the session (`null` if empty) — lets the timeline know it's reached the beginning |
 | `recording:exportHar` | R→M | build a HAR 1.2 from every stored network-* row, `dialog.showSaveDialog`, write it — `{ ok, path?, canceled?, error? }` |
 | `recording:getRequestPostData` | R→M | `Network.getRequestPostData` for a request whose body CDP omitted inline (`hasPostData` without `postData`) — `{ postData? }`, undefined if the request is no longer tracked |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |

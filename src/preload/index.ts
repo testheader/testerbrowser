@@ -96,11 +96,12 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   },
 
   recording: {
-    timeline:  (id: string, opts?: { limit?: number; since?: number; sinceId?: number }) =>
+    timeline:  (id: string, opts?: { limit?: number; since?: number; sinceId?: number; beforeId?: number }) =>
                  ipcRenderer.invoke('recording:timeline', id, opts),
     replay: (req: { sessionId?: string; method: string; url: string; headers: Record<string, string>; body?: string; timeoutMs?: number }) =>
               ipcRenderer.invoke('recording:replay', req),
     status: (id: string) => ipcRenderer.invoke('recording:status', id),
+    oldestId: (id: string) => ipcRenderer.invoke('recording:oldestId', id),
     exportHar: (id: string) => ipcRenderer.invoke('recording:exportHar', id),
     getRequestPostData: (id: string, requestId: string) =>
       ipcRenderer.invoke('recording:getRequestPostData', id, requestId),

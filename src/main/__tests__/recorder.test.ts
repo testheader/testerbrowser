@@ -937,6 +937,85 @@ describe('SessionRecorder', () => {
 
       expect(recorder.getTimeline()[0].session_id).toBe('test-session');
     });
+
+    // #262: "Load older events" — the beforeId branch.
+    describe('beforeId (Load older events)', () => {
+      it('returns the nearest `limit` events below the cursor, oldest first', () => {
+        for (let i = 0; i < 10; i++) {
+          emit('Log.entryAdded', { entry: { level: 'info', text: `msg-${i}` } });
+        }
+        const all = recorder.getTimeline({ limit: 100 });
+        const cursor = all[7].id as number; // msg-7
+
+        const older = recorder.getTimeline({ beforeId: cursor, limit: 3 });
+        expect(older.map(r => r.summary)).toEqual([
+          '[info] msg-4', '[info] msg-5', '[info] msg-6',
+        ]);
+      });
+
+      it('never includes an event with id >= beforeId', () => {
+        for (let i = 0; i < 5; i++) {
+          emit('Log.entryAdded', { entry: { level: 'info', text: `msg-${i}` } });
+        }
+        const all = recorder.getTimeline({ limit: 100 });
+        const cursor = all[2].id as number;
+
+        const older = recorder.getTimeline({ beforeId: cursor, limit: 100 });
+        expect(older.every(r => (r.id as number) < cursor)).toBe(true);
+        expect(older.map(r => r.summary)).toEqual(['[info] msg-0', '[info] msg-1']);
+      });
+
+      it('returns an empty array when beforeId is already the oldest event', () => {
+        emit('Log.entryAdded', { entry: { level: 'info', text: 'only' } });
+        const [only] = recorder.getTimeline();
+        expect(recorder.getTimeline({ beforeId: only.id as number })).toEqual([]);
+      });
+
+      it('pages 450 events backward via beforeId without loss or duplicates', () => {
+        for (let i = 0; i < 450; i++) {
+          emit('Log.entryAdded', { entry: { level: 'info', text: `msg-${i}` } });
+        }
+        const seen: number[] = [];
+        let cursor = Infinity;
+        for (;;) {
+          const page = recorder.getTimeline({ beforeId: cursor, limit: 200 });
+          if (page.length === 0) break;
+          seen.unshift(...page.map(r => r.id as number));
+          cursor = page[0].id as number;
+        }
+        expect(seen).toHaveLength(450);
+        expect(new Set(seen).size).toBe(450);
+        expect([...seen].sort((a, b) => a - b)).toEqual(seen);
+      });
+    });
+  });
+
+  describe('getOldestId', () => {
+    it('returns null when nothing has been recorded', () => {
+      expect(recorder.getOldestId()).toBeNull();
+    });
+
+    it('returns the id of the first recorded event', () => {
+      emit('Log.entryAdded', { entry: { level: 'info', text: 'first' } });
+      emit('Log.entryAdded', { entry: { level: 'info', text: 'second' } });
+      const [first] = recorder.getTimeline();
+      expect(recorder.getOldestId()).toBe(first.id);
+    });
+
+    it('advances once the ring buffer trims the oldest rows', () => {
+      const { wc, emit: e } = makeMockWc();
+      const rec = new SessionRecorder(wc, {
+        sessionId: 'oldest-id-trim-session',
+        dbDir: freshDbDir(),
+        maxEventsPerSession: 50,
+      });
+      for (let i = 0; i < 100; i++) {
+        e('Log.entryAdded', { entry: { level: 'info', text: `event-${i}` } });
+      }
+      const [oldestRemaining] = rec.getTimeline({ limit: 200 });
+      expect(rec.getOldestId()).toBe(oldestRemaining.id);
+      rec.destroy();
+    });
   });
 
   // ── getAllNetworkRows ─────────────────────────────────────────────────────

@@ -383,7 +383,7 @@ export class SessionRecorder {
   }
 
   /** Query the merged timeline, most recent last. */
-  getTimeline(opts: { limit?: number; since?: number; sinceId?: number } = {}): EventRow[] {
+  getTimeline(opts: { limit?: number; since?: number; sinceId?: number; beforeId?: number } = {}): EventRow[] {
     const limit = opts.limit ?? 500;
     // id cursor: ids are unique and monotonic, so events sharing a
     // millisecond are never skipped or reordered.
@@ -393,6 +393,17 @@ export class SessionRecorder {
           `SELECT * FROM events WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT ?`
         )
         .all(this.sessionId, opts.sinceId, limit) as EventRow[];
+    }
+    // #262: "Load older events" — the `limit` rows immediately *before* the
+    // cursor (nearest first via DESC, then reversed to the same
+    // oldest-first order every other branch returns), not the absolute
+    // oldest `limit` rows in the whole session.
+    if (typeof opts.beforeId === 'number') {
+      return (
+        this.db
+          .prepare(`SELECT * FROM events WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?`)
+          .all(this.sessionId, opts.beforeId, limit) as EventRow[]
+      ).reverse();
     }
     if (opts.since) {
       return this.db
@@ -406,6 +417,16 @@ export class SessionRecorder {
         .prepare(`SELECT * FROM events WHERE session_id = ? ORDER BY id DESC LIMIT ?`)
         .all(this.sessionId, limit) as EventRow[]
     ).reverse();
+  }
+
+  /** The lowest id currently stored for this session (null if empty) — lets
+   *  the renderer tell whether "Load older events" has anything left to
+   *  fetch without guessing from an empty page result. */
+  getOldestId(): number | null {
+    const row = this.db
+      .prepare(`SELECT MIN(id) as id FROM events WHERE session_id = ?`)
+      .get(this.sessionId) as { id: number | null };
+    return row.id;
   }
 
   /** Every stored network-* row for this session, unbounded by getTimeline()'s

@@ -1894,6 +1894,13 @@ export class SessionManager {
     return this.sessions.get(id)?.recorder.getStatus() ?? null;
   }
 
+  /** #262: for the "Load older events" button — the lowest event id still
+   *  stored for this session, so the timeline can tell it's reached the
+   *  beginning instead of guessing from an empty page. */
+  getOldestEventId(id: string): number | null {
+    return this.sessions.get(id)?.recorder.getOldestId() ?? null;
+  }
+
   // --- Layout ---
 
   switchTo(id: string) {

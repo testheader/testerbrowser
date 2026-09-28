@@ -18,6 +18,13 @@ let autoScroll       = true;
 // the timeline itself until evictedAt is set, then left alone (a recorder
 // never "un-evicts").
 let evictionStatus = null;
+// #262: "Load older events" state. hasOlderEvents is only trustworthy for
+// the head (timelineEvents[0].id) it was last computed against — checkedOldestId
+// caches that id so a fast-moving live tail (which only ever appends) doesn't
+// trigger a fresh recording:oldestId round-trip on every single poll.
+let hasOlderEvents  = false;
+let checkedOldestId = null;
+let loadingOlder    = false;
 
 // Only network-request payloads carry `request.method`/`request.url`
 // directly; response/failed/body payloads only share the request's
@@ -282,6 +289,31 @@ export function renderTimeline() {
     return;
   }
 
+  // #262: independent of any active filter — a filter narrows which
+  // *loaded* rows are shown, not how far back the loaded window reaches.
+  if (timelineEvents.length > 0) {
+    if (loadingOlder) {
+      const row = document.createElement('div');
+      row.className = 'timeline-load-older loading';
+      row.textContent = 'Loading…';
+      panel.appendChild(row);
+    } else if (hasOlderEvents) {
+      const btn = document.createElement('button');
+      btn.className = 'timeline-load-older';
+      btn.textContent = '▲ Load older events';
+      btn.onclick = loadOlderEvents;
+      panel.appendChild(btn);
+    } else if (!evictionStatus?.evictedAt) {
+      // If the recorder's own cap already evicted the true beginning, the
+      // eviction banner above already explains that — showing this too
+      // would wrongly suggest the recording started right here.
+      const row = document.createElement('div');
+      row.className = 'timeline-load-older exhausted';
+      row.textContent = 'Beginning of recording';
+      panel.appendChild(row);
+    }
+  }
+
   if (filtered.length > TIMELINE_DOM_MAX) {
     const msg = document.createElement('div');
     msg.className   = 'evt-overflow-msg';
@@ -447,42 +479,128 @@ async function fetchTimelinePages() {
   }
 }
 
+// Shared by ingestEvents (new events appended at the tail) and
+// loadOlderEvents (older events prepended at the head) — both directions
+// need the same requestMeta/responseMeta/tagMeta side-table population.
+function populateMetaFromEvents(events) {
+  for (const e of events) {
+    if (!e.payload) continue;
+    if (e.kind === 'network-request') {
+      try {
+        const p = JSON.parse(e.payload);
+        if (p.requestId && p.request?.method) {
+          requestMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
+        }
+        if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
+        else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
+      } catch {}
+    } else if (e.kind === 'network-response') {
+      try {
+        const p = JSON.parse(e.payload);
+        if (p.requestId) {
+          responseMeta.set(p.requestId, { status: p.response?.status ?? null, durationMs: p.durationMs });
+          if (p.mockRuleId) tagMeta.set(p.requestId, 'mock');
+          else if (p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
+        }
+      } catch {}
+    } else if (e.kind === 'network-failed') {
+      try {
+        const p = JSON.parse(e.payload);
+        if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
+        else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
+      } catch {}
+    }
+  }
+}
+
 function ingestEvents(events) {
-  {
-    for (const e of events) {
-      if (!e.payload) continue;
-      if (e.kind === 'network-request') {
-        try {
-          const p = JSON.parse(e.payload);
-          if (p.requestId && p.request?.method) {
-            requestMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
-          }
-          if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
-          else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
-        } catch {}
-      } else if (e.kind === 'network-response') {
-        try {
-          const p = JSON.parse(e.payload);
-          if (p.requestId) {
-            responseMeta.set(p.requestId, { status: p.response?.status ?? null, durationMs: p.durationMs });
-            if (p.mockRuleId) tagMeta.set(p.requestId, 'mock');
-            else if (p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
-          }
-        } catch {}
-      } else if (e.kind === 'network-failed') {
-        try {
-          const p = JSON.parse(e.payload);
-          if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
-          else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
-        } catch {}
+  populateMetaFromEvents(events);
+  timelineEvents.push(...events);
+  if (timelineEvents.length > TIMELINE_MAX) {
+    timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
+  }
+  for (const e of events) if (e.id > lastId) lastId = e.id;
+  renderTimeline();
+  refreshOlderEventsState();
+}
+
+// #262: only re-checks the backend when the oldest *loaded* row has actually
+// changed since the last check — a live tail only ever appends, so this
+// almost never round-trips outside of an initial load or a "Load older"
+// click actually changing the head.
+async function refreshOlderEventsState() {
+  const activeId     = getActiveId();
+  const oldestLoaded = timelineEvents[0];
+  if (!activeId || !oldestLoaded || typeof oldestLoaded.id !== 'number') {
+    if (hasOlderEvents || checkedOldestId !== null) {
+      hasOlderEvents  = false;
+      checkedOldestId = null;
+      renderTimeline();
+    }
+    return;
+  }
+  if (checkedOldestId === oldestLoaded.id) return;
+  const storedOldestId = await testerBrowser.recording.oldestId(activeId);
+  if (getActiveId() !== activeId) return; // switched tabs mid-flight
+  checkedOldestId = oldestLoaded.id;
+  const next = typeof storedOldestId === 'number' && storedOldestId < oldestLoaded.id;
+  if (next !== hasOlderEvents) {
+    hasOlderEvents = next;
+    renderTimeline();
+  }
+}
+
+// #262: fetches up to 500 events immediately preceding the currently-oldest
+// loaded row and prepends them, keeping the previously-first-visible row
+// anchored at the same viewport position instead of letting the browser's
+// default scroll-anchoring (or lack of it) jump the view around.
+async function loadOlderEvents() {
+  if (loadingOlder || !hasOlderEvents) return;
+  const activeId = getActiveId();
+  if (!activeId || timelineEvents.length === 0) return;
+  const beforeId = timelineEvents[0].id;
+
+  loadingOlder = true;
+  renderTimeline();
+
+  const panel = document.getElementById('timelinePanel');
+  const scrollHeightBefore = panel.scrollHeight;
+  const scrollTopBefore    = panel.scrollTop;
+
+  try {
+    const older = await testerBrowser.recording.timeline(activeId, { beforeId, limit: 500 });
+    if (getActiveId() !== activeId) return; // switched tabs mid-flight
+
+    if (older.length === 0) {
+      hasOlderEvents  = false;
+      checkedOldestId = beforeId;
+      return;
+    }
+
+    populateMetaFromEvents(older);
+    timelineEvents.unshift(...older);
+
+    // TIMELINE_MAX still holds, but while looking backwards at history
+    // (not auto-scrolled to the live tail), an overflow here drops the
+    // *newest* rows instead of the oldest ones a live poll would drop — the
+    // just-loaded history is what the user asked for and is looking at; the
+    // live tail can be re-fetched by a later poll once they scroll back down.
+    if (timelineEvents.length > TIMELINE_MAX) {
+      if (autoScroll) {
+        timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
+      } else {
+        timelineEvents.length = TIMELINE_MAX;
+        lastId = timelineEvents[timelineEvents.length - 1].id;
       }
     }
-    timelineEvents.push(...events);
-    if (timelineEvents.length > TIMELINE_MAX) {
-      timelineEvents.splice(0, timelineEvents.length - TIMELINE_MAX);
-    }
-    for (const e of events) if (e.id > lastId) lastId = e.id;
+
+    await refreshOlderEventsState();
+  } finally {
+    loadingOlder = false;
     renderTimeline();
+    // Content was inserted above the previously-first-visible row — grow
+    // scrollTop by exactly the new content's height so that row stays put.
+    panel.scrollTop = scrollTopBefore + (panel.scrollHeight - scrollHeightBefore);
   }
 }
 
@@ -520,6 +638,9 @@ export function resetTimelineForNewSession() {
   timelineEvents.length = 0;
   lastId = 0;
   evictionStatus = null;
+  hasOlderEvents = false;
+  checkedOldestId = null;
+  loadingOlder = false;
   requestMeta.clear();
   responseMeta.clear();
   tagMeta.clear();
@@ -558,6 +679,11 @@ export function initTimeline() {
     requestMeta.clear();
     responseMeta.clear();
     tagMeta.clear();
+    // #262: no loaded rows left to anchor "Load older events" against —
+    // it'll recompute against the new head next time events are ingested.
+    hasOlderEvents = false;
+    checkedOldestId = null;
+    loadingOlder = false;
     timelinePanel.innerHTML = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     autoScroll = true;

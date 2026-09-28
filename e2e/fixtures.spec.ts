@@ -574,6 +574,43 @@ test('performance/console-flood.html: exceeding a low recorder cap shows the tim
   await window.evaluate(() => (window as any).testerBrowser.settings.set({ recorderMaxEvents: 20000 }));
 });
 
+// #262: "Load older events" — the renderer's own in-memory window
+// (TIMELINE_MAX = 5000) is well under this page's 10,000-log burst, but
+// under the recorder's default 20,000-event cap, so nothing is evicted
+// server-side: everything is still there to reload, just not currently
+// in the renderer's own window.
+test('performance/console-flood.html: "Load older events" recovers rows trimmed from the renderer\'s in-memory window (#262)', async () => {
+  await window.click('#newSessionBtn');
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/performance/console-flood.html'));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, '/performance/console-flood.html');
+  await window.click('#consoleTabConsole');
+
+  await tab.click('button:text("10,000 logs")');
+  await expect(tab.locator('#status')).toHaveText(/^done:/, { timeout: 30_000 });
+
+  await expect(window.locator('.timeline-load-older')).toBeVisible({ timeout: 15_000 });
+  await expect(window.locator('.evt', { hasText: 'flood log #0' })).toHaveCount(0);
+
+  // Click through however many 500-row pages it takes to reach the true
+  // beginning of the recording.
+  await expect(async () => {
+    if (await window.locator('.timeline-load-older.loading').count() > 0) {
+      throw new Error('still loading a page');
+    }
+    const loadMoreBtn = window.locator('button.timeline-load-older');
+    if (await loadMoreBtn.count() > 0) {
+      await loadMoreBtn.click();
+      throw new Error('more pages to load');
+    }
+    await expect(window.locator('.timeline-load-older.exhausted')).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 30_000, intervals: [300] });
+
+  await expect(window.locator('.timeline-load-older.exhausted')).toHaveText('Beginning of recording');
+  await expect(window.locator('.evt', { hasText: 'flood log #0' }).first()).toBeVisible();
+});
+
 // #261: detail tabs used to survive a session switch, showing the previous
 // tab's requests (and pointing Replay/Mock/Resilience at the wrong session).
 // Opens its own fresh tab via #newSessionBtn, same as the eviction test above.
