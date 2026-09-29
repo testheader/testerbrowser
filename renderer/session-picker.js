@@ -43,14 +43,38 @@ function buildPickerOptions(select, sessions, excludeId) {
   buildSessionOptions(select, sessions, { excludeId, extraFirstOption: { value: '', label: '— pick session —' } });
 }
 
+// #269 CI: tabs.js's refreshTabs() calls refreshDiffPickers()/
+// refreshFollowPickers() on every session-changing event (new tab,
+// navigate, rename, ...) without awaiting them, so several
+// populateSessionPickers() calls for the same pair of picker ids can be
+// in flight at once — and their `sessions.list()` IPC round-trips can
+// resolve out of order under load. Applying a stale (earlier-started,
+// later-resolving) call's session list after a fresher call already
+// rebuilt the pickers would silently overwrite the current selection with
+// options that may not even include it (e.g. a just-created session B,
+// invisible to the older snapshot) — the `<select>`'s value assignment
+// then just silently fails, clearing the picker. Keyed by the pair of
+// element ids so diff.js's and followalong.js's own pickers each track
+// their own latest call independently.
+const pickerCallSeq = new Map();
+
 // Wires up a pair of <select> elements as complementary session pickers:
 // each excludes whatever the other has selected, and changing one re-filters
 // the other's options. Shared by diff.js (session A vs B) and
 // followalong.js (leader vs follower) — same logic, previously two copies
 // that only differed in element ids. Returns the session list so the caller
-// can cache it for its own other lookups (e.g. resolving a name by id).
+// can cache it for its own other lookups (e.g. resolving a name by id), or
+// null when a newer call for this same pair of picker ids has since
+// started — the caller should skip anything it would otherwise do with a
+// stale list (e.g. diff.js caching it for name lookups).
 export async function populateSessionPickers(pickAId, pickBId) {
+  const key = `${pickAId}\u0000${pickBId}`;
+  const mySeq = (pickerCallSeq.get(key) ?? 0) + 1;
+  pickerCallSeq.set(key, mySeq);
+
   const sessions = await testerBrowser.sessions.list();
+  if (pickerCallSeq.get(key) !== mySeq) return null; // superseded while awaiting
+
   const pickA = document.getElementById(pickAId);
   const pickB = document.getElementById(pickBId);
   if (!pickA || !pickB) return sessions;

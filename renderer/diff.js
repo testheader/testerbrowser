@@ -148,7 +148,8 @@ export async function refreshDiffPickers() {
 }
 
 async function populatePickers() {
-  cachedSessions = await populateSessionPickers('diffPickA', 'diffPickB');
+  const sessions = await populateSessionPickers('diffPickA', 'diffPickB');
+  if (sessions) cachedSessions = sessions; // null means a newer call already superseded this one
 }
 
 async function runDiff() {

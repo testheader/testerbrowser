@@ -53,7 +53,8 @@ export async function refreshFollowPickers() {
 }
 
 async function populatePickers() {
-  cachedSessions = await populateSessionPickers('followPickLeader', 'followPickFollower');
+  const sessions = await populateSessionPickers('followPickLeader', 'followPickFollower');
+  if (sessions) cachedSessions = sessions; // null means a newer call already superseded this one
 }
 
 async function startFollow() {

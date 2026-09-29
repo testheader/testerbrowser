@@ -108,8 +108,24 @@ test('Reset clears the comparison back to its initial state and disables HAR exp
 // independence), so each test passes identically alone (`-g`) or as part of
 // the full file, in any order.
 async function setupDiffFreeTextComparison(): Promise<{ sessionAId: string; sessionBId: string }> {
-  const sharedPath = '/network/status-codes.html';
-  const onlyAPath = '/downloads/sample.txt';
+  // #269 CI: a bare, fixed path here let getTabPage() match a *stale* tab
+  // left over from an earlier call to this same helper (it matches by URL
+  // substring across every window the app has, with no way to exclude old
+  // ones) — under --repeat-each and/or a slower CI runner, multiple prior
+  // tabs already sit at these exact paths, and getTabPage() has no reason to
+  // prefer the newest one. waitForLoadState('load') on that wrong, already-
+  // loaded tab resolved instantly, so the test raced ahead believing session
+  // A had navigated when its real tab's request was still in flight (or,
+  // once diffPickA/B pointed at the right sessions but the wrong tab had
+  // been polled, simply never got recorded before the assert ran) — root-
+  // caused by instrumenting recording.timeline() directly and catching a
+  // live failure where session A's own recording genuinely never contained
+  // the sample.txt request. A run-unique query string makes every path this
+  // helper visits impossible to confuse with another call's, so getTabPage()
+  // can only ever find *this* call's own tab.
+  const nonce = `?run=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sharedPath = '/network/status-codes.html' + nonce;
+  const onlyAPath = '/downloads/sample.txt' + nonce;
 
   const idsBefore = new Set(
     (await window.evaluate(() => (window as any).testerBrowser.sessions.list())).map((s: { id: string }) => s.id)
