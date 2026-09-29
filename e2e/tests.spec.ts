@@ -780,3 +780,91 @@ test('playback of a fill step reaches a React-style controlled input, not just t
   // played-back value, proving the native prototype setter was used.
   await expect(tab.locator('#lastSeenValue')).toHaveText('Grace');
 });
+
+// ── Recording survives a fast navigation (#273) ─────────────────────────────
+
+test('a click that fires immediately on a fast-loading page right after navigation is still recorded (#273)', async () => {
+  const sourcePath = '/record/nav-source.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(sourcePath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, sourcePath);
+  await tab.waitForLoadState('load');
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'fast navigation');
+  await window.click('#rpStartBtn');
+
+  // nav-target.html clicks its own button synchronously, as the very first
+  // thing its own inline script does — the tightest possible version of the
+  // "interaction right after navigation" race described in #273. The old
+  // reactive re-injection (executeJavaScript after did-navigate) could never
+  // win this; the CDP-registered script can, since it's guaranteed to run
+  // before any script the new document owns.
+  await tab.click('[data-testid="nav-go-btn"]');
+  await tab.waitForURL(/nav-target\.html/);
+  await expect(tab.locator('[data-testid="nav-target-result"]')).toHaveAttribute('data-status', 'clicked');
+
+  await window.click('#rpStopBtn');
+
+  // Two clicks: the nav-triggering click on the source page, and the
+  // self-fired click on the target page — nothing lost in between.
+  const liveSteps = window.locator('#rpLiveSteps .rp-live-step');
+  await expect(liveSteps).toHaveCount(2);
+  await expect(liveSteps.nth(1).locator('.rp-step-desc')).toHaveText('[data-testid="nav-target-btn"]');
+
+  await window.click('#rpSaveBtn');
+
+  // Reset the target's observable state and replay from the top (source
+  // page) so a pass is a real effect of Run, not a leftover from recording.
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(sourcePath));
+  await window.press('#urlbar', 'Enter');
+  await tab.waitForURL(new RegExp(sourcePath.replace('/', '\\/')));
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'fast navigation' });
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+});
+
+// ── Recording captures interactions inside a same-origin iframe (#273) ─────
+
+test('a click inside a same-origin iframe is recorded with frame context and replays against that frame (#273)', async () => {
+  const urlPath = '/record/iframe-host.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+  const iframe = tab.frameLocator('[data-testid="rp-iframe"]');
+  await iframe.locator('[data-testid="rp-iframe-btn"]').waitFor();
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'iframe click');
+  await window.click('#rpStartBtn');
+
+  await iframe.locator('[data-testid="rp-iframe-btn"]').click();
+
+  await window.click('#rpStopBtn');
+  await expect(window.locator('#rpLiveSteps .rp-live-step')).toHaveCount(1);
+
+  await window.click('#rpSaveBtn');
+
+  // Reload the host page so the iframe's observable state is back to idle —
+  // a pass below is only meaningful if Run genuinely re-fires the click.
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await tab.waitForLoadState('load');
+  await expect(iframe.locator('[data-testid="rp-iframe-result"]')).toHaveAttribute('data-status', 'idle');
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'iframe click' });
+  await testItem.locator('.rp-run-once').click();
+  // A frame-unaware playback would run buildPlaybackScript's generated JS
+  // against the main frame, where [data-testid="rp-iframe-btn"] doesn't
+  // exist at all — that would fail with "Element not found", not silently
+  // pass, so a genuine pass here proves both that the iframe click was
+  // recorded and that playback located the right frame to replay it in.
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+  await expect(iframe.locator('[data-testid="rp-iframe-result"]')).toHaveAttribute('data-status', 'clicked');
+});

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iframe inner content</title>
+</head>
+<body>
+<button data-testid="rp-iframe-btn">Click inside iframe</button>
+<p id="rp-iframe-result" data-testid="rp-iframe-result" data-status="idle"></p>
+<script>
+  document.querySelector('[data-testid="rp-iframe-btn"]').addEventListener('click', function () {
+    document.getElementById('rp-iframe-result').textContent = 'clicked';
+    document.getElementById('rp-iframe-result').dataset.status = 'clicked';
+  });
+</script>
+</body>
+</html>

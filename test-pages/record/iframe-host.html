@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Record Playback — iframe host</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / record / iframe host</nav>
+<h1>Same-origin iframe recording target</h1>
+<p>Contains a same-origin <code>&lt;iframe&gt;</code> whose own button click must be
+captured by the recorder (#273) — the iframe has its own <code>window</code>, and thus
+its own <code>window.__tbTestSteps</code> buffer, entirely separate from this page's.</p>
+<iframe src="iframe-inner.html" data-testid="rp-iframe" style="width:400px;height:200px;border:1px solid #ccc;"></iframe>
+</body>
+</html>

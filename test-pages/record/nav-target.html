@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Record Playback — fast-navigation target</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / record / nav-target</nav>
+<h1>Fast-navigation target</h1>
+<p>The button below is wired up by an inline <code>&lt;script&gt;</code> placed
+immediately after it in source order — clickable the instant this document's own
+scripts run, no <code>DOMContentLoaded</code> wait, to keep the #273 recording race
+window as tight as a static fixture allows.</p>
+<p><button data-testid="nav-target-btn">Click me</button></p>
+<p id="nav-target-result" data-testid="nav-target-result" data-status="idle"></p>
+<script>
+  document.querySelector('[data-testid="nav-target-btn"]').addEventListener('click', function () {
+    document.getElementById('nav-target-result').textContent = 'clicked';
+    document.getElementById('nav-target-result').dataset.status = 'clicked';
+  });
+  // Fires the click itself, synchronously, as this document's own very first
+  // script runs — the tightest possible version of the #273 race: a
+  // recorder that only re-injects reactively (after did-navigate, via an
+  // async executeJavaScript round-trip) can never win this, since that
+  // round-trip cannot complete before this line runs. A recorder installed
+  // via CDP's Page.addScriptToEvaluateOnNewDocument, which is guaranteed to
+  // run before any script this document owns, always catches it. Driving
+  // the click from the page itself (rather than relying on a test runner's
+  // own timing) keeps this deterministic instead of CI-speed-dependent.
+  document.querySelector('[data-testid="nav-target-btn"]').click();
+</script>
+</body>
+</html>

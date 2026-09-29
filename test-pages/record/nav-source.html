@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Record Playback — fast-navigation source</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / record / nav-source</nav>
+<h1>Fast-navigation source</h1>
+<p>Clicking the button below navigates immediately via <code>location.href</code> — no
+delay, no async work in between — to <a href="nav-target.html">nav-target.html</a>,
+exercising the #273 "steps taken right after navigation get lost" recording gap.</p>
+<p><button data-testid="nav-go-btn" onclick="location.href='nav-target.html'">Go</button></p>
+</body>
+</html>

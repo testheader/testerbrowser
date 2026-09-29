@@ -1121,7 +1121,11 @@ const RECORDING_SCRIPT = `(function(){
     }
     return parts.join(' > ');
   }
-  function addStep(step){window.__tbTestSteps.push(Object.assign({id:Date.now()+'_'+Math.random().toString(36).slice(2),timestamp:Date.now(),url:location.href},step));}
+  function addStep(step){
+    var extra={id:Date.now()+'_'+Math.random().toString(36).slice(2),timestamp:Date.now(),url:location.href};
+    if(window.top!==window.self)extra.frameUrl=location.href;
+    window.__tbTestSteps.push(Object.assign(extra,step));
+  }
   document.addEventListener('click',function(e){
     var el=e.target;if(!el||el===document.documentElement||el===document.body)return;
     addStep({type:'click',selector:genSel(el),description:((el.textContent||el.value||el.getAttribute('aria-label')||'').trim()).slice(0,60),tagName:el.tagName.toLowerCase()});
@@ -1157,6 +1161,13 @@ const RECORDING_SCRIPT = `(function(){
   var or=history.replaceState.bind(history);history.replaceState=function(){or.apply(history,arguments);addStep({type:'navigate',url:location.href});};
 })();`;
 
+// #273: each frame (main or iframe) has its own `window`, so RECORDING_SCRIPT's
+// window.__tbTestSteps buffer lives separately per frame — these run per-frame
+// via WebFrameMain.executeJavaScript, not once against the main webContents,
+// so steps recorded inside a same-origin iframe are actually collected.
+const HARVEST_STEPS_SCRIPT = `(function(){return (window.__tbTestSteps||[]).map(function(x){return x;});})()`;
+const HARVEST_AND_CLEAR_STEPS_SCRIPT = `(function(){var r=(window.__tbTestSteps||[]).slice();window.__tbTestSteps=[];window.__tbRecording=false;return r;})()`;
+
 export interface TestStep {
   id: string;
   type: 'navigate' | 'click' | 'fill' | 'check' | 'assert-visible' | 'assert-not-visible' | 'assert-text' | 'assert-value' | 'assert-url' | 'assert-attr' | 'assert-enabled' | 'wait-visible' | 'wait-navigation';
@@ -1176,6 +1187,14 @@ export interface TestStep {
   // never-persisted value collected from the tester before calling
   // playbackStep for this step.
   sensitive?: boolean;
+  // #273: set only when the step was recorded inside a non-top frame (an
+  // iframe has its own `window`, so window.top !== window.self there) — the
+  // frame's own location.href at record time. Absent for main-frame steps,
+  // so existing saved tests (and their playback) are unaffected. playbackStep
+  // uses this to find the matching live frame via framesInSubtree before
+  // running buildPlaybackScript's generated JS in it, instead of always
+  // running against the main frame.
+  frameUrl?: string;
 }
 
 // Pulled out as a pure function so the followAlong:stepResult payload shape
@@ -1331,6 +1350,12 @@ export class SessionManager {
   private playingIds = new Set<string>();
   // CDP script identifier of the injected Date-override shim, keyed by session id.
   private dateOverrideScripts = new Map<string, string>();
+  // #273: CDP script identifier of RECORDING_SCRIPT, keyed by session id —
+  // same lifecycle as dateOverrideScripts, registered via
+  // Page.addScriptToEvaluateOnNewDocument so the recorder is listening from
+  // a new document's very first script execution (no reactive re-injection
+  // window after did-navigate where interactions go unrecorded).
+  private recordingScripts = new Map<string, string>();
   // Per-session navigation history, newest entry last — cleared on destroy.
   private sessionHistory = new Map<string, HistoryEntry[]>();
   // #236: requests parked open by a `hang` Resilience rule — keyed by
@@ -3824,6 +3849,7 @@ export class SessionManager {
     this.lastRecordingSteps.delete(id);
     this.playingIds.delete(id);
     this.dateOverrideScripts.delete(id);
+    this.recordingScripts.delete(id);
     this.sessionHistory.delete(id);
     const hung = this.hungRequests.get(id);
     if (hung) {
@@ -3834,20 +3860,26 @@ export class SessionManager {
     this.log.info('sessions', 'Session destroyed', { sessionId: id });
   }
 
-  // Reads the page's live in-progress steps and merges them (by id) into the
-  // session's recording buffer, which — unlike window.__tbTestSteps — survives
-  // a full page navigation destroying the current JS context.
+  // Reads every frame's live in-progress steps and merges them (by id) into
+  // the session's recording buffer, which — unlike window.__tbTestSteps —
+  // survives a full page navigation destroying the current JS context. Each
+  // frame (main or iframe) has its own `window`, so this walks the frame
+  // tree rather than reading once off the main webContents (#273) — a step
+  // recorded inside a same-origin iframe lives in that iframe's own
+  // window.__tbTestSteps, invisible from the main frame's context.
   private async harvestRecordingSteps(id: string): Promise<void> {
     const s = this.sessions.get(id);
     if (!s) return;
-    try {
-      const steps = await s.view.webContents.executeJavaScript(`(window.__tbTestSteps||[]).map(function(x){return x;})`);
-      if (!Array.isArray(steps)) return;
-      let buf = this.recordingBuffers.get(id);
-      if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
-      for (const step of steps as TestStep[]) buf.set(step.id, step);
-      // silent: runs on every pollRecordingSteps() poll (~1s) and every nav while recording
-    } catch {}
+    let buf = this.recordingBuffers.get(id);
+    if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
+    for (const frame of s.view.webContents.mainFrame.framesInSubtree) {
+      try {
+        const steps = await frame.executeJavaScript(HARVEST_STEPS_SCRIPT);
+        if (!Array.isArray(steps)) continue;
+        for (const step of steps as TestStep[]) buf.set(step.id, step);
+        // silent: runs on every pollRecordingSteps() poll (~1s) and every nav while recording
+      } catch {}
+    }
   }
 
   private getBufferedSteps(id: string): TestStep[] {
@@ -3860,22 +3892,51 @@ export class SessionManager {
     const s = this.sessions.get(id);
     if (!s) return false;
     this.recordingBuffers.set(id, new Map());
-    await s.view.webContents.executeJavaScript(RECORDING_SCRIPT).catch((e) => this.log.warn('recording', 'Failed to inject recording script', { sessionId: id, error: String(e) }));
-    const navHandler = () => {
-      s.view.webContents.executeJavaScript(RECORDING_SCRIPT)
-        .catch((e) => this.log.warn('recording', 'Failed to re-inject recording script after navigation', { sessionId: id, error: String(e) }));
-    };
+
+    // #273: Page.addScriptToEvaluateOnNewDocument runs RECORDING_SCRIPT
+    // before any of a new document's own scripts do, for every frame the
+    // target creates (main frame and same-origin iframes alike) — unlike the
+    // old approach of re-injecting via executeJavaScript() reactively from a
+    // did-navigate handler, which only ran *after* the new page's own script
+    // had already had a chance to run, silently dropping any interaction in
+    // that window. Cross-origin iframes: Electron's webContents.debugger is
+    // a single CDP session on the main frame's target: Chromium only
+    // delivers Page.addScriptToEvaluateOnNewDocument to frames rendered in
+    // that same renderer process, so a cross-origin (out-of-process) iframe
+    // never receives it — confirmed locally (e2e/tests.spec.ts's iframe test
+    // below only exercises the guaranteed-working same-origin case). This
+    // matches the ticket's documented "cross-origin iframe recording" as an
+    // accepted, unfixed limitation.
+    const dbg = s.view.webContents.debugger;
+    await dbg.sendCommand('Page.enable').catch((e) => this.warnCdpFailure(id, 'Page.enable', e));
+    const existingScriptId = this.recordingScripts.get(id);
+    if (existingScriptId) {
+      await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId })
+        .catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
+      this.recordingScripts.delete(id);
+    }
+    const result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: RECORDING_SCRIPT })
+      .catch((e) => { this.warnCdpFailure(id, 'Page.addScriptToEvaluateOnNewDocument', e); return null; }) as { identifier: string } | null;
+    if (result?.identifier) this.recordingScripts.set(id, result.identifier);
+    else this.log.error('recording', 'Failed to register recording script — new navigations may drop early interactions', { sessionId: id });
+
+    // The CDP registration above only covers *future* document creations —
+    // inject into whatever's already loaded (main frame and any existing
+    // same-origin iframes) too, same as before.
+    for (const frame of s.view.webContents.mainFrame.framesInSubtree) {
+      await frame.executeJavaScript(RECORDING_SCRIPT)
+        .catch((e) => this.log.warn('recording', 'Failed to inject recording script', { sessionId: id, error: String(e), frameUrl: frame.url }));
+    }
+
     // A full navigation destroys the outgoing page's JS context (and
     // window.__tbTestSteps with it) before did-navigate fires, so harvest
-    // whatever's recorded so far while that context is still alive.
+    // whatever's recorded so far while that context is still alive. This is
+    // the only nav-time handler needed now — re-injection is handled by the
+    // CDP script registration above, not a did-navigate listener.
     const preNavHandler = () => { this.harvestRecordingSteps(id); };
     s.view.webContents.on('will-navigate', preNavHandler);
-    s.view.webContents.on('did-navigate', navHandler);
-    s.view.webContents.on('did-navigate-in-page', navHandler);
     this.recordingHandlers.set(id, () => {
       s.view.webContents.off('will-navigate', preNavHandler);
-      s.view.webContents.off('did-navigate', navHandler);
-      s.view.webContents.off('did-navigate-in-page', navHandler);
     });
     this.log.info('recording', 'Recording started', { sessionId: id });
     return true;
@@ -3893,17 +3954,25 @@ export class SessionManager {
     if (!s) return [];
     const dispose = this.recordingHandlers.get(id);
     if (dispose) { dispose(); this.recordingHandlers.delete(id); }
-    try {
-      const steps = await s.view.webContents.executeJavaScript(
-        `(function(){var r=(window.__tbTestSteps||[]).slice();window.__tbTestSteps=[];window.__tbRecording=false;return r;})()`
-      );
-      if (Array.isArray(steps)) {
-        let buf = this.recordingBuffers.get(id);
-        if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
-        for (const step of steps as TestStep[]) buf.set(step.id, step);
+
+    const scriptId = this.recordingScripts.get(id);
+    if (scriptId) {
+      await s.view.webContents.debugger.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: scriptId })
+        .catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
+      this.recordingScripts.delete(id);
+    }
+
+    let buf = this.recordingBuffers.get(id);
+    if (!buf) { buf = new Map(); this.recordingBuffers.set(id, buf); }
+    for (const frame of s.view.webContents.mainFrame.framesInSubtree) {
+      try {
+        const steps = await frame.executeJavaScript(HARVEST_AND_CLEAR_STEPS_SCRIPT);
+        if (Array.isArray(steps)) {
+          for (const step of steps as TestStep[]) buf.set(step.id, step);
+        }
+      } catch (e) {
+        this.log.warn('recording', 'Failed to harvest final recording steps on stop', { sessionId: id, error: String(e), frameUrl: frame.url });
       }
-    } catch (e) {
-      this.log.warn('recording', 'Failed to harvest final recording steps on stop', { sessionId: id, error: String(e) });
     }
     const result = this.getBufferedSteps(id);
     if (result.length) this.lastRecordingSteps.set(id, result);
@@ -3915,6 +3984,27 @@ export class SessionManager {
   async playbackStep(id: string, step: TestStep): Promise<{ success: boolean; error?: string }> {
     const s = this.sessions.get(id);
     if (!s) return { success: false, error: 'Session not found' };
+    // #273: a step recorded inside an iframe carries the frame's own URL —
+    // run the generated script against that live frame (matched by URL, the
+    // same primitive restoreSnapshot()'s applyFrame uses for #243) instead
+    // of the main frame. The ordinary (no frameUrl) case keeps using
+    // webContents.executeJavaScript rather than a captured mainFrame
+    // reference — a step immediately after one that itself navigates (e.g.
+    // a click step whose handler changes location.href) needs the *current*
+    // main frame at call time, not a WebFrameMain snapshot that may not
+    // track across that navigation the same way.
+    if (step.frameUrl) {
+      const frame = s.view.webContents.mainFrame.framesInSubtree.find((f) => f.url === step.frameUrl);
+      if (!frame) return { success: false, error: `Frame not found: ${step.frameUrl}` };
+      try {
+        const result = await frame.executeJavaScript(buildPlaybackScript(step));
+        if (result && typeof result === 'object') return result as { success: boolean; error?: string };
+        return { success: true };
+      } catch (e) {
+        this.log.error('sessions', `Playback '${step.type}'${step.selector ? ` (${step.selector})` : ''} failed: ${String(e)}`, { sessionId: id });
+        return { success: false, error: String(e) };
+      }
+    }
     try {
       const result = await s.view.webContents.executeJavaScript(buildPlaybackScript(step));
       if (result && typeof result === 'object') return result as { success: boolean; error?: string };
