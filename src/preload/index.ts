@@ -251,6 +251,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     setPlaybackActive: (id: string, active: boolean) => ipcRenderer.invoke('session:setPlaybackActive', id, active),
     countSelectorMatches: (id: string, selector: string) => ipcRenderer.invoke('session:countSelectorMatches', id, selector),
     captureScreenshot: (id: string) => ipcRenderer.invoke('session:captureScreenshot', id),
+    exportTests: (id?: string) => ipcRenderer.invoke('tests:exportTests', id),
+    importTests: () => ipcRenderer.invoke('tests:importTests'),
   },
 
   followAlong: {

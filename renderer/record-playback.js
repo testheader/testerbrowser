@@ -24,6 +24,15 @@ let receivedCount = 0;
 let stepAdvance = null;
 let stepStopped = false;
 
+// #274: a run in progress (Run or Run N×) — mirrors the isRecording disable
+// pattern for Start/Stop. Set for the whole runTest() call (repeat runs
+// included), not just a single executeTest() pass, so Run/Run N× stay
+// disabled across every run of a "Run N×" sequence, not just the first.
+let isRunning = false;
+// Checked between steps (not mid-playbackStep — a step already dispatched
+// to the page can't be safely interrupted) and between repeat runs.
+let cancelRequested = false;
+
 export function initRecordPlayback() {
   const panel = document.getElementById('testsPanel');
   if (initialized) { refreshTestList(); return; }
@@ -53,6 +62,11 @@ export function initRecordPlayback() {
         <label class="rp-step-mode-toggle" title="Pause after each step instead of running the test straight through — useful for debugging where a script fails. Applies to the single Run button only, not Run N×.">
           <input type="checkbox" id="rpStepModeToggle" /> Step-by-step playback
         </label>
+        <div class="rp-io-row">
+          <button class="rp-btn rp-btn-sm" id="rpExportAllBtn" type="button">Export all…</button>
+          <button class="rp-btn rp-btn-sm" id="rpImportBtn" type="button">Import…</button>
+          <span class="status-msg" id="rpIoStatus"></span>
+        </div>
         <div id="rpTestList" class="rp-test-list"></div>
       </div>
 
@@ -66,6 +80,7 @@ export function initRecordPlayback() {
               <button class="rp-btn rp-btn-sm" id="rpNextStepBtn">Next</button>
               <button class="rp-btn rp-btn-sm rp-btn-stop" id="rpStopStepBtn">Stop</button>
             </div>
+            <button class="rp-btn rp-btn-sm rp-btn-stop" id="rpCancelBtn" hidden>Cancel</button>
             <button class="rp-btn rp-btn-sm" id="rpRunClose" title="Close" aria-label="Close">&#10005;</button>
           </div>
           <div class="rp-progress-bar"><div class="rp-progress-fill" id="rpProgressFill"></div></div>
@@ -90,6 +105,31 @@ export function initRecordPlayback() {
   });
   document.getElementById('rpNextStepBtn').addEventListener('click', () => resolveStepAdvance('next'));
   document.getElementById('rpStopStepBtn').addEventListener('click', () => resolveStepAdvance('stop'));
+  document.getElementById('rpCancelBtn').addEventListener('click', requestCancel);
+
+  // #274: export/import a JSON file of saved tests — id/createdAt/updatedAt
+  // are never round-tripped (export strips them; import always mints a
+  // fresh id, and appends " (imported)" to the name on a collision rather
+  // than overwriting an existing saved test). Mirrors Mock rules' export/
+  // import (#264).
+  document.getElementById('rpExportAllBtn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('rpIoStatus');
+    const result = await testerBrowser.tests.exportTests();
+    if (result.canceled) { statusEl.textContent = ''; return; }
+    statusEl.textContent = result.ok
+      ? `Exported to ${result.path.split(/[\\/]/).pop()}`
+      : (result.error || 'Export failed');
+  });
+  document.getElementById('rpImportBtn').addEventListener('click', async () => {
+    const statusEl = document.getElementById('rpIoStatus');
+    const result = await testerBrowser.tests.importTests();
+    if (result.canceled) { statusEl.textContent = ''; return; }
+    if (!result.ok) { statusEl.textContent = result.error || 'Import failed'; return; }
+    statusEl.textContent = result.skipped
+      ? `Imported ${result.imported} test(s) (${result.skipped} skipped: ${result.firstSkipReason})`
+      : `Imported ${result.imported} test(s)`;
+    await refreshTestList();
+  });
 
   refreshTestList();
 }
@@ -498,9 +538,10 @@ function renderTestList() {
       </div>
       <div class="rp-test-meta">${t.steps.length} steps</div>
       <div class="rp-test-actions">
-        <button class="rp-btn rp-btn-sm rp-run-once" data-id="${t.id}">Run</button>
-        <input class="rp-input rp-repeat-input" type="number" min="1" max="500" value="10" data-id="${t.id}" title="Number of times to run" />
-        <button class="rp-btn rp-btn-sm rp-run-many" data-id="${t.id}">Run N×</button>
+        <button class="rp-btn rp-btn-sm rp-run-once" data-id="${t.id}" ${isRunning ? 'disabled' : ''}>Run</button>
+        <input class="rp-input rp-repeat-input" type="number" min="1" max="500" value="10" data-id="${t.id}" title="Number of times to run" ${isRunning ? 'disabled' : ''} />
+        <button class="rp-btn rp-btn-sm rp-run-many" data-id="${t.id}" ${isRunning ? 'disabled' : ''}>Run N×</button>
+        <button class="rp-btn rp-btn-sm rp-export-test" data-id="${t.id}" title="Export this test">Export</button>
         <button class="rp-btn rp-btn-sm rp-btn-del" data-id="${t.id}" title="Delete test" aria-label="Delete test">&#10005;</button>
       </div>
       ${t.id === expandedTestId ? `<div class="rp-saved-steps" id="rpSavedSteps-${t.id}">${renderSavedStepsHtml(t)}</div>` : ''}
@@ -534,6 +575,16 @@ function renderTestList() {
       const clamped = Math.min(n, 500);
       input.value = String(clamped);
       runTest(btn.dataset.id, clamped);
+    });
+  });
+  el.querySelectorAll('.rp-export-test').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const statusEl = document.getElementById('rpIoStatus');
+      const result = await testerBrowser.tests.exportTests(btn.dataset.id);
+      if (result.canceled) { statusEl.textContent = ''; return; }
+      statusEl.textContent = result.ok
+        ? `Exported to ${result.path.split(/[\\/]/).pop()}`
+        : (result.error || 'Export failed');
     });
   });
   el.querySelectorAll('.rp-btn-del').forEach(btn => {
@@ -684,7 +735,18 @@ function promptForSensitiveValues(steps) {
   });
 }
 
+// #274: resolved between steps/runs, never mid-playbackStep — a step
+// already dispatched to the page can't be safely interrupted.
+function requestCancel() {
+  if (!isRunning) return;
+  cancelRequested = true;
+}
+
 async function runTest(testId, runCount) {
+  // Run/Run N× are disabled in the DOM while a run is in progress, but this
+  // guards the same invariant at the call site — e.g. against a click that
+  // slipped in before the disabled attribute's re-render landed.
+  if (isRunning) return;
   const test = savedTests.find(t => t.id === testId);
   if (!test) return;
   const sessionId = getActiveId();
@@ -692,6 +754,11 @@ async function runTest(testId, runCount) {
 
   const sensitiveValues = await promptForSensitiveValues(test.steps);
   if (sensitiveValues === null) return; // tester cancelled the run
+
+  isRunning = true;
+  cancelRequested = false;
+  document.getElementById('rpCancelBtn').hidden = false;
+  renderTestList(); // disables every Run/Run N× button while this run is active
 
   // #259: the main process has no other signal marking a run's start/end (a
   // run is just a sequence of individual session:playbackStep calls) but
@@ -702,6 +769,10 @@ async function runTest(testId, runCount) {
     await runTestSteps(test, runCount, sensitiveValues);
   } finally {
     await testerBrowser.tests.setPlaybackActive(sessionId, false);
+    isRunning = false;
+    cancelRequested = false;
+    document.getElementById('rpCancelBtn').hidden = true;
+    renderTestList();
   }
 }
 
@@ -726,8 +797,14 @@ async function runTestSteps(test, runCount, sensitiveValues) {
   const allRunResults = [];
   let passed = 0;
   let failed = 0;
+  let cancelled = false;
 
   for (let run = 0; run < runCount; run++) {
+    if (cancelRequested) {
+      cancelled = true;
+      document.getElementById('rpRunStatus').textContent = `Cancelled after step 0/${test.steps.length}`;
+      break;
+    }
     if (runCount > 1) {
       document.getElementById('rpRunTitle').textContent = `${test.name} (${run + 1}/${runCount})`;
     }
@@ -747,9 +824,14 @@ async function runTestSteps(test, runCount, sensitiveValues) {
     if (runCount > 1) {
       document.getElementById('rpProgressFill').style.width = `${Math.round((run + 1) / runCount * 100)}%`;
     }
+    if (result.cancelled) { cancelled = true; break; }
   }
 
-  if (runCount > 1) {
+  // A cancellation's own "Cancelled after step N/M" status (set inside
+  // executeTest, or by the between-runs check above) is the final word on
+  // this run — a repeat-count summary showing partial pass/fail counts
+  // would read as if the run completed normally instead of being stopped.
+  if (runCount > 1 && !cancelled) {
     showRepeatResults(test, allRunResults, passed, failed, runCount);
   }
 }
@@ -771,9 +853,17 @@ async function executeTest(test, silent, stepByStep = false, sensitiveValues = n
   const stepResults = [];
   let failed = false;
   let stopped = false;
+  let cancelled = false;
   let currentRow = null;
 
   for (let i = 0; i < test.steps.length; i++) {
+    // Checked between steps only — a step already dispatched via
+    // playbackStep can't be safely interrupted mid-flight (#274).
+    if (cancelRequested) {
+      cancelled = true;
+      document.getElementById('rpRunStatus').textContent = `Cancelled after step ${i}/${test.steps.length}`;
+      break;
+    }
     const step = test.steps[i];
     const pct = Math.round((i / test.steps.length) * 100);
     document.getElementById('rpProgressFill').style.width = `${pct}%`;
@@ -842,14 +932,16 @@ async function executeTest(test, silent, stepByStep = false, sensitiveValues = n
     }
   }
 
-  if (stopped) {
+  if (cancelled) {
+    // rpRunStatus already shows "Cancelled after step N/M" from the check above.
+  } else if (stopped) {
     document.getElementById('rpRunStatus').textContent = `Stopped after step ${stepResults.length}/${test.steps.length}`;
   } else if (!failed && !silent) {
     document.getElementById('rpProgressFill').style.width = '100%';
     document.getElementById('rpRunStatus').textContent = 'All steps passed ✓';
   }
 
-  return { passed: !failed && !stopped, stepResults, stopped };
+  return { passed: !failed && !stopped && !cancelled, stepResults, stopped, cancelled };
 }
 
 function showRepeatResults(test, allRunResults, passed, failed, total) {
@@ -895,7 +987,7 @@ function showRepeatResults(test, allRunResults, passed, failed, total) {
     ` : ''}
     ${failedRunIndices.length > 0 ? `
       <div class="rp-failed-runs">Failed runs: ${failedRunIndices.join(', ')}
-        ${failedRunIndices.length > 0 ? `<button class="rp-btn rp-btn-sm" id="rpReplayFailed" data-run="${failedRunIndices[0]}">Replay Run #${failedRunIndices[0]}</button>` : ''}
+        <button class="rp-btn rp-btn-sm" id="rpReplayFailed">Run again</button>
       </div>
     ` : ''}
   `;

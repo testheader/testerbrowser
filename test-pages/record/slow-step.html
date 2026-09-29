@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Record Playback — slow step target</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / record / slow-step</nav>
+<h1>Slow step target</h1>
+<p>Clicking the button fires a request against the fixture server's
+<code>/network/slow?ms=N</code> delay route; a <code>data-testid="rp-slow-done"</code>
+element only appears in the DOM once that request resolves. Paired with a
+<code>wait-visible</code> playback step, this gives a Record/Playback run a real,
+observable delay per run — used by #274's cancel-mid-run e2e coverage.</p>
+<p><button data-testid="rp-slow-btn">Fetch slowly</button></p>
+<div id="rp-slow-container"></div>
+<script>
+  document.querySelector('[data-testid="rp-slow-btn"]').addEventListener('click', async () => {
+    const params = new URLSearchParams(location.search);
+    const ms = params.get('ms') || '1000';
+    await fetch('/network/slow?ms=' + ms);
+    const done = document.createElement('div');
+    done.setAttribute('data-testid', 'rp-slow-done');
+    done.textContent = 'done';
+    document.getElementById('rp-slow-container').appendChild(done);
+  });
+</script>
+</body>
+</html>

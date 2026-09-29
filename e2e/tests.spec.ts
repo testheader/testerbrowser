@@ -868,3 +868,131 @@ test('a click inside a same-origin iframe is recorded with frame context and rep
   await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
   await expect(iframe.locator('[data-testid="rp-iframe-result"]')).toHaveAttribute('data-status', 'clicked');
 });
+
+// ── Cancellable runs, concurrent-run guard, export/import (#274) ───────────
+
+test('Cancel stops a run in progress between runs, and the Run buttons re-enable afterward (#274)', async () => {
+  const testPath = '/record/slow-step.html?ms=800';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(testPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, testPath);
+  await tab.waitForLoadState('load');
+
+  await window.click('#consoleTabTests');
+
+  // Constructed directly via the exposed API rather than recorded live —
+  // this test is about Cancel's behaviour, not the recorder — with a real
+  // per-run network delay (the fixture server's /network/slow route) so a
+  // "Run 15×" definitely has a couple of runs still going when Cancel lands.
+  const navigateUrl = fixtures.url(testPath);
+  await window.evaluate(async (url) => {
+    await testerBrowser.tests.save({
+      id: 'cancel-test-274',
+      name: 'cancel test 274',
+      steps: [
+        { id: 's1', type: 'navigate', url },
+        { id: 's2', type: 'click', selector: '[data-testid="rp-slow-btn"]' },
+        { id: 's3', type: 'wait-visible', selector: '[data-testid="rp-slow-done"]' },
+      ],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }, navigateUrl);
+  await window.click('#consoleTabTests'); // re-clicking refreshes the list from the store
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'cancel test 274' });
+  await expect(testItem).toBeVisible();
+  await testItem.locator('.rp-repeat-input').fill('15');
+  await testItem.locator('.rp-run-many').click();
+
+  // Each run takes ~800ms+ (navigate + click + wait for the delayed fetch) —
+  // long enough that a couple of runs are still ahead of this.
+  await window.waitForTimeout(1800);
+  await expect(testItem.locator('.rp-run-once')).toBeDisabled();
+  await window.click('#rpCancelBtn');
+
+  await expect(window.locator('#rpRunStatus')).toContainText('Cancelled', { timeout: 10_000 });
+  await expect(window.locator('#rpCancelBtn')).toBeHidden();
+  await expect(testItem.locator('.rp-run-once')).toBeEnabled();
+  await expect(testItem.locator('.rp-run-many')).toBeEnabled();
+});
+
+test('clicking Run twice quickly only starts one run — Run/Run N× stay disabled for its duration (#274)', async () => {
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'cancel test 274' });
+  await expect(testItem).toBeVisible();
+
+  const runBtn = testItem.locator('.rp-run-once');
+  const runManyBtn = testItem.locator('.rp-run-many');
+  await runBtn.click();
+
+  // Still mid-run (the fixture's own fetch delay keeps a single run above
+  // ~800ms) — both buttons disabled, not just the one that was clicked.
+  await expect(runBtn).toBeDisabled();
+  await expect(runManyBtn).toBeDisabled();
+
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+  await expect(runBtn).toBeEnabled();
+  await expect(runManyBtn).toBeEnabled();
+
+  // Exactly one run's worth of step rows in the log (3 steps) — a second,
+  // concurrent run would have interleaved its own rows into the same view.
+  await expect(window.locator('#rpStepsList .rp-step-row')).toHaveCount(3);
+});
+
+test('exporting a saved test and importing it back round-trips its steps (#274)', async () => {
+  await window.click('#consoleTabTests');
+  const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
+  await expect(testItem).toBeVisible();
+
+  const tmpPath = path.join(os.tmpdir(), `testerbrowser-e2e-tests-export-${Date.now()}.json`);
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
+  }, tmpPath);
+  await testItem.locator('.rp-export-test').click();
+  await expect.poll(() => fs.existsSync(tmpPath), { timeout: 5_000 }).toBe(true);
+
+  const exported = JSON.parse(fs.readFileSync(tmpPath, 'utf-8'));
+  expect(exported.testerBrowserTests).toBe(1);
+  expect(exported.tests).toHaveLength(1);
+  expect(exported.tests[0].name).toBe('fill and click');
+  expect(exported.tests[0].steps).toHaveLength(2);
+  expect(exported.tests[0].id).toBeUndefined();
+  expect(exported.tests[0].createdAt).toBeUndefined();
+
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
+  }, tmpPath);
+  await window.click('#rpImportBtn');
+
+  await expect(window.locator('#rpIoStatus')).toHaveText('Imported 1 test(s)');
+  // Name collision with the still-present original 'fill and click' test —
+  // appended, not silently overwritten.
+  await expect(window.locator('.rp-test-item', { hasText: 'fill and click (imported)' })).toBeVisible();
+
+  fs.rmSync(tmpPath, { force: true });
+});
+
+test('importing a file with an invalid test alongside a valid one imports the valid one and reports the skip (#274)', async () => {
+  const tmpPath = path.join(os.tmpdir(), `testerbrowser-e2e-tests-import-invalid-${Date.now()}.json`);
+  fs.writeFileSync(tmpPath, JSON.stringify({
+    testerBrowserTests: 1,
+    tests: [
+      { name: 'valid imported test', steps: [{ type: 'click', selector: '#x' }] },
+      { name: '', steps: [] },
+    ],
+  }));
+
+  await window.click('#consoleTabTests');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
+  }, tmpPath);
+  await window.click('#rpImportBtn');
+
+  await expect(window.locator('#rpIoStatus')).toContainText('Imported 1 test(s)');
+  await expect(window.locator('#rpIoStatus')).toContainText('1 skipped');
+  await expect(window.locator('.rp-test-item', { hasText: 'valid imported test' })).toBeVisible();
+
+  fs.rmSync(tmpPath, { force: true });
+});

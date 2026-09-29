@@ -1508,6 +1508,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .rp-step-current { outline: 2px solid var(--accent); outline-offset: -1px; }
 .rp-step-mode-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary);
                         margin: 6px 0; cursor: pointer; }
+.rp-io-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; flex-wrap: wrap; }
 .rp-step-controls { gap: 4px; }
 .rp-step-controls:not([hidden]) { display: flex; }
 /* Bounded thumbnail, not max-width:100% — the narrow run column would

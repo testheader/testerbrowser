@@ -102,6 +102,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `mock:moveRule` | R→M | reorder a Mock rule (`'up' \| 'down'`) within its partition's array — rules are matched in this order, first enabled match wins |
 | `mock:exportRules` | R→M | `dialog.showSaveDialog`, write `{ testerBrowserMocks: 1, rules: [...] }` (no `id`/`hitCount`/`lastHitAt`) — `{ ok, path?, canceled?, error? }` |
 | `mock:importRules` | R→M | `dialog.showOpenDialog`, validate and append rules with fresh ids to the active tab's partition — `{ ok, imported?, skipped?, firstSkipReason?, canceled?, error? }` |
+| `tests:exportTests` | R→M | `dialog.showSaveDialog`, write `{ testerBrowserTests: 1, tests: [...] }` (no `id`/`createdAt`/`updatedAt`) — one saved test when a test id is passed, every saved test when omitted — `{ ok, path?, canceled?, error? }` |
+| `tests:importTests` | R→M | `dialog.showOpenDialog`, validate and append tests with fresh ids (name collision appends " (imported)" rather than overwriting) — `{ ok, imported?, skipped?, firstSkipReason?, canceled?, error? }` |
 | `resilience:setConditions` | R→M | per-tab `Network.emulateNetworkConditions` + `Emulation.setCPUThrottlingRate`; re-applied on `did-navigate` in case of a process swap |
 | `resilience:getConditions` | R→M | the active tab's current `{ network, cpuRate }`, or `null` if never touched (unthrottled) |
 | `security:pageState` | R→M | cert/connection details + mixed-content URLs for a tab's current main-frame document — `{ protocol, keyExchange, cipher, subjectName, issuer, validFrom, validTo, mixedContentUrls }`, or `null` for a scheme the lock-icon popover doesn't cover (file:, the new-tab page, …) |

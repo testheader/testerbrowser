@@ -1197,6 +1197,97 @@ export interface TestStep {
   frameUrl?: string;
 }
 
+const KNOWN_STEP_TYPES = new Set<TestStep['type']>([
+  'navigate', 'click', 'fill', 'check', 'assert-visible', 'assert-not-visible',
+  'assert-text', 'assert-value', 'assert-url', 'assert-attr', 'assert-enabled',
+  'wait-visible', 'wait-navigation',
+]);
+
+export type ImportableTest = { name: string; steps: TestStep[] };
+
+export interface ValidateImportedTestsResult {
+  tests: ImportableTest[];
+  skipped: { index: number; reason: string }[];
+  // Set only when the whole file is rejected outright (not JSON at the
+  // top level, or missing the testerBrowserTests marker) — tests/skipped
+  // are both empty in that case.
+  error?: string;
+}
+
+// #274: pure so every validation branch is unit-testable without the main
+// process or dialogs around it, mirroring validateImportedMockRules (#264).
+// `json` is whatever JSON.parse() produced — entirely untrusted. A test
+// whose steps contain even one malformed or unrecognized-type step is
+// skipped in its own entirety, not silently repaired by dropping just that
+// step — a test's steps are an ordered sequence where a missing step could
+// misalign selectors/assertions against the wrong state, unlike a Mock
+// rule (#264) where each rule is independent and dropping one is safe. Step
+// ids are regenerated fresh (not read from the file at all) so an import
+// can never collide with an id already in use; the test's own top-level id
+// is minted by the caller (importTests()) once a name collision is decided.
+export function validateImportedTests(json: unknown): ValidateImportedTestsResult {
+  if (!json || typeof json !== 'object' || Array.isArray(json) || (json as Record<string, unknown>).testerBrowserTests !== 1) {
+    return { tests: [], skipped: [], error: 'Not a TesterBrowser Tests file' };
+  }
+  const rawTests = (json as Record<string, unknown>).tests;
+  if (!Array.isArray(rawTests)) {
+    return { tests: [], skipped: [], error: 'Not a TesterBrowser Tests file' };
+  }
+
+  const tests: ImportableTest[] = [];
+  const skipped: { index: number; reason: string }[] = [];
+
+  rawTests.forEach((raw, index) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      skipped.push({ index, reason: 'test is not an object' });
+      return;
+    }
+    const t = raw as Record<string, unknown>;
+    if (typeof t.name !== 'string' || t.name.length === 0) {
+      skipped.push({ index, reason: 'name must be a non-empty string' });
+      return;
+    }
+    if (!Array.isArray(t.steps)) {
+      skipped.push({ index, reason: 'steps must be an array' });
+      return;
+    }
+
+    const steps: TestStep[] = [];
+    let badStepReason: string | null = null;
+    for (const rawStep of t.steps) {
+      if (!rawStep || typeof rawStep !== 'object' || Array.isArray(rawStep)) {
+        badStepReason = 'a step is not an object';
+        break;
+      }
+      const s = rawStep as Record<string, unknown>;
+      if (typeof s.type !== 'string' || !KNOWN_STEP_TYPES.has(s.type as TestStep['type'])) {
+        badStepReason = `unknown step type "${String(s.type)}"`;
+        break;
+      }
+      steps.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: s.type as TestStep['type'],
+        selector: typeof s.selector === 'string' ? s.selector : undefined,
+        value: typeof s.value === 'string' || typeof s.value === 'boolean' ? s.value : undefined,
+        url: typeof s.url === 'string' ? s.url : undefined,
+        attr: typeof s.attr === 'string' ? s.attr : undefined,
+        description: typeof s.description === 'string' ? s.description : undefined,
+        tagName: typeof s.tagName === 'string' ? s.tagName : undefined,
+        sensitive: typeof s.sensitive === 'boolean' ? s.sensitive : undefined,
+        frameUrl: typeof s.frameUrl === 'string' ? s.frameUrl : undefined,
+      });
+    }
+    if (badStepReason) {
+      skipped.push({ index, reason: badStepReason });
+      return;
+    }
+
+    tests.push({ name: t.name, steps });
+  });
+
+  return { tests, skipped };
+}
+
 // Pulled out as a pure function so the followAlong:stepResult payload shape
 // for a mirrored navigation (#186) is unit-testable without the WebContents/
 // pairing plumbing around it.
