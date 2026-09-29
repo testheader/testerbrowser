@@ -846,6 +846,12 @@ export interface TestSession {
   // #265: per-tab network/CPU throttling — undefined means never touched
   // (a fresh tab starts unthrottled, matching a real CDP session's default).
   conditions?: TabConditions;
+  // #266: latest cert state for the current main-frame document (null for an
+  // http: page, or before the first Security.visibleSecurityStateChanged
+  // arrives), and the http: subresource URLs seen on it. Both reset on
+  // did-navigate.
+  securityState: CertificateSecurityState | null;
+  mixedContentUrls: string[];
 }
 
 export interface HistoryEntry {
@@ -898,6 +904,47 @@ export function looksLikeImportableSnapshot(obj: unknown): boolean {
   const s = obj as Record<string, unknown>;
   return Array.isArray(s.frames) || Array.isArray(s.cookies) || typeof s.url === 'string';
 }
+
+// #266: a request counts as mixed content when CDP already classified it
+// (`blockable`/`optionally-blockable`) or, when CDP gave no classification at
+// all, when it's a plain-http request on an https page — the same fallback
+// the ticket's own popover copy ("N insecure (http:) subresources") assumes.
+// An explicit `mixedContentType: 'none'` from CDP is trusted as-is, never
+// overridden by the URL-scheme fallback.
+export function isMixedContent(pageUrl: string, reqUrl: string, mixedContentType?: string): boolean {
+  if (mixedContentType === 'blockable' || mixedContentType === 'optionally-blockable') return true;
+  if (mixedContentType !== undefined) return false;
+  try {
+    return new URL(pageUrl).protocol === 'https:' && new URL(reqUrl).protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+// Cached from Security.visibleSecurityStateChanged's certificateSecurityState
+// (epoch seconds for validFrom/validTo, matching CDP's own TimeSinceEpoch).
+export interface CertificateSecurityState {
+  protocol: string;
+  keyExchange: string;
+  cipher: string;
+  subjectName: string;
+  issuer: string;
+  validFrom: number;
+  validTo: number;
+}
+
+// The security:pageState IPC's return shape — cert fields are all-empty/zero
+// for an http: page (no certificate), and the call returns null outright for
+// a scheme the popover doesn't cover (file:, the new-tab page, etc).
+export interface SecurityPageState extends CertificateSecurityState {
+  mixedContentUrls: string[];
+}
+
+// Safety cap on how many mixed-content URLs one tab keeps in memory between
+// navigations — a pathological page could otherwise grow this unboundedly.
+// Well above the 10 the popover actually displays, so the count stays
+// accurate for any page a tester would plausibly load.
+const MAX_TRACKED_MIXED_CONTENT_URLS = 500;
 
 export interface EmulationOverrides {
   timezone?: string;
@@ -1365,6 +1412,10 @@ export class SessionManager {
       // recording.
       inMemory: !persistent,
     });
+    // #266: the recorder's constructor already attached the debugger and
+    // enabled Network/Log/Runtime — Security is a separate one-off enable so
+    // the lock-icon popover gets certificate + mixed-content data.
+    view.webContents.debugger.sendCommand('Security.enable').catch(() => {}); // silent: best-effort, popover just shows no data if this fails
 
     const color = opts.color ?? TAB_COLORS[this.colorIndex++ % TAB_COLORS.length];
     const testSession: TestSession = {
@@ -1381,6 +1432,8 @@ export class SessionManager {
       a11yFocusOverlayOn: false,
       defaultUserAgent: view.webContents.getUserAgent(),
       devToolsOpen: false,
+      securityState: null,
+      mixedContentUrls: [],
     };
     const fetchPauseRateState: FetchPauseRateState = { windowStart: 0, count: 0 };
 
@@ -1418,6 +1471,34 @@ export class SessionManager {
           }
         // silent: CDP event handler (a11y click binding) — too high-frequency to log
         } catch {}
+        return;
+      }
+      if (method === 'Security.visibleSecurityStateChanged') {
+        const cert = (params as {
+          visibleSecurityState?: { certificateSecurityState?: CertificateSecurityState };
+        }).visibleSecurityState?.certificateSecurityState;
+        testSession.securityState = cert
+          ? {
+              protocol: cert.protocol,
+              keyExchange: cert.keyExchange,
+              cipher: cert.cipher,
+              subjectName: cert.subjectName,
+              issuer: cert.issuer,
+              validFrom: cert.validFrom,
+              validTo: cert.validTo,
+            }
+          : null;
+        return;
+      }
+      if (method === 'Network.requestWillBeSent') {
+        const { request } = params as { request?: { url: string; mixedContentType?: string } };
+        if (
+          request
+          && testSession.mixedContentUrls.length < MAX_TRACKED_MIXED_CONTENT_URLS
+          && isMixedContent(testSession.currentUrl, request.url, request.mixedContentType)
+        ) {
+          testSession.mixedContentUrls.push(request.url);
+        }
         return;
       }
       if (method !== 'Fetch.requestPaused') return;
@@ -1593,6 +1674,11 @@ export class SessionManager {
       const displayUrl = isNewtabUrl(url) ? '' : url;
       testSession.currentUrl = displayUrl;
       testSession.loadedDomains = new Set<string>();
+      // #266: mixed-content list and cached cert state are scoped to one
+      // main-frame document — a fresh navigation starts them over (the next
+      // Security.visibleSecurityStateChanged repopulates securityState).
+      testSession.mixedContentUrls = [];
+      testSession.securityState = null;
       try { if (displayUrl) testSession.loadedDomains.add(new URL(displayUrl).hostname); } catch {} // silent: displayUrl is Electron's own just-navigated-to URL
       if (displayUrl) this.addHistoryEntry(id, displayUrl);
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
@@ -2740,6 +2826,30 @@ export class SessionManager {
 
   getConditions(id: string): TabConditions | null {
     return this.sessions.get(id)?.conditions ?? null;
+  }
+
+  // #266: null for a session that doesn't exist, or whose current document
+  // isn't http:/https: (file:, the new-tab page, …) — the popover shows
+  // nothing for those. Cert fields come back all-empty/zero for an http:
+  // page (no certificate) or before the first Security event arrives; the
+  // renderer tells those two apart from the URL scheme it already tracks.
+  getSecurityPageState(id: string): SecurityPageState | null {
+    const s = this.sessions.get(id);
+    if (!s) return null;
+    let scheme = '';
+    try { if (s.currentUrl) scheme = new URL(s.currentUrl).protocol; } catch {} // silent: currentUrl is Electron's own just-navigated-to URL
+    if (scheme !== 'https:' && scheme !== 'http:') return null;
+    const cert = s.securityState;
+    return {
+      protocol: cert?.protocol ?? '',
+      keyExchange: cert?.keyExchange ?? '',
+      cipher: cert?.cipher ?? '',
+      subjectName: cert?.subjectName ?? '',
+      issuer: cert?.issuer ?? '',
+      validFrom: cert?.validFrom ?? 0,
+      validTo: cert?.validTo ?? 0,
+      mixedContentUrls: s.mixedContentUrls,
+    };
   }
 
   private addHistoryEntry(id: string, url: string, failed = false) {

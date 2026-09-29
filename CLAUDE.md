@@ -104,6 +104,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `mock:importRules` | R→M | `dialog.showOpenDialog`, validate and append rules with fresh ids to the active tab's partition — `{ ok, imported?, skipped?, firstSkipReason?, canceled?, error? }` |
 | `resilience:setConditions` | R→M | per-tab `Network.emulateNetworkConditions` + `Emulation.setCPUThrottlingRate`; re-applied on `did-navigate` in case of a process swap |
 | `resilience:getConditions` | R→M | the active tab's current `{ network, cpuRate }`, or `null` if never touched (unthrottled) |
+| `security:pageState` | R→M | cert/connection details + mixed-content URLs for a tab's current main-frame document — `{ protocol, keyExchange, cipher, subjectName, issuer, validFrom, validTo, mixedContentUrls }`, or `null` for a scheme the lock-icon popover doesn't cover (file:, the new-tab page, …) |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |

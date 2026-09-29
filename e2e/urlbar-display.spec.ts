@@ -114,6 +114,90 @@ test('#urlbarDisplay reflects the just-submitted URL immediately, without waitin
   await slowTab.waitForLoadState('load');
 });
 
+// ── #266: lock icon popover ────────────────────────────────────────────────
+//
+// Playwright can't stub window.testerBrowser.security.pageState from the
+// renderer side — contextBridge-exposed APIs are frozen (see a11y.spec.ts's
+// "audit fails to run" test and jira.spec.ts's app:openExternal stub for the
+// same constraint) — so the cert-rendering test below patches the real
+// ipcMain 'security:pageState' handler in the main process instead, the same
+// technique jira.spec.ts uses for app:openExternal. That keeps the test
+// hermetic without a real HTTPS site, per the ticket's test plan.
+
+test('clicking the lock icon on a plain-http page shows "Connection is not secure"', async () => {
+  // A distinctive query string, not bare '/' — getTabPage matches by
+  // substring, and nearly every window URL (including the main chrome
+  // window's own file:// URL) contains a plain '/'.
+  const urlPath = '/?e2e=lock-icon';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, 'e2e=lock-icon')).waitForLoadState('load');
+  // Exact match, not a substring regex — 'insecure' itself contains
+  // 'secure', so a loose /secure/ pattern would pass on either class.
+  await expect(window.locator('#urlbarLock')).toHaveClass('insecure');
+
+  await window.click('#urlbarLock');
+  const popover = window.locator('#securityPopover');
+  await expect(popover).toHaveClass(/open/);
+  await expect(popover).toHaveText('Connection is not secure');
+
+  // Close it again so it doesn't bleed into the next test.
+  await window.keyboard.press('Escape');
+  await expect(popover).not.toHaveClass(/open/);
+});
+
+test('lock icon popover renders certificate details and the mixed-content count from a stubbed security:pageState', async () => {
+  const fakeState = {
+    protocol: 'TLS 1.3',
+    keyExchange: 'ECDHE_RSA',
+    cipher: 'AES_128_GCM',
+    subjectName: 'sec-test.invalid',
+    issuer: 'Test CA',
+    validFrom: 0,
+    validTo: 1, // epoch seconds — long past, so certExpiryState reports "expired"
+    mixedContentUrls: ['http://insecure.example/a.js', 'http://insecure.example/b.js'],
+  };
+  await app.evaluate(({ ipcMain }, state) => {
+    ipcMain.removeHandler('security:pageState');
+    ipcMain.handle('security:pageState', () => state);
+  }, fakeState);
+
+  // A real (if unreachable) https:// URL is enough — toolbar.js's Enter
+  // handler calls updateUrlbarSecurity() with the just-submitted text right
+  // after `sessions.navigate()` resolves, which (see the "reflects the
+  // just-submitted URL immediately" test above) doesn't itself wait on the
+  // page actually loading, so the lock icon flips to "secure" without a real
+  // TLS handshake ever happening.
+  await window.click('#urlbar');
+  await window.fill('#urlbar', 'https://sec-test.invalid/');
+  await window.press('#urlbar', 'Enter');
+  await expect(window.locator('#urlbarLock')).toHaveClass('secure');
+
+  await window.click('#urlbarLock');
+  const popover = window.locator('#securityPopover');
+  await expect(popover).toHaveClass(/open/);
+  await expect(popover).toContainText('TLS 1.3 · ECDHE_RSA · AES_128_GCM');
+  await expect(popover).toContainText('Subject: sec-test.invalid');
+  await expect(popover).toContainText('Issuer: Test CA');
+  await expect(popover.locator('.sec-pop-expiry')).toHaveText('expired');
+  await expect(popover.locator('.sec-pop-expiry')).toHaveClass(/\bsec-pop-error\b/);
+  await expect(popover).toContainText('2 insecure (http:) subresources on this page');
+  await expect(popover.locator('.sec-pop-mixed-list li')).toHaveText([
+    'http://insecure.example/a.js',
+    'http://insecure.example/b.js',
+  ]);
+
+  await window.keyboard.press('Escape');
+  await expect(popover).not.toHaveClass(/open/);
+
+  // Restore the real handler so it doesn't leak into any spec file that
+  // happens to run later against this same app instance.
+  await app.evaluate(({ ipcMain }) => {
+    ipcMain.removeHandler('security:pageState');
+  });
+});
+
 test('#urlbar and #urlbarDisplay agree on exactly where their text starts', async () => {
   const boxes = await window.evaluate(() => {
     const urlbar  = document.getElementById('urlbar') as HTMLInputElement;

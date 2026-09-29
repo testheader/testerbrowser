@@ -727,6 +727,7 @@ ipcMain.handle('resilience:toggleRule',  (_e, id: string, ruleId: string, enable
 ipcMain.handle('resilience:updateRule',  (_e, id: string, ruleId: string, patch: Partial<ResilienceRule>) => sessionManager?.updateResilienceRule(id, ruleId, patch));
 ipcMain.handle('resilience:setConditions', (_e, id: string, c: TabConditions) => sessionManager?.setConditions(id, c));
 ipcMain.handle('resilience:getConditions', (_e, id: string) => sessionManager?.getConditions(id) ?? null);
+ipcMain.handle('security:pageState', (_e, id: string) => sessionManager?.getSecurityPageState(id) ?? null);
 ipcMain.handle('session:setEmulation', (_e, id: string, opts: EmulationPatch) => sessionManager?.setEmulation(id, opts) ?? {});
 ipcMain.handle('session:getEmulation', (_e, id: string) => sessionManager?.getEmulation(id) ?? null);
 ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.getCookies(id) ?? []);

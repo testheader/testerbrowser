@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MockRule, ResilienceRule, EmulationOverrides, EmulationPatch } from '../main/sessionManager';
+import type { MockRule, ResilienceRule, EmulationOverrides, EmulationPatch, SecurityPageState } from '../main/sessionManager';
 import type { TabConditions } from '../main/networkConditions';
 
 contextBridge.exposeInMainWorld('testerBrowser', {
@@ -203,6 +203,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
     updateRule: (id: string, ruleId: string, patch: Partial<ResilienceRule>) => ipcRenderer.invoke('resilience:updateRule', id, ruleId, patch),
     setConditions: (id: string, c: TabConditions) => ipcRenderer.invoke('resilience:setConditions', id, c),
     getConditions: (id: string) => ipcRenderer.invoke('resilience:getConditions', id),
+  },
+
+  security: {
+    pageState: (id: string): Promise<SecurityPageState | null> => ipcRenderer.invoke('security:pageState', id),
   },
 
   jira: {
