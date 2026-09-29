@@ -17,6 +17,22 @@ const PRESETS = [
   { label: 'Toronto',     timezone: 'America/Toronto',       locale: 'en-CA', latitude:  43.6532, longitude:  -79.3832 },
 ];
 
+// #271: device/viewport presets — a small hardcoded table, similar in spirit
+// to Chrome DevTools' own device list rather than a byte-for-byte match.
+// Resolved to concrete width/height/deviceScaleFactor/mobile numbers here,
+// in the renderer, so the main process's setEmulation() never needs to know
+// preset names — it only ever sees whichever numbers this panel already
+// picked.
+export const DEVICE_PRESETS = {
+  'iPhone 14':     { width: 390,  height: 844,  deviceScaleFactor: 3,     mobile: true },
+  'iPhone SE':     { width: 375,  height: 667,  deviceScaleFactor: 2,     mobile: true },
+  'Pixel 7':       { width: 412,  height: 915,  deviceScaleFactor: 2.625, mobile: true },
+  'iPad':          { width: 820,  height: 1180, deviceScaleFactor: 2,     mobile: true },
+  'Galaxy S21':    { width: 360,  height: 800,  deviceScaleFactor: 3,     mobile: true },
+  'Desktop 1080p': { width: 1920, height: 1080, deviceScaleFactor: 1,     mobile: false },
+  'Desktop 1440p': { width: 2560, height: 1440, deviceScaleFactor: 1,     mobile: false },
+};
+
 // group is the <optgroup> label; a rendered dropdown, not buttons, is what
 // scales past a handful of entries (#184). "This browser"'s userAgent is
 // resolved live from this window's own navigator.userAgent right before the
@@ -93,6 +109,42 @@ export function initSpoof() {
           <select class="spoof-input spoof-ua-select" id="spoofUaPresets" aria-label="User-Agent presets"></select>
         </div>
       </div>
+      <div class="spoof-section spoof-fields">
+        <div class="spoof-field">
+          <label class="spoof-label">Device</label>
+          <select class="spoof-input" id="spoofDevicePreset" aria-label="Device preset"></select>
+        </div>
+        <div class="spoof-field spoof-field-offset" id="spoofCustomSizeRow" hidden>
+          <label class="spoof-label">Custom size (px)</label>
+          <div class="spoof-offset-row">
+            <input class="spoof-input" id="spoofCustomWidth" type="number" min="1" step="1" placeholder="width" />
+            <input class="spoof-input" id="spoofCustomHeight" type="number" min="1" step="1" placeholder="height" />
+          </div>
+        </div>
+        <div class="spoof-field">
+          <label class="spoof-label">Touch</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="spoofTouch" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="spoof-field">
+          <label class="spoof-label">prefers-color-scheme</label>
+          <select class="spoof-input" id="spoofColorScheme" aria-label="prefers-color-scheme">
+            <option value="">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <div class="spoof-field">
+          <label class="spoof-label">prefers-reduced-motion</label>
+          <select class="spoof-input" id="spoofReducedMotion" aria-label="prefers-reduced-motion">
+            <option value="">System</option>
+            <option value="no-preference">No preference</option>
+            <option value="reduce">Reduce</option>
+          </select>
+        </div>
+      </div>
       <div class="spoof-actions">
         <button class="spoof-btn spoof-apply" id="spoofApply">Apply to session</button>
         <button class="spoof-btn spoof-reset" id="spoofReset">Reset overrides</button>
@@ -142,7 +194,43 @@ export function initSpoof() {
   });
   document.getElementById('spoofOffsetUnit').addEventListener('change', updateDirtyState);
 
+  const devicePresetSelect = document.getElementById('spoofDevicePreset');
+  devicePresetSelect.innerHTML = '<option value="">System (no override)</option>' +
+    `<optgroup label="Presets">${
+      Object.keys(DEVICE_PRESETS).map(name => `<option value="${name}">${name}</option>`).join('')
+    }</optgroup>` +
+    '<option value="__custom">Custom…</option>';
+  devicePresetSelect.addEventListener('change', () => {
+    document.getElementById('spoofCustomSizeRow').hidden = devicePresetSelect.value !== '__custom';
+    // Defaults the Touch toggle to the picked preset's own mobile flag, but
+    // stays overridable afterward — this only runs on the preset dropdown's
+    // own change event, never touching the checkbox on unrelated input.
+    const preset = DEVICE_PRESETS[devicePresetSelect.value];
+    if (preset) document.getElementById('spoofTouch').checked = preset.mobile;
+    updateDirtyState();
+  });
+  for (const id of ['spoofCustomWidth', 'spoofCustomHeight']) {
+    document.getElementById(id).addEventListener('input', updateDirtyState);
+  }
+  document.getElementById('spoofTouch').addEventListener('change', updateDirtyState);
+  document.getElementById('spoofColorScheme').addEventListener('change', updateDirtyState);
+  document.getElementById('spoofReducedMotion').addEventListener('change', updateDirtyState);
+
   refreshSpoofStatus();
+}
+
+// Resolves the Device section's current form state to a
+// { width, height, deviceScaleFactor, mobile } object, or null when
+// "System (no override)" is selected or a Custom size has no valid
+// width/height yet.
+function readDeviceMetricsFromFields() {
+  const preset = document.getElementById('spoofDevicePreset').value;
+  if (preset === '') return null;
+  if (preset !== '__custom') return DEVICE_PRESETS[preset] ?? null;
+  const width = parseInt(document.getElementById('spoofCustomWidth').value, 10);
+  const height = parseInt(document.getElementById('spoofCustomHeight').value, 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  return { width, height, deviceScaleFactor: 1, mobile: document.getElementById('spoofTouch').checked };
 }
 
 // Formats a signed offset in ms as the largest whole unit that evenly
@@ -238,6 +326,40 @@ function populateFields(a) {
     offsetValueEl.value = '';
     offsetUnitEl.value = '86400000';
   }
+
+  const devicePresetSelect = document.getElementById('spoofDevicePreset');
+  const customSizeRow = document.getElementById('spoofCustomSizeRow');
+  if (a?.deviceMetrics) {
+    const presetName = findDevicePresetName(a.deviceMetrics);
+    if (presetName) {
+      devicePresetSelect.value = presetName;
+      customSizeRow.hidden = true;
+    } else {
+      devicePresetSelect.value = '__custom';
+      customSizeRow.hidden = false;
+      document.getElementById('spoofCustomWidth').value = a.deviceMetrics.width;
+      document.getElementById('spoofCustomHeight').value = a.deviceMetrics.height;
+    }
+  } else {
+    devicePresetSelect.value = '';
+    customSizeRow.hidden = true;
+    document.getElementById('spoofCustomWidth').value = '';
+    document.getElementById('spoofCustomHeight').value = '';
+  }
+  document.getElementById('spoofTouch').checked = !!a?.touch;
+  document.getElementById('spoofColorScheme').value = a?.colorScheme ?? '';
+  document.getElementById('spoofReducedMotion').value = a?.reducedMotion ?? '';
+}
+
+// Finds the preset name (if any) a resolved deviceMetrics object matches —
+// used both to populate the dropdown from applied state and to build the
+// "currently applied" summary, so an applied Custom size that happens to
+// equal a preset's own numbers still shows under its recognizable name.
+function findDevicePresetName(metrics) {
+  return Object.entries(DEVICE_PRESETS).find(([, m]) =>
+    m.width === metrics.width && m.height === metrics.height &&
+    m.deviceScaleFactor === metrics.deviceScaleFactor && m.mobile === metrics.mobile
+  )?.[0];
 }
 
 // Inverse of "value * unitMs" in applySpoof(): picks the largest whole unit
@@ -254,7 +376,13 @@ function renderCurrent() {
   const current = document.getElementById('spoofCurrent');
   if (!current) return;
   const a = appliedForActiveSession;
-  if (!a || (a.timezone === undefined && a.locale === undefined && a.latitude === undefined && a.timeOffsetMs === undefined && a.userAgent === undefined)) {
+  const hasAny = a && (
+    a.timezone !== undefined || a.locale !== undefined || a.latitude !== undefined ||
+    a.timeOffsetMs !== undefined || a.userAgent !== undefined ||
+    a.deviceMetrics !== undefined || a.touch !== undefined ||
+    a.colorScheme !== undefined || a.reducedMotion !== undefined
+  );
+  if (!hasAny) {
     current.textContent = 'No overrides applied to this session.';
     current.classList.remove('spoof-current-active');
     return;
@@ -268,6 +396,14 @@ function renderCurrent() {
     parts.push(`clock ${formatOffsetMs(a.timeOffsetMs)} (${spoofedNow})`);
   }
   if (a.userAgent !== undefined) parts.push(`UA ${a.userAgent}`);
+  if (a.deviceMetrics) {
+    const { width, height, deviceScaleFactor, mobile } = a.deviceMetrics;
+    const presetName = findDevicePresetName(a.deviceMetrics);
+    parts.push(`viewport ${presetName ?? `${width}×${height}`} @${deviceScaleFactor}x${mobile ? ' mobile' : ''}`);
+  }
+  if (a.touch) parts.push('touch');
+  if (a.colorScheme) parts.push(`prefers-color-scheme: ${a.colorScheme}`);
+  if (a.reducedMotion) parts.push(`prefers-reduced-motion: ${a.reducedMotion}`);
   current.textContent = `Applied to this session: ${parts.join(' · ')}`;
   current.classList.add('spoof-current-active');
 }
@@ -286,13 +422,23 @@ function updateDirtyState() {
   const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
   const offsetMs = offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : undefined;
 
+  const deviceMetrics = readDeviceMetricsFromFields();
+  const touch = document.getElementById('spoofTouch').checked;
+  const colorScheme = document.getElementById('spoofColorScheme').value || undefined;
+  const reducedMotionRaw = document.getElementById('spoofReducedMotion').value;
+  const reducedMotion = reducedMotionRaw === 'reduce' ? 'reduce' : undefined;
+
   const changed =
     timezone !== (a.timezone ?? '') ||
     locale !== (a.locale ?? '') ||
     latRaw !== (a.latitude !== undefined ? String(a.latitude) : '') ||
     lonRaw !== (a.longitude !== undefined ? String(a.longitude) : '') ||
     userAgent !== (a.userAgent ?? '') ||
-    offsetMs !== a.timeOffsetMs;
+    offsetMs !== a.timeOffsetMs ||
+    JSON.stringify(deviceMetrics) !== JSON.stringify(a.deviceMetrics ?? null) ||
+    touch !== !!a.touch ||
+    colorScheme !== a.colorScheme ||
+    reducedMotion !== a.reducedMotion;
 
   dirty.hidden = !changed;
 }
@@ -305,6 +451,10 @@ const FIELD_ERROR_LABELS = {
   latitude: 'location',
   userAgent: 'User-Agent',
   timeOffsetMs: 'clock offset',
+  deviceMetrics: 'device/viewport',
+  touch: 'touch emulation',
+  colorScheme: 'prefers-color-scheme',
+  reducedMotion: 'prefers-reduced-motion',
 };
 
 async function applySpoof() {
@@ -336,6 +486,16 @@ async function applySpoof() {
     longitude,
     timeOffsetMs: offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : null,
     userAgent: userAgentRaw !== '' ? userAgentRaw : null,
+    deviceMetrics: readDeviceMetricsFromFields(),
+    touch: document.getElementById('spoofTouch').checked,
+    colorScheme: document.getElementById('spoofColorScheme').value || null,
+    // "No preference" is offered as its own option for clarity (it's the
+    // actual CSS media-feature value name), but setEmulation only has a
+    // real override state for 'reduce' — picking "No preference" clears the
+    // override the same as "System" does, rather than the panel needing a
+    // third backend state neither CDP's success/failure reporting nor the
+    // rest of this API distinguishes from "unset."
+    reducedMotion: document.getElementById('spoofReducedMotion').value === 'reduce' ? 'reduce' : null,
   };
 
   const btn = document.getElementById('spoofApply');

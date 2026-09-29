@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Viewport / media emulation fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / emulation / viewport</nav>
+<h1>Viewport / media emulation</h1>
+<p>Reads window.innerWidth/innerHeight and the prefers-color-scheme /
+prefers-reduced-motion media queries into the DOM below, for asserting the
+Spoof panel's Device/Media overrides took effect (or, with none applied,
+this machine's real values).</p>
+
+<pre class="out" id="out"></pre>
+
+<script>
+  function render() {
+    document.getElementById('out').textContent = JSON.stringify({
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      prefersDark: matchMedia('(prefers-color-scheme: dark)').matches,
+      prefersReducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    }, null, 2);
+  }
+  render();
+  // Device metrics overrides change the viewport that triggers a resize —
+  // re-render live rather than requiring a fresh page load per assertion.
+  window.addEventListener('resize', render);
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+  matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', render);
+</script>
+</body>
+</html>

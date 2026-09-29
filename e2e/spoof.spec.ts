@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getActiveViewBounds, getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -399,6 +399,68 @@ test('Accept-Language reaches the real request header when locale is applied, ev
     const body = await tab.evaluate((url) => fetch(url).then((r) => r.json()), echoUrl) as Record<string, string>;
     return body['accept-language'];
   }, { timeout: 10_000 }).toBe('fr-FR,fr;q=0.9');
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});
+
+// #271: unlike Emulation.setTimezoneOverride/setLocaleOverride (see the
+// "Tokyo preset" test's own note above — those are per-CDP-session JS
+// stubs Playwright's separate session never observes), setDeviceMetricsOverride
+// and setEmulatedMedia are genuine renderer-level state (the actual layout
+// viewport, the actual computed matchMedia() result) — the same reasoning
+// the Accept-Language test above relies on for a real HTTP header. Both are
+// asserted directly here via tab.evaluate() rather than falling back to
+// "Apply resolves without error."
+test('iPhone 14 device preset changes the page\'s viewport without resizing the native WebContentsView (#271)', async () => {
+  await resetToSingleTab();
+  const urlPath = '/emulation/viewport.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  const boundsBefore = await getActiveViewBounds(app);
+  expect(boundsBefore).not.toBeNull();
+
+  await window.click('#consoleTabSpoof');
+  await window.selectOption('#spoofDevicePreset', 'iPhone 14');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect(window.locator('#spoofCurrent')).toContainText('viewport iPhone 14');
+
+  await expect.poll(() => tab.evaluate(() => window.innerWidth), { timeout: 5_000 }).toBe(390);
+  expect(await tab.evaluate(() => window.innerHeight)).toBe(844);
+
+  // The real native view is untouched by the viewport override — only the
+  // page's own belief about its viewport changes, the same way DevTools'
+  // device toolbar doesn't resize the browser chrome around it.
+  expect(await getActiveViewBounds(app)).toEqual(boundsBefore);
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});
+
+test('Dark prefers-color-scheme takes effect on a real page\'s matchMedia() (#271)', async () => {
+  await resetToSingleTab();
+  const urlPath = '/emulation/viewport.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  await window.click('#consoleTabSpoof');
+  await window.selectOption('#spoofColorScheme', 'dark');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect(window.locator('#spoofCurrent')).toContainText('prefers-color-scheme: dark');
+
+  await expect.poll(
+    () => tab.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches),
+    { timeout: 5_000 },
+  ).toBe(true);
 
   await window.click('#spoofReset');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });

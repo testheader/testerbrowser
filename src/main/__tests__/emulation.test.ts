@@ -515,3 +515,156 @@ describe('persisting and restoring spoof overrides across sessions (#161)', () =
     expect(setEmulationSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('setEmulation — device metrics, touch and media emulation (#271)', () => {
+  it('a device preset issues Emulation.setDeviceMetricsOverride with the resolved numbers', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'd1', sendCommand);
+
+    const deviceMetrics = { width: 390, height: 844, deviceScaleFactor: 3, mobile: true };
+    await sm.setEmulation('d1', { deviceMetrics });
+
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setDeviceMetricsOverride', deviceMetrics);
+    expect(sm.getEmulation('d1')).toEqual({ deviceMetrics });
+  });
+
+  it('"System" (null) issues Emulation.clearDeviceMetricsOverride only when a metrics override was previously applied', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'd2', sendCommand);
+
+    // Nothing was ever applied — clearing is a no-op, no CDP call needed.
+    await sm.setEmulation('d2', { deviceMetrics: null });
+    expect(sendCommand).not.toHaveBeenCalledWith('Emulation.clearDeviceMetricsOverride');
+
+    const deviceMetrics = { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false };
+    await sm.setEmulation('d2', { deviceMetrics });
+    sendCommand.mockClear();
+
+    await sm.setEmulation('d2', { deviceMetrics: null });
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.clearDeviceMetricsOverride');
+    expect(sm.getEmulation('d2')?.deviceMetrics).toBeUndefined();
+  });
+
+  it('touch emulation issues Emulation.setTouchEmulationEnabled and clears via enabled:false', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'd3', sendCommand);
+
+    await sm.setEmulation('d3', { touch: true });
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setTouchEmulationEnabled', { enabled: true });
+    expect(sm.getEmulation('d3')).toEqual({ touch: true });
+
+    await sm.setEmulation('d3', { touch: null });
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setTouchEmulationEnabled', { enabled: false });
+    expect(sm.getEmulation('d3')?.touch).toBeUndefined();
+  });
+
+  it('colorScheme and reducedMotion combine into one Emulation.setEmulatedMedia call with both features', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'd4', sendCommand);
+
+    await sm.setEmulation('d4', { colorScheme: 'dark', reducedMotion: 'reduce' });
+
+    expect(sendCommand).toHaveBeenCalledTimes(1);
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'prefers-color-scheme', value: 'dark' },
+        { name: 'prefers-reduced-motion', value: 'reduce' },
+      ],
+    });
+    expect(sm.getEmulation('d4')).toEqual({ colorScheme: 'dark', reducedMotion: 'reduce' });
+  });
+
+  it('setting only colorScheme preserves a previously-applied reducedMotion in the same combined call', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({});
+    installFakeSession(sm, 'd5', sendCommand);
+
+    await sm.setEmulation('d5', { reducedMotion: 'reduce' });
+    sendCommand.mockClear();
+
+    await sm.setEmulation('d5', { colorScheme: 'light' });
+
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'prefers-color-scheme', value: 'light' },
+        { name: 'prefers-reduced-motion', value: 'reduce' },
+      ],
+    });
+    expect(sm.getEmulation('d5')).toEqual({ colorScheme: 'light', reducedMotion: 'reduce' });
+  });
+
+  it('a rejected setEmulatedMedia reports both touched fields as failed and leaves prior state untouched', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn((cmd: string) =>
+      cmd === 'Emulation.setEmulatedMedia' ? Promise.reject(new Error('boom')) : Promise.resolve({})
+    );
+    installFakeSession(sm, 'd6', sendCommand);
+
+    const errors = await sm.setEmulation('d6', { colorScheme: 'dark', reducedMotion: 'reduce' });
+
+    expect(errors.colorScheme).toContain('boom');
+    expect(errors.reducedMotion).toContain('boom');
+    expect(sm.getEmulation('d6')).toEqual({});
+  });
+
+  it('Reset (clear:true) also clears device metrics, touch and media overrides alongside the existing fields', async () => {
+    const sm = makeManager();
+    const sendCommand = jest.fn().mockResolvedValue({ identifier: 'script-1' });
+    installFakeSession(sm, 'd7', sendCommand);
+
+    await sm.setEmulation('d7', {
+      timezone: 'Europe/Berlin',
+      deviceMetrics: { width: 390, height: 844, deviceScaleFactor: 3, mobile: true },
+      touch: true,
+      colorScheme: 'dark',
+      reducedMotion: 'reduce',
+    });
+
+    await sm.setEmulation('d7', { clear: true });
+
+    expect(sm.getEmulation('d7')).toBeNull();
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.clearDeviceMetricsOverride');
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setTouchEmulationEnabled', { enabled: false });
+    expect(sendCommand).toHaveBeenCalledWith('Emulation.setEmulatedMedia', { features: [] });
+  });
+
+  it("loadAndRestoreSessions() does not call setEmulation for a restored session with no stored overrides", () => {
+    const sm = makeManagerWithWin();
+
+    const sessionsFile = (sm as unknown as { sessionsFile: string }).sessionsFile;
+    fs.writeFileSync(sessionsFile, JSON.stringify({
+      sessions: [{ name: 'Plain', partition: 'persist:plain-1', url: '', color: '#fff' }],
+      notes: {},
+      emulation: {},
+    }));
+
+    const setEmulationSpy = jest.spyOn(sm, 'setEmulation').mockResolvedValue({});
+    jest.spyOn(sm, 'createSession').mockImplementation((name: string, opts?: { partition?: string }) => {
+      const session = {
+        id: 'plain-id',
+        name,
+        partition: opts?.partition ?? '',
+        persistent: true,
+        view: {
+          webContents: {
+            debugger: { sendCommand: jest.fn().mockResolvedValue({}) },
+            getZoomFactor: jest.fn(() => 1),
+            canGoBack: jest.fn(() => false),
+            canGoForward: jest.fn(() => false),
+          },
+          setBounds: jest.fn(),
+        },
+      } as unknown as TestSession;
+      (sm as unknown as { sessions: Map<string, TestSession> }).sessions.set(session.id, session);
+      return session;
+    });
+
+    sm.loadAndRestoreSessions();
+
+    expect(setEmulationSpy).not.toHaveBeenCalled();
+  });
+});

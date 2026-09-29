@@ -15,6 +15,7 @@ import {
 } from './testdata';
 import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 import { TabConditions, toCdpNetworkConditions, describeConditions } from './networkConditions';
+import { DeviceMetrics, ColorScheme, ReducedMotion, buildMediaFeatures } from './deviceEmulation';
 import { filterRowsSince } from './jira';
 import { writeJsonAtomic } from './jsonFile';
 import { matchShortcut } from './shortcutTable';
@@ -953,6 +954,11 @@ export interface EmulationOverrides {
   longitude?: number;
   timeOffsetMs?: number;
   userAgent?: string;
+  // #271: device/viewport, touch and media-query emulation.
+  deviceMetrics?: DeviceMetrics;
+  touch?: boolean;
+  colorScheme?: ColorScheme;
+  reducedMotion?: ReducedMotion;
 }
 
 // #241: a patch, not the applied state — undefined (the key absent) means
@@ -972,6 +978,11 @@ export interface EmulationPatch {
   accuracy?: number;
   timeOffsetMs?: number | null;
   userAgent?: string | null;
+  // #271: same null=clear/undefined=unchanged rules as the fields above.
+  deviceMetrics?: DeviceMetrics | null;
+  touch?: boolean | null;
+  colorScheme?: ColorScheme | null;
+  reducedMotion?: ReducedMotion | null;
   clear?: boolean;
 }
 
@@ -2784,7 +2795,10 @@ export class SessionManager {
     if (!s) return {};
     const clearingEverything = !!opts.clear;
     if (clearingEverything) {
-      opts = { timezone: null, locale: null, latitude: null, longitude: null, timeOffsetMs: null, userAgent: null };
+      opts = {
+        timezone: null, locale: null, latitude: null, longitude: null, timeOffsetMs: null, userAgent: null,
+        deviceMetrics: null, touch: null, colorScheme: null, reducedMotion: null,
+      };
     }
     const dbg = s.view.webContents.debugger;
     const partition = s.partition;
@@ -2882,6 +2896,64 @@ export class SessionManager {
           .then(() => true)
           .catch((e) => { this.warnCdpFailure(id, 'Emulation.setLocaleOverride', e); errors.locale = emulationErrorMessage(e); return false; });
         if (localeOk) { if (opts.locale === null) delete applied.locale; else applied.locale = opts.locale; }
+      }
+    }
+
+    // #271: viewport/device metrics — only re-issue the clear command when a
+    // metrics override was actually previously applied, so picking "System"
+    // on a tab that was never overridden doesn't send a pointless CDP call.
+    if (opts.deviceMetrics !== undefined) {
+      if (opts.deviceMetrics === null) {
+        if (applied.deviceMetrics) {
+          const ok = await dbg.sendCommand('Emulation.clearDeviceMetricsOverride')
+            .then(() => true)
+            .catch((e) => { this.warnCdpFailure(id, 'Emulation.clearDeviceMetricsOverride', e); errors.deviceMetrics = emulationErrorMessage(e); return false; });
+          if (ok) delete applied.deviceMetrics;
+        }
+      } else {
+        const { width, height, deviceScaleFactor, mobile } = opts.deviceMetrics;
+        const ok = await dbg.sendCommand('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile })
+          .then(() => true)
+          .catch((e) => { this.warnCdpFailure(id, 'Emulation.setDeviceMetricsOverride', e); errors.deviceMetrics = emulationErrorMessage(e); return false; });
+        if (ok) applied.deviceMetrics = { width, height, deviceScaleFactor, mobile };
+      }
+    }
+
+    // #271: touch is a plain enable/disable toggle, not an "override" CDP
+    // needs an explicit clear command for — clearing just means re-issuing
+    // the same command with enabled:false, the same as it never having been
+    // turned on.
+    if (opts.touch !== undefined) {
+      const enabled = !!opts.touch;
+      const ok = await dbg.sendCommand('Emulation.setTouchEmulationEnabled', { enabled })
+        .then(() => true)
+        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setTouchEmulationEnabled', e); errors.touch = emulationErrorMessage(e); return false; });
+      if (ok) { if (enabled) applied.touch = true; else delete applied.touch; }
+    }
+
+    // #271: prefers-color-scheme and prefers-reduced-motion both ultimately
+    // funnel through the same single Emulation.setEmulatedMedia call (its
+    // `features` array carries both) — same reasoning as the combined
+    // locale/User-Agent call above, and CDP reports success/failure for the
+    // call as a whole, not per feature, so a failure here is attributed to
+    // whichever of the two fields this patch actually touched.
+    if (opts.colorScheme !== undefined || opts.reducedMotion !== undefined) {
+      const nextColorScheme = opts.colorScheme !== undefined
+        ? (opts.colorScheme === null ? undefined : opts.colorScheme) : applied.colorScheme;
+      const nextReducedMotion = opts.reducedMotion !== undefined
+        ? (opts.reducedMotion === null ? undefined : opts.reducedMotion) : applied.reducedMotion;
+      let mediaError: string | undefined;
+      const ok = await dbg.sendCommand('Emulation.setEmulatedMedia', { features: buildMediaFeatures(nextColorScheme, nextReducedMotion) })
+        .then(() => true)
+        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setEmulatedMedia', e); mediaError = emulationErrorMessage(e); return false; });
+
+      if (opts.colorScheme !== undefined) {
+        if (ok) { if (opts.colorScheme === null) delete applied.colorScheme; else applied.colorScheme = opts.colorScheme; }
+        else errors.colorScheme = mediaError ?? 'Failed to apply media emulation';
+      }
+      if (opts.reducedMotion !== undefined) {
+        if (ok) { if (opts.reducedMotion === null) delete applied.reducedMotion; else applied.reducedMotion = opts.reducedMotion; }
+        else errors.reducedMotion = mediaError ?? 'Failed to apply media emulation';
       }
     }
 

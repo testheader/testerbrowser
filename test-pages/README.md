@@ -45,6 +45,8 @@ test-pages/
   permissions/             geolocation, notifications, media, clipboard
   performance/             heavy DOM, console flood, network flood,
                            long-task/jank, memory growth
+  emulation/               viewport size + prefers-color-scheme /
+                           prefers-reduced-motion (Spoof panel's Device/Media)
 ```
 
 ## Adding a new fixture
