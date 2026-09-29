@@ -665,8 +665,8 @@ ipcMain.handle('sessions:reopen',  async (_e, opts: {
 });
 
 ipcMain.handle('sessions:clone', async (_e, sourceId: string, newName: string) => {
-  const s = await sessionManager?.cloneSession(sourceId, newName);
-  return s?.id ?? null;
+  const c = await sessionManager?.cloneSession(sourceId, newName);
+  return { id: c?.session.id ?? null, warnings: c?.warnings ?? [] };
 });
 
 ipcMain.handle('sessions:back',     (_e, id: string) => sessionManager?.back(id));

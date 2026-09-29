@@ -138,7 +138,8 @@ describe('mock/resilience rules are scoped to the session partition, not the per
 
     const dest = await sm.cloneSession('src-1', 'Clone of src');
 
-    expect(dest?.id).toBe('dest-1');
+    expect(dest?.session.id).toBe('dest-1');
+    expect(dest?.warnings).toEqual([]);
     expect(sm.getMockRules('dest-1')).toEqual(sm.getMockRules('src-1'));
     expect(sm.getResilienceRules('dest-1')).toEqual(sm.getResilienceRules('src-1'));
 

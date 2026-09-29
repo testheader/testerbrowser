@@ -9,7 +9,8 @@ contextBridge.exposeInMainWorld('testerBrowser', {
                    ipcRenderer.invoke('sessions:create', name, opts),
     switchTo:    (id: string) => ipcRenderer.invoke('sessions:switch', id),
     navigate:    (id: string, url: string) => ipcRenderer.invoke('sessions:navigate', id, url),
-    clone:       (sourceId: string, newName: string) => ipcRenderer.invoke('sessions:clone', sourceId, newName),
+    clone:       (sourceId: string, newName: string): Promise<{ id: string | null; warnings: string[] }> =>
+                   ipcRenderer.invoke('sessions:clone', sourceId, newName),
     destroy:     (id: string) => ipcRenderer.invoke('sessions:destroy', id),
     rename:      (id: string, name: string) => ipcRenderer.invoke('sessions:rename', id, name),
     pin:         (id: string, pinned: boolean) => ipcRenderer.invoke('sessions:pin', id, pinned),

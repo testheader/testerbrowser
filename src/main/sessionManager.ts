@@ -1984,7 +1984,9 @@ export class SessionManager {
       }},
       { label: 'Clone', click: async () => {
         const c = await this.cloneSession(id, s.name + ' (clone)');
-        if (c) this.win.webContents.send('session:newTab', { id: c.id });
+        if (!c) return;
+        this.win.webContents.send('session:newTab', { id: c.session.id });
+        if (c.warnings.length) this.showSnapshotWarnings('Clone session', c.warnings);
       }},
       { label: 'Notes…', click: () => send('notes') },
       { label: 'History…', click: () => send('history') },
@@ -2263,12 +2265,17 @@ export class SessionManager {
     else { this.win.contentView.removeChildView(s.view); }
   }
 
-  async cloneSession(sourceId: string, newName: string): Promise<TestSession | null> {
+  // #269: a clone is meant to be an independent copy of the source tab "as it
+  // currently is" — cookies (with sameSite), localStorage/sessionStorage/
+  // IndexedDB, emulation overrides and the current URL, in addition to the
+  // mock/resilience rules already copied below. Every copy step is awaited
+  // and its failures collected into `warnings` rather than swallowed, so a
+  // partial clone doesn't look identical to a full one.
+  async cloneSession(sourceId: string, newName: string): Promise<{ session: TestSession; warnings: string[] } | null> {
     const src = this.sessions.get(sourceId);
     if (!src) return null;
+    const warnings: string[] = [];
     const dest = this.createSession(newName, { persistent: src.persistent });
-    // A clone is an independent copy of the source session as it currently
-    // is — cookies below, and mock/resilience rules here, the same way.
     // createSession() already seeded dest.partition with []; overwrite with
     // a deep copy so editing either side afterward doesn't affect the other.
     this.mockRulesByPartition.set(dest.partition, structuredClone(this.mockRulesByPartition.get(src.partition) ?? []));
@@ -2278,20 +2285,77 @@ export class SessionManager {
     // copied rules above are in place, so the clone's own CDP debugger
     // actually gets Fetch.enable for them.
     this._applyFetch(dest.id);
+
     const cookies = await src.view.webContents.session.cookies.get({});
     for (const c of cookies) {
       const url = `${c.secure ? 'https' : 'http'}://${c.domain?.replace(/^\./, '')}${c.path}`;
       try {
         await dest.view.webContents.session.cookies.set({
           url, name: c.name, value: c.value, domain: c.domain, path: c.path,
-          secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate,
+          secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate, sameSite: c.sameSite,
         });
       } catch (e) {
-        this.log.warn('sessions', `Failed to copy cookie '${c.name}' while cloning`, { sessionId: dest.id, error: String(e) });
+        const msg = e instanceof Error ? e.message : String(e);
+        warnings.push(`cookie '${c.name}': ${msg}`);
+        this.log.warn('sessions', `Failed to copy cookie '${c.name}' while cloning`, { sessionId: dest.id, error: msg });
       }
     }
-    this.log.info('sessions', `Session cloned from ${sourceId}`, { sessionId: dest.id });
-    return dest;
+
+    const srcEmulation = this.getEmulation(sourceId);
+    if (srcEmulation) {
+      const errors = await this.setEmulation(dest.id, { ...srcEmulation });
+      for (const [field, msg] of Object.entries(errors)) warnings.push(`emulation ${field}: ${msg}`);
+    }
+
+    // localStorage/sessionStorage/IndexedDB + navigation only apply when the
+    // source has a real page loaded — a tab still on the new-tab page has
+    // nothing page-scoped to seed, and the clone already opens on the
+    // new-tab page itself (createSession()'s default with no startUrl).
+    if (src.currentUrl) {
+      let collected: Pick<FrameSnapshot, 'localStorage' | 'sessionStorage' | 'indexedDB' | 'warnings'> | undefined;
+      try {
+        const raw = await src.view.webContents.mainFrame.executeJavaScript(COLLECT_FRAME_SCRIPT) as string;
+        collected = JSON.parse(raw) as FrameSnapshot;
+      } catch (e) {
+        warnings.push(`storage collection: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      if (collected?.warnings?.length) warnings.push(...collected.warnings.map((w) => `storage collection: ${w}`));
+
+      // Seed the clone's localStorage/sessionStorage/IndexedDB via a one-shot
+      // CDP script BEFORE navigating, the same #243 ordering fix
+      // restoreSnapshot() uses — otherwise the destination page's own
+      // bootstrap JS (e.g. reading auth state out of localStorage on load)
+      // would run against empty storage.
+      const dbg = dest.view.webContents.debugger;
+      let preloadScriptId: string | undefined;
+      if (collected) {
+        try {
+          await dbg.sendCommand('Page.enable');
+          const result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+            source: buildRestoreFrameScript({
+              url: src.currentUrl,
+              localStorage: collected.localStorage,
+              sessionStorage: collected.sessionStorage,
+              indexedDB: collected.indexedDB,
+            }),
+          }) as { identifier: string };
+          preloadScriptId = result?.identifier;
+        } catch (e) {
+          warnings.push(`storage seed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+
+      await dest.view.webContents.loadURL(src.currentUrl);
+      await this.waitForFrameLoad(dest.view.webContents);
+
+      if (preloadScriptId) {
+        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: preloadScriptId })
+          .catch((e) => this.warnCdpFailure(dest.id, 'Page.removeScriptToEvaluateOnNewDocument', e));
+      }
+    }
+
+    this.log.info('sessions', `Session cloned from ${sourceId}`, { sessionId: dest.id, warnings: warnings.length });
+    return { session: dest, warnings };
   }
 
   navigate(id: string, url: string) {
