@@ -270,6 +270,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   recorderMaxEvents: 20000,
   recordingRetentionDays: 30,
   autoInstallWhenIdle: false,
+  allowRealPopups: false,
 };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
@@ -394,7 +395,8 @@ function createWindow() {
 
   sessionManager = new SessionManager(
     win, () => settingsStore.get().redactSensitiveHeaders, log, persistSessionUrls,
-    () => settingsStore.get().recorderMaxEvents
+    () => settingsStore.get().recorderMaxEvents,
+    () => settingsStore.get().allowRealPopups
   );
 
   const restored = sessionManager.loadAndRestoreSessions();

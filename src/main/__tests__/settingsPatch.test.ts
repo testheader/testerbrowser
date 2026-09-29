@@ -11,6 +11,7 @@ const BASE: AppSettings = {
   recordingRetentionDays: 30,
   autoOpenDownloadsPanel: false,
   autoInstallWhenIdle: false,
+  allowRealPopups: false,
 };
 
 describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
@@ -63,6 +64,11 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
   it('applies autoInstallWhenIdle and ignores a wrong-typed value (#259)', () => {
     expect(applySettingsPatch(BASE, { autoInstallWhenIdle: true }).autoInstallWhenIdle).toBe(true);
     expect(applySettingsPatch(BASE, { autoInstallWhenIdle: 'yes' }).autoInstallWhenIdle).toBe(false);
+  });
+
+  it('applies allowRealPopups and ignores a wrong-typed value (#270)', () => {
+    expect(applySettingsPatch(BASE, { allowRealPopups: true }).allowRealPopups).toBe(true);
+    expect(applySettingsPatch(BASE, { allowRealPopups: 'yes' }).allowRealPopups).toBe(false);
   });
 
   it('applies securityIncludeSubresources and ignores a wrong-typed value (#240)', () => {

@@ -17,6 +17,7 @@ export interface AppSettings {
   recordingRetentionDays: number;
   autoOpenDownloadsPanel: boolean;
   autoInstallWhenIdle: boolean;
+  allowRealPopups: boolean;
 }
 
 const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
@@ -58,6 +59,10 @@ export function applySettingsPatch(current: AppSettings, patch: unknown): AppSet
 
   if (typeof patch.autoInstallWhenIdle === 'boolean') {
     next.autoInstallWhenIdle = patch.autoInstallWhenIdle;
+  }
+
+  if (typeof patch.allowRealPopups === 'boolean') {
+    next.allowRealPopups = patch.allowRealPopups;
   }
 
   if (typeof patch.searchEngine === 'string' && SEARCH_ENGINES.has(patch.searchEngine)) {

@@ -40,6 +40,7 @@ export async function openSettings() {
   document.getElementById('debugModeToggle').checked = !!settings.debugMode;
   document.getElementById('autoOpenDownloadsPanelToggle').checked = !!settings.autoOpenDownloadsPanel;
   document.getElementById('autoInstallWhenIdleToggle').checked = !!settings.autoInstallWhenIdle;
+  document.getElementById('allowRealPopupsToggle').checked = !!settings.allowRealPopups;
   document.getElementById('searchEngineSelect').value = settings.searchEngine || 'google';
   document.getElementById('recorderMaxEventsInput').value = settings.recorderMaxEvents ?? 20000;
   document.getElementById('recordingRetentionDaysInput').value = settings.recordingRetentionDays ?? 30;
@@ -135,6 +136,9 @@ export function initSettings() {
   });
   document.getElementById('autoOpenDownloadsPanelToggle').addEventListener('change', (e) => {
     testerBrowser.settings.set({ autoOpenDownloadsPanel: e.target.checked });
+  });
+  document.getElementById('allowRealPopupsToggle').addEventListener('change', (e) => {
+    testerBrowser.settings.set({ allowRealPopups: e.target.checked });
   });
 
   document.getElementById('searchEngineSelect').addEventListener('change', (e) => {

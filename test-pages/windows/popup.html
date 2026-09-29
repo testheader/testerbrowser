@@ -25,5 +25,14 @@ same-session tab grouping.</p>
 
 <h2>iframe</h2>
 <iframe src="child.html" width="100%" height="150" style="border:1px solid #ccc;border-radius:4px;"></iframe>
+
+<script>
+  // #270: "allow real popups" setting — child.html postMessages 'done' back
+  // to window.opener once loaded, but only when it actually has one (a
+  // synthetic denied-and-recreated popup never does). Recorded on
+  // window.__lastMessage rather than asserted here, so an e2e test can poll
+  // for it via page.evaluate.
+  window.addEventListener('message', (e) => { window.__lastMessage = e.data; });
+</script>
 </body>
 </html>

@@ -1336,13 +1336,19 @@ export class SessionManager {
   // construction) so a Settings change takes effect for the next tab opened,
   // without needing to reconstruct SessionManager itself.
   private getRecorderMaxEvents: () => number;
+  // #270: read fresh on every popup, same reasoning as getRecorderMaxEvents
+  // above — flipping the setting takes effect on the next window.open(),
+  // no restart needed. Defaults closed so existing unit tests that construct
+  // SessionManager directly keep today's deny-and-recreate behaviour.
+  private getAllowRealPopups: () => boolean;
 
   constructor(
     win: BrowserWindow,
     getRedactHeaders: () => boolean,
     logger: AppLog = NOOP_LOG,
     onSessionsChanged: () => void = () => {},
-    getRecorderMaxEvents: () => number = () => 20000
+    getRecorderMaxEvents: () => number = () => 20000,
+    getAllowRealPopups: () => boolean = () => false
   ) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
@@ -1350,6 +1356,7 @@ export class SessionManager {
     this.log = logger;
     this.onSessionsChanged = onSessionsChanged;
     this.getRecorderMaxEvents = getRecorderMaxEvents;
+    this.getAllowRealPopups = getAllowRealPopups;
     this.downloadManager = new DownloadManager(win);
     this.permissionManager = new PermissionManager(win);
     this.win.on('resize', () => this.layoutActive());
@@ -1857,13 +1864,44 @@ export class SessionManager {
     });
 
     view.webContents.setWindowOpenHandler(({ url }) => {
-      if (isSafeUrl(url)) {
-        setImmediate(() => {
-          const newSession = this.createSession(getHostname(url), { partition, startUrl: url, color });
-          this.switchTo(newSession.id);
-          this.win.webContents.send('session:newTab', { id: newSession.id });
-        });
+      if (!isSafeUrl(url)) return { action: 'deny' };
+      // #270: opt-in "real popup" path for flows that depend on
+      // window.opener/postMessage back to the opener (OAuth consent,
+      // payment-provider popups) — the deny-and-recreate path below always
+      // breaks that, since it loads the URL into a brand-new, disconnected
+      // WebContentsView rather than letting Chromium open a linked window.
+      // Returning action:'allow' lets Chromium keep the opener linkage
+      // automatically (it already withholds it on its own for a page that
+      // requested noopener, regardless of what we return here — nothing
+      // extra needed for that case). overrideBrowserWindowOptions shares the
+      // opener's own session/partition so the popup sees the same
+      // cookies/login state.
+      //
+      // This intentionally does NOT attempt to make the popup a tracked tab
+      // (sessions:list()/the tab strip) or attach a SessionRecorder to it.
+      // Electron's action:'allow' path (with no `createWindow` override)
+      // always builds a genuine separate native BrowserWindow — fundamentally
+      // a different construct from this app's WebContentsView-embedded,
+      // single-window tab model, which TestSession/switchTo/the layout
+      // system are all built around. The only way to make the popup a real
+      // tab is `createWindow` returning our own WebContentsView's
+      // webContents instead of letting Electron build a BrowserWindow — that
+      // path is real (Electron's own docs mention it for exactly this use
+      // case), but requires extracting/duplicating createSession()'s ~470
+      // lines of per-tab wiring (CDP message handling, navigation/title/
+      // favicon forwarding), which isn't something this change can safely
+      // verify without a real Electron display to run it against. Recording
+      // that's attached but has no UI to view it wouldn't give testers real
+      // visibility either. Settling for "shows as an unmanaged native
+      // window, closable normally" per this ticket's own fallback.
+      if (this.getAllowRealPopups()) {
+        return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: { session: ses } } };
       }
+      setImmediate(() => {
+        const newSession = this.createSession(getHostname(url), { partition, startUrl: url, color });
+        this.switchTo(newSession.id);
+        this.win.webContents.send('session:newTab', { id: newSession.id });
+      });
       return { action: 'deny' };
     });
 

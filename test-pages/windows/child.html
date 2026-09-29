@@ -9,6 +9,15 @@
 <h1>Popup / iframe child page</h1>
 <p>Opened from windows/popup.html. If this is a real window (not an iframe), it
 should share the same session partition and tab colour as its opener.</p>
-<script>console.log('child page loaded, opener present:', !!window.opener);</script>
+<script>
+  console.log('child page loaded, opener present:', !!window.opener);
+  // #270: exercises the "allow real popups" setting — window.opener only
+  // exists at all when the popup was linked to its opener (setWindowOpenHandler
+  // returned action:'allow', or this loaded as a same-tab/tracked-tab
+  // navigation that still carries an opener from an earlier real window.open).
+  // A synthetic "denied and recreated as a new tab" popup has no opener, so
+  // this is a no-op there, which is the whole point of the ticket's fix.
+  if (window.opener) window.opener.postMessage('done', '*');
+</script>
 </body>
 </html>

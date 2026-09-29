@@ -284,6 +284,17 @@
               </label>
             </div>
 
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">Allow real popups (keeps window.opener — for OAuth/payment flows)</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Off by default: popups open as a new, isolated, fully-tracked tab, which breaks window.opener/postMessage back to the opener. On: a popup opens as a real, separate native window sharing the opener's session, so OAuth/payment flows that message the opener when done work correctly — but that window isn't a tracked tab, doesn't appear in the tab strip, and its traffic isn't recorded.</div>
+              </div>
+              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
+                <input type="checkbox" id="allowRealPopupsToggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
             <h3 class="feature-group-title">Recording</h3>
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
