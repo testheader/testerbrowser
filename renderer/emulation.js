@@ -122,7 +122,7 @@ export function initSpoof() {
           </div>
         </div>
         <div class="spoof-field">
-          <label class="spoof-label">Touch</label>
+          <label class="spoof-label" for="spoofTouch">Touch</label>
           <label class="toggle-switch">
             <input type="checkbox" id="spoofTouch" />
             <span class="toggle-slider"></span>
