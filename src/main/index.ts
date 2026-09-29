@@ -21,7 +21,7 @@ import {
   migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile,
   formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
 } from './jira';
-import { readJsonWithBackup, writeJsonAtomic } from './jsonFile';
+import { writeJsonAtomic, JsonStore } from './jsonFile';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -184,40 +184,8 @@ function isVersionNewer(a: string, b: string): boolean {
   return false;
 }
 
-// --- Generic JSON file store ---
-
-class JsonStore<T> {
-  private file: string;
-  private data: T;
-
-  constructor(filename: string, defaultValue: T, init?: (raw: unknown) => T) {
-    this.file = path.join(app.getPath('userData'), filename);
-    const result = readJsonWithBackup(this.file);
-    if (result.ok) {
-      this.data = init ? init(result.data) : (result.data as T);
-      if (result.source === 'backup') {
-        log.warn('settings', `${filename} was missing or unreadable — restored from backup`);
-      }
-    } else {
-      this.data = defaultValue;
-      log.warn('settings', `${filename} and its backup were both missing or unreadable — using defaults`);
-    }
-  }
-
-  get(): T { return this.data; }
-
-  set(value: T): void { this.data = value; this.save(); }
-
-  update(fn: (current: T) => T): T {
-    this.data = fn(this.data);
-    this.save();
-    return this.data;
-  }
-
-  private save() {
-    writeJsonAtomic(this.file, this.data);
-  }
-}
+// JsonStore itself now lives in jsonFile.ts (#276) — see its own comment
+// there for why (permissionManager.ts needs it without importing index.ts).
 
 // --- Typed stores ---
 
@@ -1403,6 +1371,10 @@ ipcMain.handle('download:clear',  () => sessionManager?.clearDownloads());
 // Permission IPC
 ipcMain.handle('permission:respond', (_e, reqId: string, granted: boolean) =>
   sessionManager?.respondPermission(reqId, granted)
+);
+ipcMain.handle('permission:list', (_e, id: string) => sessionManager?.listPermissions(id) ?? []);
+ipcMain.handle('permission:revoke', (_e, id: string, origin: string, permission: string) =>
+  sessionManager?.revokePermission(id, origin, permission) ?? false
 );
 
 // Bookmark IPC

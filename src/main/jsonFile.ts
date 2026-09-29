@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { app } from 'electron';
 import { log } from './appLogger';
 
 /**
@@ -74,5 +75,46 @@ export function readJsonWithBackup(file: string): JsonReadResult {
     return { ok: true, data: JSON.parse(fs.readFileSync(file + '.bak', 'utf-8')), source: 'backup' };
   } catch {
     return { ok: false };
+  }
+}
+
+// A single userData-relative JSON file backing one typed value, with atomic
+// writes and backup-fallback reads baked in (writeJsonAtomic/
+// readJsonWithBackup above) — the shared pattern behind settings.json,
+// bookmarks.json, tests.json, mock rules, and permissions.json. Exported
+// here (moved out of index.ts, #276) so other main-process modules
+// (permissionManager.ts) can use the same pattern without importing from
+// index.ts, which would create a circular dependency (index.ts already
+// imports from sessionManager.ts, which permissionManager.ts is used by).
+export class JsonStore<T> {
+  private file: string;
+  private data: T;
+
+  constructor(filename: string, defaultValue: T, init?: (raw: unknown) => T) {
+    this.file = path.join(app.getPath('userData'), filename);
+    const result = readJsonWithBackup(this.file);
+    if (result.ok) {
+      this.data = init ? init(result.data) : (result.data as T);
+      if (result.source === 'backup') {
+        log.warn('settings', `${filename} was missing or unreadable — restored from backup`);
+      }
+    } else {
+      this.data = defaultValue;
+      log.warn('settings', `${filename} and its backup were both missing or unreadable — using defaults`);
+    }
+  }
+
+  get(): T { return this.data; }
+
+  set(value: T): void { this.data = value; this.save(); }
+
+  update(fn: (current: T) => T): T {
+    this.data = fn(this.data);
+    this.save();
+    return this.data;
+  }
+
+  private save() {
+    writeJsonAtomic(this.file, this.data);
   }
 }

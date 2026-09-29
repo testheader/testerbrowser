@@ -5,7 +5,7 @@ import { app } from 'electron';
 import { SessionRecorder } from './recorder';
 import { buildHar } from './har';
 import { DownloadManager } from './downloadManager';
-import { PermissionManager } from './permissionManager';
+import { PermissionManager, PermissionRecord } from './permissionManager';
 import { AppLog } from './appLogger';
 
 import {
@@ -1508,7 +1508,13 @@ export class SessionManager {
     this.getRecorderMaxEvents = getRecorderMaxEvents;
     this.getAllowRealPopups = getAllowRealPopups;
     this.downloadManager = new DownloadManager(win);
-    this.permissionManager = new PermissionManager(win);
+    // #276: lets a permission prompt name the tab it belongs to — looked up
+    // by the *requesting* webContents id (not the partition, unlike
+    // DownloadManager's attribution), so it's correct even for two tabs
+    // sharing a partition (e.g. a middle-clicked link).
+    this.permissionManager = new PermissionManager(win, (webContentsId) =>
+      Array.from(this.sessions.values()).find((s) => s.view.webContents.id === webContentsId)?.id ?? null
+    );
     this.win.on('resize', () => this.layoutActive());
   }
 
@@ -2100,6 +2106,21 @@ export class SessionManager {
   // --- Permission (delegated) ---
 
   respondPermission(reqId: string, granted: boolean) { this.permissionManager.respond(reqId, granted); }
+
+  // #276: revocation UI — both scoped by the active tab's own partition
+  // (PermissionManager only knows partitions, not session ids), so a shared-
+  // partition tab's grants show correctly on any of its sibling tabs too.
+  listPermissions(id: string): PermissionRecord[] {
+    const s = this.sessions.get(id);
+    if (!s) return [];
+    return this.permissionManager.list(s.partition);
+  }
+
+  revokePermission(id: string, origin: string, permission: string): boolean {
+    const s = this.sessions.get(id);
+    if (!s) return false;
+    return this.permissionManager.revoke(s.partition, origin, permission);
+  }
 
   // --- Session management ---
 
@@ -3931,6 +3952,11 @@ export class SessionManager {
       }
     }
     if (this.activeId === id) { this.win.contentView.removeChildView(s.view); this.activeId = null; }
+    // #276: a permission prompt still pending for this exact tab can no
+    // longer be meaningfully answered — auto-deny and remove it (not
+    // persisted; the tester never actually chose it) before the webContents
+    // it belongs to is gone.
+    this.permissionManager.dismissForWebContents(s.view.webContents.id);
     s.recorder.destroy();
     (s.view.webContents as any).destroy?.();
     this.sessions.delete(id);
@@ -3942,6 +3968,14 @@ export class SessionManager {
     this.dateOverrideScripts.delete(id);
     this.recordingScripts.delete(id);
     this.sessionHistory.delete(id);
+    // #276: an in-memory session's permission grants/denials are meant to
+    // leave no trace — but only once truly gone. A middle-clicked tab can
+    // share its partition with a still-open sibling (session colour
+    // inheritance), so this only wipes when no other live session is still
+    // using the same partition.
+    if (!s.persistent && !Array.from(this.sessions.values()).some((o) => o.partition === s.partition)) {
+      this.permissionManager.clearPartition(s.partition);
+    }
     const hung = this.hungRequests.get(id);
     if (hung) {
       for (const timer of hung.values()) if (timer) clearTimeout(timer);

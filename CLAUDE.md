@@ -113,7 +113,9 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `layout:beginPageOverlay` | R→M | snapshot + detach the view so a dropdown (app menu, View ▾) can float over the page; returns `{ dataUrl, bounds }` |
 | `layout:endPageOverlay` | R→M | reattach the view once the dropdown closes |
 | `download:list/open/reveal/cancel/clear` | R→M | download management |
-| `permission:respond` | R→M | grant/deny browser permission request |
+| `permission:respond` | R→M | grant/deny browser permission request — persisted (`permissions.json`, keyed by partition+origin+permission), so a remembered grant *or* denial answers a later request without re-prompting |
+| `permission:list` | R→M | every persisted grant/denial for the active tab's partition, newest first — backs the Storage tab's Permissions section |
+| `permission:revoke` | R→M | remove one persisted grant/denial (`origin`, `permission`) — reverts to "will prompt again next time" |
 | `applog:tail` | R→M | last N (max 500) lines of `main.log` |
 | `applog:revealFolder` | R→M | `shell.showItemInFolder()` on `main.log` |
 | `bookmarks:list/add/remove` | R→M | bookmark persistence |
@@ -137,7 +139,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `show:settings` | M→R | open settings modal (from Help menu) |
 | `download:update` | M→R | download progress/state |
 | `download:cleared` | M→R | completed downloads cleared |
-| `permission:request` | M→R | browser permission prompt needed |
+| `permission:request` | M→R | browser permission prompt needed — carries `sessionId` so the prompt can name its tab, auto-denies after 60s unanswered |
+| `permission:dismiss` | M→R | a pending prompt was auto-dismissed (timeout, or its tab closed) — remove it if still showing |
 
 ---
 
@@ -183,7 +186,7 @@ The console panel sits fixed at the bottom of the window. Height is drag-resizab
 
 **Console tab** — streams timeline events polled every 1 s via `recording:timeline`. Five pill toggle buttons filter by event kind (Req/Res/Err/JS/Log). Click a pill to toggle. HAR export and clear buttons on the right.
 
-**Storage tab** — fetches cookies, localStorage, sessionStorage and IndexedDB once per real refresh trigger (refresh button, tab switch, session switch, or an auto-refresh tick), then keeps that snapshot in memory: the filter input re-renders from it with no further IPC calls. Cookies have a full add/edit form (domain/name/value/path/SameSite/expiry/Secure/HttpOnly); an edit calls `setCookie` first and only removes the old cookie if its identity (name/domain/path) changed, so a failed edit never loses the original. localStorage is editable the same way it always was; sessionStorage and IndexedDB (database → object store → records, expandable) are read-only diagnostic views, reusing `snapshotScripts.ts`'s IndexedDB collector. An "Auto-refresh" toggle (default off) polls all four sections every 2 s, but only while the Storage tab is active and the console panel is visible. `getLocalStorage`/`getSessionStorage`/`getIndexedDB` all run `executeJavaScript` in the active page — empty for pages with no content, and scoped to whatever page is currently loaded (see Gotchas).
+**Storage tab** — fetches cookies, localStorage, sessionStorage, IndexedDB and Permissions once per real refresh trigger (refresh button, tab switch, session switch, or an auto-refresh tick), then keeps that snapshot in memory: the filter input re-renders from it with no further IPC calls. Cookies have a full add/edit form (domain/name/value/path/SameSite/expiry/Secure/HttpOnly); an edit calls `setCookie` first and only removes the old cookie if its identity (name/domain/path) changed, so a failed edit never loses the original. localStorage is editable the same way it always was; sessionStorage and IndexedDB (database → object store → records, expandable) are read-only diagnostic views, reusing `snapshotScripts.ts`'s IndexedDB collector. Permissions (#276) lists every grant/denial persisted for the active tab's partition with a Revoke button per entry. An "Auto-refresh" toggle (default off) polls all five sections every 2 s, but only while the Storage tab is active and the console panel is visible. `getLocalStorage`/`getSessionStorage`/`getIndexedDB` all run `executeJavaScript` in the active page — empty for pages with no content, and scoped to whatever page is currently loaded (see Gotchas).
 
 ---
 

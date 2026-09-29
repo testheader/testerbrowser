@@ -127,10 +127,18 @@ contextBridge.exposeInMainWorld('testerBrowser', {
 
   permission: {
     respond:   (reqId: string, granted: boolean) => ipcRenderer.invoke('permission:respond', reqId, granted),
-    onRequest: (cb: (d: { reqId: string; permission: string; origin: string }) => void) => {
+    onRequest: (cb: (d: { reqId: string; permission: string; origin: string; sessionId: string | null }) => void) => {
       ipcRenderer.removeAllListeners('permission:request');
       ipcRenderer.on('permission:request', (_e, d) => cb(d));
     },
+    // #276: a pending prompt was auto-dismissed (timeout, or its tab closed)
+    // — the renderer removes that one notification if it's still showing.
+    onDismiss: (cb: (d: { reqId: string }) => void) => {
+      ipcRenderer.removeAllListeners('permission:dismiss');
+      ipcRenderer.on('permission:dismiss', (_e, d) => cb(d));
+    },
+    list:   (id: string) => ipcRenderer.invoke('permission:list', id),
+    revoke: (id: string, origin: string, permission: string) => ipcRenderer.invoke('permission:revoke', id, origin, permission),
   },
 
   bookmarks: {

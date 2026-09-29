@@ -79,15 +79,16 @@ export async function fetchStorageData() {
     if (urlbarVal && urlbarVal.startsWith('http')) currentHostname = new URL(urlbarVal).hostname;
   } catch {}
 
-  const [cookies, ls, ss, idb, loadedDomains] = await Promise.all([
+  const [cookies, ls, ss, idb, loadedDomains, permissions] = await Promise.all([
     testerBrowser.sessions.getCookies(sessionId),
     testerBrowser.sessions.getLocalStorage(sessionId),
     testerBrowser.sessions.getSessionStorage(sessionId),
     testerBrowser.sessions.getIndexedDB(sessionId),
     testerBrowser.sessions.getLoadedDomains(sessionId),
+    testerBrowser.permission.list(sessionId),
   ]);
 
-  cache = { sessionId, cookies, ls, ss, idb, loadedDomains, currentHostname };
+  cache = { sessionId, cookies, ls, ss, idb, loadedDomains, currentHostname, permissions };
   renderStoragePanel();
 }
 
@@ -102,7 +103,7 @@ export function renderStoragePanel() {
     panel.innerHTML = '<div class="storage-empty">Loading…</div>';
     return;
   }
-  const { sessionId, cookies, ls, ss, idb, loadedDomains, currentHostname } = cache;
+  const { sessionId, cookies, ls, ss, idb, loadedDomains, currentHostname, permissions } = cache;
   const filterText = document.getElementById('storageFilter').value.toLowerCase();
 
   panel.innerHTML = '';
@@ -110,6 +111,7 @@ export function renderStoragePanel() {
   renderLocalStorageSection(panel, sessionId, ls, filterText);
   renderSessionStorageSection(panel, ss, filterText);
   renderIndexedDBSection(panel, idb, filterText);
+  renderPermissionsSection(panel, sessionId, permissions || [], filterText);
 }
 
 // ── Cookies ──
@@ -658,6 +660,74 @@ function renderIndexedDBSection(panel, idb, filterText) {
     empty.textContent = 'No IndexedDB entries match the filter';
     panel.appendChild(empty);
   }
+}
+
+// ── Permissions (#276) — grants/denials remembered for this session's
+// partition, revocable here. A revoked entry just goes back to "will
+// prompt again next time"; it isn't shown as anything else in this list. ──
+
+function formatPermissionOrigin(origin) {
+  return origin.startsWith('malformed:') ? `(unparseable URL) ${origin.slice('malformed:'.length)}` : origin;
+}
+
+function renderPermissionsSection(panel, sessionId, permissions, filterText) {
+  const filtered = filterText
+    ? permissions.filter(p =>
+        p.origin.toLowerCase().includes(filterText) || p.permission.toLowerCase().includes(filterText))
+    : permissions;
+
+  const hdr = document.createElement('div');
+  hdr.className = 'storage-section-header';
+  const title = document.createElement('span');
+  title.className   = 'storage-section-title';
+  title.textContent = `Permissions (${filtered.length}${filterText && filtered.length !== permissions.length ? '/' + permissions.length : ''})`;
+  hdr.appendChild(title);
+  panel.appendChild(hdr);
+
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'storage-empty';
+    empty.textContent = filterText ? 'No permissions match the filter' : 'No permission grants or denials remembered for this session';
+    panel.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'storage-table';
+  table.innerHTML = '<thead><tr><th>Origin</th><th>Permission</th><th>Status</th><th></th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const p of filtered) {
+    const tr = document.createElement('tr');
+
+    const originTd = document.createElement('td');
+    originTd.textContent = formatPermissionOrigin(p.origin);
+    tr.appendChild(originTd);
+
+    const permTd = document.createElement('td');
+    permTd.textContent = p.permission;
+    tr.appendChild(permTd);
+
+    const statusTd = document.createElement('td');
+    statusTd.innerHTML = `<span class="storage-badge ${p.status === 'granted' ? 'yes' : 'no'}">${p.status === 'granted' ? 'Granted' : 'Denied'}</span>`;
+    tr.appendChild(statusTd);
+
+    const revokeTd = document.createElement('td');
+    const revokeBtn = document.createElement('button');
+    revokeBtn.className = 'storage-delete-btn';
+    revokeBtn.textContent = '×';
+    revokeBtn.title = 'Revoke — the page will be prompted again next time';
+    revokeBtn.setAttribute('aria-label', 'Revoke');
+    revokeBtn.onclick = async () => {
+      await testerBrowser.permission.revoke(sessionId, p.origin, p.permission);
+      fetchStorageData();
+    };
+    revokeTd.appendChild(revokeBtn);
+    tr.appendChild(revokeTd);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  panel.appendChild(table);
 }
 
 // ── Auto-refresh: polls every 2s, but only while the Storage tab is active

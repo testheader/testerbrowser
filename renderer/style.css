@@ -316,6 +316,9 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
               box-shadow: 0 4px 16px rgba(0,0,0,0.5); animation: perm-slide 0.2s ease; }
 @keyframes perm-slide { from { transform: translateX(110%); opacity: 0; } to { transform: none; opacity: 1; } }
 .perm-msg { flex: 1; font-size: 12px; color: var(--text-primary); line-height: 1.4; }
+.perm-tab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.perm-tab-label { font-size: 11px; color: var(--text-muted); white-space: nowrap; max-width: 100px;
+                   overflow: hidden; text-overflow: ellipsis; }
 .perm-btn { padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; flex-shrink: 0; }
 .perm-allow { background: var(--accent); color: var(--on-fill); }
 .perm-allow:hover { background: var(--accent-soft); }
