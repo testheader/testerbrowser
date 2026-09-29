@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Controlled input fixture</title>
+<link rel="stylesheet" href="../shared.css">
+</head>
+<body>
+<nav class="crumbs"><a href="../index.html">fixtures</a> / forms / controlled input</nav>
+<h1>React-style controlled input</h1>
+<p>Reproduces React's own value-tracking mechanism (<code>inputValueTracking.js</code>)
+without pulling in React itself: a getter/setter pair is installed directly on the
+<code>&lt;input&gt;</code> element (an own property, shadowing — not replacing — the
+accessor on <code>HTMLInputElement.prototype</code>), and an <code>input</code> listener
+only treats a change as "real" — and updates the text below — when the tracker's
+last-known value differs from the value actually on the DOM node at event time.
+Assigning <code>el.value = x</code> goes through the shadowed setter, which updates the
+tracker in lockstep, so the framework never sees a discrepancy and the "last value seen"
+text does not move — exactly like a real React-controlled input silently reverting a
+naively-injected value on its next render. Calling the native prototype's setter
+directly (bypassing the shadowed property) leaves the tracker stale, so the following
+<code>input</code> event reads as a genuine external change, the same way real typing
+does.</p>
+
+<form>
+  <p><label>Controlled field <input type="text" id="controlledInput"></label></p>
+</form>
+<p>Last value seen by onChange: <span id="lastSeenValue"></span></p>
+
+<script>
+  (function () {
+    const el = document.getElementById('controlledInput');
+    const lastSeenEl = document.getElementById('lastSeenValue');
+    const nativeDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+
+    const tracker = { value: el.value };
+
+    Object.defineProperty(el, 'value', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return nativeDescriptor.get.call(this);
+      },
+      set(newValue) {
+        nativeDescriptor.set.call(this, newValue);
+        tracker.value = newValue;
+      },
+    });
+
+    el.addEventListener('input', () => {
+      const currentValue = nativeDescriptor.get.call(el);
+      if (tracker.value !== currentValue) {
+        tracker.value = currentValue;
+        lastSeenEl.textContent = currentValue;
+      }
+    });
+  })();
+</script>
+</body>
+</html>

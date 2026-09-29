@@ -745,3 +745,38 @@ test('column widths persist across a restart', async () => {
 
   await app2.close();
 });
+
+// ── Playback 'fill' uses the native setter, not el.value= (#272) ───────────
+
+test('playback of a fill step reaches a React-style controlled input, not just the raw DOM value (#272)', async () => {
+  const urlPath = '/forms/controlled-input.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  await window.click('#consoleTabTests');
+  await window.fill('#rpTestName', 'controlled input fill');
+  await window.click('#rpStartBtn');
+  await tab.fill('#controlledInput', 'Grace');
+  await window.click('#rpStopBtn');
+  await window.click('#rpSaveBtn');
+
+  // Reset the field (a raw DOM assignment, bypassing the tracked setter, so
+  // this reset itself doesn't count as an onChange) before replaying.
+  await tab.evaluate(() => {
+    const el = document.getElementById('controlledInput') as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '');
+  });
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'controlled input fill' });
+  await testItem.locator('.rp-run-once').click();
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+
+  // The naive `el.value = x` playback used to leave the DOM showing the new
+  // text while the page's own tracked setter never saw the assignment, so
+  // "Last value seen by onChange" stayed blank — this must now show the
+  // played-back value, proving the native prototype setter was used.
+  await expect(tab.locator('#lastSeenValue')).toHaveText('Grace');
+});

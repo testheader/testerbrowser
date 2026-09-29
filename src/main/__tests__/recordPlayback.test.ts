@@ -64,22 +64,32 @@ describe('buildPlaybackScript — sensitive fill steps never type the literal pl
     expect(script).not.toContain('should have been substituted');
   });
 
-  it('a non-sensitive fill types its value normally', () => {
+  // #272: a plain `el.value=` assignment is invisible to a React-controlled
+  // input — its own shadowed setter would intercept the assignment and keep
+  // its internal tracker in lockstep, so the framework never sees a real
+  // change. Playback must go through the native prototype setter instead
+  // (see __tbSetNativeValue in sessionManager.ts), bypassing any such
+  // override the same way real typing does.
+  it('a non-sensitive fill types its value normally, via the native setter (#272)', () => {
     const script = buildPlaybackScript(makeStep({ type: 'fill', value: 'Ada' }));
-    expect(script).toContain('el.value=');
-    expect(script).toContain('"Ada"');
+    expect(script).not.toContain('el.value=');
+    expect(script).toContain('__tbSetNativeValue(el,"Ada")');
   });
 });
 
 describe('buildPlaybackScript — check step type (#242)', () => {
-  it('sets el.checked = true for a checked step', () => {
+  // #272: same native-setter requirement as 'fill', for the 'checked'
+  // property.
+  it('sets checked = true for a checked step, via the native setter (#272)', () => {
     const script = buildPlaybackScript(makeStep({ type: 'check', value: true }));
-    expect(script).toContain('el.checked=true');
+    expect(script).not.toContain('el.checked=');
+    expect(script).toContain('__tbSetNativeChecked(el,true)');
   });
 
-  it('sets el.checked = false for an unchecked step', () => {
+  it('sets checked = false for an unchecked step, via the native setter (#272)', () => {
     const script = buildPlaybackScript(makeStep({ type: 'check', value: false }));
-    expect(script).toContain('el.checked=false');
+    expect(script).not.toContain('el.checked=');
+    expect(script).toContain('__tbSetNativeChecked(el,false)');
   });
 
   it('dispatches input and change events, matching the fill case\'s pattern', () => {

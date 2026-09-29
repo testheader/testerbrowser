@@ -110,3 +110,24 @@ test('a custom template mixing {firstName} and {email} fills one field with a ma
   const localPart = email.split('@')[0];
   expect(localPart.toLowerCase()).toMatch(new RegExp(`^${firstName.toLowerCase()}\\.[a-z]+$`));
 });
+
+// ── injectTestData uses the native setter, not el.value= (#272) ────────────
+
+test('"Fill with test data" reaches a React-style controlled input, not just the raw DOM value (#272)', async () => {
+  const urlPath = '/forms/controlled-input.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+
+  await openFieldMenu(tab, '#controlledInput', 'Fill with test data', 'UUID');
+  const filled = await tab.locator('#controlledInput').inputValue();
+  expect(filled.length).toBeGreaterThan(0);
+
+  // The naive `el.value = x` injection used to leave the DOM showing the new
+  // text while the page's own tracked setter never saw the assignment, so
+  // "Last value seen by onChange" stayed blank — this must now show the
+  // injected value, proving the native prototype setter was used.
+  await expect(tab.locator('#lastSeenValue')).toHaveText(filled);
+});

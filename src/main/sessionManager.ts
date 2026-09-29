@@ -1233,6 +1233,29 @@ interface FollowPairing {
   navInPageHandler: (_e: unknown, url: string) => void;
 }
 
+// #272: sets a form element's value/checked state through the setter
+// already on its *prototype* chain, not whatever's currently in effect on
+// the element itself. React (and other controlled-component frameworks)
+// installs its own setter directly on the element *instance* (an own
+// property, shadowing — not replacing — the accessor already on its
+// prototype) to track every value change; assigning el.value = x invokes
+// that override, which updates its own tracker too, so the framework's own
+// "did this really change" check (comparing its tracker's last-known value
+// against the DOM's real one) finds no discrepancy and never fires
+// onChange, even though el.value now shows the new text — React's very
+// next render snaps the visible value back to its own (unchanged) state.
+// Calling the *original* prototype setter directly bypasses that override
+// entirely, leaving the tracker stale so the subsequent 'input'/'change'
+// event reads as a genuine external change, the same way real typing does.
+// Falls back to the plain native prototype (chosen from el.tagName, since
+// this runs inside the page, not this process) if the element's own
+// prototype somehow has no descriptor for the property at all. Shared
+// (as a string, not a function — these run inside the page, not this
+// process) between buildPlaybackScript's 'fill'/'check' cases and
+// injectTestData, which would otherwise duplicate this exact logic twice.
+const NATIVE_SET_VALUE_FN = `function __tbSetNativeValue(el,value){var np=el.tagName==='TEXTAREA'?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),'value')||Object.getOwnPropertyDescriptor(np,'value');d.set.call(el,value);}`;
+const NATIVE_SET_CHECKED_FN = `function __tbSetNativeChecked(el,value){var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),'checked')||Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'checked');d.set.call(el,value);}`;
+
 // Exported so #242's fixes (the sensitive-fill guard and the 'check' step
 // type) have a unit-tested equivalent, since this function's actual work —
 // picking the right generated-script branch per step — lives in real,
@@ -1242,7 +1265,7 @@ interface FollowPairing {
 export function buildPlaybackScript(step: TestStep): string {
   const sel = JSON.stringify(step.selector ?? '');
   const val = JSON.stringify(step.value ?? '');
-  const helpers = `var __wait=function(fn,ms){return new Promise(function(res,rej){var s=Date.now();(function poll(){try{var r=fn();if(r!==null&&r!==false&&r!==undefined){res(r);return;}}catch(ex){}if(Date.now()-s>(ms||10000)){rej(new Error('Timeout'));return;}setTimeout(poll,120);})();});};var __find=function(sel){var el=document.querySelector(sel);if(!el)throw new Error('Element not found: '+sel);return el;};var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};`;
+  const helpers = `var __wait=function(fn,ms){return new Promise(function(res,rej){var s=Date.now();(function poll(){try{var r=fn();if(r!==null&&r!==false&&r!==undefined){res(r);return;}}catch(ex){}if(Date.now()-s>(ms||10000)){rej(new Error('Timeout'));return;}setTimeout(poll,120);})();});};var __find=function(sel){var el=document.querySelector(sel);if(!el)throw new Error('Element not found: '+sel);return el;};var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};${NATIVE_SET_VALUE_FN}${NATIVE_SET_CHECKED_FN}`;
   switch (step.type) {
     case 'navigate': return `(function(){try{location.href=${JSON.stringify(step.url??'')};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'click': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});__find(${sel}).click();return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
@@ -1256,10 +1279,10 @@ export function buildPlaybackScript(step: TestStep): string {
       if (step.sensitive && (step.value === '[hidden]' || step.value === undefined)) {
         return `(function(){return {success:false,error:'Sensitive step has no real value to type — it should have been substituted before playback.'};})()`;
       }
-      return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});el.focus();el.value=${val};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+      return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});el.focus();__tbSetNativeValue(el,${val});el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'check': {
       const checked = step.value === true;
-      return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});el.checked=${JSON.stringify(checked)};el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+      return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});var el=__find(${sel});__tbSetNativeChecked(el,${JSON.stringify(checked)});el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     }
     case 'assert-visible': return `(function(){var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};try{var el=document.querySelector(${sel});if(!el||!__vis(el))return {success:false,error:'Not visible: '+${sel}};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'assert-not-visible': return `(function(){var el=document.querySelector(${sel});function v(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0;}if(el&&v(el))return {success:false,error:'Element visible: '+${sel}};return {success:true};})()`;
@@ -2770,9 +2793,10 @@ export class SessionManager {
     const escaped = JSON.stringify(value);
     view.webContents.executeJavaScript(`
       (function(){
+        ${NATIVE_SET_VALUE_FN}
         var el=document.activeElement;
         if(!el||!('value' in el))return;
-        el.value=${escaped};
+        __tbSetNativeValue(el,${escaped});
         el.dispatchEvent(new Event('input',{bubbles:true}));
         el.dispatchEvent(new Event('change',{bubbles:true}));
       })();
