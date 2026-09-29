@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { escHtml } from './utils.js';
-import { getActiveId } from './tabs.js';
+import { getActiveId, refreshTabs } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { pollWhileVisible } from './poll.js';
 
@@ -96,7 +96,7 @@ function applyTypeFieldVisibility(type, latencyField, latencyInput, latencyLabel
 
 export function initResilience() {
   const panel = document.getElementById('resiliencePanel');
-  if (panel.dataset.initialized) { loadRules(); return; }
+  if (panel.dataset.initialized) { loadRules(); loadConditions(); return; }
   panel.dataset.initialized = '1';
 
   panel.innerHTML = `
@@ -146,12 +146,61 @@ export function initResilience() {
       </form>
       </div>
       <div class="res-col res-col-right">
+        <div class="res-conditions">
+          <div class="res-conditions-title">Tab conditions</div>
+          <div class="res-conditions-row">
+            <div class="res-field">
+              <label class="res-field-label" for="resNetworkSelect">Network</label>
+              <select class="res-select" id="resNetworkSelect">
+                <option value="none">No throttling</option>
+                <option value="fast3g">Fast 3G</option>
+                <option value="slow3g">Slow 3G</option>
+                <option value="offline">Offline</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </div>
+            <div class="res-field">
+              <label class="res-field-label" for="resCpuSelect">CPU</label>
+              <select class="res-select" id="resCpuSelect">
+                <option value="1">No throttling</option>
+                <option value="4">4&times; slowdown</option>
+                <option value="6">6&times; slowdown</option>
+              </select>
+            </div>
+          </div>
+          <div class="res-conditions-custom res-hidden" id="resCustomNetworkFields">
+            <div class="res-field">
+              <label class="res-field-label" for="resCustomLatency">Latency (ms)</label>
+              <input class="res-input" id="resCustomLatency" type="number" min="0" value="100" />
+            </div>
+            <div class="res-field">
+              <label class="res-field-label" for="resCustomDownload">Download (kbps)</label>
+              <input class="res-input" id="resCustomDownload" type="number" min="0" value="1000" />
+            </div>
+            <div class="res-field">
+              <label class="res-field-label" for="resCustomUpload">Upload (kbps)</label>
+              <input class="res-input" id="resCustomUpload" type="number" min="0" value="1000" />
+            </div>
+            <button class="res-btn" type="button" id="resCustomApplyBtn">Apply</button>
+          </div>
+        </div>
         <div class="res-rules-title">Active rules</div>
         <div class="res-rules" id="resRules">
           <div class="res-empty" id="resEmpty">Add a rule to intercept requests.</div>
         </div>
       </div>
     </div>`;
+
+  const networkSelect = document.getElementById('resNetworkSelect');
+  const cpuSelect      = document.getElementById('resCpuSelect');
+  const customFields    = document.getElementById('resCustomNetworkFields');
+
+  networkSelect.addEventListener('change', () => {
+    customFields.classList.toggle('res-hidden', networkSelect.value !== 'custom');
+    if (networkSelect.value !== 'custom') applyConditionsFromForm();
+  });
+  cpuSelect.addEventListener('change', applyConditionsFromForm);
+  document.getElementById('resCustomApplyBtn').addEventListener('click', applyConditionsFromForm);
 
   document.getElementById('resType').addEventListener('change', (e) => {
     applyTypeFieldVisibility(e.target.value, document.getElementById('resLatencyField'),
@@ -203,6 +252,7 @@ export function initResilience() {
   });
 
   loadRules();
+  loadConditions();
   // Hit counts change as traffic flows without the user re-opening this tab;
   // keep them fresh while the Resilience tab is the one being looked at.
   pollWhileVisible(() => {
@@ -218,6 +268,51 @@ export async function loadRules() {
   if (!getActiveId()) return;
   const rules = await testerBrowser.resilience.getRules(getActiveId());
   renderRules(rules);
+}
+
+// #265: reflects the active tab's own network/CPU conditions in the two
+// selects (and the custom fields, if a custom network is active) — a null
+// result (never touched) is shown as "No throttling" / rate 1, same as a
+// brand-new tab's real, unthrottled state.
+export async function loadConditions() {
+  if (!getActiveId()) return;
+  const networkSelect = document.getElementById('resNetworkSelect');
+  const cpuSelect      = document.getElementById('resCpuSelect');
+  const customFields   = document.getElementById('resCustomNetworkFields');
+  if (!networkSelect) return; // panel not yet built
+  const c = (await testerBrowser.resilience.getConditions(getActiveId())) || { network: 'none', cpuRate: 1 };
+
+  cpuSelect.value = String(c.cpuRate);
+  if (typeof c.network === 'string') {
+    networkSelect.value = c.network;
+    customFields.classList.add('res-hidden');
+  } else {
+    networkSelect.value = 'custom';
+    customFields.classList.remove('res-hidden');
+    document.getElementById('resCustomLatency').value  = c.network.custom.latency;
+    document.getElementById('resCustomDownload').value = c.network.custom.downloadKbps;
+    document.getElementById('resCustomUpload').value   = c.network.custom.uploadKbps;
+  }
+}
+
+async function applyConditionsFromForm() {
+  if (!getActiveId()) return;
+  const networkSelect = document.getElementById('resNetworkSelect');
+  const cpuSelect      = document.getElementById('resCpuSelect');
+  const network = networkSelect.value === 'custom'
+    ? { custom: {
+        latency:      parseInt(document.getElementById('resCustomLatency').value, 10) || 0,
+        downloadKbps: parseInt(document.getElementById('resCustomDownload').value, 10) || 0,
+        uploadKbps:   parseInt(document.getElementById('resCustomUpload').value, 10) || 0,
+      } }
+    : networkSelect.value;
+  await testerBrowser.resilience.setConditions(getActiveId(), { network, cpuRate: Number(cpuSelect.value) });
+  // setConditions() only updates main-process state — nothing pushes a
+  // session-list refresh to the renderer on its own (unlike title/favicon,
+  // which have their own dedicated push channels), so the tab strip's
+  // throttled indicator would otherwise sit stale until some unrelated
+  // action happened to call refreshTabs() next.
+  await refreshTabs();
 }
 
 function renderRules(rules) {

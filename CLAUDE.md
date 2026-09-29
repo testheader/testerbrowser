@@ -102,6 +102,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `mock:moveRule` | R→M | reorder a Mock rule (`'up' \| 'down'`) within its partition's array — rules are matched in this order, first enabled match wins |
 | `mock:exportRules` | R→M | `dialog.showSaveDialog`, write `{ testerBrowserMocks: 1, rules: [...] }` (no `id`/`hitCount`/`lastHitAt`) — `{ ok, path?, canceled?, error? }` |
 | `mock:importRules` | R→M | `dialog.showOpenDialog`, validate and append rules with fresh ids to the active tab's partition — `{ ok, imported?, skipped?, firstSkipReason?, canceled?, error? }` |
+| `resilience:setConditions` | R→M | per-tab `Network.emulateNetworkConditions` + `Emulation.setCPUThrottlingRate`; re-applied on `did-navigate` in case of a process swap |
+| `resilience:getConditions` | R→M | the active tab's current `{ network, cpuRate }`, or `null` if never touched (unthrottled) |
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |

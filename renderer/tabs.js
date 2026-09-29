@@ -6,7 +6,7 @@ import { refreshDiffPickers } from './diff.js';
 import { refreshFollowPickers } from './followalong.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 import { reloadA11yIfLoaded } from './a11y.js';
-import { loadRules } from './resilience.js';
+import { loadRules, loadConditions } from './resilience.js';
 import { refreshVR, refreshVRComparePicker, clearVRSession } from './visual-regression.js';
 import { refreshSpoofStatus } from './emulation.js';
 import { clearSecurityFindings } from './security.js';
@@ -73,7 +73,7 @@ export async function switchToSession(id) {
   const activeConsoleTab = getActiveConsoleTab();
   if (activeConsoleTab === 'storage') loadStoragePanel();
   if (activeConsoleTab === 'a11y') reloadA11yIfLoaded();
-  if (activeConsoleTab === 'resilience') loadRules();
+  if (activeConsoleTab === 'resilience') { loadRules(); loadConditions(); }
   if (activeConsoleTab === 'vr') refreshVR();
   if (activeConsoleTab === 'spoof') refreshSpoofStatus();
   if (activeConsoleTab === 'security') clearSecurityFindings();
@@ -188,6 +188,11 @@ function updateTabElement(tab, s) {
   else tab.removeAttribute('aria-current');
   if (s.color) tab.style.setProperty('--tab-color', s.color);
   tab.dataset.pinned = s.pinned ? '1' : '';
+  // #265: a title only when throttled, so an unthrottled tab isn't left with
+  // a stale/empty tooltip attribute.
+  tab.classList.toggle('throttled', !!s.throttleLabel);
+  if (s.throttleLabel) tab.title = s.throttleLabel;
+  else tab.removeAttribute('title');
 
   const indicator = tab.querySelector('.tab-spinner, .tab-favicon, .tab-dot');
   const currentSrc = indicator?.tagName === 'IMG' ? indicator.src : null;

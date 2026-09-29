@@ -173,6 +173,10 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 .tab-dot.persistent { background: var(--accent); }
 .tab-dot.ephemeral  { background: var(--bg-raised); }
 .tab-pin { font-size: 10px; color: var(--warn-strong); flex-shrink: 0; }
+/* #265: a throttled tab (network and/or CPU conditions active) gets a small
+   fixed icon before its name — content, not a DOM node, since the tab's own
+   `title` attribute already carries the full "Throttled: …" description. */
+.tab.throttled::before { content: "🐢"; font-size: 10px; flex-shrink: 0; }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; flex: 1; min-width: 0; }
 .tab-close { flex-shrink: 0; width: 16px; height: 16px; display: flex; align-items: center;
              justify-content: center; border-radius: 3px; font-size: 13px; color: var(--text-faint); }
@@ -1328,6 +1332,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-col-right { flex: 1 1 320px; }
 .res-rules-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); }
 .res-hidden { display: none; }
+/* #265: "Tab conditions" section, above the rules list in the right column. */
+.res-conditions { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin-bottom: 4px;
+                  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; }
+.res-conditions-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); }
+.res-conditions-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.res-conditions-custom { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
+.res-conditions-custom .res-input { width: 90px; }
 .res-guide { background: var(--success-surface); border: 1px solid var(--success-border); border-radius: 4px; padding: 10px 12px;
              display: flex; flex-direction: column; gap: 6px; }
 .res-guide p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }

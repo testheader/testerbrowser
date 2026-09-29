@@ -14,6 +14,7 @@ import {
   resolveTemplate,
 } from './testdata';
 import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
+import { TabConditions, toCdpNetworkConditions, describeConditions } from './networkConditions';
 import { filterRowsSince } from './jira';
 import { writeJsonAtomic } from './jsonFile';
 import { matchShortcut } from './shortcutTable';
@@ -842,6 +843,9 @@ export interface TestSession {
   // way to restore it once webContents.setUserAgent() has been called,
   // since Electron doesn't expose "reset to default" directly.
   defaultUserAgent: string;
+  // #265: per-tab network/CPU throttling — undefined means never touched
+  // (a fresh tab starts unthrottled, matching a real CDP session's default).
+  conditions?: TabConditions;
 }
 
 export interface HistoryEntry {
@@ -1321,6 +1325,7 @@ export class SessionManager {
       pinned: s.pinned,
       color: s.color,
       createdAt: s.createdAt,
+      throttleLabel: describeConditions(s.conditions),
     }));
   }
 
@@ -1592,6 +1597,11 @@ export class SessionManager {
       if (displayUrl) this.addHistoryEntry(id, displayUrl);
       this.win.webContents.send('session:navigated', { id, url: displayUrl });
       this.sendNavState(id);
+      // #265: a cross-process navigation can swap the renderer CDP is
+      // actually talking to, which would silently drop any active
+      // network/CPU throttling — cheap and idempotent to just always
+      // re-issue it here rather than try to detect a process swap.
+      if (testSession.conditions) void this.applyConditions(id, testSession.conditions);
       this.onSessionsChanged();
     });
     view.webContents.on('did-navigate-in-page', (_e, url) => {
@@ -2696,6 +2706,40 @@ export class SessionManager {
     const s = this.sessions.get(id);
     if (!s) return null;
     return this.emulationByPartition.get(s.partition) ?? null;
+  }
+
+  // #265: per-tab (not per-partition — a sibling tab in the same session
+  // starts unthrottled, matching the acceptance criteria) network/CPU
+  // throttling. Unlike setEmulation() above, there's nothing here that can
+  // meaningfully "half apply": both CDP commands are simple, idempotent
+  // setters with no earlier-state to preserve on partial failure, so this
+  // just applies both and stores whichever the caller asked for regardless
+  // of whether a given command's promise resolves — a failed command still
+  // leaves the debugger in whatever state it was already in, and the next
+  // did-navigate re-application (below) will retry it.
+  private async applyConditions(id: string, c: TabConditions): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    const dbg = s.view.webContents.debugger;
+    await dbg.sendCommand('Network.emulateNetworkConditions', toCdpNetworkConditions(c.network))
+      .catch((e) => this.warnCdpFailure(id, 'Network.emulateNetworkConditions', e));
+    await dbg.sendCommand('Emulation.setCPUThrottlingRate', { rate: c.cpuRate })
+      .catch((e) => this.warnCdpFailure(id, 'Emulation.setCPUThrottlingRate', e));
+  }
+
+  async setConditions(id: string, c: TabConditions): Promise<void> {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    // Applied before being stored, so a caller that awaits this (and the
+    // tests that poll getConditions()/throttleLabel afterward) can rely on
+    // the CDP commands having actually landed once this resolves.
+    await this.applyConditions(id, c);
+    s.conditions = c;
+    this.onSessionsChanged();
+  }
+
+  getConditions(id: string): TabConditions | null {
+    return this.sessions.get(id)?.conditions ?? null;
   }
 
   private addHistoryEntry(id: string, url: string, failed = false) {

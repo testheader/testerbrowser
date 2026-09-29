@@ -71,6 +71,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/network/slow') return handleSlow(u, res);
   if (u.pathname === '/network/redirect') return handleRedirect(u, res);
   if (u.pathname === '/downloads/file') return handleDownload(u, res);
+  if (u.pathname === '/network/bytes') return handleBytes(u, res);
   if (u.pathname === '/storage/set-cookie') return handleSetCookie(u, res);
   if (u.pathname === '/perf/echo') return handleEcho(u, res);
   if (u.pathname === '/echo/body' && req.method === 'POST') return handleEchoBody(req, res);
@@ -134,6 +135,16 @@ function handleDownload(u: URL, res: ServerResponse): void {
     'content-length': String(size),
   });
   res.end(Buffer.alloc(size, 'x'));
+}
+
+// #265: a plain (non-download) response body of arbitrary size, for
+// measuring fetch() timing under network throttling — handleDownload's
+// content-disposition header would route the response through
+// DownloadManager instead of a normal fetch.
+function handleBytes(u: URL, res: ServerResponse): void {
+  const n = Math.min(Number(u.searchParams.get('n')) || 1024, 10 * 1024 * 1024);
+  res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(n) });
+  res.end(Buffer.alloc(n, 'x'));
 }
 
 function handleSetCookie(u: URL, res: ServerResponse): void {
