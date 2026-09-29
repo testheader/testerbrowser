@@ -104,6 +104,13 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `mock:importRules` | R→M | `dialog.showOpenDialog`, validate and append rules with fresh ids to the active tab's partition — `{ ok, imported?, skipped?, firstSkipReason?, canceled?, error? }` |
 | `tests:exportTests` | R→M | `dialog.showSaveDialog`, write `{ testerBrowserTests: 1, tests: [...] }` (no `id`/`createdAt`/`updatedAt`) — one saved test when a test id is passed, every saved test when omitted — `{ ok, path?, canceled?, error? }` |
 | `tests:importTests` | R→M | `dialog.showOpenDialog`, validate and append tests with fresh ids (name collision appends " (imported)" rather than overwriting) — `{ ok, imported?, skipped?, firstSkipReason?, canceled?, error? }` |
+| `visualRegression:listBaselines` | R→M | every saved UI-diff baseline (`userData/baselines/*.png` + sidecar JSON), newest first |
+| `visualRegression:getBaseline` | R→M | one saved baseline's metadata + base64 PNG, by id |
+| `visualRegression:saveBaseline` | R→M | `(name, url, base64Png)` — writes the PNG + a sidecar JSON (name/url/capture date/dimensions read from the PNG itself/empty ignoreRegions); `null` if the PNG doesn't decode |
+| `visualRegression:setIgnoreRegions` | R→M | overwrite a saved baseline's `ignoreRegions` (image-pixel `{x,y,w,h}` rectangles) |
+| `visualRegression:deleteBaseline` | R→M | remove a saved baseline's PNG + sidecar |
+| `visualRegression:exportBaseline` | R→M | `dialog.showSaveDialog` for the PNG path, write it plus a same-basename sidecar JSON (no `id`) next to it — `{ ok, path?, canceled?, error? }` |
+| `visualRegression:importBaseline` | R→M | `dialog.showOpenDialog` for a PNG, requires a same-basename sidecar JSON next to it, validates and copies both in under a fresh id — `{ ok, imported?, canceled?, error? }` |
 | `resilience:setConditions` | R→M | per-tab `Network.emulateNetworkConditions` + `Emulation.setCPUThrottlingRate`; re-applied on `did-navigate` in case of a process swap |
 | `resilience:getConditions` | R→M | the active tab's current `{ network, cpuRate }`, or `null` if never touched (unthrottled) |
 | `security:pageState` | R→M | cert/connection details + mixed-content URLs for a tab's current main-frame document — `{ protocol, keyExchange, cipher, subjectName, issuer, validFrom, validTo, mixedContentUrls }`, or `null` for a scheme the lock-icon popover doesn't cover (file:, the new-tab page, …) |

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VR ignore-region fixture</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #ffffff; }
+  #toggle { position: fixed; top: 8px; left: 8px; }
+</style>
+</head>
+<body>
+<button id="toggle">toggle color</button>
+<script>
+  document.getElementById('toggle').addEventListener('click', () => {
+    document.body.style.background = '#ff0000';
+  });
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { diffPixels } from '../../renderer/vr-diff.js';
+import { diffPixels, pixelInAnyIgnoreRegion } from '../../renderer/vr-diff.js';
 
 // Builds a flat RGBA buffer for a w×h image, each pixel opaque [r,g,b,255].
 function makeImage(w: number, h: number, [r, g, b]: [number, number, number]): Uint8ClampedArray {
@@ -66,6 +66,65 @@ describe('diffPixels', () => {
     const b = new Uint8ClampedArray([10, 10, 10, 255, 255, 255, 255, 255]);
     const { diffCount, total } = diffPixels(a, b, 1, 2);
     expect(total).toBe(2);
+    expect(diffCount).toBe(1);
+  });
+});
+
+describe('pixelInAnyIgnoreRegion (#277)', () => {
+  it('returns false when there are no regions', () => {
+    expect(pixelInAnyIgnoreRegion(5, 5, [])).toBe(false);
+    expect(pixelInAnyIgnoreRegion(5, 5, undefined)).toBe(false);
+  });
+
+  it('is true for a point inside a region, false just outside it', () => {
+    const regions = [{ x: 10, y: 10, w: 5, h: 5 }];
+    expect(pixelInAnyIgnoreRegion(12, 12, regions)).toBe(true);
+    expect(pixelInAnyIgnoreRegion(9, 12, regions)).toBe(false);
+    expect(pixelInAnyIgnoreRegion(12, 16, regions)).toBe(false);
+  });
+
+  it('is half-open on the far edge — the top-left corner is inside, the bottom-right is not', () => {
+    const regions = [{ x: 10, y: 10, w: 5, h: 5 }];
+    expect(pixelInAnyIgnoreRegion(10, 10, regions)).toBe(true); // top-left corner, inclusive
+    expect(pixelInAnyIgnoreRegion(15, 10, regions)).toBe(false); // x = 10 + w, exclusive
+    expect(pixelInAnyIgnoreRegion(10, 15, regions)).toBe(false); // y = 10 + h, exclusive
+    expect(pixelInAnyIgnoreRegion(14, 14, regions)).toBe(true); // last pixel actually inside
+  });
+
+  it('matches if the point is inside any one of several regions', () => {
+    const regions = [{ x: 0, y: 0, w: 2, h: 2 }, { x: 100, y: 100, w: 2, h: 2 }];
+    expect(pixelInAnyIgnoreRegion(1, 1, regions)).toBe(true);
+    expect(pixelInAnyIgnoreRegion(101, 101, regions)).toBe(true);
+    expect(pixelInAnyIgnoreRegion(50, 50, regions)).toBe(false);
+  });
+});
+
+describe('diffPixels — ignore regions (#277)', () => {
+  it('excludes an ignored differing pixel from diffCount and total, painting it with the ignored tint', () => {
+    // A 1×2 image: both pixels differ, but the second is inside an ignore region.
+    const a = new Uint8ClampedArray([0, 0, 0, 255,   0, 0, 0, 255]);
+    const b = new Uint8ClampedArray([255, 255, 255, 255,   255, 255, 255, 255]);
+    const regions = [{ x: 0, y: 1, w: 1, h: 1 }];
+    const { diffData, diffCount, total } = diffPixels(a, b, 1, 2, 15, regions);
+    expect(total).toBe(1); // the ignored pixel is excluded from the denominator too
+    expect(diffCount).toBe(1); // only the non-ignored pixel counts
+    expect(Array.from(diffData.slice(4, 8))).toEqual([128, 128, 128, 140]); // ignored tint, not the diff-red highlight
+  });
+
+  it('excludes an ignored *matching* pixel from total as well, not just a differing one', () => {
+    const a = new Uint8ClampedArray([10, 10, 10, 255,   10, 10, 10, 255]);
+    const b = new Uint8ClampedArray([10, 10, 10, 255,   10, 10, 10, 255]);
+    const regions = [{ x: 0, y: 0, w: 1, h: 1 }];
+    const { diffCount, total } = diffPixels(a, b, 1, 2, 15, regions);
+    expect(total).toBe(1);
+    expect(diffCount).toBe(0);
+  });
+
+  it('with no regions passed, behaves exactly as before (every pixel counted)', () => {
+    const a = new Uint8ClampedArray([0, 0, 0, 255]);
+    const b = new Uint8ClampedArray([255, 255, 255, 255]);
+    const { diffCount, total } = diffPixels(a, b, 1, 1, 15);
+    expect(total).toBe(1);
     expect(diffCount).toBe(1);
   });
 });

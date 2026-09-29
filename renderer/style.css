@@ -1126,6 +1126,13 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .vr-col { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .vr-col-label { font-size: 11px; color: var(--text-muted); text-align: center; }
 .vr-img { width: 100%; border: 1px solid var(--border-color); border-radius: 3px; display: block; }
+.vr-threshold-input { width: 56px; }
+#vrEditRegionsBtn.active { background: var(--accent); color: var(--on-fill); border-color: var(--accent); }
+/* ── Ignore-region drawing overlay (#277) ── */
+.vr-img-wrap { position: relative; width: 100%; }
+.vr-img-wrap .vr-img { position: relative; }
+.vr-regions-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.vr-regions-canvas.vr-regions-editable { pointer-events: auto; cursor: crosshair; }
 
 /* ── Spoof (emulation) panel ── */
 #spoofPanel { flex: 1; overflow: auto; display: none; flex-direction: column; }

@@ -192,6 +192,14 @@ contextBridge.exposeInMainWorld('testerBrowser', {
   visualRegression: {
     captureScreenshot: (id: string, opts?: { fullPage?: boolean }) =>
       ipcRenderer.invoke('session:captureScreenshot', id, opts),
+    listBaselines: () => ipcRenderer.invoke('visualRegression:listBaselines'),
+    getBaseline: (id: string) => ipcRenderer.invoke('visualRegression:getBaseline', id),
+    saveBaseline: (name: string, url: string, b64: string) => ipcRenderer.invoke('visualRegression:saveBaseline', name, url, b64),
+    setIgnoreRegions: (id: string, regions: { x: number; y: number; w: number; h: number }[]) =>
+      ipcRenderer.invoke('visualRegression:setIgnoreRegions', id, regions),
+    deleteBaseline: (id: string) => ipcRenderer.invoke('visualRegression:deleteBaseline', id),
+    exportBaseline: (id: string) => ipcRenderer.invoke('visualRegression:exportBaseline', id),
+    importBaseline: () => ipcRenderer.invoke('visualRegression:importBaseline'),
   },
 
   mock: {

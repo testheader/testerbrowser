@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, TestStep, MockRule, ResilienceRule, EmulationOverrides, EmulationPatch, buildMockFulfillParams, getHostname, validateImportedTests } from './sessionManager';
+import { VisualRegressionStore } from './visualRegressionStore';
 import { TabConditions } from './networkConditions';
 import { firstHttpUrl } from './singleInstance';
 import { canAutoInstall, IDLE_INSTALL_MINUTES } from './idleInstall';
@@ -25,6 +26,7 @@ import { writeJsonAtomic, JsonStore } from './jsonFile';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
+let visualRegressionStore: VisualRegressionStore | null = null;
 
 // --- App-level error log (for bug reports — main process errors, not site console errors) ---
 
@@ -366,6 +368,7 @@ function createWindow() {
     () => settingsStore.get().recorderMaxEvents,
     () => settingsStore.get().allowRealPopups
   );
+  visualRegressionStore = new VisualRegressionStore(win);
 
   const restored = sessionManager.loadAndRestoreSessions();
   if (!restored) {
@@ -674,6 +677,23 @@ ipcMain.handle('a11y:getAltLabelIssues', (_e, id: string) => sessionManager?.get
 ipcMain.handle('a11y:setFocusOverlay', (_e, id: string, enabled: boolean) => sessionManager?.setA11yFocusOverlay(id, enabled) ?? null);
 ipcMain.handle('a11y:detectFocusTrap', (_e, id: string) => sessionManager?.detectA11yFocusTrap(id) ?? null);
 ipcMain.handle('session:captureScreenshot', (_e, id: string, opts?: { fullPage?: boolean }) => sessionManager?.captureScreenshot(id, opts) ?? null);
+
+// Visual regression — saved baselines (#277)
+ipcMain.handle('visualRegression:listBaselines', () => visualRegressionStore?.list() ?? []);
+ipcMain.handle('visualRegression:getBaseline', (_e, id: string) => visualRegressionStore?.get(id) ?? null);
+ipcMain.handle('visualRegression:saveBaseline', (_e, name: string, url: string, b64: string) =>
+  visualRegressionStore?.save(name, url, b64) ?? null
+);
+ipcMain.handle('visualRegression:setIgnoreRegions', (_e, id: string, regions: { x: number; y: number; w: number; h: number }[]) =>
+  visualRegressionStore?.setIgnoreRegions(id, regions) ?? false
+);
+ipcMain.handle('visualRegression:deleteBaseline', (_e, id: string) => visualRegressionStore?.delete(id) ?? false);
+ipcMain.handle('visualRegression:exportBaseline', (_e, id: string) =>
+  visualRegressionStore?.exportBaseline(id) ?? { ok: false, error: 'No store' }
+);
+ipcMain.handle('visualRegression:importBaseline', () =>
+  visualRegressionStore?.importBaseline() ?? { ok: false, error: 'No store' }
+);
 ipcMain.handle('theme:get', (e) => rejectUntrustedSender(e, 'theme:get') ? undefined : themeStore.get().scheme);
 ipcMain.handle('theme:set', (e, scheme: string) => {
   if (rejectUntrustedSender(e, 'theme:set')) return;
