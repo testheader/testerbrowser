@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Without this, Chromium's mobile emulation (Emulation.setDeviceMetricsOverride
+     with mobile:true) falls back to the classic 980px "desktop site on a phone"
+     layout viewport instead of reporting the device's own CSS pixel width —
+     the same viewport meta tag every real responsive mobile page ships. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Viewport / media emulation fixture</title>
 <link rel="stylesheet" href="../shared.css">
 </head>
