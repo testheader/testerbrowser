@@ -212,7 +212,15 @@ body { margin: 0; font-family: -apple-system, Segoe UI, sans-serif; background: 
 #urlbar:focus { outline: none; border-color: var(--active-tab-color, var(--accent)); color: var(--text-primary); }
 #urlbar::placeholder { color: var(--text-faint); }
 #urlbar:focus + #urlbarDisplay { display: none; }
-#urlbarWrap:focus-within #urlbarLock { visibility: hidden; }
+/* #266: general-sibling (not :focus-within), so this only fires when the
+   urlbar INPUT itself is focused — #urlbarLock is now keyboard-focusable
+   too (tabindex, for the lock-icon popover), and :focus-within would also
+   match that, hiding the lock the instant it receives focus on its own
+   mousedown and breaking the click (mouseup lands on whatever's revealed
+   underneath once the lock is visibility:hidden, never firing a 'click' on
+   the lock itself). Requires #urlbarLock to come after #urlbar in the DOM
+   (see index.html) — general-sibling only selects forward, never back. */
+#urlbar:focus ~ #urlbarLock { visibility: hidden; }
 #urlbarLock { position: absolute; left: 8px; font-size: 13px; z-index: 2; line-height: 1; cursor: pointer;
               border-radius: 3px; padding: 1px; }
 #urlbarLock.secure  { color: var(--success-strong); }
