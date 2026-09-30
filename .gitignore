@@ -9,3 +9,4 @@ playwright-report/
 .omc/
 *.png
 *.jpg
+.claude/worktrees/
