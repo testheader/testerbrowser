@@ -4,7 +4,7 @@
   "version": "0.118.1",
   "description": "A Chromium-based desktop browser purpose-built for software testers: isolated multi-sessions with always-on network/console recording.",
   "main": "dist/main/index.js",
-  "author": "All the Crafters",
+  "author": "Quality Crafters",
   "license": "MIT",
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
