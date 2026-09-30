@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { readLogTail, capLogBlock, capIssueBody, decideScreenshotStrategy } from '../logTail';
 import { getRecentErrors } from '../appLogger';
+import { isPathInside } from '../pathSafety';
 import {
   buildDefaultDiagnosticsText, wrapDiagnosticsMarkdown, buildBugReportTitle,
   findProjectBoardId, projectItemWasAdded,
@@ -380,8 +381,11 @@ export function registerBugreportIpc(deps: AppDeps, stores: BugReportIpcStores):
   });
 
   ipcMain.handle('bugreport:revealScreenshot', (_e, filePath: string) => {
-    if (typeof filePath === 'string' && filePath.startsWith(path.join(app.getPath('userData'), 'bug-report-screenshots'))) {
-      shell.showItemInFolder(filePath);
+    // L5: resolved + path.relative containment, not a string prefix — a
+    // prefix check let '..' segments and sibling dirs sharing the prefix
+    // ("bug-report-screenshots-evil") through.
+    if (isPathInside(filePath, path.join(app.getPath('userData'), 'bug-report-screenshots'))) {
+      shell.showItemInFolder(path.resolve(filePath));
     }
   });
 }

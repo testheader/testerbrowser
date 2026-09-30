@@ -148,7 +148,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `layout:beginPageOverlay` | R→M | snapshot + detach the view so a dropdown (app menu, View ▾) can float over the page; returns `{ dataUrl, bounds }` |
 | `layout:endPageOverlay` | R→M | reattach the view once the dropdown closes |
 | `download:list/open/reveal/cancel/clear` | R→M | download management |
-| `permission:respond` | R→M | grant/deny browser permission request — persisted (`permissions.json`, keyed by partition+origin+permission), so a remembered grant *or* denial answers a later request without re-prompting |
+| `permission:respond` | R→M | grant/deny browser permission request — persisted (`permissions.json`, keyed by partition+origin+permission), so a remembered grant *or* denial answers a later request without re-prompting. Exception: `openExternal` is never persisted — each request prompts with the target URL, and schemes other than mailto:/tel:/https: are denied without a prompt |
 | `permission:list` | R→M | every persisted grant/denial for the active tab's partition, newest first — backs the Storage tab's Permissions section |
 | `permission:revoke` | R→M | remove one persisted grant/denial (`origin`, `permission`) — reverts to "will prompt again next time" |
 | `applog:tail` | R→M | last N (max 500) lines of `main.log` |
@@ -180,7 +180,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `session:playbackStep` / `session:setPlaybackActive` / `session:countSelectorMatches` | R→M | run one step / suppress recording during playback / count selector matches |
 | `testdata:apply` | R→M | fill the page's form fields from a Test Data template |
 | `followalong:start/stop/setMirrorNavigation/list` | R→M | leader→follower tab mirroring (`followAlongManager.ts`) |
-| `jira:getSettings/saveSettings/fetchTicket/createIssue` | R→M | Jira integration (token never returned to the renderer) |
+| `jira:getSettings/saveSettings/fetchTicket/createIssue` | R→M | Jira integration (token never returned to the renderer; base URL must be https, and a stored token is cleared when the base URL's origin changes) |
 | `bugreport:startOAuth/signOut/hasToken/checkToken/saveToken/getDiagnostics/submit/revealScreenshot` | R→M | in-app GitHub bug reporting |
 | `layout:setRightPanelWidth` | R→M | resize the right-hand detail panel |
 | `session:navigated` | M→R | fired on did-navigate / did-navigate-in-page |
@@ -199,7 +199,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `show:settings` | M→R | open settings modal (from Help menu) |
 | `download:update` | M→R | download progress/state |
 | `download:cleared` | M→R | completed downloads cleared |
-| `permission:request` | M→R | browser permission prompt needed — carries `sessionId` so the prompt can name its tab, auto-denies after 60s unanswered |
+| `permission:request` | M→R | browser permission prompt needed — carries `sessionId` so the prompt can name its tab (and `externalUrl` for `openExternal`), auto-denies after 60s unanswered |
 | `permission:dismiss` | M→R | a pending prompt was auto-dismissed (timeout, or its tab closed) — remove it if still showing |
 
 ---

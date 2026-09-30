@@ -62,6 +62,19 @@ function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+describe('SessionRecorder session id → filename (L5)', () => {
+  it('refuses a traversal session id for an on-disk database, creating nothing outside dbDir', () => {
+    const dbDir = freshDbDir();
+    expect(() => new SessionRecorder(makeMockWc().wc, { sessionId: '../escaped', dbDir })).toThrow(/Invalid session id/);
+    expect(fs.existsSync(path.join(dbDir, '..', 'escaped.sqlite'))).toBe(false);
+  });
+
+  it('still allows any id for an in-memory database (no file is named after it)', () => {
+    const rec = new SessionRecorder(makeMockWc().wc, { sessionId: '../whatever', dbDir: freshDbDir(), inMemory: true });
+    rec.destroy();
+  });
+});
+
 describe('SessionRecorder', () => {
   let recorder: SessionRecorder;
   let emit: (method: string, params: unknown) => void;

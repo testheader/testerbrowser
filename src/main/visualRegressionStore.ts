@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { app, dialog, BrowserWindow } from 'electron';
 import { log } from './appLogger';
+import { isSafeId } from './pathSafety';
 
 export interface IgnoreRegion { x: number; y: number; w: number; h: number; }
 
@@ -100,10 +101,19 @@ export class VisualRegressionStore {
     }
   }
 
-  private metaPath(id: string): string { return path.join(this.dir, `${id}.json`); }
-  private pngPath(id: string): string { return path.join(this.dir, `${id}.png`); }
+  // L5: ids arrive from the renderer over IPC — anything that isn't a plain
+  // [A-Za-z0-9_-] token (e.g. '../x') is refused before it reaches a path.
+  private metaPath(id: string): string {
+    if (!isSafeId(id)) throw new Error('Invalid baseline id');
+    return path.join(this.dir, `${id}.json`);
+  }
+  private pngPath(id: string): string {
+    if (!isSafeId(id)) throw new Error('Invalid baseline id');
+    return path.join(this.dir, `${id}.png`);
+  }
 
   private readMeta(id: string): BaselineMeta | null {
+    if (!isSafeId(id)) return null;
     try { return JSON.parse(fs.readFileSync(this.metaPath(id), 'utf-8')) as BaselineMeta; } catch { return null; }
   }
 
@@ -114,6 +124,7 @@ export class VisualRegressionStore {
     for (const f of files) {
       if (!f.endsWith('.json')) continue;
       const id = f.slice(0, -'.json'.length);
+      if (!isSafeId(id)) continue;
       if (!fs.existsSync(this.pngPath(id))) continue; // an orphaned sidecar with no image is not a usable baseline
       const meta = this.readMeta(id);
       if (meta) metas.push(meta);
@@ -162,6 +173,7 @@ export class VisualRegressionStore {
   }
 
   delete(id: string): boolean {
+    if (!isSafeId(id)) return false;
     let deleted = false;
     try { fs.unlinkSync(this.pngPath(id)); deleted = true; } catch {}
     try { fs.unlinkSync(this.metaPath(id)); deleted = true; } catch {}

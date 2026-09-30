@@ -99,6 +99,60 @@ describe('redactCtx', () => {
   it('returns undefined when passed undefined', () => {
     expect(redactCtx(undefined)).toBeUndefined();
   });
+
+  // L3
+  it('recurses into nested objects and arrays', () => {
+    const out = redactCtx({
+      sessionId: 'tab-1',
+      req: { url: 'https://x.test/cb#access_token=abc', headers: { Authorization: 'Basic abc' } },
+      list: ['Bearer xyz', { password: 'hunter2' }],
+      hasToken: true,
+    });
+    expect(out).toEqual({
+      sessionId: 'tab-1',
+      req: { url: 'https://x.test/cb#…', headers: { Authorization: '[REDACTED]' } },
+      list: ['Bearer [REDACTED]', { password: '[REDACTED]' }],
+      hasToken: true,
+    });
+  });
+
+  it('stops at a depth cap instead of recursing forever on a cycle', () => {
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic.self = cyclic;
+    expect(() => JSON.stringify(redactCtx(cyclic))).not.toThrow();
+  });
+});
+
+describe('redact (L3 gaps)', () => {
+  it('redacts the whole value of an Authorization: Basic header, not just the word Basic', () => {
+    expect(redact('Authorization: Basic abc')).toBe('Authorization: [REDACTED]');
+    expect(redact('sent Authorization: Basic dXNlcjpwYXNz to host')).not.toContain('dXNlcjpwYXNz');
+  });
+
+  it('redacts a free-standing Basic credential but leaves prose alone', () => {
+    expect(redact('header was Basic dXNlcjpwYXNzd29yZA==')).toBe('header was Basic [REDACTED]');
+    expect(redact('Basic auth failed')).toBe('Basic auth failed');
+  });
+
+  it('strips a key=value URL fragment such as #access_token=', () => {
+    const out = redact('redirected to https://app.test/cb#access_token=eyJabc&state=1 ok');
+    expect(out).toBe('redirected to https://app.test/cb#… ok');
+  });
+
+  it('leaves a plain anchor fragment untouched', () => {
+    expect(redact('see https://x.test/docs#install')).toBe('see https://x.test/docs#install');
+  });
+
+  it.each(['password', 'db_password', 'client_secret', 'api_key', 'apiKey', 'access_token', 'refresh-token'])(
+    'redacts a %s pair to end of line', (name) => {
+      expect(redact(`${name}=s3cr3t more stuff`)).toBe(`${name}: [REDACTED]`);
+      expect(redact(`"${name}": "s3cr3t"`)).not.toContain('s3cr3t');
+    }
+  );
+
+  it('redacts a cookie header value with several pairs to end of line only', () => {
+    expect(redact('Cookie: a=1; sid=abc\nnext line ok')).toBe('Cookie: [REDACTED]\nnext line ok');
+  });
 });
 
 describe('formatLine', () => {

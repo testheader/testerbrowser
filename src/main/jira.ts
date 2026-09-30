@@ -49,6 +49,36 @@ export function migrateJiraSettings(
   return { settings, migrated };
 }
 
+// M3: the API token is sent as Basic auth to whatever baseUrl says, so the
+// URL must be https (never cleartext http, never another scheme). An empty
+// value is allowed — it just means "Jira not configured". Returns the
+// normalised URL (trimmed, trailing slash dropped) or an error.
+export function validateJiraBaseUrl(raw: unknown): { baseUrl: string; error?: undefined } | { baseUrl?: undefined; error: string } {
+  const baseUrl = (typeof raw === 'string' ? raw : '').trim().replace(/\/$/, '');
+  if (!baseUrl) return { baseUrl: '' };
+  let u: URL;
+  try { u = new URL(baseUrl); } catch { return { error: 'Jira base URL is not a valid URL' }; }
+  if (u.protocol !== 'https:') return { error: 'Jira base URL must use https://' };
+  if (u.username || u.password) return { error: 'Jira base URL must not contain credentials' };
+  return { baseUrl };
+}
+
+function originOf(url: string): string {
+  try { return new URL(url).origin; } catch { return url; }
+}
+
+// M3: which stored token ciphertext to keep on save. A newly supplied token
+// always wins; otherwise the existing one survives only if the base URL
+// still points at the same origin — pointing Jira at a different host must
+// not silently carry the old host's token along to it.
+export function resolveJiraTokenOnSave(
+  currentBaseUrl: string, nextBaseUrl: string, currentTokenEnc: string | null, newTokenEnc: string | null
+): string | null {
+  if (newTokenEnc) return newTokenEnc;
+  if (!currentTokenEnc) return null;
+  return originOf(currentBaseUrl) === originOf(nextBaseUrl) ? currentTokenEnc : null;
+}
+
 // Never includes the token or its ciphertext — only whether one is set.
 export function toPublicJiraSettings(s: JiraSettingsFile): JiraSettingsPublic {
   return { baseUrl: s.baseUrl, email: s.email, projectKey: s.projectKey, issueType: s.issueType, hasToken: !!s.apiTokenEnc };

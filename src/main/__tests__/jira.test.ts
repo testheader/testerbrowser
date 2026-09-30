@@ -1,9 +1,45 @@
 import {
   migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS,
   filterRowsSince, formatConsoleErrors, checkAttachmentSize, summarizeAttachmentResults,
-  JIRA_ATTACHMENT_MAX_BYTES,
+  JIRA_ATTACHMENT_MAX_BYTES, validateJiraBaseUrl, resolveJiraTokenOnSave,
 } from '../jira';
 import type { EventRow } from '../recorder';
+
+describe('validateJiraBaseUrl (M3)', () => {
+  it('accepts an https URL, normalising whitespace and a trailing slash', () => {
+    expect(validateJiraBaseUrl('  https://acme.atlassian.net/ ')).toEqual({ baseUrl: 'https://acme.atlassian.net' });
+  });
+
+  it('accepts empty (not configured)', () => {
+    expect(validateJiraBaseUrl('')).toEqual({ baseUrl: '' });
+    expect(validateJiraBaseUrl(undefined)).toEqual({ baseUrl: '' });
+  });
+
+  it.each(['http://acme.atlassian.net', 'ftp://acme.test', 'javascript:alert(1)', 'acme.atlassian.net', 'https://user:pw@acme.test'])(
+    'rejects %p', (url) => {
+      expect(validateJiraBaseUrl(url).error).toBeTruthy();
+    }
+  );
+});
+
+describe('resolveJiraTokenOnSave (M3)', () => {
+  it('keeps the stored token when the origin is unchanged (path/trailing changes are fine)', () => {
+    expect(resolveJiraTokenOnSave('https://a.test', 'https://a.test/jira', 'ENC', null)).toBe('ENC');
+  });
+
+  it('drops the stored token when the host changes and no new token is supplied', () => {
+    expect(resolveJiraTokenOnSave('https://a.test', 'https://evil.test', 'ENC', null)).toBeNull();
+    expect(resolveJiraTokenOnSave('https://a.test', 'https://a.test:8443', 'ENC', null)).toBeNull();
+  });
+
+  it('uses a newly supplied token regardless of host change', () => {
+    expect(resolveJiraTokenOnSave('https://a.test', 'https://b.test', 'OLD', 'NEW')).toBe('NEW');
+  });
+
+  it('stays null when there was no token', () => {
+    expect(resolveJiraTokenOnSave('https://a.test', 'https://a.test', null, null)).toBeNull();
+  });
+});
 
 function row(kind: EventRow['kind'], ts: number, payload: unknown): EventRow {
   return { session_id: 's1', ts, kind, summary: '', payload: JSON.stringify(payload) };

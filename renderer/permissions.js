@@ -13,7 +13,7 @@ const PERM_LABELS = {
 };
 
 export function initPermissions() {
-  testerBrowser.permission.onRequest(async ({ reqId, permission, origin, sessionId }) => {
+  testerBrowser.permission.onRequest(async ({ reqId, permission, origin, sessionId, externalUrl }) => {
     const notif = document.createElement('div');
     notif.className = 'perm-notif';
     notif.dataset.reqId = reqId;
@@ -41,7 +41,12 @@ export function initPermissions() {
 
     const msg = document.createElement('span');
     msg.className   = 'perm-msg';
-    msg.textContent = `${origin} wants to ${PERM_LABELS[permission] || permission}`;
+    // An openExternal prompt names the exact URL being handed to the OS (and
+    // is never remembered — see permissionManager.ts), truncated for display.
+    msg.textContent = permission === 'openExternal' && externalUrl
+      ? `${origin} wants to open ${externalUrl.length > 200 ? externalUrl.slice(0, 200) + '…' : externalUrl} in an external app`
+      : `${origin} wants to ${PERM_LABELS[permission] || permission}`;
+    if (externalUrl) msg.title = externalUrl;
     notif.appendChild(msg);
 
     const allow = document.createElement('button');

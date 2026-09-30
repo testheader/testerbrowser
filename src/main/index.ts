@@ -5,6 +5,7 @@ import { autoUpdater } from 'electron-updater';
 import { SessionManager, getHostname } from './sessionManager';
 import { VisualRegressionStore } from './visualRegressionStore';
 import { firstHttpUrl } from './singleInstance';
+import { isTrustedNewtabFrame } from './newtabUrl';
 import { canAutoInstall, IDLE_INSTALL_MINUTES } from './idleInstall';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
@@ -92,12 +93,12 @@ const gotSingleInstanceLock =
 // handlers read/write app-wide state (settings, bookmarks, theme), so only two
 // senders may call them: the chrome window itself (win.webContents, used by
 // renderer/*.js) and a frame actually showing the new-tab page. Everything else —
-// any site under test — is rejected. Mirrors the file:// + newtab.html check
-// speeddial:set already had.
+// any site under test — is rejected. L1: the new-tab frame must be a top-level
+// frame whose file: URL resolves to exactly the bundled newtab.html (see
+// newtabUrl.ts), not merely contain that name.
 function isTrustedIpcSender(e: IpcMainInvokeEvent): boolean {
   if (win && e.sender === win.webContents) return true;
-  const senderUrl = e.senderFrame?.url ?? '';
-  return senderUrl.startsWith('file://') && senderUrl.includes('newtab.html');
+  return isTrustedNewtabFrame(e.senderFrame);
 }
 
 // Returns true (and logs once at warn) when the call should be rejected;

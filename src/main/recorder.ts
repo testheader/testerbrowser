@@ -3,6 +3,7 @@ import { WebContents } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { log } from './appLogger';
+import { isSafeId } from './pathSafety';
 
 /**
  * Recorder attaches to a WebContents' CDP debugger as soon as a session is
@@ -91,6 +92,8 @@ export class SessionRecorder {
     this.maxEvents = opts.maxEventsPerSession ?? 20000;
     this.getRedact = opts.getRedact ?? (() => false);
 
+    // L5: the id becomes a filename — refuse anything that could escape dbDir.
+    if (!opts.inMemory && !isSafeId(this.sessionId)) throw new Error('Invalid session id for recorder database');
     const dbPath = opts.inMemory ? ':memory:' : path.join(opts.dbDir, `${this.sessionId}.sqlite`);
     if (!opts.inMemory) {
       if (!fs.existsSync(opts.dbDir)) fs.mkdirSync(opts.dbDir, { recursive: true });

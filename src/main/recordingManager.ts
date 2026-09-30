@@ -48,6 +48,16 @@ const KNOWN_STEP_TYPES = new Set<TestStep['type']>([
 
 export type ImportableTest = { name: string; steps: TestStep[] };
 
+// L6: a navigate step's URL is assigned to location.href in the tested page,
+// so a javascript:/data:/file: URL would run or load attacker-chosen content
+// in the tested session. Only http(s) is ever navigated to. An absent/empty
+// URL is left alone (it has always meant a same-page reload).
+export function isSafeNavigateUrl(url: unknown): boolean {
+  if (url === undefined || url === '') return true;
+  if (typeof url !== 'string') return false;
+  try { const { protocol } = new URL(url); return protocol === 'http:' || protocol === 'https:'; } catch { return false; }
+}
+
 export interface ValidateImportedTestsResult {
   tests: ImportableTest[];
   skipped: { index: number; reason: string }[];
@@ -105,6 +115,10 @@ export function validateImportedTests(json: unknown): ValidateImportedTestsResul
       const s = rawStep as Record<string, unknown>;
       if (typeof s.type !== 'string' || !KNOWN_STEP_TYPES.has(s.type as TestStep['type'])) {
         badStepReason = `unknown step type "${String(s.type)}"`;
+        break;
+      }
+      if (s.type === 'navigate' && typeof s.url === 'string' && !isSafeNavigateUrl(s.url)) {
+        badStepReason = 'navigate step URL must be http(s)';
         break;
       }
       steps.push({
@@ -255,7 +269,9 @@ export function buildPlaybackScript(step: TestStep): string {
   const val = JSON.stringify(step.value ?? '');
   const helpers = `var __wait=function(fn,ms){return new Promise(function(res,rej){var s=Date.now();(function poll(){try{var r=fn();if(r!==null&&r!==false&&r!==undefined){res(r);return;}}catch(ex){}if(Date.now()-s>(ms||10000)){rej(new Error('Timeout'));return;}setTimeout(poll,120);})();});};var __find=function(sel){var el=document.querySelector(sel);if(!el)throw new Error('Element not found: '+sel);return el;};var __vis=function(el){var r=el.getBoundingClientRect();return r.width>0&&r.height>0&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none';};${NATIVE_SET_VALUE_FN}${NATIVE_SET_CHECKED_FN}`;
   switch (step.type) {
-    case 'navigate': return `(function(){try{location.href=${JSON.stringify(step.url??'')};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
+    case 'navigate':
+      if (!isSafeNavigateUrl(step.url)) return `(function(){return {success:false,error:'Blocked navigate step: only http(s) URLs are allowed'};})()`;
+      return `(function(){try{location.href=${JSON.stringify(step.url??'')};return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'click': return `(async function(){${helpers}try{await __wait(function(){var el=document.querySelector(${sel});return el&&__vis(el)?el:null;});__find(${sel}).click();return {success:true};}catch(e){return {success:false,error:e.message};}})()`;
     case 'fill':
       // #242: the literal '[hidden]' placeholder must never be typed —

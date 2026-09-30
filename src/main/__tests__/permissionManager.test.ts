@@ -9,7 +9,7 @@ jest.mock('electron', () => ({
   BrowserWindow: class {},
 }));
 
-import { PermissionManager, originKeyFor } from '../permissionManager';
+import { PermissionManager, originKeyFor, isAllowedExternalUrl } from '../permissionManager';
 
 // A fake Electron.Session good enough for PermissionManager.attach(): it only
 // ever calls setPermissionRequestHandler/setPermissionCheckHandler, and this
@@ -24,8 +24,8 @@ function fakeSession() {
   };
   return {
     ses: ses as unknown as Electron.Session,
-    request(wcId: number, permission: string, requestingUrl: string): Promise<boolean> {
-      return new Promise((resolve) => requestHandler!({ id: wcId } as any, permission, resolve, { requestingUrl })); // eslint-disable-line @typescript-eslint/no-explicit-any
+    request(wcId: number, permission: string, requestingUrl: string, extra: Record<string, unknown> = {}): Promise<boolean> {
+      return new Promise((resolve) => requestHandler!({ id: wcId } as any, permission, resolve, { requestingUrl, ...extra })); // eslint-disable-line @typescript-eslint/no-explicit-any
     },
     check(permission: string, requestingOrigin: string): boolean {
       return checkHandler!(null as any, permission, requestingOrigin); // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -205,6 +205,45 @@ describe('PermissionManager (#276)', () => {
     expect(await request(1, 'fullscreen', 'https://example.com/')).toBe(true);
     expect(await request(1, 'pointerLock', 'https://example.com/')).toBe(true);
     expect(((pm as any).win.webContents.send as jest.Mock)).not.toHaveBeenCalled(); // eslint-disable-line @typescript-eslint/no-explicit-any
+  });
+
+  describe('openExternal (M1)', () => {
+    it('isAllowedExternalUrl accepts only mailto/tel/https', () => {
+      expect(isAllowedExternalUrl('mailto:a@b.test')).toBe(true);
+      expect(isAllowedExternalUrl('tel:+123')).toBe(true);
+      expect(isAllowedExternalUrl('https://example.com')).toBe(true);
+      for (const bad of ['ms-msdt:/id PCWDiagnostic', 'search-ms:query=x', 'zoommtg://x', 'file:///C:/x.exe', 'http://x.test', 'javascript:alert(1)', '', undefined]) {
+        expect(isAllowedExternalUrl(bad)).toBe(false);
+      }
+    });
+
+    it('denies a non-allowlisted scheme without prompting', async () => {
+      const pm = new PermissionManager(fakeWin());
+      const { ses, request } = fakeSession();
+      pm.attach(ses, 'partition-ext-deny');
+      expect(await request(1, 'openExternal', 'https://evil.test/', { externalURL: 'ms-msdt:/id PCWDiagnostic' })).toBe(false);
+      expect(((pm as any).win.webContents.send as jest.Mock)).not.toHaveBeenCalled(); // eslint-disable-line @typescript-eslint/no-explicit-any
+    });
+
+    it('prompts with the target URL and never remembers the answer', async () => {
+      const pm = new PermissionManager(fakeWin());
+      const { ses, request, check } = fakeSession();
+      pm.attach(ses, 'partition-ext');
+      const sendMock = (pm as any).win.webContents.send as jest.Mock; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+      const p1 = request(1, 'openExternal', 'https://site.test/', { externalURL: 'mailto:a@b.test' });
+      expect(sendMock.mock.calls[0][1]).toMatchObject({ permission: 'openExternal', externalUrl: 'mailto:a@b.test' });
+      pm.respond(sendMock.mock.calls[0][1].reqId, true);
+      expect(await p1).toBe(true);
+
+      expect(pm.list('partition-ext')).toEqual([]);
+      expect(check('openExternal', 'https://site.test')).toBe(false);
+
+      // A second request prompts again rather than riding the earlier Allow.
+      void request(1, 'openExternal', 'https://site.test/', { externalURL: 'tel:+123' });
+      expect(sendMock).toHaveBeenCalledTimes(2);
+      expect(sendMock.mock.calls[1][1].externalUrl).toBe('tel:+123');
+    });
   });
 
   describe('list/revoke', () => {

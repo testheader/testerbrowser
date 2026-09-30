@@ -2,6 +2,7 @@ import { ipcMain, net, safeStorage } from 'electron';
 import {
   toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile,
   formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
+  validateJiraBaseUrl, resolveJiraTokenOnSave,
 } from '../jira';
 import type { JsonStore } from '../jsonFile';
 import type { AppDeps } from './deps';
@@ -17,6 +18,8 @@ export interface JiraIpcStores {
 function getJiraToken(jiraStore: JsonStore<JiraSettingsFile>): string | null {
   const s = jiraStore.get();
   if (!s.apiTokenEnc || !safeStorage.isEncryptionAvailable()) return null;
+  // M3: a base URL saved before https was enforced never gets the token.
+  if (!s.baseUrl || validateJiraBaseUrl(s.baseUrl).error !== undefined) return null;
   try { return safeStorage.decryptString(Buffer.from(s.apiTokenEnc, 'base64')); } catch { return null; }
 }
 
@@ -97,7 +100,11 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
 
   ipcMain.handle('jira:saveSettings', (_e, s: { baseUrl: string; email: string; projectKey: string; issueType: string; apiToken?: string }) => {
     const current = jiraStore.get();
-    let apiTokenEnc = current.apiTokenEnc;
+    // M3: https only — the token rides along as Basic auth to this host.
+    const validated = validateJiraBaseUrl(s?.baseUrl);
+    if (validated.error !== undefined) return { ok: false, error: validated.error };
+    const baseUrl = validated.baseUrl;
+    let newTokenEnc: string | null = null;
     // An empty token field means "keep the current token" — only a non-empty
     // value replaces it, and replacing it requires OS-level secure storage to
     // actually be available (the GitHub bug-reporter token path works the
@@ -107,10 +114,12 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
       if (!safeStorage.isEncryptionAvailable()) {
         return { ok: false, error: 'OS-level secure storage is unavailable on this system — cannot store the token safely.' };
       }
-      apiTokenEnc = safeStorage.encryptString(trimmedToken).toString('base64');
+      newTokenEnc = safeStorage.encryptString(trimmedToken).toString('base64');
     }
+    // M3: a kept token is dropped if the base URL now points at another host.
+    const apiTokenEnc = resolveJiraTokenOnSave(current.baseUrl, baseUrl, current.apiTokenEnc, newTokenEnc);
     jiraStore.set({
-      baseUrl: (s.baseUrl ?? '').trim().replace(/\/$/, ''),
+      baseUrl,
       email: (s.email ?? '').trim(),
       projectKey: (s.projectKey ?? '').trim().toUpperCase(),
       issueType: (s.issueType ?? '').trim() || DEFAULT_JIRA_SETTINGS.issueType,

@@ -33,46 +33,91 @@ const KEEP_ROTATED = 4;
 // so a bare query string logged on its own (e.g. an e2e marker suffixed
 // with "?secret=1") gets the same treatment as one attached to a full URL.
 const QUERY_RE = /\S*\?\S*/g;
+// L3: a fragment carrying key=value data (OAuth implicit flow's
+// #access_token=…&id_token=…) is stripped too. A plain "#section" anchor or
+// "#123" reference has no '=' and is left alone.
+const FRAGMENT_RE = /#[^\s#]*=\S*/g;
 const BEARER_RE = /\bBearer\s+\S+/gi;
-// name: value / name=value, matching a colon or equals separator. The value
-// alternation prefers a quoted string, else a single non-whitespace run —
-// good enough for header-dump-shaped log lines without swallowing the rest
-// of an unrelated sentence.
-const PAIR_RE = /([A-Za-z0-9-]+)\s*[:=]\s*("[^"]*"|'[^']*'|\S+)/g;
+// L3: `Basic <base64>` outside a recognised header name (the name/value pass
+// below handles "Authorization: Basic …" itself). Requires a base64-looking
+// run so plain prose like "Basic auth failed" isn't mangled.
+const BASIC_RE = /\bBasic\s+[A-Za-z0-9+/]{8,}=*/gi;
+// Finds each `name:` / `name=` (optionally `"name":`, as in a JSON dump) —
+// the value itself is decided per match in stripSensitivePairs.
+const PAIR_NAME_RE = /([A-Za-z0-9_.-]+)["']?\s*[:=]/g;
+// L3: key names that aren't header names but still carry secrets.
+const SENSITIVE_KEY_RE = /passw(?:or)?d|^pwd$|secret|token|api[-_]?key|credential|private[-_]?key|^auth$|authorization|cookie/i;
+
+export function isSensitiveKey(name: string): boolean {
+  return SENSITIVE_HEADERS.has(name.toLowerCase()) || SENSITIVE_KEY_RE.test(name);
+}
 
 function stripUrlQuery(text: string): string {
   return text.replace(QUERY_RE, (token) => `${token.slice(0, token.indexOf('?'))}?…`);
 }
 
+// L3: a sensitive name's value is redacted to the end of the line, not just
+// its first word — "Authorization: Basic abc" or "Cookie: a=1; b=2" would
+// otherwise leak everything after the first whitespace-free run.
 function stripSensitivePairs(text: string): string {
-  return text.replace(PAIR_RE, (match, name: string) =>
-    SENSITIVE_HEADERS.has(name.toLowerCase()) ? `${name}: [REDACTED]` : match
-  );
+  return text.split(/(\r?\n)/).map((line) => {
+    PAIR_NAME_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = PAIR_NAME_RE.exec(line))) {
+      if (isSensitiveKey(m[1])) return `${line.slice(0, m.index)}${m[1]}: [REDACTED]`;
+    }
+    return line;
+  }).join('');
 }
 
 /**
- * Strips URL query strings/fragments, redacts `Bearer <token>` and any
- * `name: value`/`name=value` pair whose name is in SENSITIVE_HEADERS.
- * Bearer runs before the name/value pass so "Authorization: Bearer <tok>"
- * can't leave a token fragment behind — the pair pass's value capture is a
- * single whitespace-free run, so it alone would only swallow the literal
- * word "Bearer" and leave the token after it untouched.
+ * Strips URL query strings and key=value fragments, redacts `Bearer <token>`
+ * / `Basic <base64>`, and redacts to end of line after any `name: value` /
+ * `name=value` whose name is in SENSITIVE_HEADERS or looks like a secret
+ * (password, secret, token, api_key, …).
  */
 export function redact(text: string): string {
   if (typeof text !== 'string' || !text) return text;
   let out = stripUrlQuery(text);
+  out = out.replace(FRAGMENT_RE, '#…');
   out = out.replace(BEARER_RE, 'Bearer [REDACTED]');
+  out = out.replace(BASIC_RE, 'Basic [REDACTED]');
   out = stripSensitivePairs(out);
   return out;
 }
 
+const MAX_CTX_DEPTH = 6;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (!v || typeof v !== 'object') return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function redactValue(v: unknown, depth: number): unknown {
+  if (typeof v === 'string') return redact(v);
+  if (Array.isArray(v) || isPlainObject(v)) {
+    if (depth >= MAX_CTX_DEPTH) return '[…]';
+    if (Array.isArray(v)) return v.map((item) => redactValue(item, depth + 1));
+    const out: Record<string, unknown> = {};
+    for (const [k, inner] of Object.entries(v)) {
+      // L3: a secret-named key loses its whole value (string, object, array),
+      // not just whatever the string pass would catch; booleans/null/numbers
+      // (e.g. hasToken: true) carry nothing worth hiding.
+      out[k] = isSensitiveKey(k) && inner !== null && typeof inner !== 'boolean' && typeof inner !== 'number'
+        ? '[REDACTED]'
+        : redactValue(inner, depth + 1);
+    }
+    return out;
+  }
+  return v;
+}
+
+// L3: recurses into nested objects/arrays (depth-capped, which also stops
+// a cyclic ctx), not only top-level strings.
 export function redactCtx(ctx?: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!ctx) return ctx;
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(ctx)) {
-    out[k] = typeof v === 'string' ? redact(v) : v;
-  }
-  return out;
+  return redactValue(ctx, 0) as Record<string, unknown>;
 }
 
 export function formatLine(entry: AppLogEntry): string {

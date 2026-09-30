@@ -19,6 +19,17 @@ export function originKeyFor(requestingUrlOrOrigin: string): string {
   try { return new URL(requestingUrlOrOrigin).origin; } catch { return `malformed:${(requestingUrlOrOrigin || '').trim()}`; }
 }
 
+// M1: an `openExternal` request hands a URL to an OS protocol handler, so it
+// is never answered by a remembered grant — each one prompts, showing the
+// exact target URL — and anything outside this short allowlist (ms-msdt:,
+// search-ms:, zoommtg:, file:, …) is denied without prompting at all.
+const EXTERNAL_PROTOCOL_ALLOWLIST = new Set(['mailto:', 'tel:', 'https:']);
+
+export function isAllowedExternalUrl(url: unknown): url is string {
+  if (typeof url !== 'string' || !url) return false;
+  try { return EXTERNAL_PROTOCOL_ALLOWLIST.has(new URL(url).protocol); } catch { return false; }
+}
+
 export interface PermissionRecord {
   partition: string;
   origin: string;
@@ -67,12 +78,15 @@ export class PermissionManager {
       }
       const requestingUrl = details?.requestingUrl ?? '';
       const origin = originKeyFor(requestingUrl);
+      const isExternal = permission === 'openExternal';
+      const externalUrl = isExternal ? (details as { externalURL?: string } | undefined)?.externalURL : undefined;
+      if (isExternal && !isAllowedExternalUrl(externalUrl)) { callback(false); return; }
 
       // #276: a remembered denial answers immediately too, same as a
       // remembered grant already did — previously only grants were
       // persisted, so a denied permission re-prompted on every single
-      // subsequent request for the same origin.
-      const remembered = this.recordedStatus(partition, origin, permission);
+      // subsequent request for the same origin. M1: never for openExternal.
+      const remembered = isExternal ? null : this.recordedStatus(partition, origin, permission);
       if (remembered) { callback(remembered === 'granted'); return; }
 
       const originLabel = getHostname(requestingUrl) || origin || 'This page';
@@ -84,10 +98,11 @@ export class PermissionManager {
       this.pendingPermissions.set(reqId, { callback, permission, partition, origin, webContentsId: wc.id, timer });
 
       const sessionId = this.getSessionIdForWebContents(wc.id);
-      this.win.webContents.send('permission:request', { reqId, permission, origin: originLabel, sessionId });
+      this.win.webContents.send('permission:request', { reqId, permission, origin: originLabel, sessionId, externalUrl });
     });
 
     ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+      if (permission === 'openExternal') return false;
       // #276: requestingOrigin is put through the same fallback as
       // requestingUrl above — see originKeyFor's comment for why.
       const origin = originKeyFor(requestingOrigin);
@@ -100,7 +115,10 @@ export class PermissionManager {
     if (!entry) return;
     clearTimeout(entry.timer);
     entry.callback(granted);
-    this.persist(entry.partition, entry.origin, entry.permission, granted ? 'granted' : 'denied');
+    // M1: an openExternal answer covers only that one URL — never remembered.
+    if (entry.permission !== 'openExternal') {
+      this.persist(entry.partition, entry.origin, entry.permission, granted ? 'granted' : 'denied');
+    }
     this.pendingPermissions.delete(reqId);
   }
 

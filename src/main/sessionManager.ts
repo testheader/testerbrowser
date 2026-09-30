@@ -29,6 +29,8 @@ import { TabConditions, toCdpNetworkConditions, describeConditions } from './net
 import { filterRowsSince } from './jira';
 import { writeJsonAtomic } from './jsonFile';
 import { matchShortcut } from './shortcutTable';
+import { NEWTAB_FILE, isNewtabFileUrl } from './newtabUrl';
+import { isSafeId } from './pathSafety';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -165,13 +167,11 @@ export function getHostname(url: string): string {
   try { return new URL(url).hostname || 'New tab'; } catch { return 'New tab'; }
 }
 
-// Resolved at runtime — points to renderer/newtab.html whether packaged or in dev
 const MAX_CAPTURE_PX = 16384;
-const NEWTAB_FILE = path.join(__dirname, '..', '..', 'renderer', 'newtab.html');
 const NEWTAB_PRELOAD = path.join(__dirname, '..', 'preload', 'newtab.js');
 
 function isNewtabUrl(url: string) {
-  return url.startsWith('file://') && url.includes('newtab.html');
+  return isNewtabFileUrl(url);
 }
 
 function isSafeUrl(url: string): boolean {
@@ -343,7 +343,9 @@ export class SessionManager {
     // survive a restart instead of churning on every launch. Any other
     // caller (new tab, clone, reopen, popup) leaves this unset and gets a
     // fresh one as before.
-    const id = opts.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // L5: opts arrives straight from the renderer on sessions:create, and the
+    // id names the recorder's SQLite file — an unsafe one is replaced, not used.
+    const id = isSafeId(opts.id) ? opts.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const partition = opts.partition ?? (opts.persistent ? `persist:${id}` : id);
     const persistent = !!opts.persistent || partition.startsWith('persist:');
     // Seed the rule buckets for this partition if this is the first tab ever

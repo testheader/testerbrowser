@@ -130,7 +130,7 @@ contextBridge.exposeInMainWorld('testerBrowser', {
 
   permission: {
     respond:   (reqId: string, granted: boolean) => ipcRenderer.invoke('permission:respond', reqId, granted),
-    onRequest: (cb: (d: { reqId: string; permission: string; origin: string; sessionId: string | null }) => void) => {
+    onRequest: (cb: (d: { reqId: string; permission: string; origin: string; sessionId: string | null; externalUrl?: string }) => void) => {
       ipcRenderer.removeAllListeners('permission:request');
       ipcRenderer.on('permission:request', (_e, d) => cb(d));
     },
