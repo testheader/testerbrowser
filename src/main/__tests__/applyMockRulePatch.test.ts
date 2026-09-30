@@ -1,4 +1,4 @@
-import { applyMockRulePatch, MockRule } from '../sessionManager';
+import { applyMockRulePatch, MockRule } from '../mockManager';
 
 function makeRule(overrides: Partial<MockRule> = {}): MockRule {
   return {

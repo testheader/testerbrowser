@@ -1,4 +1,4 @@
-import { moveInArray } from '../sessionManager';
+import { moveInArray } from '../mockManager';
 
 describe('moveInArray (#263 — Mock rule reordering)', () => {
   it('swaps an element with its predecessor when moved up', () => {

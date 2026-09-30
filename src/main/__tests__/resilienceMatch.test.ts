@@ -1,4 +1,4 @@
-import { resilienceRuleMatchesRequest, pickResilienceRule, ResilienceRule } from '../sessionManager';
+import { resilienceRuleMatchesRequest, pickResilienceRule, ResilienceRule } from '../resilienceManager';
 
 function makeRule(overrides: Partial<ResilienceRule> = {}): ResilienceRule {
   return {

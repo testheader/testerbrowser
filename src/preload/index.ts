@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MockRule, ResilienceRule, EmulationOverrides, EmulationPatch, SecurityPageState } from '../main/sessionManager';
+import type { EmulationOverrides, EmulationPatch, SecurityPageState } from '../main/sessionManager';
+import type { MockRule } from '../main/mockManager';
+import type { ResilienceRule } from '../main/resilienceManager';
 import type { TabConditions } from '../main/networkConditions';
 
 contextBridge.exposeInMainWorld('testerBrowser', {

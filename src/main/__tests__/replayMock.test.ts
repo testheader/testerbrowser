@@ -57,7 +57,8 @@ jest.mock('electron', () => {
   };
 });
 
-import { SessionManager, MockRule } from '../sessionManager';
+import { SessionManager } from '../sessionManager';
+import { MockRule } from '../mockManager';
 
 function makeManager(): SessionManager {
   const win = { on: jest.fn() } as unknown as BrowserWindow;

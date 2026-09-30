@@ -1,4 +1,4 @@
-import { validateImportedMockRules } from '../sessionManager';
+import { validateImportedMockRules } from '../mockManager';
 
 function validFile(rules: unknown[] = []) {
   return { testerBrowserMocks: 1, rules };

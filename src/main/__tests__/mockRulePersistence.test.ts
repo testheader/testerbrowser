@@ -65,7 +65,7 @@ jest.mock('electron', () => {
 });
 
 import { SessionManager } from '../sessionManager';
-import type { MockRule } from '../sessionManager';
+import type { MockRule } from '../mockManager';
 
 function makeManager(): SessionManager {
   // loadAndRestoreSessions() ends by calling switchTo() on the first restored

@@ -7,6 +7,10 @@ import { buildHar } from './har';
 import { DownloadManager } from './downloadManager';
 import { PermissionManager, PermissionRecord } from './permissionManager';
 import { AppLog } from './appLogger';
+import {
+  MockManager, MockRule, buildMockFulfillParams, buildMockPreflightParams,
+} from './mockManager';
+import { ResilienceManager, ResilienceRule } from './resilienceManager';
 
 import {
   genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress,
@@ -29,238 +33,6 @@ import {
 // #227: SessionManager's default logger when none is injected (existing unit
 // tests construct it directly without one).
 const NOOP_LOG: AppLog = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} };
-
-export interface MockRule {
-  id: string;
-  urlPattern: string;
-  method: string;
-  statusCode: number;
-  body: string;
-  responseHeaders: Record<string, string>;
-  // Request headers from the captured call this rule was created from, kept
-  // only as read-only provenance in the panel — never used for matching.
-  // Undefined for a rule composed by hand rather than from a real request.
-  requestHeaders?: Record<string, string>;
-  // #235: adds access-control-allow-* headers on fulfilment and answers a
-  // matching OPTIONS preflight — see buildMockFulfillParams/buildMockPreflightParams.
-  cors?: boolean;
-  // #263: 0 (default, instant) to 120,000ms — lets a mock exercise loading
-  // spinners, skeleton states or client timeouts. Absent on a rule from
-  // before this existed (or restored by #264) — always read as
-  // `rule.delayMs || 0`, never assumed present.
-  delayMs?: number;
-  enabled: boolean;
-  hitCount: number;
-  lastHitAt: number | null;
-}
-
-// #263: 0-120,000ms — a mock's own testable delay, distinct from Resilience's
-// `latency`. A NaN/negative/huge input (a stray value from a hand-crafted
-// IPC call, since the renderer's own number input already constrains this)
-// clamps rather than producing an invalid rule.
-function clampDelayMs(value: unknown): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Math.min(120_000, Math.max(0, n));
-}
-
-// #235: a captured response's own content-length/content-encoding/transfer-encoding
-// are for the *original* (often compressed) body — fulfilling with the decoded,
-// possibly-edited rule.body under those headers corrupts or truncates it, so
-// they're never prefilled (openMockFromRequest, renderer/mock.js) and stripped
-// again here as a backstop for rules saved before that existed. `connection`
-// is stripped alongside them since it's equally a transport-layer header a
-// mock response shouldn't be echoing. The renderer keeps its own copy of this
-// same list (renderer/utils.js) rather than sharing one across the IPC
-// boundary — see that file's comment.
-const STRIPPED_MOCK_RESPONSE_HEADERS = ['content-length', 'content-encoding', 'transfer-encoding', 'connection'];
-
-function findHeaderCI(headers: Record<string, string> | undefined, name: string): string | undefined {
-  if (!headers) return undefined;
-  const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
-  return key ? headers[key] : undefined;
-}
-
-// application/json when the body parses as JSON, text/html when it looks
-// like markup, text/plain otherwise — only used when the rule doesn't
-// already set its own Content-Type.
-function inferMockContentType(body: string): string {
-  try { JSON.parse(body); return 'application/json; charset=utf-8'; } catch {}
-  if (body.trim().startsWith('<')) return 'text/html; charset=utf-8';
-  return 'text/plain; charset=utf-8';
-}
-
-// Adds the CORS response headers for a `cors: true` rule, unless the rule
-// already sets them itself. Shared between an ordinary fulfilment
-// (buildMockFulfillParams) and an OPTIONS preflight response
-// (buildMockPreflightParams) so the two can never disagree on what "CORS on"
-// means. `existingHeaderNames` is checked case-insensitively.
-function buildCorsHeaders(
-  requestHeaders: Record<string, string> | undefined,
-  existingHeaderNames: Set<string>
-): { name: string; value: string }[] {
-  const out: { name: string; value: string }[] = [];
-  const origin = findHeaderCI(requestHeaders, 'origin');
-  if (!existingHeaderNames.has('access-control-allow-origin')) {
-    out.push({ name: 'access-control-allow-origin', value: origin || '*' });
-    // Only echoing a specific origin (rather than the '*' wildcard) is a
-    // valid combination with allow-credentials per the Fetch spec.
-    if (origin) out.push({ name: 'access-control-allow-credentials', value: 'true' });
-  }
-  if (!existingHeaderNames.has('access-control-allow-headers')) {
-    out.push({ name: 'access-control-allow-headers', value: '*' });
-  }
-  return out;
-}
-
-// Pulled out as a pure function so the Fetch.fulfillRequest shape a mock rule
-// produces can be unit-tested without the CDP debugger/session plumbing
-// around it. responseHeaders defaults to {} for a rule saved before that
-// field existed (or built by hand without one). `request` is optional (the
-// #233 replay path may not always have headers) and is only consulted for
-// its `Origin` header when the rule has CORS on.
-export function buildMockFulfillParams(
-  rule: MockRule,
-  request?: { headers?: Record<string, string> }
-): { responseCode: number; responseHeaders: { name: string; value: string }[]; body: string } {
-  const kept = Object.fromEntries(
-    Object.entries(rule.responseHeaders || {}).filter(([name]) => !STRIPPED_MOCK_RESPONSE_HEADERS.includes(name.toLowerCase()))
-  );
-  if (!findHeaderCI(kept, 'content-type')) {
-    kept['content-type'] = inferMockContentType(rule.body);
-  }
-  const responseHeaders = Object.entries(kept).map(([name, value]) => ({ name, value }));
-  if (rule.cors) {
-    const existing = new Set(Object.keys(kept).map((h) => h.toLowerCase()));
-    responseHeaders.push(...buildCorsHeaders(request?.headers, existing));
-  }
-  return {
-    responseCode: rule.statusCode,
-    responseHeaders,
-    body: Buffer.from(rule.body).toString('base64'),
-  };
-}
-
-// A CORS preflight (OPTIONS) doesn't go through the rule's own method/body/status
-// at all — it's answered 204 with just the access-control-allow-* headers, per
-// the acceptance criteria. Only called for a `cors: true` rule.
-export function buildMockPreflightParams(
-  request?: { headers?: Record<string, string> }
-): { responseCode: number; responseHeaders: { name: string; value: string }[] } {
-  return {
-    responseCode: 204,
-    responseHeaders: buildCorsHeaders(request?.headers, new Set()),
-  };
-}
-
-// Pure so an edit's merge behaviour is unit-testable directly: id, hitCount
-// and lastHitAt are stripped from the incoming patch even if present, so an
-// edit can never reset a rule's identity or hit history regardless of what
-// the caller sends.
-export function applyMockRulePatch(rule: MockRule, patch: Partial<MockRule>): MockRule {
-  const { id: _id, hitCount: _hitCount, lastHitAt: _lastHitAt, ...safePatch } = patch;
-  const next: MockRule = { ...rule, ...safePatch };
-  if ('delayMs' in safePatch) next.delayMs = clampDelayMs(safePatch.delayMs);
-  return next;
-}
-
-// #263: pure so reorder edge cases (top/bottom no-ops, middle) are
-// unit-testable without SessionManager plumbing. Returns a new array —
-// never mutates `arr` — so callers can swap it straight into a Map.
-export function moveInArray<T>(arr: T[], index: number, dir: 'up' | 'down'): T[] {
-  const target = dir === 'up' ? index - 1 : index + 1;
-  if (index < 0 || index >= arr.length || target < 0 || target >= arr.length) return arr;
-  const next = arr.slice();
-  [next[index], next[target]] = [next[target], next[index]];
-  return next;
-}
-
-export type ImportableMockRule = Omit<MockRule, 'id' | 'hitCount' | 'lastHitAt'>;
-
-export interface ValidateImportedMockRulesResult {
-  rules: ImportableMockRule[];
-  skipped: { index: number; reason: string }[];
-  // Set only when the whole file is rejected outright (not JSON at the
-  // top level, or missing the testerBrowserMocks marker) — rules/skipped
-  // are both empty in that case.
-  error?: string;
-}
-
-// #264: pure so every validation branch is unit-testable without the main
-// process or dialogs around it. `json` is whatever JSON.parse() produced —
-// entirely untrusted, since it came from a file the user picked. Per rule,
-// unknown fields are dropped by construction: the returned object only ever
-// copies the fields listed here, nothing else from the source object.
-export function validateImportedMockRules(json: unknown): ValidateImportedMockRulesResult {
-  if (!json || typeof json !== 'object' || Array.isArray(json) || (json as Record<string, unknown>).testerBrowserMocks !== 1) {
-    return { rules: [], skipped: [], error: 'Not a TesterBrowser Mock rules file' };
-  }
-  const rawRules = (json as Record<string, unknown>).rules;
-  if (!Array.isArray(rawRules)) {
-    return { rules: [], skipped: [], error: 'Not a TesterBrowser Mock rules file' };
-  }
-
-  const rules: ImportableMockRule[] = [];
-  const skipped: { index: number; reason: string }[] = [];
-
-  rawRules.forEach((raw, index) => {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      skipped.push({ index, reason: 'rule is not an object' });
-      return;
-    }
-    const r = raw as Record<string, unknown>;
-    if (typeof r.urlPattern !== 'string' || r.urlPattern.length === 0) {
-      skipped.push({ index, reason: 'urlPattern must be a non-empty string' });
-      return;
-    }
-    if (typeof r.method !== 'string') {
-      skipped.push({ index, reason: 'method must be a string' });
-      return;
-    }
-    if (!Number.isInteger(r.statusCode) || (r.statusCode as number) < 100 || (r.statusCode as number) > 599) {
-      skipped.push({ index, reason: 'statusCode must be an integer 100-599' });
-      return;
-    }
-    if (typeof r.body !== 'string') {
-      skipped.push({ index, reason: 'body must be a string' });
-      return;
-    }
-    if (r.responseHeaders !== undefined) {
-      const rh = r.responseHeaders;
-      const rhValid = rh !== null && typeof rh === 'object' && !Array.isArray(rh)
-        && Object.values(rh as Record<string, unknown>).every(v => typeof v === 'string');
-      if (!rhValid) {
-        skipped.push({ index, reason: 'responseHeaders must be an object of strings' });
-        return;
-      }
-    }
-    if (r.cors !== undefined && typeof r.cors !== 'boolean') {
-      skipped.push({ index, reason: 'cors must be a boolean' });
-      return;
-    }
-    if (r.delayMs !== undefined && typeof r.delayMs !== 'number') {
-      skipped.push({ index, reason: 'delayMs must be a number' });
-      return;
-    }
-    if (r.enabled !== undefined && typeof r.enabled !== 'boolean') {
-      skipped.push({ index, reason: 'enabled must be a boolean' });
-      return;
-    }
-
-    rules.push({
-      urlPattern: r.urlPattern,
-      method: r.method,
-      statusCode: r.statusCode as number,
-      body: r.body,
-      responseHeaders: (r.responseHeaders as Record<string, string> | undefined) ?? {},
-      cors: r.cors as boolean | undefined,
-      delayMs: r.delayMs as number | undefined,
-      enabled: r.enabled === undefined ? true : (r.enabled as boolean),
-    });
-  });
-
-  return { rules, skipped };
-}
 
 // Rule IDs owned by sibling A11y tab tickets, disabled in the axe-core run
 // so results never duplicate what's already surfaced elsewhere in the panel:
@@ -722,73 +494,6 @@ export function classifyFocusTrapSequence(sequence: string[], expectedTerminal: 
     return { passed: true, kind: 'pass', trappedElements: [], sequence };
   }
   return { passed: false, kind: 'incomplete', trappedElements: [], sequence };
-}
-
-export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt' | 'hang' | 'stall504';
-
-export interface ResilienceRule {
-  id: string;
-  type: ResilienceType;
-  urlPattern: string;
-  // '*' (the default, matching every method) or a single HTTP method — never
-  // matched against headers or body, only used to scope which requests this
-  // rule degrades.
-  method: string;
-  probability: number;
-  latencyMs: number;
-  // #236: only meaningful for type 'hang'. 0 (the default) means never
-  // released automatically — the request stays paused until the tester
-  // aborts it client-side or navigates away. The renderer caps entry at
-  // 600s; not re-validated here.
-  releaseAfterMs?: number;
-  enabled: boolean;
-  hitCount: number;
-  lastHitAt: number | null;
-  // Provenance from the captured call this rule was created from — read-only
-  // display in the panel, never sent anywhere and never part of matching.
-  // Undefined for a rule composed by hand.
-  requestHeaders?: Record<string, string>;
-  requestBody?: string;
-}
-
-// Matches CDP's own Fetch.RequestPattern.urlPattern semantics (the pattern
-// this rule is ultimately handed to via Fetch.enable — see _applyFetch()):
-// '*' matches zero or more characters, '?' matches exactly one character,
-// and every other character — including every other regex metacharacter —
-// matches itself literally. '*' and '?' are left out of the escape class so
-// they're still recognizable as wildcards in the next two steps, then each
-// is turned into its regex equivalent.
-function matchesGlob(pattern: string, url: string): boolean {
-  try {
-    const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
-    return re.test(url);
-  } catch { return false; }
-}
-
-// Pulled out as a pure function so the method-scoping this ticket (#181)
-// adds is unit-testable without the CDP debugger/session plumbing around it.
-// A missing/'*' method matches every method, same as before this field
-// existed — never matched against headers or body, only method + URL.
-export function resilienceRuleMatchesRequest(rule: ResilienceRule, request: { method: string; url: string }): boolean {
-  return (!rule.method || rule.method === '*' || rule.method === request.method) && matchesGlob(rule.urlPattern, request.url);
-}
-
-// #236: matching rules are tried in list order, each rolling its own
-// probability — the first whose roll succeeds is returned. A rule whose
-// roll fails is skipped, not removed from consideration entirely: it simply
-// doesn't win this request, and a later matching rule still gets its own
-// independent roll. `rand` is injectable so this is deterministically
-// testable; defaults to Math.random for real traffic.
-export function pickResilienceRule(
-  rules: ResilienceRule[],
-  request: { method: string; url: string },
-  rand: () => number = Math.random
-): ResilienceRule | null {
-  for (const rule of rules) {
-    if (!rule.enabled || !resilienceRuleMatchesRequest(rule, request)) continue;
-    if (rand() < rule.probability) return rule;
-  }
-  return null;
 }
 
 // A rolling per-tab cap on how many Fetch.requestPaused events get full rule
@@ -1457,13 +1162,14 @@ export class SessionManager {
   private hungRequests = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
   // Mock/Resilience rules are a property of the session *partition* (cookies,
   // storage, cache — the thing "isolated sessions" actually means), not of
-  // any one TestSession/tab object representing it — keyed by partition so
-  // rules survive that tab being destroyed and a new one created for the
-  // same partition (reopen, "New tab in this session"). Never cleared in
-  // destroySession(): another open tab, or a future reopen, may still need
-  // the entry. Not persisted to disk (see #209's "Out of scope").
-  private mockRulesByPartition = new Map<string, MockRule[]>();
-  private resilienceRulesByPartition = new Map<string, ResilienceRule[]>();
+  // any one TestSession/tab object representing it — both managers key their
+  // own storage by partition so rules survive that tab being destroyed and a
+  // new one created for the same partition (reopen, "New tab in this
+  // session"). Never cleared in destroySession(): another open tab, or a
+  // future reopen, may still need the entry. Resilience rules aren't
+  // persisted to disk (see #209's/#264's "Out of scope").
+  private mockManager: MockManager;
+  private resilienceManager = new ResilienceManager();
   // #241: emulation overrides, scoped like the two maps above — a partition
   // with no entry here has never had setEmulation() applied; a present
   // (possibly empty) object records whatever individual fields are actually
@@ -1508,6 +1214,7 @@ export class SessionManager {
     this.getRecorderMaxEvents = getRecorderMaxEvents;
     this.getAllowRealPopups = getAllowRealPopups;
     this.downloadManager = new DownloadManager(win);
+    this.mockManager = new MockManager(win);
     // #276: lets a permission prompt name the tab it belongs to — looked up
     // by the *requesting* webContents id (not the partition, unlike
     // DownloadManager's attribution), so it's correct even for two tabs
@@ -1554,8 +1261,8 @@ export class SessionManager {
     // Seed the rule buckets for this partition if this is the first tab ever
     // to represent it — a partition passed in explicitly (reopen, "New tab
     // in this session") may already have an entry, which must be left alone.
-    if (!this.mockRulesByPartition.has(partition)) this.mockRulesByPartition.set(partition, []);
-    if (!this.resilienceRulesByPartition.has(partition)) this.resilienceRulesByPartition.set(partition, []);
+    this.mockManager.ensurePartition(partition);
+    this.resilienceManager.ensurePartition(partition);
     const ses = electronSession.fromPartition(partition);
 
     this.downloadManager.attach(ses, id);
@@ -1694,20 +1401,18 @@ export class SessionManager {
       // whose URL pattern matches, regardless of that rule's configured
       // method.
       if (request.method === 'OPTIONS') {
-        const preflightRule = this.getMockRules(testSession.id)
-          .find(r => r.enabled && r.cors && matchesGlob(r.urlPattern, request.url));
+        const preflightRule = this.mockManager.findCorsPreflightMatch(testSession.partition, request.url);
         if (preflightRule) {
           dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockPreflightParams({ headers: request.headers }) }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
           return;
         }
       }
-      const rule = this.findMatchingMockRule(testSession.id, request.method, request.url);
+      const rule = this.mockManager.findMatch(testSession.partition, request.method, request.url);
       if (rule) {
         // #263: counted at match time, not at fulfilment — a delayed rule's
         // hit count/last-hit-at reflect when the request was actually
         // intercepted, not when the (possibly much later) response goes out.
-        rule.hitCount = (rule.hitCount || 0) + 1;
-        rule.lastHitAt = Date.now();
+        this.mockManager.recordHit(rule);
         testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
         const fulfill = () =>
           dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule, { headers: request.headers }) })
@@ -1719,11 +1424,9 @@ export class SessionManager {
         }
         return;
       }
-      const resilienceRules = this.resilienceRulesByPartition.get(testSession.partition) ?? [];
-      const res = pickResilienceRule(resilienceRules, request);
+      const res = this.resilienceManager.pickMatch(testSession.partition, request);
       if (res) {
-        res.hitCount = (res.hitCount || 0) + 1;
-        res.lastHitAt = Date.now();
+        this.resilienceManager.recordHit(res);
         testSession.recorder.tagRequest(tagId, { resilienceRuleId: res.id, resilienceType: res.type });
         // Every command below is silent: Fetch.requestPaused fires per
         // request, too high-frequency to log per failure (each case still
@@ -2257,7 +1960,7 @@ export class SessionManager {
       // filtered out of persistentSessions above.
       const mocks: Record<string, MockRule[]> = {};
       for (const s of persistentSessions) {
-        const rules = this.mockRulesByPartition.get(s.partition);
+        const rules = this.mockManager.peek(s.partition);
         if (rules && rules.length > 0) {
           mocks[s.partition] = rules.map(r => ({ ...r, hitCount: 0, lastHitAt: null }));
         }
@@ -2285,17 +1988,15 @@ export class SessionManager {
           this.setEmulation(sess.id, emulation[s.partition])
             .catch((e) => this.log.warn('sessions', 'Failed to restore emulation override on load', { sessionId: sess.id, error: String(e) }));
         }
-        // #264: restored into mockRulesByPartition (shared by every tab on
-        // this partition, same as live rules are) and _applyFetch is called
-        // for *this* session specifically — each tab has its own CDP
-        // debugger/Fetch.enable registration, so a partition with several
-        // restored tabs needs this per tab, not just once per partition.
+        // #264: restored into the MockManager's own partition storage
+        // (shared by every tab on this partition, same as live rules are)
+        // and _applyFetch is called for *this* session specifically — each
+        // tab has its own CDP debugger/Fetch.enable registration, so a
+        // partition with several restored tabs needs this per tab, not just
+        // once per partition.
         const partitionMocks = mocks?.[s.partition];
         if (Array.isArray(partitionMocks) && partitionMocks.length > 0) {
-          this.mockRulesByPartition.set(
-            s.partition,
-            partitionMocks.map((r: MockRule) => ({ ...r, hitCount: 0, lastHitAt: null }))
-          );
+          this.mockManager.restorePartition(s.partition, partitionMocks);
           this._applyFetch(sess.id);
         }
       }
@@ -2487,8 +2188,8 @@ export class SessionManager {
     const dest = this.createSession(newName, { persistent: src.persistent });
     // createSession() already seeded dest.partition with []; overwrite with
     // a deep copy so editing either side afterward doesn't affect the other.
-    this.mockRulesByPartition.set(dest.partition, structuredClone(this.mockRulesByPartition.get(src.partition) ?? []));
-    this.resilienceRulesByPartition.set(dest.partition, structuredClone(this.resilienceRulesByPartition.get(src.partition) ?? []));
+    this.mockManager.cloneInto(dest.partition, src.partition);
+    this.resilienceManager.cloneInto(dest.partition, src.partition);
     // createSession() already called _applyFetch(dest.id) once, against the
     // empty rule set it seeded dest.partition with — re-apply now that the
     // copied rules above are in place, so the clone's own CDP debugger
@@ -3706,27 +3407,6 @@ export class SessionManager {
       .catch((e) => this.log.warn('sessions', 'Failed to clear localStorage', { sessionId: id, error: String(e) }));
   }
 
-  // Mock/Resilience rules live in mockRulesByPartition/resilienceRulesByPartition
-  // (see field comment), keyed by the session's stable partition rather than
-  // the per-tab id these methods still take from the renderer — these two
-  // resolve id → partition once so every method below reads/writes the one
-  // rule set shared by every tab open on that partition.
-  private mockRulesForId(id: string): MockRule[] | null {
-    const partition = this.sessions.get(id)?.partition;
-    if (!partition) return null;
-    let rules = this.mockRulesByPartition.get(partition);
-    if (!rules) { rules = []; this.mockRulesByPartition.set(partition, rules); }
-    return rules;
-  }
-
-  private resilienceRulesForId(id: string): ResilienceRule[] | null {
-    const partition = this.sessions.get(id)?.partition;
-    if (!partition) return null;
-    let rules = this.resilienceRulesByPartition.get(partition);
-    if (!rules) { rules = []; this.resilienceRulesByPartition.set(partition, rules); }
-    return rules;
-  }
-
   // #236: unlike mock/resilience rules (a property of the partition), hung
   // requests are a property of the *tab* whose CDP debugger actually paused
   // them — keyed by session id, lazily created.
@@ -3736,17 +3416,23 @@ export class SessionManager {
     return map;
   }
 
+  // Mock/Resilience rules live in MockManager/ResilienceManager (#255),
+  // keyed by the session's stable partition rather than the per-tab id
+  // these methods still take from the renderer — every method below
+  // resolves id → partition once and delegates the actual storage/matching
+  // to the owning manager, same composition pattern as downloadManager/
+  // permissionManager above.
   getMockRules(id: string): MockRule[] {
-    return this.mockRulesForId(id) ?? [];
+    const partition = this.sessions.get(id)?.partition;
+    return partition ? this.mockManager.getRules(partition) : [];
   }
 
   // #233: shared by the Fetch.requestPaused handler above and the
   // recording:replay IPC, so a replay is intercepted by exactly the same
   // rules (and matching semantics) a live request from that tab would be.
   findMatchingMockRule(id: string, method: string, url: string): MockRule | null {
-    return this.getMockRules(id).find(
-      r => r.enabled && (r.method === '*' || r.method === method) && matchesGlob(r.urlPattern, url)
-    ) ?? null;
+    const partition = this.sessions.get(id)?.partition;
+    return partition ? this.mockManager.findMatch(partition, method, url) : null;
   }
 
   getPartition(id: string): string | null {
@@ -3754,9 +3440,9 @@ export class SessionManager {
   }
 
   addMockRule(id: string, rule: MockRule): void {
-    const rules = this.mockRulesForId(id);
-    if (!rules) return;
-    rules.push({ ...rule, responseHeaders: rule.responseHeaders || {}, delayMs: clampDelayMs(rule.delayMs), hitCount: 0, lastHitAt: null });
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    this.mockManager.add(partition, rule);
     this._applyMocks(id);
     this.log.info('mock', `Mock rule added: ${rule.method} ${rule.urlPattern}`, { sessionId: id });
   }
@@ -3764,17 +3450,15 @@ export class SessionManager {
   removeMockRule(id: string, ruleId: string): void {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
-    const rules = (this.mockRulesByPartition.get(partition) ?? []).filter(r => r.id !== ruleId);
-    this.mockRulesByPartition.set(partition, rules);
+    this.mockManager.remove(partition, ruleId);
     this._applyMocks(id);
     this.log.info('mock', `Mock rule removed: ${ruleId}`, { sessionId: id });
   }
 
   toggleMockRule(id: string, ruleId: string, enabled: boolean): void {
-    const rules = this.mockRulesForId(id);
-    if (!rules) return;
-    const rule = rules.find(r => r.id === ruleId);
-    if (rule) rule.enabled = enabled;
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    this.mockManager.toggle(partition, ruleId, enabled);
     this._applyMocks(id);
     this.log.info('mock', `Mock rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
   }
@@ -3784,13 +3468,11 @@ export class SessionManager {
   // closed since the edit row was opened, or the rule itself is gone) so it
   // can show an inline error instead of pretending the edit went through.
   updateMockRule(id: string, ruleId: string, patch: Partial<MockRule>): boolean {
-    const rules = this.mockRulesForId(id);
-    if (!rules) return false;
-    const idx = rules.findIndex(r => r.id === ruleId);
-    if (idx === -1) return false;
-    rules[idx] = applyMockRulePatch(rules[idx], patch);
-    this._applyMocks(id);
-    return true;
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return false;
+    const ok = this.mockManager.update(partition, ruleId, patch);
+    if (ok) this._applyMocks(id);
+    return ok;
   }
 
   // #263: rules are matched in array order (findMatchingMockRule's own
@@ -3799,11 +3481,7 @@ export class SessionManager {
   moveMockRule(id: string, ruleId: string, dir: 'up' | 'down'): void {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
-    const rules = this.mockRulesByPartition.get(partition);
-    if (!rules) return;
-    const idx = rules.findIndex(r => r.id === ruleId);
-    if (idx === -1) return;
-    this.mockRulesByPartition.set(partition, moveInArray(rules, idx, dir));
+    this.mockManager.move(partition, ruleId, dir);
     this._applyMocks(id);
     this.log.info('mock', `Mock rule moved ${dir}: ${ruleId}`, { sessionId: id });
   }
@@ -3814,65 +3492,33 @@ export class SessionManager {
   async exportMockRules(id: string): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> {
     if (!this.sessions.get(id)) return { ok: false, error: 'Session not found' };
     const rules = this.getMockRules(id);
-    const result = await dialog.showSaveDialog(this.win, {
-      title: 'Export Mock rules',
-      defaultPath: 'mock-rules.json',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    });
-    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-    try {
-      const exportable = rules.map(({ id: _id, hitCount: _hitCount, lastHitAt: _lastHitAt, ...rest }) => rest);
-      fs.writeFileSync(result.filePath, JSON.stringify({ testerBrowserMocks: 1, rules: exportable }, null, 2));
-      this.log.info('mock', `Mock rules exported: ${rules.length}`, { sessionId: id });
-      return { ok: true, path: result.filePath };
-    } catch (e) {
-      this.log.warn('mock', 'Mock rules export failed', { sessionId: id, error: String(e) });
-      return { ok: false, error: String(e) };
-    }
+    const result = await this.mockManager.exportRulesToFile(rules);
+    if (result.ok) this.log.info('mock', `Mock rules exported: ${rules.length}`, { sessionId: id });
+    else if (result.error) this.log.warn('mock', 'Mock rules export failed', { sessionId: id, error: result.error });
+    return result;
   }
 
   // #264: valid rules are appended (with fresh ids) to the active tab's
   // partition — an import never replaces or reorders what's already there.
   async importMockRules(id: string): Promise<{ ok: boolean; imported?: number; skipped?: number; firstSkipReason?: string; canceled?: boolean; error?: string }> {
-    const result = await dialog.showOpenDialog(this.win, {
-      title: 'Import Mock rules',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile'],
-    });
-    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    const picked = await this.mockManager.promptAndValidateImportFile();
+    if ('canceled' in picked) return { ok: false, canceled: true };
+    if ('error' in picked) return { ok: false, error: picked.error };
 
-    let json: unknown;
-    try {
-      json = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf-8'));
-    } catch {
-      return { ok: false, error: 'Not valid JSON' };
-    }
-    const { rules, skipped, error } = validateImportedMockRules(json);
-    if (error) return { ok: false, error };
-
-    const target = this.mockRulesForId(id);
-    if (!target) return { ok: false, error: 'Session not found' };
-    for (const r of rules) {
-      target.push({
-        ...r,
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        responseHeaders: r.responseHeaders || {},
-        delayMs: clampDelayMs(r.delayMs),
-        hitCount: 0,
-        lastHitAt: null,
-      });
-    }
-    if (rules.length > 0) this._applyMocks(id); // also persists
-    this.log.info('mock', `Mock rules imported: ${rules.length} (skipped ${skipped.length})`, { sessionId: id });
-    return { ok: true, imported: rules.length, skipped: skipped.length, firstSkipReason: skipped[0]?.reason };
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return { ok: false, error: 'Session not found' };
+    const imported = this.mockManager.appendImportedRules(partition, picked.rules);
+    if (imported > 0) this._applyMocks(id); // also persists
+    this.log.info('mock', `Mock rules imported: ${imported} (skipped ${picked.skipped.length})`, { sessionId: id });
+    return { ok: true, imported, skipped: picked.skipped.length, firstSkipReason: picked.skipped[0]?.reason };
   }
 
   private _applyFetch(id: string): void {
     const s = this.sessions.get(id);
     if (!s) return;
     const dbg = s.view.webContents.debugger;
-    const activeMocks = (this.mockRulesByPartition.get(s.partition) ?? []).filter(r => r.enabled);
-    const activeRes = (this.resilienceRulesByPartition.get(s.partition) ?? []).filter(r => r.enabled);
+    const activeMocks = this.mockManager.getEnabledRules(s.partition);
+    const activeRes = this.resilienceManager.getEnabledRules(s.partition);
     if (activeMocks.length === 0 && activeRes.length === 0) {
       dbg.sendCommand('Fetch.disable').catch((e) => this.warnCdpFailure(id, 'Fetch.disable', e));
     } else {
@@ -3903,13 +3549,14 @@ export class SessionManager {
   }
 
   getResilienceRules(id: string): ResilienceRule[] {
-    return this.resilienceRulesForId(id) ?? [];
+    const partition = this.sessions.get(id)?.partition;
+    return partition ? this.resilienceManager.getRules(partition) : [];
   }
 
   addResilienceRule(id: string, rule: ResilienceRule): void {
-    const rules = this.resilienceRulesForId(id);
-    if (!rules) return;
-    rules.push({ ...rule, method: rule.method || '*', hitCount: 0, lastHitAt: null });
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    this.resilienceManager.add(partition, rule);
     this._applyFetch(id);
     this.log.info('resilience', `Resilience rule added: ${rule.urlPattern}`, { sessionId: id });
   }
@@ -3917,28 +3564,26 @@ export class SessionManager {
   removeResilienceRule(id: string, ruleId: string): void {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
-    const rules = (this.resilienceRulesByPartition.get(partition) ?? []).filter(r => r.id !== ruleId);
-    this.resilienceRulesByPartition.set(partition, rules);
+    this.resilienceManager.remove(partition, ruleId);
     this._applyFetch(id);
     this.log.info('resilience', `Resilience rule removed: ${ruleId}`, { sessionId: id });
   }
 
   toggleResilienceRule(id: string, ruleId: string, enabled: boolean): void {
-    const rules = this.resilienceRulesForId(id);
-    if (!rules) return;
-    const rule = rules.find(r => r.id === ruleId);
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    const rule = this.resilienceManager.toggle(partition, ruleId, enabled);
     if (rule) {
-      rule.enabled = enabled;
       this._applyFetch(id);
       this.log.info('resilience', `Resilience rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
     }
   }
 
   updateResilienceRule(id: string, ruleId: string, patch: Partial<ResilienceRule>): void {
-    const rules = this.resilienceRulesForId(id);
-    if (!rules) return;
-    const rule = rules.find(r => r.id === ruleId);
-    if (rule) { Object.assign(rule, patch); this._applyFetch(id); }
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    const rule = this.resilienceManager.update(partition, ruleId, patch);
+    if (rule) this._applyFetch(id);
   }
 
   destroySession(id: string) {

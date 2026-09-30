@@ -10,7 +10,9 @@ jest.mock('electron', () => ({
 }));
 
 import { SessionManager } from '../sessionManager';
-import type { TestSession, MockRule, ResilienceRule } from '../sessionManager';
+import type { TestSession } from '../sessionManager';
+import type { MockRule } from '../mockManager';
+import type { ResilienceRule } from '../resilienceManager';
 
 function makeManager(): SessionManager {
   const win = { on: jest.fn() } as unknown as BrowserWindow;

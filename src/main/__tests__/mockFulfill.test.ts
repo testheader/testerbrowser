@@ -1,4 +1,4 @@
-import { buildMockFulfillParams, buildMockPreflightParams, MockRule } from '../sessionManager';
+import { buildMockFulfillParams, buildMockPreflightParams, MockRule } from '../mockManager';
 
 function makeRule(overrides: Partial<MockRule> = {}): MockRule {
   return {
