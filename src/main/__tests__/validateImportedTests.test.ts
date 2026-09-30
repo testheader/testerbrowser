@@ -1,4 +1,4 @@
-import { validateImportedTests } from '../sessionManager';
+import { validateImportedTests } from '../recordingManager';
 
 function validFile(tests: unknown[] = []) {
   return { testerBrowserTests: 1, tests };

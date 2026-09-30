@@ -1,5 +1,5 @@
-import { buildPlaybackScript, dataAttrSelector } from '../sessionManager';
-import type { TestStep } from '../sessionManager';
+import { buildPlaybackScript, dataAttrSelector } from '../recordingManager';
+import type { TestStep } from '../recordingManager';
 
 function makeStep(overrides: Partial<TestStep> = {}): TestStep {
   return {

@@ -1,4 +1,4 @@
-import { buildNavMirrorStepResult, startSingleFlightPoll } from '../sessionManager';
+import { buildNavMirrorStepResult, startSingleFlightPoll } from '../followAlongManager';
 
 describe('buildNavMirrorStepResult (#186 — logging mirrored navigations)', () => {
   it('a successful full-page navigation reports success with the destination URL', () => {
