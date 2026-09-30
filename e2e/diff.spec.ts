@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
@@ -17,6 +18,53 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app.close();
   await fixtures.close();
+});
+
+// axe-core over the Diff panel only, via raw CDP (index.html's CSP blocks
+// Playwright's script injection — same approach as a11y-self-check.spec.ts).
+const AXE_SOURCE = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf-8');
+async function scanDiffPanel(): Promise<{ id: string; impact?: string; nodes: { target: string[] }[] }[]> {
+  const cdp = await window.context().newCDPSession(window);
+  try {
+    const { result } = await cdp.send('Runtime.evaluate', {
+      expression: `(function() {\n${AXE_SOURCE}\nreturn axe.run('#diffPanel');\n})()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    return result.value.violations;
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// The table shows only differences (Changed/Added/Removed) by default; tests
+// that assert on identical ("Unchanged") rows turn every category on first.
+// Idempotent — pill state survives Compare/Reset.
+async function showAllCategories() {
+  for (const cat of ['changed', 'added', 'removed', 'unchanged']) {
+    const pill = window.locator(`#diffCatPills .filter-pill[data-cat="${cat}"]`);
+    if ((await pill.getAttribute('aria-pressed')) !== 'true') await pill.click();
+  }
+}
+
+test('before any comparison the panel explains what to do, and the ? popover explains what is compared', async () => {
+  await window.click('#consoleTabDiff');
+  await expect(window.locator('.diff-empty .diff-hint')).toHaveText('Pick two sessions (tabs) to compare, then click Compare.');
+  await expect(window.locator('.diff-empty-steps li')).toHaveCount(3);
+
+  const helpBtn = window.locator('#diffHelpBtn');
+  await expect(helpBtn).toHaveAttribute('aria-expanded', 'false');
+  await helpBtn.click();
+  await expect(helpBtn).toHaveAttribute('aria-expanded', 'true');
+  await expect(window.locator('#diffHelp')).toBeVisible();
+  await expect(window.locator('#diffHelp')).toContainText('Ignored query params');
+  await window.keyboard.press('Escape');
+  await expect(window.locator('#diffHelp')).toBeHidden();
+  await expect(helpBtn).toHaveAttribute('aria-expanded', 'false');
+  await expect(helpBtn).toBeFocused();
+
+  // Ignored params are visible up front as removable chips, not hidden in a text box.
+  await expect(window.locator('#diffIgnoreChips button[data-param="utm_*"]')).toBeVisible();
 });
 
 test('comparing two sessions categorizes matching and unique requests correctly', async () => {
@@ -56,9 +104,17 @@ test('comparing two sessions categorizes matching and unique requests correctly'
   await window.selectOption('#diffPickB', sessionBId);
   await window.click('#diffRunBtn');
 
-  // Both sessions loaded status-codes.html → same. Only session A loaded sample.txt.
-  await expect(window.locator('.diff-row.same', { hasText: '/network/status-codes.html' })).toBeVisible();
+  // Only session A loaded sample.txt → "removed", shown by default.
   await expect(window.locator('.diff-row.only-a', { hasText: '/downloads/sample.txt' })).toBeVisible();
+  await expect(window.locator('.diff-row.only-a', { hasText: '/downloads/sample.txt' })).toHaveAttribute('data-bucket', 'removed');
+  // Default filter is "differences only": identical rows are counted in the
+  // summary but not listed until Unchanged is switched on.
+  await expect(window.locator('.diff-row[data-bucket="unchanged"]')).toHaveCount(0);
+  await expect(window.locator('.diff-sum.total')).toBeVisible();
+
+  // Both sessions loaded status-codes.html → same.
+  await showAllCategories();
+  await expect(window.locator('.diff-row.same', { hasText: '/network/status-codes.html' })).toBeVisible();
 });
 
 test('diff shows which sessions (by name) were compared and when', async () => {
@@ -73,18 +129,23 @@ test('diff shows which sessions (by name) were compared and when', async () => {
   await expect(meta).toContainText(sessions[1].name);
 });
 
-test('category pills filter the table while the legend keeps showing totals', async () => {
+test('category pills filter the table while the summary keeps showing totals', async () => {
+  await showAllCategories();
   await expect(window.locator('.diff-row')).not.toHaveCount(0);
-  const sameCountBefore = await window.locator('.diff-row.same').count();
-  expect(sameCountBefore).toBeGreaterThan(0);
+  const unchangedRows = window.locator('.diff-row[data-bucket="unchanged"]');
+  const unchangedBefore = await unchangedRows.count();
+  expect(unchangedBefore).toBeGreaterThan(0);
+  await expect(window.locator('.diff-sum.unchanged')).toHaveText(`${unchangedBefore} unchanged`);
 
-  await window.locator('#diffCatPills .filter-pill[data-cat="same"]').click();
-  await expect(window.locator('.diff-row.same')).toHaveCount(0);
-  // Legend badge count is unaffected by the pill filter.
-  await expect(window.locator('.diff-badge.same')).toContainText(String(sameCountBefore));
+  const pill = window.locator('#diffCatPills .filter-pill[data-cat="unchanged"]');
+  await pill.click();
+  await expect(pill).toHaveAttribute('aria-pressed', 'false');
+  await expect(unchangedRows).toHaveCount(0);
+  // Summary count is unaffected by the pill filter.
+  await expect(window.locator('.diff-sum.unchanged')).toHaveText(`${unchangedBefore} unchanged`);
 
-  await window.locator('#diffCatPills .filter-pill[data-cat="same"]').click();
-  await expect(window.locator('.diff-row.same')).toHaveCount(sameCountBefore);
+  await pill.click();
+  await expect(unchangedRows).toHaveCount(unchangedBefore);
 });
 
 test('Reset clears the comparison back to its initial state and disables HAR export', async () => {
@@ -93,7 +154,7 @@ test('Reset clears the comparison back to its initial state and disables HAR exp
 
   await window.click('#diffResetBtn');
 
-  await expect(window.locator('.diff-hint')).toHaveText('Select two sessions above and click Compare.');
+  await expect(window.locator('.diff-hint')).toHaveText('Pick two sessions (tabs) to compare, then click Compare.');
   await expect(window.locator('.diff-row')).toHaveCount(0);
   await expect(window.locator('.diff-meta')).toHaveCount(0);
   await expect(window.locator('#diffHarBtn')).toBeDisabled();
@@ -177,6 +238,7 @@ async function setupDiffFreeTextComparison(): Promise<{ sessionAId: string; sess
   // table is fully settled — every caller of this helper depends on that row
   // existing.
   await expect(window.locator('.diff-row', { hasText: onlyAPath })).toBeVisible({ timeout: 10_000 });
+  await showAllCategories();
 
   return { sessionAId, sessionBId };
 }
@@ -186,13 +248,14 @@ test('a positive free-text term narrows the table to matching URLs, and clearing
 
   const totalRows = await window.locator('.diff-row').count();
   expect(totalRows).toBeGreaterThan(1);
-  const sameCount = await window.locator('.diff-badge.same').textContent();
+  const sameCount = await window.locator('.diff-sum.unchanged').textContent();
 
   await window.fill('#diffFilterText', 'sample.txt');
   await expect(window.locator('.diff-row')).toHaveCount(1);
   await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toBeVisible();
-  // Legend is unaffected by the text filter, same as the category pills.
-  await expect(window.locator('.diff-badge.same')).toHaveText(sameCount!);
+  // Summary is unaffected by the text filter, same as the category pills.
+  await expect(window.locator('.diff-sum.unchanged')).toHaveText(sameCount!);
+  await expect(window.locator('.diff-filter-note')).toContainText(`Showing 1 of ${totalRows}`);
 
   await window.fill('#diffFilterText', '');
   await expect(window.locator('.diff-row')).toHaveCount(totalRows);
@@ -274,6 +337,7 @@ test('"Path only" matching treats the same path on two different hosts as the sa
   await window.selectOption('#diffPickB', sessionBId);
   await expect(window.locator('#diffMatchMode')).toHaveValue('full');
   await window.click('#diffRunBtn');
+  await showAllCategories();
 
   // Full URL mode: different hosts, so this pair never lands as "same".
   await expect(window.locator('.diff-row.same', { hasText: sharedPath })).toHaveCount(0);
@@ -306,23 +370,101 @@ test('expanding a matched row shows a changed response header, once its query pa
   await window.click('#consoleTabDiff');
   await window.selectOption('#diffPickA', sessionAId);
   await window.selectOption('#diffPickB', sessionBId);
+  // Typing into the add box (already-present params are de-duplicated) adds
+  // just `v` as a new visible chip once the input commits.
   await window.fill('#diffIgnoreParams', 'v, _, cb, ts, t, timestamp, nocache, utm_*, gclid, fbclid');
   await window.locator('#diffIgnoreParams').blur();
+  await expect(window.locator('#diffIgnoreChips button[data-param="v"]')).toBeVisible();
+  await expect(window.locator('#diffIgnoreChips button[data-param="utm_*"]')).toHaveCount(1);
+  await expect(window.locator('#diffIgnoreParams')).toHaveValue('');
   await window.click('#diffRunBtn');
 
   const row = window.locator('.diff-row', { hasText: '/network/header' });
   await expect(row).toBeVisible();
   // Status matches on both sides (200) — category stays "same", with the
   // secondary marker for the header difference the ignore list doesn't hide.
+  // That header difference makes it "changed", so it's listed by default.
   await expect(row).toHaveClass(/same/);
+  await expect(row).toHaveAttribute('data-bucket', 'changed');
   await expect(row.locator('.diff-badge.hb-diff')).toBeVisible();
 
+  const toggle = row.locator('.diff-exp-btn');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await row.click();
   const detail = window.locator('.diff-detail-row');
   await expect(detail).toBeVisible();
-  await expect(detail).toContainText('x-variant');
-  await expect(detail).toContainText('1');
-  await expect(detail).toContainText('2');
+  await expect(row.locator('.diff-exp-btn')).toHaveAttribute('aria-expanded', 'true');
+  const changedHeader = detail.locator('.diff-hdr-table tr.changed', { hasText: 'x-variant' });
+  await expect(changedHeader).toBeVisible();
+  await expect(changedHeader.locator('.diff-mark-a')).toHaveText('1');
+  await expect(changedHeader.locator('.diff-mark-b')).toHaveText('2');
+
+  // a11y-self-check.spec.ts only scans this panel's empty state; scan the
+  // populated table with an expanded detail row too, in both themes.
+  for (const theme of ['dark', 'light']) {
+    await window.click('#appName');
+    await window.click('#appMenuSettings');
+    await window.selectOption('#themeSelect', theme);
+    await window.click('#closeSettingsBtn');
+    const violations = (await scanDiffPanel()).filter(v => v.impact === 'serious' || v.impact === 'critical');
+    expect(violations.map(v => `${theme}: ${v.id} ${v.nodes.map(n => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  }
+
+  // Keyboard: the row's toggle button collapses it again and keeps focus.
+  await row.locator('.diff-exp-btn').focus();
+  await window.keyboard.press('Enter');
+  await expect(window.locator('.diff-detail-row')).toHaveCount(0);
+  await expect(row.locator('.diff-exp-btn')).toBeFocused();
+
+  // Removing the chip un-ignores `v` and re-matches without a re-fetch: the
+  // two calls no longer share a key, so they split into removed + added.
+  await window.click('#diffIgnoreChips button[data-param="v"]');
+  await expect(window.locator('#diffIgnoreChips button[data-param="v"]')).toHaveCount(0);
+  await expect(window.locator('.diff-row.only-a', { hasText: '/network/header?v=1' })).toBeVisible();
+  await expect(window.locator('.diff-row.only-b', { hasText: '/network/header?v=2' })).toBeVisible();
+
+  await window.click('#diffResetBtn');
+});
+
+test('status-class pills filter rows, and a row can be copied as cURL', async () => {
+  await resetToSingleTab();
+  const sessionAId = await activeTabId();
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/network/status/404'));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, '/network/status/404')).waitForLoadState('load');
+
+  await window.click('#newSessionBtn');
+  await expect.poll(() => window.locator('.tab').count()).toBe(2);
+  const sessionBId = await activeTabId();
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/network/status/200'));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, '/network/status/200')).waitForLoadState('load');
+
+  await window.click('#consoleTabDiff');
+  await window.selectOption('#diffPickA', sessionAId);
+  await window.selectOption('#diffPickB', sessionBId);
+  await window.click('#diffRunBtn');
+
+  const row404 = window.locator('.diff-row', { hasText: '/network/status/404' });
+  const row200 = window.locator('.diff-row', { hasText: '/network/status/200' });
+  await expect(row404).toBeVisible();
+  await expect(row404.locator('.diff-status.st-4xx')).toHaveText('404');
+  await expect(row200).toBeVisible();
+
+  const pill4xx = window.locator('#diffStatusPills .filter-pill[data-status="4xx"]');
+  await pill4xx.click();
+  await expect(row404).toHaveCount(0);
+  await expect(row200).toBeVisible();
+  await pill4xx.click();
+  await expect(row404).toBeVisible();
+
+  await row404.locator('button[data-curl]').click();
+  await expect(window.locator('#diffStatus')).toContainText('Copied cURL');
+  const clipboardText = await app.evaluate(({ clipboard }) => clipboard.readText());
+  expect(clipboardText).toContain(fixtures.url('/network/status/404'));
+  expect(clipboardText).toContain('curl ');
 
   await window.click('#diffResetBtn');
 });

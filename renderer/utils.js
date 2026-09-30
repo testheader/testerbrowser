@@ -51,6 +51,30 @@ export function wirePillGroup(containerEl, onChange) {
   });
 }
 
+// A panel's `?` button + help popover (Spoof, Diff): aria-expanded mirrors
+// the open state, a click outside the popover closes it, and Escape anywhere
+// inside scopeEl closes it and returns focus to the button. Returns setOpen.
+export function wireHelpPopover(btn, popover, scopeEl) {
+  const setOpen = (open) => {
+    popover.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  };
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(popover.hidden);
+  });
+  document.addEventListener('click', (e) => {
+    if (!popover.hidden && !popover.contains(e.target)) setOpen(false);
+  });
+  scopeEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !popover.hidden) {
+      setOpen(false);
+      btn.focus();
+    }
+  });
+  return setOpen;
+}
+
 export function activePillValues(containerEl, dataAttr) {
   return new Set([...containerEl.querySelectorAll('.filter-pill.on')].map(el => el.dataset[dataAttr]));
 }

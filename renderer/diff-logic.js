@@ -1,3 +1,5 @@
+import { matchesFreeText } from './utils.js';
+
 // Pure network-diff logic — no DOM, no testerBrowser/IPC access — so it's
 // directly unit-testable (src/__tests__/diff-logic.test.ts). renderer/diff.js
 // is the only consumer: it owns fetching the timelines, rendering, and all
@@ -50,7 +52,7 @@ export function isTruncated(events, limit) {
 // headers, body reference) that computeDiffRows can build a detail block
 // without re-reading the raw events.
 export function buildRequestMap(events, opts = {}) {
-  const reqMeta = new Map(); // requestId -> { method, url }
+  const reqMeta = new Map(); // requestId -> { method, url, headers, postData }
   const bodies  = new Map(); // requestId -> { body, base64Encoded }
   const result  = new Map();
 
@@ -62,7 +64,12 @@ export function buildRequestMap(events, opts = {}) {
     if (ev.kind === 'network-request') {
       try {
         const p = JSON.parse(ev.payload);
-        reqMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
+        reqMeta.set(p.requestId, {
+          method: p.request.method,
+          url: p.request.url,
+          headers: p.request.headers || {},
+          postData: typeof p.request.postData === 'string' ? p.request.postData : null,
+        });
       } catch {}
     } else if (ev.kind === 'network-body') {
       try {
@@ -71,6 +78,11 @@ export function buildRequestMap(events, opts = {}) {
       } catch {}
     }
   }
+
+  // What "Copy as cURL" needs to rebuild the request (the recorder has
+  // already replaced sensitive header values with [REDACTED]; toCurl drops
+  // those and says so).
+  const requestOf = (meta) => ({ method: meta.method, url: meta.url, headers: meta.headers, postData: meta.postData });
 
   const pushCall = (key, method, url, call) => {
     let entry = result.get(key);
@@ -93,6 +105,7 @@ export function buildRequestMap(events, opts = {}) {
           durationMs: p.durationMs ?? null,
           responseHeaders: p.response.headers || {},
           body: bodies.get(p.requestId) || null,
+          request: requestOf(meta),
         });
       } catch {}
     } else if (ev.kind === 'network-failed') {
@@ -108,6 +121,7 @@ export function buildRequestMap(events, opts = {}) {
           durationMs: p.durationMs ?? null,
           responseHeaders: {},
           body: null,
+          request: requestOf(meta),
         });
       } catch {}
     }
@@ -178,6 +192,10 @@ function computeDetail(a, b, ignoreHeaders) {
     bodiesMatch: bodiesEqual(ca.body, cb.body),
     bodySizeA: ca.body ? ca.body.body.length : null,
     bodySizeB: cb.body ? cb.body.body.length : null,
+    // Kept by reference (already held in the request map) so the renderer
+    // can build an inline line diff lazily, only for rows that get expanded.
+    bodyA: ca.body,
+    bodyB: cb.body,
     durationA: ca.durationMs,
     durationB: cb.durationMs,
   };
@@ -186,6 +204,8 @@ function computeDetail(a, b, ignoreHeaders) {
 function withDetailAndCategory(row, a, b, ignoreHeaders) {
   const detail = computeDetail(a, b, ignoreHeaders);
   row.detail = detail;
+  row.requestA = firstCall(a)?.request ?? null;
+  row.requestB = firstCall(b)?.request ?? null;
   // A "same" row (status matches) can still have a secondary "differs"
   // marker for headers/body — its category is deliberately left
   // unchanged so the same/diff/only-a/only-b legend counts don't shift.
@@ -250,4 +270,172 @@ export function computeDiffRows(mapA, mapB, opts = {}) {
   });
 
   return rows;
+}
+
+// ── Presentation helpers (still pure) ────────────────────────────────────
+
+// The four buckets the panel's summary and filter pills use. Deliberately
+// not the same thing as `category`: a row whose status matches but whose
+// headers or body differ is "changed" here (a real difference a tester wants
+// to see by default), while its `category` stays 'same' so the row colour
+// and the exported JSON keep their existing meaning.
+export const DIFF_BUCKETS = ['changed', 'added', 'removed', 'unchanged'];
+
+export function rowBucket(row) {
+  if (row.category === 'only-a') return 'removed';
+  if (row.category === 'only-b') return 'added';
+  if (row.category === 'diff' || row.headerBodyDiffer) return 'changed';
+  return 'unchanged';
+}
+
+export function summarizeDiffRows(rows) {
+  const counts = { changed: 0, added: 0, removed: 0, unchanged: 0, total: rows.length };
+  for (const r of rows) counts[rowBucket(r)]++;
+  return counts;
+}
+
+export const STATUS_CLASSES = ['2xx', '3xx', '4xx', '5xx', 'failed'];
+
+// '200' -> '2xx', 'FAILED' -> 'failed'; anything else (1xx, 0, …) -> 'other'.
+export function statusClassOf(status) {
+  const s = String(status);
+  if (s === 'FAILED') return 'failed';
+  const m = /^([2-5])\d\d$/.exec(s);
+  return m ? `${m[1]}xx` : 'other';
+}
+
+// Every status class present on either side of a row. A grouped cell's
+// label can hold several statuses ("200/304").
+export function rowStatusClasses(row) {
+  const out = new Set();
+  for (const cell of [row.a, row.b]) {
+    if (!cell) continue;
+    for (const part of String(cell.label).split('/')) out.add(statusClassOf(part));
+  }
+  return out;
+}
+
+// Client-side filtering over already-computed rows. `buckets` and
+// `statusClasses` are Sets (omit either to skip that filter). A row passes
+// the status filter if any status on either side is in an active class;
+// a row with only unclassifiable statuses is never hidden by it. `text`
+// uses the same free-text syntax as the other panels (space-separated
+// terms, `-term` excludes).
+export function filterDiffRows(rows, { buckets, statusClasses, text = '' } = {}) {
+  return rows.filter((r) => {
+    if (buckets && !buckets.has(rowBucket(r))) return false;
+    if (statusClasses) {
+      const classes = [...rowStatusClasses(r)].filter((c) => c !== 'other');
+      if (classes.length && !classes.some((c) => statusClasses.has(c))) return false;
+    }
+    return matchesFreeText(r.url, text);
+  });
+}
+
+// Splits a URL for display: origin de-emphasised, path+query prominent.
+export function splitUrlForDisplay(url) {
+  try {
+    const u = new URL(url);
+    if (!u.host) return { host: '', path: url };
+    return { host: `${u.protocol}//${u.host}`, path: `${u.pathname}${u.search}${u.hash}` };
+  } catch {
+    return { host: '', path: url };
+  }
+}
+
+// Common prefix/suffix of two strings, so only the part that actually
+// changed gets highlighted. The suffix never overlaps the prefix.
+export function splitChange(a, b) {
+  const sa = String(a);
+  const sb = String(b);
+  const max = Math.min(sa.length, sb.length);
+  let p = 0;
+  while (p < max && sa[p] === sb[p]) p++;
+  let s = 0;
+  while (s < max - p && sa[sa.length - 1 - s] === sb[sb.length - 1 - s]) s++;
+  return {
+    prefix: sa.slice(0, p),
+    midA: sa.slice(p, sa.length - s),
+    midB: sb.slice(p, sb.length - s),
+    suffix: s ? sa.slice(sa.length - s) : '',
+  };
+}
+
+// Text to line-diff for a captured body, or null when it isn't comparable
+// as text (base64/binary). JSON is pretty-printed first so a one-line JSON
+// response still produces a meaningful per-line diff.
+export function bodyTextForDiff(body) {
+  if (!body || body.base64Encoded || typeof body.body !== 'string') return null;
+  const trimmed = body.body.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try { return JSON.stringify(JSON.parse(trimmed), null, 2); } catch {}
+  }
+  return body.body;
+}
+
+// Line-level diff (LCS) of two texts, returned as hunks: changed lines plus
+// `context` unchanged lines either side, the rest collapsed into
+// { type: 'gap', count } markers. Output is capped at `maxLines` lines
+// (truncated: true). Inputs too large for an in-renderer LCS (after the
+// common head/tail is trimmed) return tooLarge: true and the first
+// differing line number instead.
+//   line types: ' ' unchanged, '-' only in A, '+' only in B, 'gap'
+export function lineDiff(textA, textB, { context = 2, maxLines = 300, maxCells = 4_000_000 } = {}) {
+  const a = String(textA).split('\n');
+  const b = String(textB).split('\n');
+
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
+
+  const midA = a.slice(start, endA);
+  const midB = b.slice(start, endB);
+  const n = midA.length;
+  const m = midB.length;
+  if (n === 0 && m === 0) return { lines: [], identical: true, truncated: false, tooLarge: false };
+  if ((n + 1) * (m + 1) > maxCells) {
+    return { lines: [], identical: false, truncated: false, tooLarge: true, firstDiffLine: start + 1 };
+  }
+
+  // LCS lengths computed from the end, so the walk below runs front to back.
+  const w = m + 1;
+  const dp = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * w + j] = midA[i] === midB[j]
+        ? dp[(i + 1) * w + j + 1] + 1
+        : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+    }
+  }
+
+  const all = [];
+  for (let k = 0; k < start; k++) all.push({ type: ' ', text: a[k] });
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && midA[i] === midB[j]) { all.push({ type: ' ', text: midA[i] }); i++; j++; }
+    else if (i < n && (j >= m || dp[(i + 1) * w + j] >= dp[i * w + j + 1])) { all.push({ type: '-', text: midA[i] }); i++; }
+    else { all.push({ type: '+', text: midB[j] }); j++; }
+  }
+  for (let k = endA; k < a.length; k++) all.push({ type: ' ', text: a[k] });
+
+  const keep = new Uint8Array(all.length);
+  all.forEach((l, idx) => {
+    if (l.type === ' ') return;
+    const hi = Math.min(all.length - 1, idx + context);
+    for (let k = Math.max(0, idx - context); k <= hi; k++) keep[k] = 1;
+  });
+  const lines = [];
+  let gap = 0;
+  let truncated = false;
+  for (let idx = 0; idx < all.length; idx++) {
+    if (!keep[idx]) { gap++; continue; }
+    if (lines.length >= maxLines) { truncated = true; break; }
+    if (gap) { lines.push({ type: 'gap', count: gap }); gap = 0; }
+    lines.push(all[idx]);
+  }
+  if (!truncated && gap) lines.push({ type: 'gap', count: gap });
+  return { lines, identical: false, truncated, tooLarge: false };
 }

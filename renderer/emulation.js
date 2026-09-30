@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
 import { showStatus as showStatusMsg } from './status-msg.js';
+import { wireHelpPopover } from './utils.js';
 
 const PRESETS = [
   { label: 'New York',    timezone: 'America/New_York',      locale: 'en-US', latitude:  40.7128, longitude:  -74.0060 },
@@ -295,21 +296,7 @@ export function initSpoof() {
     document.getElementById(`spoofSecReset-${name}`).addEventListener('click', () => resetSection(name));
   }
 
-  const helpBtn = document.getElementById('spoofHelpBtn');
-  helpBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    setHelpOpen(document.getElementById('spoofHelp').hidden);
-  });
-  document.addEventListener('click', (e) => {
-    const help = document.getElementById('spoofHelp');
-    if (!help.hidden && !help.contains(e.target)) setHelpOpen(false);
-  });
-  panel.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !document.getElementById('spoofHelp').hidden) {
-      setHelpOpen(false);
-      helpBtn.focus();
-    }
-  });
+  wireHelpPopover(document.getElementById('spoofHelpBtn'), document.getElementById('spoofHelp'), panel);
 
   document.getElementById('spoofApply').addEventListener('click', applySpoof);
   document.getElementById('spoofReset').addEventListener('click', resetSpoof);
@@ -361,11 +348,6 @@ export function initSpoof() {
 function setSectionOpen(name, open) {
   document.getElementById(`spoofSecBody-${name}`).hidden = !open;
   document.getElementById(`spoofSecToggle-${name}`).setAttribute('aria-expanded', String(open));
-}
-
-function setHelpOpen(open) {
-  document.getElementById('spoofHelp').hidden = !open;
-  document.getElementById('spoofHelpBtn').setAttribute('aria-expanded', String(open));
 }
 
 function describeMetrics({ width, height, deviceScaleFactor, mobile }) {
