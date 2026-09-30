@@ -1,5 +1,5 @@
 import { looksLikeImportableSnapshot } from '../main/sessionManager';
-import { buildRestoreFrameScript } from '../main/snapshotScripts';
+import { buildRestoreFrameScript, COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT } from '../main/snapshotScripts';
 
 describe('looksLikeImportableSnapshot (mirrors readSnapshotFile\'s real acceptance check — #243)', () => {
   it('accepts a well-formed v2 snapshot (cookies + frames)', () => {
@@ -81,5 +81,67 @@ describe('buildRestoreFrameScript — escaping (#243)', () => {
     expect(parsed.localStorage.a).toBe(nasty);
     expect(parsed.sessionStorage.b).toBe(nasty);
     expect(parsed.fields[0].value).toBe(nasty);
+  });
+
+  it('round-trips an indexedDB snapshot, including nasty characters in record values (#280)', () => {
+    const script = buildRestoreFrameScript({
+      url: 'https://example.com',
+      indexedDB: {
+        myDb: {
+          version: 2,
+          stores: {
+            myStore: {
+              keyPath: 'id',
+              autoIncrement: false,
+              records: [{ key: 1, value: { id: 1, note: nasty } }],
+            },
+          },
+        },
+      },
+    });
+    expect(() => new Function(script)).not.toThrow();
+    const match = script.match(/const DATA = ([\s\S]*?);\n\s*const warnings/);
+    const parsed = JSON.parse(match![1]);
+    expect(parsed.indexedDB.myDb.version).toBe(2);
+    expect(parsed.indexedDB.myDb.stores.myStore.records[0].value.note).toBe(nasty);
+  });
+
+  it('produces valid, parseable JS for a frame snapshot with none of the optional fields set', () => {
+    const script = buildRestoreFrameScript({ url: 'https://example.com' });
+    expect(() => new Function(script)).not.toThrow();
+  });
+
+  it('produces valid JS when fields include a checkbox/radio ("checked") entry, not just "value"', () => {
+    const script = buildRestoreFrameScript({
+      url: 'https://example.com',
+      fields: [{ sel: '#agree', kind: 'checked', checked: true }],
+    });
+    expect(() => new Function(script)).not.toThrow();
+    const match = script.match(/const DATA = ([\s\S]*?);\n\s*const warnings/);
+    const parsed = JSON.parse(match![1]);
+    expect(parsed.fields[0]).toEqual({ sel: '#agree', kind: 'checked', checked: true });
+  });
+});
+
+describe('COLLECT_FRAME_SCRIPT / COLLECT_INDEXEDDB_SCRIPT — well-formedness (#280)', () => {
+  it('COLLECT_FRAME_SCRIPT is syntactically valid JS', () => {
+    expect(() => new Function(COLLECT_FRAME_SCRIPT)).not.toThrow();
+  });
+
+  it('COLLECT_INDEXEDDB_SCRIPT is syntactically valid JS', () => {
+    expect(() => new Function(COLLECT_INDEXEDDB_SCRIPT)).not.toThrow();
+  });
+
+  it('both scripts isolate collection failures per-database/per-store (never let one bad store abort the rest)', () => {
+    for (const script of [COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT]) {
+      expect(script).toContain("warnings.push('IndexedDB store '");
+      expect(script).toContain("warnings.push('IndexedDB database '");
+    }
+  });
+
+  it('COLLECT_FRAME_SCRIPT returns a JSON string carrying every documented top-level field', () => {
+    for (const key of ['url', 'localStorage', 'sessionStorage', 'indexedDB', 'fields', 'scroll', 'historyState', 'warnings']) {
+      expect(COLLECT_FRAME_SCRIPT).toContain(key);
+    }
   });
 });

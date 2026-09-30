@@ -14,6 +14,10 @@ import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
 import { readLogTail, capLogBlock, capIssueBody, decideScreenshotStrategy } from './logTail';
 import {
+  buildDefaultDiagnosticsText, wrapDiagnosticsMarkdown, buildBugReportTitle,
+  findProjectBoardId, projectItemWasAdded,
+} from './bugReportFormat';
+import {
   applySettingsPatch, AppSettings, clampNumberSetting,
   RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX,
   RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX,
@@ -1093,40 +1097,10 @@ ipcMain.handle('applog:revealFolder', () => {
   try { shell.showItemInFolder(path.join(logsDir, 'main.log')); } catch {}
 });
 
-// #226: same <details> wrapper shape as renderer/utils.js's
-// formatAppLogBlock() — kept as a separate TS copy since the renderer can't
-// import this module, but both wrap the already-capped { text, truncated }
-// the main process hands them identically.
-function formatAppLogBlockText(appLog: { text: string; truncated: boolean }): string {
-  const lineCount = appLog.text ? appLog.text.split('\n').length : 0;
-  const summary = `App log (last ${lineCount} lines${appLog.truncated ? ', truncated' : ''})`;
-  return `<details><summary>${summary}</summary>\n\n\`\`\`\n${appLog.text}\n\`\`\`\n</details>`;
-}
-
 // Default diagnostics text — mirrors renderer/bugreport.js's own preview formatting
 // exactly, so what the user sees (and can edit) matches what gets posted verbatim.
 function defaultDiagnosticsText(): string {
-  const d = getDiagnosticsData();
-  const lines = [
-    `TesterBrowser: ${d.version}`,
-    `Electron: ${d.electron}  Chrome: ${d.chrome}  Node: ${d.node}`,
-    `${d.platform} ${d.arch} (${d.osRelease})`,
-    '',
-    d.recentErrors.length
-      ? `Recent app errors:\n${d.recentErrors.map(e => `[${new Date(e.ts).toLocaleTimeString()}] ${e.message}`).join('\n')}`
-      : 'No recent app errors recorded.',
-    '',
-    formatAppLogBlockText(d.appLog),
-  ];
-  return lines.join('\n');
-}
-
-function wrapDiagnosticsMarkdown(area: string, text: string): string {
-  return [
-    '<details><summary>Diagnostics</summary>', '',
-    '```', `Feature area: ${area}`, '', text, '```',
-    '</details>',
-  ].join('\n');
+  return buildDefaultDiagnosticsText(getDiagnosticsData());
 }
 
 // Best-effort: finds a GitHub Projects (v2) board titled "Testerbrowser" owned by
@@ -1150,18 +1124,18 @@ async function addIssueToProjectBoard(token: string, issueNodeId: string): Promi
     });
     const json1 = await res1.json() as { data?: { repositoryOwner?: { projectsV2?: { nodes?: { id: string; title: string }[] } } } };
     const nodes = json1.data?.repositoryOwner?.projectsV2?.nodes ?? [];
-    const project = nodes.find(p => p.title.toLowerCase().includes('testerbrowser'));
-    if (!project) return false;
+    const projectId = findProjectBoardId(nodes);
+    if (!projectId) return false;
 
     const mutation = `mutation($projectId: ID!, $contentId: ID!) {
       addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) { item { id } }
     }`;
     const res2 = await net.fetch('https://api.github.com/graphql', {
       method: 'POST', headers,
-      body: JSON.stringify({ query: mutation, variables: { projectId: project.id, contentId: issueNodeId } }),
+      body: JSON.stringify({ query: mutation, variables: { projectId, contentId: issueNodeId } }),
     });
-    const json2 = await res2.json() as { data?: { addProjectV2ItemById?: { item?: { id: string } } } };
-    return !!json2.data?.addProjectV2ItemById?.item?.id;
+    const json2 = await res2.json();
+    return projectItemWasAdded(json2);
   } catch { return false; }
 }
 
@@ -1170,7 +1144,7 @@ ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; descripti
   if (!token) return { ok: false, error: 'No GitHub token configured. Add one in Settings.' };
   if (!payload?.description?.trim()) return { ok: false, error: 'Description is required.' };
 
-  const title = `[${payload.area}] ${payload.description.trim().split('\n')[0].slice(0, 80)}`;
+  const title = buildBugReportTitle(payload.area, payload.description);
   const diagnosticsText = payload.diagnostics?.trim() || defaultDiagnosticsText();
   // #226: caps the final body at 60,000 chars, truncating diagnostics (which
   // carries the app-log block at its own tail) rather than the user's
