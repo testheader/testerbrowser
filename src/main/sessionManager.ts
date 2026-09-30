@@ -11,9 +11,7 @@ import {
   MockManager, MockRule, buildMockFulfillParams, buildMockPreflightParams,
 } from './mockManager';
 import { ResilienceManager, ResilienceRule } from './resilienceManager';
-import {
-  SnapshotManager, FrameSnapshot, SessionSnapshot, looksLikeImportableSnapshot, waitForFrameLoad,
-} from './snapshotManager';
+import { SnapshotManager, FrameSnapshot, waitForFrameLoad } from './snapshotManager';
 import { EmulationManager, EmulationOverrides, EmulationPatch } from './emulationManager';
 import { RecordingManager, TestStep, NATIVE_SET_VALUE_FN } from './recordingManager';
 import { FollowAlongManager } from './followAlongManager';
@@ -28,7 +26,6 @@ import {
 } from './testdata';
 import { COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 import { TabConditions, toCdpNetworkConditions, describeConditions } from './networkConditions';
-import { DeviceMetrics, ColorScheme, ReducedMotion, buildMediaFeatures } from './deviceEmulation';
 import { filterRowsSince } from './jira';
 import { writeJsonAtomic } from './jsonFile';
 import { matchShortcut } from './shortcutTable';

@@ -1,36 +1,40 @@
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, Menu, clipboard, net, safeStorage, shell, session as electronSession, powerMonitor, dialog } from 'electron';
+import { app, BrowserWindow, IpcMainInvokeEvent, Menu, net, safeStorage, powerMonitor } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, getHostname } from './sessionManager';
-import { TestStep, validateImportedTests } from './recordingManager';
-import { MockRule, buildMockFulfillParams } from './mockManager';
-import { ResilienceRule } from './resilienceManager';
-import { EmulationOverrides, EmulationPatch } from './emulationManager';
 import { VisualRegressionStore } from './visualRegressionStore';
-import { TabConditions } from './networkConditions';
 import { firstHttpUrl } from './singleInstance';
 import { canAutoInstall, IDLE_INSTALL_MINUTES } from './idleInstall';
-import { upsertById } from './upsert';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
-import { DebugLogStore, toUpdateLogEntry } from './debugLogStore';
+import { DebugLogStore } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
-import { readLogTail, capLogBlock, capIssueBody, decideScreenshotStrategy } from './logTail';
+import { readLogTail, capLogBlock } from './logTail';
 import {
-  buildDefaultDiagnosticsText, wrapDiagnosticsMarkdown, buildBugReportTitle,
-  findProjectBoardId, projectItemWasAdded,
-} from './bugReportFormat';
-import {
-  applySettingsPatch, AppSettings, clampNumberSetting,
+  AppSettings, clampNumberSetting,
   RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX,
   RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX,
 } from './settingsPatch';
-import {
-  migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile,
-  formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
-} from './jira';
+import { migrateJiraSettings, DEFAULT_JIRA_SETTINGS, JiraSettingsFile } from './jira';
 import { writeJsonAtomic, JsonStore } from './jsonFile';
+import type { AppDeps, Bookmark, BookmarkFolder, SpeedDialTile, SavedTest, UpdateStatus } from './ipc/deps';
+import { registerSessionsIpc } from './ipc/sessions';
+import { registerRecordingIpc } from './ipc/recording';
+import { registerA11yIpc } from './ipc/a11y';
+import { registerMockIpc } from './ipc/mock';
+import { registerResilienceIpc } from './ipc/resilience';
+import { registerEmulationIpc } from './ipc/emulation';
+import { registerVisualRegressionIpc } from './ipc/visualRegression';
+import { registerDownloadsIpc } from './ipc/downloads';
+import { registerPermissionsIpc } from './ipc/permissions';
+import { registerBookmarksIpc } from './ipc/bookmarks';
+import { registerLayoutIpc } from './ipc/layout';
+import { registerSettingsIpc } from './ipc/settings';
+import { registerAppIpc } from './ipc/app';
+import { registerApplogIpc } from './ipc/applog';
+import { registerJiraIpc } from './ipc/jira';
+import { registerBugreportIpc, BugReportSettings } from './ipc/bugreport';
+import { registerTestsIpc } from './ipc/tests';
 
 let win: BrowserWindow | null = null;
 let sessionManager: SessionManager | null = null;
@@ -171,7 +175,6 @@ function persistSessionUrls() {
 // download it with — Settings links out to the GitHub release page
 // instead of showing "downloading…", and the titlebar pill never appears
 // for this status (there's nothing it could silently install).
-type UpdateStatus = 'checking' | 'available' | 'available-manual' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 let updateStatus: UpdateStatus = 'checking';
 let latestVersion: string | null = null;
 // #259: "install downloaded updates automatically when idle". Only ever
@@ -199,9 +202,6 @@ function isVersionNewer(a: string, b: string): boolean {
 
 // --- Typed stores ---
 
-interface Bookmark { url: string; title: string; addedAt: number; folderId: string | null; }
-interface BookmarkFolder { id: string; name: string; createdAt: number; }
-interface SpeedDialTile { id: string; url: string; title: string; }
 // AppSettings itself lives in settingsPatch.ts (imported above) so the
 // whitelist merge there can be unit tested without booting Electron; this
 // comment block documents the fields for readers of this file.
@@ -298,13 +298,6 @@ const jiraStore = new JsonStore<JiraSettingsFile>('jira-settings.json', DEFAULT_
 });
 if (jiraTokenMigrated) jiraStore.set(jiraStore.get()); // persist the migration, dropping the plaintext token from disk
 
-function getJiraToken(): string | null {
-  const s = jiraStore.get();
-  if (!s.apiTokenEnc || !safeStorage.isEncryptionAvailable()) return null;
-  try { return safeStorage.decryptString(Buffer.from(s.apiTokenEnc, 'base64')); } catch { return null; }
-}
-
-interface SavedTest { id: string; name: string; steps: object[]; createdAt: number; updatedAt: number; }
 const testsStore = new JsonStore<SavedTest[]>('tests.json', []);
 
 // GitHub token for the in-app bug reporter is encrypted at rest via OS-level
@@ -313,26 +306,9 @@ const testsStore = new JsonStore<SavedTest[]>('tests.json', []);
 // expiration" enabled, in which case access tokens are short-lived (~8h) and
 // must be renewed via the refresh token (itself valid ~6 months) instead of
 // forcing the user back through the device-flow sign-in.
-interface BugReportSettings { tokenEnc: string | null; refreshTokenEnc: string | null; refreshExpiresAt: number | null; }
 const DEFAULT_BUGREPORT: BugReportSettings = { tokenEnc: null, refreshTokenEnc: null, refreshExpiresAt: null };
 const bugReportStore = new JsonStore<BugReportSettings>('bugreport-settings.json', DEFAULT_BUGREPORT,
   (raw) => ({ ...DEFAULT_BUGREPORT, ...(raw as Partial<BugReportSettings>) }));
-
-function getGithubToken(): string | null {
-  const s = bugReportStore.get();
-  if (!s.tokenEnc || !safeStorage.isEncryptionAvailable()) return null;
-  try { return safeStorage.decryptString(Buffer.from(s.tokenEnc, 'base64')); } catch { return null; }
-}
-
-function getGithubRefreshToken(): string | null {
-  const s = bugReportStore.get();
-  if (!s.refreshTokenEnc || !safeStorage.isEncryptionAvailable()) return null;
-  try { return safeStorage.decryptString(Buffer.from(s.refreshTokenEnc, 'base64')); } catch { return null; }
-}
-
-function clearGithubTokens(): void {
-  bugReportStore.set({ tokenEnc: null, refreshTokenEnc: null, refreshExpiresAt: null });
-}
 
 // ---
 
@@ -622,838 +598,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// --- IPC surface ---
 
-ipcMain.handle('sessions:list',    () => sessionManager?.listSessions() ?? []);
-ipcMain.handle('sessions:create',  (_e, name: string, opts) => sessionManager?.createSession(name, opts).id);
-ipcMain.handle('sessions:switch',  (_e, id: string) => sessionManager?.switchTo(id));
-ipcMain.handle('sessions:destroy', (_e, id: string) => sessionManager?.destroySession(id));
-ipcMain.handle('sessions:navigate',(_e, id: string, url: string) => sessionManager?.navigate(id, url));
-ipcMain.handle('sessions:rename',  (_e, id: string, name: string) => sessionManager?.renameSession(id, name));
-ipcMain.handle('sessions:pin',     (_e, id: string, pinned: boolean) => sessionManager?.pinSession(id, pinned));
-ipcMain.handle('sessions:setTabOrder', (_e, order: string[]) => sessionManager?.setTabOrder(order));
-ipcMain.handle('sessions:reopen',  async (_e, opts: {
-  name: string; url: string | null; partition: string; color?: string;
-  pinned?: boolean; notes?: string; emulation?: EmulationOverrides;
-}) => {
-  // Only restore http/https URLs; null/empty falls through to the newtab page
-  const startUrl = /^https?:\/\//i.test(opts.url ?? '') ? (opts.url as string) : undefined;
-  const s = sessionManager?.createSession(opts.name, { partition: opts.partition, startUrl, color: opts.color, pinned: opts.pinned });
-  if (!s) return null;
-  if (opts.notes) sessionManager?.setNotes(s.id, opts.notes);
-  if (opts.emulation) await sessionManager?.setEmulation(s.id, opts.emulation);
-  return s.id;
-});
-
-ipcMain.handle('sessions:clone', async (_e, sourceId: string, newName: string) => {
-  const c = await sessionManager?.cloneSession(sourceId, newName);
-  return { id: c?.session.id ?? null, warnings: c?.warnings ?? [] };
-});
-
-ipcMain.handle('sessions:back',     (_e, id: string) => sessionManager?.back(id));
-ipcMain.handle('sessions:forward',  (_e, id: string) => sessionManager?.forward(id));
-ipcMain.handle('sessions:reload',   (_e, id: string) => sessionManager?.reload(id));
-ipcMain.handle('sessions:stop',     (_e, id: string) => sessionManager?.stop(id));
-ipcMain.handle('sessions:setZoom',  (_e, id: string, delta: number) => sessionManager?.setZoom(id, delta));
-ipcMain.handle('sessions:resetZoom',(_e, id: string) => sessionManager?.resetZoom(id));
-ipcMain.handle('sessions:getZoom',  (_e, id: string) => sessionManager?.getZoom(id) ?? 1);
-ipcMain.handle('devtools:toggle',   (_e, id: string) => sessionManager?.toggleDevTools(id));
-
-ipcMain.handle('find:start', (_e, id: string, text: string, forward: boolean, findNext: boolean) =>
-  sessionManager?.findInPage(id, text, forward, findNext)
-);
-ipcMain.handle('find:stop', (_e, id: string) => sessionManager?.stopFind(id));
-
-ipcMain.handle('sessions:notes:get', (_e, id: string) => sessionManager?.getNotes(id) ?? '');
-ipcMain.handle('sessions:notes:set', (_e, id: string, notes: string) => sessionManager?.setNotes(id, notes));
-ipcMain.handle('sessions:contextMenu', (_e, id: string) => sessionManager?.showContextMenu(id));
-
-ipcMain.handle('recording:timeline',  (_e, id: string, opts) => sessionManager?.getTimeline(id, opts) ?? []);
-ipcMain.handle('recording:status',    (_e, id: string) => sessionManager?.getRecordingStatus(id) ?? null);
-ipcMain.handle('recording:oldestId',  (_e, id: string) => sessionManager?.getOldestEventId(id) ?? null);
-ipcMain.handle('recording:exportHar', (_e, id: string) => sessionManager?.exportHarDialog(id) ?? { ok: false, error: 'No session manager' });
-ipcMain.handle('recording:getRequestPostData', (_e, id: string, requestId: string) =>
-  sessionManager?.getRequestPostData(id, requestId) ?? { postData: undefined }
-);
-ipcMain.handle('a11y:getTree',        (_e, id: string) => sessionManager?.getA11yTree(id) ?? null);
-ipcMain.handle('a11y:setInspect',     (_e, id: string, enabled: boolean) => sessionManager?.setA11yInspect(id, enabled));
-ipcMain.handle('a11y:getViolations',  (_e, id: string) => sessionManager?.getA11yViolations(id) ?? { ok: false, error: 'No session manager' });
-ipcMain.handle('a11y:highlightElement', (_e, id: string, selector: string) => sessionManager?.highlightA11yElement(id, selector) ?? false);
-ipcMain.handle('a11y:getContrastIssues', (_e, id: string) => sessionManager?.getContrastIssues(id) ?? null);
-ipcMain.handle('a11y:highlightNode', (_e, id: string, backendDOMNodeId: number) => sessionManager?.highlightA11yNode(id, backendDOMNodeId) ?? false);
-ipcMain.handle('a11y:getAltLabelIssues', (_e, id: string) => sessionManager?.getAltLabelIssues(id) ?? null);
-ipcMain.handle('a11y:setFocusOverlay', (_e, id: string, enabled: boolean) => sessionManager?.setA11yFocusOverlay(id, enabled) ?? null);
-ipcMain.handle('a11y:detectFocusTrap', (_e, id: string) => sessionManager?.detectA11yFocusTrap(id) ?? null);
-ipcMain.handle('session:captureScreenshot', (_e, id: string, opts?: { fullPage?: boolean }) => sessionManager?.captureScreenshot(id, opts) ?? null);
-
-// Visual regression — saved baselines (#277)
-ipcMain.handle('visualRegression:listBaselines', () => visualRegressionStore?.list() ?? []);
-ipcMain.handle('visualRegression:getBaseline', (_e, id: string) => visualRegressionStore?.get(id) ?? null);
-ipcMain.handle('visualRegression:saveBaseline', (_e, name: string, url: string, b64: string) =>
-  visualRegressionStore?.save(name, url, b64) ?? null
-);
-ipcMain.handle('visualRegression:setIgnoreRegions', (_e, id: string, regions: { x: number; y: number; w: number; h: number }[]) =>
-  visualRegressionStore?.setIgnoreRegions(id, regions) ?? false
-);
-ipcMain.handle('visualRegression:deleteBaseline', (_e, id: string) => visualRegressionStore?.delete(id) ?? false);
-ipcMain.handle('visualRegression:exportBaseline', (_e, id: string) =>
-  visualRegressionStore?.exportBaseline(id) ?? { ok: false, error: 'No store' }
-);
-ipcMain.handle('visualRegression:importBaseline', () =>
-  visualRegressionStore?.importBaseline() ?? { ok: false, error: 'No store' }
-);
-ipcMain.handle('theme:get', (e) => rejectUntrustedSender(e, 'theme:get') ? undefined : themeStore.get().scheme);
-ipcMain.handle('theme:set', (e, scheme: string) => {
-  if (rejectUntrustedSender(e, 'theme:set')) return;
-  const value = scheme === 'light' ? 'light' : 'dark';
-  themeStore.set({ scheme: value });
-  sessionManager?.broadcastTheme(value);
-});
-ipcMain.handle('testdata:apply',      (_e, id: string, template: string) => sessionManager?.applyTemplate(id, template));
-ipcMain.handle('mock:getRules',    (_e, id: string) => sessionManager?.getMockRules(id) ?? []);
-ipcMain.handle('mock:addRule',     (_e, id: string, rule: MockRule) => sessionManager?.addMockRule(id, rule));
-ipcMain.handle('mock:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeMockRule(id, ruleId));
-ipcMain.handle('mock:toggleRule',  (_e, id: string, ruleId: string, enabled: boolean) => sessionManager?.toggleMockRule(id, ruleId, enabled));
-ipcMain.handle('mock:updateRule',  (_e, id: string, ruleId: string, patch: Partial<MockRule>) => sessionManager?.updateMockRule(id, ruleId, patch) ?? false);
-ipcMain.handle('mock:moveRule',    (_e, id: string, ruleId: string, dir: 'up' | 'down') => sessionManager?.moveMockRule(id, ruleId, dir));
-ipcMain.handle('mock:exportRules', (_e, id: string) => sessionManager?.exportMockRules(id) ?? { ok: false, error: 'No session manager' });
-ipcMain.handle('mock:importRules', (_e, id: string) => sessionManager?.importMockRules(id) ?? { ok: false, error: 'No session manager' });
-ipcMain.handle('resilience:getRules',    (_e, id: string) => sessionManager?.getResilienceRules(id) ?? []);
-ipcMain.handle('resilience:addRule',     (_e, id: string, rule: ResilienceRule) => sessionManager?.addResilienceRule(id, rule));
-ipcMain.handle('resilience:removeRule',  (_e, id: string, ruleId: string) => sessionManager?.removeResilienceRule(id, ruleId));
-ipcMain.handle('resilience:toggleRule',  (_e, id: string, ruleId: string, enabled: boolean) => sessionManager?.toggleResilienceRule(id, ruleId, enabled));
-ipcMain.handle('resilience:updateRule',  (_e, id: string, ruleId: string, patch: Partial<ResilienceRule>) => sessionManager?.updateResilienceRule(id, ruleId, patch));
-ipcMain.handle('resilience:setConditions', (_e, id: string, c: TabConditions) => sessionManager?.setConditions(id, c));
-ipcMain.handle('resilience:getConditions', (_e, id: string) => sessionManager?.getConditions(id) ?? null);
-ipcMain.handle('security:pageState', (_e, id: string) => sessionManager?.getSecurityPageState(id) ?? null);
-ipcMain.handle('session:setEmulation', (_e, id: string, opts: EmulationPatch) => sessionManager?.setEmulation(id, opts) ?? {});
-ipcMain.handle('session:getEmulation', (_e, id: string) => sessionManager?.getEmulation(id) ?? null);
-ipcMain.handle('sessions:getCookies',      (_e, id: string) => sessionManager?.getCookies(id) ?? []);
-ipcMain.handle('sessions:getHistory',      (_e, id: string) => sessionManager?.getHistory(id) ?? []);
-ipcMain.handle('sessions:getLoadedDomains', (_e, id: string) => sessionManager?.getLoadedDomains(id) ?? []);
-ipcMain.handle('sessions:getLocalStorage', (_e, id: string) => sessionManager?.getLocalStorage(id) ?? {});
-ipcMain.handle('sessions:getSessionStorage', (_e, id: string) => sessionManager?.getSessionStorage(id) ?? {});
-ipcMain.handle('sessions:getIndexedDB', (_e, id: string) => sessionManager?.getIndexedDB(id) ?? {});
-ipcMain.handle('sessions:deleteCookie', (_e, id: string, name: string, domain: string, cookiePath: string, secure: boolean) =>
-  sessionManager?.deleteCookie(id, name, domain, cookiePath, secure)
-);
-ipcMain.handle('sessions:clearCookies', (_e, id: string) => sessionManager?.clearCookies(id));
-ipcMain.handle('sessions:setCookie', (_e, id: string, details: Electron.CookiesSetDetails) =>
-  sessionManager?.setCookie(id, details)
-);
-ipcMain.handle('sessions:deleteLocalStorageKey', (_e, id: string, key: string) =>
-  sessionManager?.deleteLocalStorageKey(id, key)
-);
-ipcMain.handle('sessions:setLocalStorageKey', (_e, id: string, key: string, value: string) =>
-  sessionManager?.setLocalStorageKey(id, key, value)
-);
-ipcMain.handle('sessions:clearLocalStorage', (_e, id: string) => sessionManager?.clearLocalStorage(id));
-ipcMain.handle('clipboard:write', (_e, text: string) => clipboard.writeText(String(text)));
-
-ipcMain.handle('jira:getSettings', () => toPublicJiraSettings(jiraStore.get()));
-
-ipcMain.handle('jira:saveSettings', (_e, s: { baseUrl: string; email: string; projectKey: string; issueType: string; apiToken?: string }) => {
-  const current = jiraStore.get();
-  let apiTokenEnc = current.apiTokenEnc;
-  // An empty token field means "keep the current token" — only a non-empty
-  // value replaces it, and replacing it requires OS-level secure storage to
-  // actually be available (the GitHub bug-reporter token path works the
-  // same way), since a token is never written to disk in plain text.
-  const trimmedToken = (s.apiToken ?? '').trim();
-  if (trimmedToken) {
-    if (!safeStorage.isEncryptionAvailable()) {
-      return { ok: false, error: 'OS-level secure storage is unavailable on this system — cannot store the token safely.' };
-    }
-    apiTokenEnc = safeStorage.encryptString(trimmedToken).toString('base64');
-  }
-  jiraStore.set({
-    baseUrl: (s.baseUrl ?? '').trim().replace(/\/$/, ''),
-    email: (s.email ?? '').trim(),
-    projectKey: (s.projectKey ?? '').trim().toUpperCase(),
-    issueType: (s.issueType ?? '').trim() || DEFAULT_JIRA_SETTINGS.issueType,
-    apiTokenEnc,
-  });
-  return { ok: true };
-});
-
-function jiraAuthHeader(email: string, token: string): string {
-  return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
-}
-
-async function jiraFetch(url: string, init: Parameters<typeof net.fetch>[1]) {
-  const res = await net.fetch(url, init);
-  const contentType = res.headers.get('content-type');
-  const text = await res.text();
-  return parseJiraResponse(res.status, res.statusText, contentType, text);
-}
-
-ipcMain.handle('jira:fetchTicket', async (_e, key: string) => {
-  const s = jiraStore.get();
-  const token = getJiraToken();
-  if (!s.baseUrl || !s.email || !token) return { ok: false, error: 'Jira not configured' };
-  try {
-    return await jiraFetch(
-      `${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(key)}`,
-      { headers: { 'Authorization': jiraAuthHeader(s.email, token), 'Accept': 'application/json' } }
-    );
-  } catch (e: unknown) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-});
-
-interface JiraAttachOptions { screenshot: boolean; harMinutes: number | null; consoleErrors: boolean; steps: boolean; }
-
-// #245: one multipart POST per file, field name "file" — Jira Cloud's
-// attachment endpoint requires the X-Atlassian-Token: no-check header (it
-// otherwise rejects the request as a suspected XSRF attempt) and returns a
-// non-2xx (e.g. 413) for an attachment the site itself rejects, which is
-// reported back rather than thrown.
-async function uploadJiraAttachment(
-  baseUrl: string, email: string, token: string, issueKey: string,
-  filename: string, data: Buffer, contentType: string
-): Promise<JiraAttachmentUploadResult> {
-  const tooLarge = checkAttachmentSize(filename, data.byteLength);
-  if (tooLarge) return tooLarge;
-  try {
-    const form = new FormData();
-    form.append('file', new Blob([new Uint8Array(data)], { type: contentType }), filename);
-    const res = await net.fetch(`${baseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(issueKey)}/attachments`, {
-      method: 'POST',
-      headers: { 'Authorization': jiraAuthHeader(email, token), 'X-Atlassian-Token': 'no-check', 'Accept': 'application/json' },
-      body: form,
-    });
-    if (!res.ok) return { filename, ok: false, reason: `${res.status} ${res.statusText || 'error'}`.trim() };
-    return { filename, ok: true };
-  } catch (e) {
-    return { filename, ok: false, reason: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// Builds every evidence file the caller asked for (#245) — each builder is
-// independent and best-effort, so one failing to produce data (e.g. no
-// steps recorded) just means that file is left out, not that the whole
-// attach step fails.
-async function buildJiraEvidenceFiles(sessionId: string, attach: JiraAttachOptions): Promise<{ filename: string; data: Buffer; contentType: string }[]> {
-  const files: { filename: string; data: Buffer; contentType: string }[] = [];
-  if (!sessionManager) return files;
-
-  if (attach.screenshot) {
-    const png = await sessionManager.capturePageScreenshot(sessionId);
-    if (png) files.push({ filename: 'screenshot.png', data: png, contentType: 'image/png' });
-  }
-  if (attach.harMinutes != null) {
-    const sinceTs = Date.now() - attach.harMinutes * 60_000;
-    const harJson = sessionManager.buildHarSince(sessionId, sinceTs);
-    if (harJson) files.push({ filename: 'network.har', data: Buffer.from(harJson, 'utf-8'), contentType: 'application/json' });
-  }
-  if (attach.consoleErrors) {
-    const text = formatConsoleErrors(sessionManager.getConsoleErrorRows(sessionId));
-    if (text) files.push({ filename: 'console-errors.txt', data: Buffer.from(text, 'utf-8'), contentType: 'text/plain' });
-  }
-  if (attach.steps) {
-    const steps = sessionManager.getEvidenceSteps(sessionId);
-    if (steps.length) files.push({ filename: 'steps.json', data: Buffer.from(JSON.stringify(steps, null, 2), 'utf-8'), contentType: 'application/json' });
-  }
-  return files;
-}
-
-ipcMain.handle('jira:createIssue', async (_e, summary: string, description: string, opts?: { linkTo?: string; sessionId?: string; attach?: JiraAttachOptions }) => {
-  const s = jiraStore.get();
-  const token = getJiraToken();
-  if (!s.baseUrl || !s.email || !token || !s.projectKey) return { ok: false, error: 'Jira not configured' };
-  try {
-    const body = {
-      fields: {
-        project: { key: s.projectKey },
-        summary,
-        description: {
-          version: 1, type: 'doc',
-          content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
-        },
-        issuetype: { name: s.issueType || DEFAULT_JIRA_SETTINGS.issueType },
-      },
-    };
-    const authHeaders = {
-      'Authorization': jiraAuthHeader(s.email, token),
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
-    const result = await jiraFetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue`, {
-      method: 'POST', headers: authHeaders, body: JSON.stringify(body),
-    });
-    if (!result.ok) return result;
-    const key = (result.data as { key?: string } | undefined)?.key;
-    if (!key) return { ok: false, error: 'Jira did not return an issue key' };
-
-    // A link failure never fails the creation — the bug already exists.
-    let linkError: string | undefined;
-    if (opts?.linkTo) {
-      const linkResult = await jiraFetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issueLink`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({
-          type: { name: 'Relates' },
-          inwardIssue: { key },
-          outwardIssue: { key: opts.linkTo },
-        }),
-      });
-      if (!linkResult.ok) linkError = linkResult.error;
-    }
-
-    // Attachments are best-effort and never retroactively fail the issue
-    // that already exists — each file's own outcome is reported instead.
-    let attachments: JiraAttachmentUploadResult[] | undefined;
-    if (opts?.attach && opts.sessionId) {
-      const files = await buildJiraEvidenceFiles(opts.sessionId, opts.attach);
-      attachments = [];
-      for (const f of files) {
-        attachments.push(await uploadJiraAttachment(s.baseUrl, s.email, token, key, f.filename, f.data, f.contentType));
-      }
-    }
-
-    return { ok: true, key, linkError, attachments };
-  } catch (e: unknown) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-});
-
-// --- In-app bug reporter ---
-
-const GH_REPO_OWNER = 'testheader';
-const GH_REPO_NAME = 'testerbrowser';
-const OAUTH_CLIENT_ID = 'Ov23licgMtABkVvMJiem';
-
-let oauthPollAbort: AbortController | null = null;
-
-function saveGithubToken(token: string, refreshToken?: string | null, refreshExpiresIn?: number | null): boolean {
-  if (!safeStorage.isEncryptionAvailable()) return false;
-  const current = bugReportStore.get();
-  bugReportStore.set({
-    tokenEnc: safeStorage.encryptString(token).toString('base64'),
-    refreshTokenEnc: refreshToken
-      ? safeStorage.encryptString(refreshToken).toString('base64')
-      : current.refreshTokenEnc,
-    refreshExpiresAt: refreshExpiresIn ? Date.now() + refreshExpiresIn * 1000 : current.refreshExpiresAt,
-  });
-  return true;
-}
-
-// Renews the access token via the refresh token instead of forcing the user
-// back through the device-flow sign-in. Returns the new access token, or
-// null if there's no refresh token, it's expired, or GitHub rejects it —
-// in which case stored tokens are cleared so the UI falls back to sign-in.
-async function refreshGithubToken(): Promise<string | null> {
-  const refreshToken = getGithubRefreshToken();
-  const { refreshExpiresAt } = bugReportStore.get();
-  if (!refreshToken || (refreshExpiresAt && Date.now() >= refreshExpiresAt)) {
-    clearGithubTokens();
-    return null;
-  }
-  try {
-    const res = await net.fetch('https://github.com/login/oauth/access_token', {
-      method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'TesterBrowser-BugReporter' },
-      body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, grant_type: 'refresh_token', refresh_token: refreshToken }),
-    });
-    const data = await res.json() as { access_token?: string; refresh_token?: string; refresh_token_expires_in?: number; error?: string };
-    if (!data.access_token) {
-      clearGithubTokens();
-      return null;
-    }
-    // GitHub rotates the refresh token on every use — persist the new one, falling back to the old.
-    saveGithubToken(data.access_token, data.refresh_token ?? refreshToken, data.refresh_token_expires_in ?? null);
-    return data.access_token;
-  } catch {
-    return null;
-  }
-}
-
-async function pollDeviceFlow(deviceCode: string, intervalSecs: number, expiresAt: number, signal: AbortSignal) {
-  let pollInterval = intervalSecs;
-  while (Date.now() < expiresAt && !signal.aborted) {
-    await new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, pollInterval * 1000);
-      signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
-    });
-    if (signal.aborted) return;
-    try {
-      const res = await net.fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST',
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'TesterBrowser-BugReporter' },
-        body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
-      });
-      const data = await res.json() as {
-        access_token?: string; error?: string; interval?: number;
-        refresh_token?: string; refresh_token_expires_in?: number;
-      };
-      if (data.access_token) {
-        saveGithubToken(data.access_token, data.refresh_token ?? null, data.refresh_token_expires_in ?? null);
-        win?.webContents.send('bugreport:oauthDone', { ok: true });
-        return;
-      }
-      if (data.error === 'slow_down') pollInterval = (data.interval ?? pollInterval) + 5;
-      else if (data.error === 'access_denied' || data.error === 'expired_token') {
-        win?.webContents.send('bugreport:oauthDone', { ok: false, error: data.error });
-        return;
-      }
-      // 'authorization_pending' → keep polling
-    } catch { /* network hiccup — keep polling */ }
-  }
-  if (!signal.aborted) win?.webContents.send('bugreport:oauthDone', { ok: false, error: 'expired_token' });
-}
-
-ipcMain.handle('bugreport:startOAuth', async () => {
-  oauthPollAbort?.abort();
-  oauthPollAbort = new AbortController();
-  try {
-    const res = await net.fetch('https://github.com/login/device/code', {
-      method: 'POST',
-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'TesterBrowser-BugReporter' },
-      body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, scope: 'public_repo' }),
-    });
-    if (!res.ok) return { ok: false, error: `GitHub returned HTTP ${res.status}` };
-    const data = await res.json() as { device_code?: string; user_code?: string; verification_uri?: string; expires_in?: number; interval?: number };
-    if (!data.device_code || !data.user_code) return { ok: false, error: 'Invalid response from GitHub' };
-    shell.openExternal(data.verification_uri ?? 'https://github.com/login/device');
-    const expiresAt = Date.now() + (data.expires_in ?? 900) * 1000;
-    pollDeviceFlow(data.device_code, data.interval ?? 5, expiresAt, oauthPollAbort.signal)
-      .catch((e) => log.warn('bugreport', 'Device flow polling failed unexpectedly', { error: String(e) }));
-    return { ok: true, user_code: data.user_code, verification_uri: data.verification_uri, expires_in: data.expires_in };
-  } catch (e: unknown) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-});
-
-ipcMain.handle('bugreport:signOut', () => {
-  oauthPollAbort?.abort();
-  oauthPollAbort = null;
-  clearGithubTokens();
-  return { ok: true };
-});
-
-ipcMain.handle('bugreport:hasToken', () => !!getGithubToken());
-
-ipcMain.handle('bugreport:checkToken', async () => {
-  let token = getGithubToken();
-  if (!token) return { valid: false };
-  const probe = (t: string) => net.fetch('https://api.github.com/user', {
-    headers: { 'Authorization': `Bearer ${t}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'TesterBrowser-BugReporter' },
-  });
-  try {
-    let res = await probe(token);
-    if (res.status === 401) {
-      token = await refreshGithubToken();
-      if (!token) return { valid: false };
-      res = await probe(token);
-      if (res.status === 401) { clearGithubTokens(); return { valid: false }; }
-    }
-    return { valid: res.ok };
-  } catch { return { valid: false }; }
-});
-
-ipcMain.handle('bugreport:saveToken', (_e, token: string) => {
-  const trimmed = (token ?? '').trim();
-  if (!trimmed) { clearGithubTokens(); return { ok: true }; }
-  if (!safeStorage.isEncryptionAvailable()) {
-    return { ok: false, error: 'OS-level secure storage is unavailable on this system — cannot store the token safely.' };
-  }
-  // A manually-pasted token replaces any device-flow tokens; it has no refresh token of its own.
-  bugReportStore.set({
-    tokenEnc: safeStorage.encryptString(trimmed).toString('base64'),
-    refreshTokenEnc: null,
-    refreshExpiresAt: null,
-  });
-  return { ok: true };
-});
-
-// #226: shared by getDiagnosticsData() (bug-report path, below) and the
-// applog:tail IPC handler — the same underlying tail the bug report's
-// "App log" block is built from.
-function getCappedAppLog(): { text: string; truncated: boolean } {
-  return capLogBlock(readLogTail(logsDir, 200), 30_000);
-}
-
-function getDiagnosticsData() {
-  return {
-    version: app.getVersion(),
-    electron: process.versions.electron,
-    chrome: process.versions.chrome,
-    node: process.versions.node,
-    platform: process.platform,
-    arch: process.arch,
-    osRelease: os.release(),
-    recentErrors: getRecentErrors().slice(-10),
-    appLog: getCappedAppLog(),
-  };
-}
-
-ipcMain.handle('bugreport:getDiagnostics', () => getDiagnosticsData());
-
-ipcMain.handle('app:captureScreenshot', () => sessionManager?.captureAppScreenshot() ?? null);
-
-ipcMain.handle('applog:tail', (_e, lines: number) => {
-  const n = Math.min(Math.max(1, Math.floor(Number(lines)) || 0), 500);
-  return readLogTail(logsDir, n);
-});
-
-ipcMain.handle('applog:revealFolder', () => {
-  // silent: shell.showItemInFolder() doesn't report failures in a way there's anything useful to log
-  try { shell.showItemInFolder(path.join(logsDir, 'main.log')); } catch {}
-});
-
-// Default diagnostics text — mirrors renderer/bugreport.js's own preview formatting
-// exactly, so what the user sees (and can edit) matches what gets posted verbatim.
-function defaultDiagnosticsText(): string {
-  return buildDefaultDiagnosticsText(getDiagnosticsData());
-}
-
-// Best-effort: finds a GitHub Projects (v2) board titled "Testerbrowser" owned by
-// the repo owner and adds the issue to it. Silently returns false on any failure
-// (missing scope, no such board, etc.) — the issue itself is still created either way.
-async function addIssueToProjectBoard(token: string, issueNodeId: string): Promise<boolean> {
-  try {
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'TesterBrowser-BugReporter',
-    };
-    const ownerQuery = `query($owner: String!) {
-      repositoryOwner(login: $owner) {
-        ... on ProjectV2Owner { projectsV2(first: 20) { nodes { id title } } }
-      }
-    }`;
-    const res1 = await net.fetch('https://api.github.com/graphql', {
-      method: 'POST', headers,
-      body: JSON.stringify({ query: ownerQuery, variables: { owner: GH_REPO_OWNER } }),
-    });
-    const json1 = await res1.json() as { data?: { repositoryOwner?: { projectsV2?: { nodes?: { id: string; title: string }[] } } } };
-    const nodes = json1.data?.repositoryOwner?.projectsV2?.nodes ?? [];
-    const projectId = findProjectBoardId(nodes);
-    if (!projectId) return false;
-
-    const mutation = `mutation($projectId: ID!, $contentId: ID!) {
-      addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) { item { id } }
-    }`;
-    const res2 = await net.fetch('https://api.github.com/graphql', {
-      method: 'POST', headers,
-      body: JSON.stringify({ query: mutation, variables: { projectId, contentId: issueNodeId } }),
-    });
-    const json2 = await res2.json();
-    return projectItemWasAdded(json2);
-  } catch { return false; }
-}
-
-ipcMain.handle('bugreport:submit', async (_e, payload: { area: string; description: string; diagnostics?: string; screenshotB64?: string | null }) => {
-  let token = getGithubToken();
-  if (!token) return { ok: false, error: 'No GitHub token configured. Add one in Settings.' };
-  if (!payload?.description?.trim()) return { ok: false, error: 'Description is required.' };
-
-  const title = buildBugReportTitle(payload.area, payload.description);
-  const diagnosticsText = payload.diagnostics?.trim() || defaultDiagnosticsText();
-  // #226: caps the final body at 60,000 chars, truncating diagnostics (which
-  // carries the app-log block at its own tail) rather than the user's
-  // description — never the other way around.
-  const body = capIssueBody(payload.description.trim(), wrapDiagnosticsMarkdown(payload.area, diagnosticsText), 60_000);
-
-  try {
-    const createIssue = (t: string) => net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${t}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'User-Agent': 'TesterBrowser-BugReporter',
-      },
-      body: JSON.stringify({ title, body, labels: ['status-ready'] }),
-    });
-    let res = await createIssue(token);
-    if (res.status === 401) {
-      const refreshed = await refreshGithubToken();
-      if (!refreshed) return { ok: false, error: 'GitHub token is invalid or expired. Please sign in again in Settings.' };
-      token = refreshed;
-      res = await createIssue(token);
-    }
-    const data = await res.json() as Record<string, unknown>;
-    if (!res.ok) {
-      if (res.status === 401) {
-        clearGithubTokens();
-        return { ok: false, error: 'GitHub token is invalid or expired. Please sign in again in Settings.' };
-      }
-      return { ok: false, error: (data as { message?: string }).message ?? `HTTP ${res.status}` };
-    }
-
-    // #246: 'status-ready' is silently dropped for a token without triage
-    // access — surfaced back rather than assumed, so the confirmation text
-    // can say so instead of implying the board/queue picked it up.
-    const appliedLabels = Array.isArray(data.labels)
-      ? (data.labels as { name?: string }[]).map((l) => l.name)
-      : [];
-    const labelApplied = appliedLabels.includes('status-ready');
-
-    let screenshotAttached = false;
-    let screenshotError: string | null = null;
-    let screenshotSavedPath: string | null = null;
-    if (payload.screenshotB64) {
-      try {
-        // #246: the OAuth device flow only ever requests public_repo, so the
-        // Contents-API upload (which needs push) silently fails for most
-        // users — check first, rather than attempting it and surfacing a
-        // permission error.
-        const permRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json', 'User-Agent': 'TesterBrowser-BugReporter' },
-        });
-        const permData = await permRes.json().catch(() => ({})) as { permissions?: { push?: boolean } };
-        const strategy = decideScreenshotStrategy(!!permData.permissions?.push);
-
-        if (strategy === 'save-locally') {
-          const dir = path.join(app.getPath('userData'), 'bug-report-screenshots');
-          fs.mkdirSync(dir, { recursive: true });
-          const savedPath = path.join(dir, `issue-${data.number}.jpg`);
-          fs.writeFileSync(savedPath, Buffer.from(payload.screenshotB64, 'base64'));
-          screenshotSavedPath = savedPath;
-        } else {
-          const filePath = `.github/bug-report-screenshots/issue-${data.number}.jpg`;
-          const putRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/contents/${filePath}`, {
-            method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Accept': 'application/vnd.github+json',
-              'Content-Type': 'application/json',
-              'User-Agent': 'TesterBrowser-BugReporter',
-            },
-            body: JSON.stringify({ message: `Bug report screenshot for #${data.number}`, content: payload.screenshotB64 }),
-          });
-          if (!putRes.ok) {
-            const putData = await putRes.json().catch(() => ({})) as { message?: string };
-            screenshotError = putData.message ?? `Upload failed: HTTP ${putRes.status}`;
-          } else {
-            const screenshotUrl = `https://raw.githubusercontent.com/${GH_REPO_OWNER}/${GH_REPO_NAME}/main/${filePath}`;
-            const patchRes = await net.fetch(`https://api.github.com/repos/${GH_REPO_OWNER}/${GH_REPO_NAME}/issues/${data.number}`, {
-              method: 'PATCH',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/vnd.github+json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'TesterBrowser-BugReporter',
-              },
-              body: JSON.stringify({ body: `${body}\n\n![TesterBrowser screenshot](${screenshotUrl})` }),
-            });
-            if (patchRes.ok) {
-              screenshotAttached = true;
-            } else {
-              const patchData = await patchRes.json().catch(() => ({})) as { message?: string };
-              screenshotError = patchData.message ?? `Embedding failed: HTTP ${patchRes.status}`;
-            }
-          }
-        }
-      } catch (e: unknown) {
-        screenshotError = e instanceof Error ? e.message : String(e);
-      }
-    }
-
-    const boardAdded = await addIssueToProjectBoard(token, data.node_id as string);
-    log.info('bugreport', `Bug report submitted: issue #${data.number}`);
-    return {
-      ok: true, url: data.html_url, number: data.number, boardAdded,
-      screenshotAttached, screenshotError, screenshotSavedPath, labelApplied,
-    };
-  } catch (e: unknown) {
-    const message = e instanceof Error ? e.message : String(e);
-    log.error('bugreport', `Bug report submission failed: ${message}`);
-    return { ok: false, error: message };
-  }
-});
-
-ipcMain.handle('bugreport:revealScreenshot', (_e, filePath: string) => {
-  if (typeof filePath === 'string' && filePath.startsWith(path.join(app.getPath('userData'), 'bug-report-screenshots'))) {
-    shell.showItemInFolder(filePath);
-  }
-});
-
-// --- Crash log IPC ---
-
-ipcMain.handle('crash:check', () => {
-  if (!crashLogPath) return null;
-  try { return JSON.parse(fs.readFileSync(crashLogPath, 'utf-8')); } catch { return null; }
-});
-
-ipcMain.handle('crash:clear', () => {
-  // silent: best-effort cleanup; ENOENT here is the common/expected case (already cleared)
-  try { if (crashLogPath) fs.unlinkSync(crashLogPath); } catch {}
-  return { ok: true };
-});
-
-// #233: replays used to always go through net.fetch — the app's own default
-// session — so a tab's Mock/Resilience rules, cookie jar and HTTP cache
-// never applied, and a redacted [REDACTED] header value got sent to the
-// server literally. sessionId routes this through the *originating tab's*
-// partition instead, and checks its Mock rules (via the exact matcher
-// Fetch.requestPaused itself uses) before touching the network — Resilience
-// is deliberately not applied here (see the ticket's "out of scope").
-ipcMain.handle('recording:replay', async (_e, req: {
-  sessionId?: string; method: string; url: string; headers: Record<string, string>; body?: string; timeoutMs?: number;
-}) => {
-  const cleanHeaders = Object.fromEntries(Object.entries(req.headers || {}).filter(([, v]) => v !== '[REDACTED]'));
-
-  const mockRule = req.sessionId ? sessionManager?.findMatchingMockRule(req.sessionId, req.method, req.url) : null;
-  if (mockRule) {
-    const fulfill = buildMockFulfillParams(mockRule, { headers: cleanHeaders });
-    const headers: Record<string, string> = {};
-    for (const h of fulfill.responseHeaders) headers[h.name] = h.value;
-    return {
-      ok: true,
-      status: fulfill.responseCode,
-      statusText: '',
-      headers,
-      body: Buffer.from(fulfill.body, 'base64').toString('utf-8'),
-      servedBy: { mockRuleId: mockRule.id, urlPattern: mockRule.urlPattern },
-    };
-  }
-
-  // Clamped to the overlay's own 1-600s input range as a backstop against a
-  // malformed/absent value from the renderer.
-  const timeoutMs = Math.min(Math.max(Math.round((req.timeoutMs ?? 30000)), 1000), 600000);
-  try {
-    const opts: RequestInit & { credentials?: 'omit' | 'same-origin' | 'include' } = {
-      method: req.method,
-      headers: cleanHeaders,
-      // Cookies stay explicit — exactly what's in the overlay's Cookies
-      // table (folded into a Cookie header by the renderer) — rather than
-      // silently also sending whatever else is in the partition's own jar.
-      credentials: 'omit',
-      signal: AbortSignal.timeout(timeoutMs),
-    };
-    if (req.body && !['GET', 'HEAD'].includes(req.method.toUpperCase())) {
-      opts.body = req.body;
-    }
-    const partition = req.sessionId ? sessionManager?.getPartition(req.sessionId) : null;
-    const fetcher = partition ? electronSession.fromPartition(partition) : net;
-    const res = await fetcher.fetch(req.url, opts);
-    const headers: Record<string, string> = {};
-    res.headers.forEach((value: string, key: string) => { headers[key] = value; });
-    const isImage = (headers['content-type'] || '').toLowerCase().startsWith('image/');
-    if (isImage) {
-      const buf = Buffer.from(await res.arrayBuffer());
-      return { ok: true, status: res.status, statusText: res.statusText, headers, bodyBase64: buf.toString('base64') };
-    }
-    const body = await res.text();
-    return { ok: true, status: res.status, statusText: res.statusText, headers, body };
-  } catch (e: unknown) {
-    if (e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
-      return { ok: false, error: `Timed out after ${Math.round(timeoutMs / 1000)} s` };
-    }
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-});
-
-ipcMain.handle('layout:setConsoleHeight',(_e, h: number) => sessionManager?.setConsoleHeight(h));
-ipcMain.handle('layout:setTopBarHeight', (_e, h: number) => sessionManager?.setTopBarHeight(h));
-ipcMain.handle('layout:setViewerVisible',(_e, v: boolean) => sessionManager?.setViewerVisible(v));
-ipcMain.handle('layout:setRightPanelWidth', (_e, w: number) => sessionManager?.setRightPanelWidth(w));
-ipcMain.handle('layout:beginPageOverlay', () => sessionManager?.beginPageOverlay() ?? null);
-ipcMain.handle('layout:endPageOverlay', () => sessionManager?.endPageOverlay());
-
-// Window control IPC
-ipcMain.handle('window:minimize',    () => win?.minimize());
-ipcMain.handle('window:maximize',    () => { if (win?.isMaximized()) win.unmaximize(); else win?.maximize(); });
-ipcMain.handle('window:close',       () => win?.close());
-ipcMain.handle('window:isMaximized', () => win?.isMaximized() ?? false);
-
-// Download IPC
-ipcMain.handle('download:list',   () => sessionManager?.listDownloads() ?? []);
-ipcMain.handle('download:open',   (_e, id: string) => sessionManager?.openDownload(id));
-ipcMain.handle('download:reveal', (_e, id: string) => sessionManager?.revealDownload(id));
-ipcMain.handle('download:cancel', (_e, id: string) => sessionManager?.cancelDownload(id));
-ipcMain.handle('download:clear',  () => sessionManager?.clearDownloads());
-
-// Permission IPC
-ipcMain.handle('permission:respond', (_e, reqId: string, granted: boolean) =>
-  sessionManager?.respondPermission(reqId, granted)
-);
-ipcMain.handle('permission:list', (_e, id: string) => sessionManager?.listPermissions(id) ?? []);
-ipcMain.handle('permission:revoke', (_e, id: string, origin: string, permission: string) =>
-  sessionManager?.revokePermission(id, origin, permission) ?? false
-);
-
-// Bookmark IPC
-ipcMain.handle('bookmarks:list',   (e) => rejectUntrustedSender(e, 'bookmarks:list') ? [] : bookmarkStore.get());
-ipcMain.handle('bookmarks:add',    (e, url: string, title: string) => {
-  if (rejectUntrustedSender(e, 'bookmarks:add')) return;
-  return bookmarkStore.update(bs => [{ url, title, addedAt: Date.now(), folderId: null }, ...bs.filter(b => b.url !== url)]);
-});
-ipcMain.handle('bookmarks:remove', (e, url: string) => {
-  if (rejectUntrustedSender(e, 'bookmarks:remove')) return;
-  return bookmarkStore.update(bs => bs.filter(b => b.url !== url));
-});
-ipcMain.handle('bookmarks:rename', (e, url: string, title: string) => {
-  if (rejectUntrustedSender(e, 'bookmarks:rename')) return;
-  return bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, title } : b)));
-});
-ipcMain.handle('bookmarks:move', (e, url: string, folderId: string | null) => {
-  if (rejectUntrustedSender(e, 'bookmarks:move')) return;
-  return bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, folderId } : b)));
-});
-
-ipcMain.handle('bookmarks:listFolders', (e) => rejectUntrustedSender(e, 'bookmarks:listFolders') ? [] : bookmarkFoldersStore.get());
-ipcMain.handle('bookmarks:createFolder', (e, name: string) => {
-  if (rejectUntrustedSender(e, 'bookmarks:createFolder')) return;
-  return bookmarkFoldersStore.update(fs => [
-    ...fs,
-    { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, createdAt: Date.now() },
-  ]);
-});
-ipcMain.handle('bookmarks:renameFolder', (e, id: string, name: string) => {
-  if (rejectUntrustedSender(e, 'bookmarks:renameFolder')) return;
-  return bookmarkFoldersStore.update(fs => fs.map(f => (f.id === id ? { ...f, name } : f)));
-});
-ipcMain.handle('bookmarks:removeFolder', (e, id: string) => {
-  if (rejectUntrustedSender(e, 'bookmarks:removeFolder')) return;
-  // Bookmarks inside the deleted folder move back to the top level rather than being lost.
-  bookmarkStore.update(bs => bs.map(b => (b.folderId === id ? { ...b, folderId: null } : b)));
-  return bookmarkFoldersStore.update(fs => fs.filter(f => f.id !== id));
-});
-
-// URL history IPC
-ipcMain.handle('urlHistory:get', () => urlHistoryStore.get());
-ipcMain.handle('urlHistory:add', (_e, url: string) => {
-  if (!url) return urlHistoryStore.get();
-  return urlHistoryStore.update(h => [url, ...h.filter(u => u !== url)].slice(0, 500));
-});
-
-// Speed-dial IPC
-ipcMain.handle('speeddial:get', (e) => rejectUntrustedSender(e, 'speeddial:get') ? [] : speedDialStore.get());
-ipcMain.handle('speeddial:set', (e, tiles: unknown) => {
-  if (rejectUntrustedSender(e, 'speeddial:set')) return;
-  if (!Array.isArray(tiles) || tiles.length > 100) return;
-  const sanitized: SpeedDialTile[] = (tiles as unknown[])
-    .filter((t): t is Record<string, unknown> => t !== null && typeof t === 'object')
-    .map(t => ({
-      id:    String(t.id    ?? '').slice(0, 64),
-      title: String(t.title ?? '').slice(0, 200),
-      // Only allow http/https URLs — drop anything else
-      url:   /^https?:\/\//i.test(String(t.url ?? '')) ? String(t.url).slice(0, 2048) : 'about:blank',
-    }));
-  speedDialStore.set(sanitized);
-});
-
-// App IPC
-ipcMain.handle('app:versionInfo', (e) => rejectUntrustedSender(e, 'app:versionInfo') ? null : ({
-  current: app.getVersion(), latest: latestVersion, status: updateStatus, isPackaged: app.isPackaged,
-}));
-ipcMain.handle('app:checkForUpdates', () => {
-  if (!app.isPackaged) return;
-  updateStatus = 'checking'; latestVersion = null;
-  pushUpdateStatus();
-  autoUpdater.checkForUpdates();
-});
-// #230: quitAndInstall(isSilent, isForceRunAfter) — verified against the
-// installed electron-updater@6.8.9 (node_modules/electron-updater/out/
-// BaseUpdater.js): its quit-time auto-install path (addQuitHandler, run
-// when the app quits normally without quitAndInstall having been called
-// explicitly) already calls `this.install(true, false)` — silent, no
-// installer UI — by default, so no autoInstallOnAppQuit/app.on('quit')
-// override is needed for that path. This explicit path additionally
-// force-runs the new version after install.
 // Shared by the pill/Settings-triggered restart and #259's idle auto-install
 // — both just want "persist, then silently install and relaunch."
 function restartAndInstall() {
@@ -1465,14 +610,20 @@ function restartAndInstall() {
   persistSessionUrls();
   autoUpdater.quitAndInstall(true, true);
 }
-ipcMain.handle('app:restartAndInstall', () => restartAndInstall());
+
+function checkForUpdatesNow() {
+  if (!app.isPackaged) return;
+  updateStatus = 'checking'; latestVersion = null;
+  pushUpdateStatus();
+  autoUpdater.checkForUpdates();
+}
 
 // #259: started once an update reaches 'downloaded' while the setting is on
-// (see the 'update-downloaded' handler and the settings:set handler above),
-// stopped once either stops holding. Checks, rather than reacting to idle
-// events, since idle *time* (not a single idle/resume edge) and the several
-// other busy-conditions all need to hold at once, at the moment a real
-// install would happen.
+// (see the 'update-downloaded' handler above and settings:set in
+// ipc/settings.ts), stopped once either stops holding. Checks, rather than
+// reacting to idle events, since idle *time* (not a single idle/resume edge)
+// and the several other busy-conditions all need to hold at once, at the
+// moment a real install would happen.
 function maybeStartIdleInstallTimer() {
   if (idleInstallTimer) return;
   if (!settingsStore.get().autoInstallWhenIdle || updateStatus !== 'downloaded') return;
@@ -1515,124 +666,49 @@ function checkIdleInstall() {
     log.info('updater', `Auto-install blocked: ${decision.reason}`);
   }
 }
-ipcMain.handle('app:openExternal', (_e, url: string) => {
-  if (/^https:\/\//i.test(url ?? '')) shell.openExternal(url);
+
+// --- IPC surface ---
+// #255/#283: registrations themselves live in src/main/ipc/<feature>.ts,
+// each a register(deps) function taking whatever narrow slice of this
+// file's state it needs — this file shrinks to bootstrap, store
+// construction, and this one sequence of register calls. Called at module
+// load (matching where these handlers registered before this split), not
+// deferred to app.whenReady() — every dependency below is a getter closure
+// over a `let`, so it's read fresh at call time regardless of when
+// createWindow() actually constructs sessionManager/win.
+
+const appDeps: AppDeps = {
+  getWin: () => win,
+  getSessionManager: () => sessionManager,
+  getVisualRegressionStore: () => visualRegressionStore,
+  getDebugLogStore: () => debugLogStore,
+  getLogsDir: () => logsDir,
+  log,
+  recordAppError,
+  persistSessionUrls,
+  rejectUntrustedSender,
+};
+
+registerSessionsIpc(appDeps);
+registerRecordingIpc(appDeps);
+registerA11yIpc(appDeps);
+registerMockIpc(appDeps);
+registerResilienceIpc(appDeps);
+registerEmulationIpc(appDeps);
+registerVisualRegressionIpc(appDeps);
+registerDownloadsIpc(appDeps);
+registerPermissionsIpc(appDeps);
+registerBookmarksIpc(appDeps, { bookmarkStore, bookmarkFoldersStore, urlHistoryStore, speedDialStore });
+registerLayoutIpc(appDeps);
+registerSettingsIpc(appDeps, { settingsStore, themeStore, maybeStartIdleInstallTimer });
+registerAppIpc(appDeps, {
+  getUpdateStatus: () => updateStatus,
+  getLatestVersion: () => latestVersion,
+  checkForUpdatesNow,
+  restartAndInstall,
+  getCrashLogPath: () => crashLogPath,
 });
-ipcMain.handle('app:reportError', (_e, message: string) => recordAppError(String(message)));
-ipcMain.handle('app:debugLog', (_e, afterId?: number) => debugLogStore?.getEntries({ afterId }) ?? getRecentErrors());
-
-// Tests (record-playback) IPC
-ipcMain.handle('tests:list', () => testsStore.get());
-ipcMain.handle('tests:save', (_e, test: SavedTest) => {
-  testsStore.update(all => upsertById(all, test));
-});
-ipcMain.handle('tests:load', (_e, id: string) => testsStore.get().find(t => t.id === id) ?? null);
-ipcMain.handle('tests:delete', (_e, id: string) => testsStore.update(all => all.filter(t => t.id !== id)));
-
-// #274: mirrors mock:exportRules/mock:importRules (#264) exactly, adapted
-// for SavedTest/TestStep — id/createdAt/updatedAt are stripped on export (the
-// exported file only has what's needed to recreate the test elsewhere) and
-// always minted fresh on import. `id` omitted exports every saved test in
-// one file; passed, exports just that one test — same testerBrowserTests/
-// tests wire shape either way, so import handles both uniformly.
-ipcMain.handle('tests:exportTests', async (_e, id?: string) => {
-  if (!win) return { ok: false, error: 'No window' };
-  const all = testsStore.get();
-  const toExport = id ? all.filter(t => t.id === id) : all;
-  if (id && toExport.length === 0) return { ok: false, error: 'Test not found' };
-  const result = await dialog.showSaveDialog(win, {
-    title: id ? 'Export test' : 'Export all tests',
-    defaultPath: id ? 'test.json' : 'tests.json',
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-  });
-  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-  try {
-    const exportable = toExport.map(({ id: _id, createdAt: _c, updatedAt: _u, ...rest }) => rest);
-    fs.writeFileSync(result.filePath, JSON.stringify({ testerBrowserTests: 1, tests: exportable }, null, 2));
-    log.info('tests', `Tests exported: ${toExport.length}`);
-    return { ok: true, path: result.filePath };
-  } catch (e) {
-    log.warn('tests', 'Tests export failed', { error: String(e) });
-    return { ok: false, error: String(e) };
-  }
-});
-
-// #274: valid tests are appended with fresh ids — an import never replaces
-// or reorders what's already saved. A name collision with an existing saved
-// test appends " (imported)" rather than silently overwriting it.
-ipcMain.handle('tests:importTests', async () => {
-  if (!win) return { ok: false, error: 'No window' };
-  const result = await dialog.showOpenDialog(win, {
-    title: 'Import Tests',
-    filters: [{ name: 'JSON', extensions: ['json'] }],
-    properties: ['openFile'],
-  });
-  if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
-
-  let json: unknown;
-  try {
-    json = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf-8'));
-  } catch {
-    return { ok: false, error: 'Not valid JSON' };
-  }
-  const { tests, skipped, error } = validateImportedTests(json);
-  if (error) return { ok: false, error };
-
-  const existingNames = new Set(testsStore.get().map(t => t.name));
-  const now = Date.now();
-  const imported: SavedTest[] = tests.map((t) => {
-    let name = t.name;
-    if (existingNames.has(name)) name = `${name} (imported)`;
-    existingNames.add(name);
-    return {
-      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      steps: t.steps,
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
-  if (imported.length > 0) testsStore.update(all => [...all, ...imported]);
-  log.info('tests', `Tests imported: ${imported.length} (skipped ${skipped.length})`);
-  return { ok: true, imported: imported.length, skipped: skipped.length, firstSkipReason: skipped[0]?.reason };
-});
-ipcMain.handle('session:startRecording',     (_e, id: string) => sessionManager?.startRecording(id) ?? null);
-ipcMain.handle('session:stopRecording',      (_e, id: string) => sessionManager?.stopRecording(id) ?? []);
-ipcMain.handle('session:pollRecordingSteps', (_e, id: string) => sessionManager?.pollRecordingSteps(id) ?? []);
-// #245: the tab's current-or-most-recent recording, for the Jira bug
-// report's "Recorded steps" attachment checkbox to know whether there's
-// anything to enable/attach without side effects (unlike pollRecordingSteps,
-// this never harvests from the live page).
-ipcMain.handle('session:getEvidenceSteps',   (_e, id: string) => sessionManager?.getEvidenceSteps(id) ?? []);
-ipcMain.handle('session:playbackStep',       (_e, id: string, step: TestStep) => sessionManager?.playbackStep(id, step) ?? null);
-ipcMain.handle('session:setPlaybackActive',  (_e, id: string, active: boolean) => sessionManager?.setPlaybackActive(id, active));
-ipcMain.handle('session:countSelectorMatches', (_e, id: string, selector: string) => sessionManager?.countSelectorMatches(id, selector) ?? -1);
-
-ipcMain.handle('followalong:start', (_e, leaderId: string, followerId: string, mirrorNavigation: boolean) =>
-  sessionManager?.startFollowAlong(leaderId, followerId, mirrorNavigation) ?? { ok: false, error: 'No session manager' });
-ipcMain.handle('followalong:stop', (_e, leaderId: string) => sessionManager?.stopFollowAlong(leaderId) ?? false);
-ipcMain.handle('followalong:setMirrorNavigation', (_e, leaderId: string, mirrorNavigation: boolean) =>
-  sessionManager?.setFollowMirrorNavigation(leaderId, mirrorNavigation) ?? false);
-ipcMain.handle('followalong:list', () => sessionManager?.listFollowPairings() ?? []);
-
-// Settings IPC
-ipcMain.handle('settings:get', (e) => rejectUntrustedSender(e, 'settings:get') ? null : settingsStore.get());
-ipcMain.handle('settings:set', (e, patch: unknown) => {
-  if (rejectUntrustedSender(e, 'settings:set')) return;
-  const next = settingsStore.update(s => applySettingsPatch(s, patch));
-  // #259: covers turning the toggle on while an update is already sitting at
-  // 'downloaded' — the more common case (toggling it on before an update
-  // ever arrives) is instead picked up by maybeStartIdleInstallTimer()'s own
-  // call from the 'update-downloaded' handler once one actually does.
-  maybeStartIdleInstallTimer();
-  return next;
-});
-
-// Update log IPC — #228: the updater's own log.error('updater', …) calls
-// (source='updater', ctx carrying status/currentVersion/latestVersion) are
-// now the data source, replacing the old update-errors.jsonl file.
-ipcMain.handle('app:getUpdateLog', () =>
-  (debugLogStore?.getEntriesBySource('updater') ?? [])
-    .filter(e => e.level === 'error')
-    .map(toUpdateLogEntry)
-);
+registerApplogIpc(appDeps);
+registerJiraIpc(appDeps, { jiraStore });
+registerBugreportIpc(appDeps, { bugReportStore });
+registerTestsIpc(appDeps, { testsStore });

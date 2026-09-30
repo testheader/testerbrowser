@@ -20,8 +20,33 @@ Electron desktop app purpose-built for software testers. Two core features:
 ## File map
 
 ```
-src/main/index.ts          Main process: BrowserWindow, IPC handlers, app menu, autoUpdater
-src/main/sessionManager.ts BrowserView lifecycle, tab mgmt, CDP forwarding, downloads, permissions
+src/main/index.ts          Main process bootstrap: BrowserWindow, app menu, autoUpdater, crash
+                           detection. Builds the shared AppDeps bundle (getters for state
+                           assigned after module load, plus shared helpers) and calls each
+                           src/main/ipc/*.ts module's register() to wire up IPC — the
+                           ipcMain.handle() calls themselves no longer live here.
+src/main/ipc/              One file per feature area, each exporting register(deps) (or
+                           register(deps, extraStores) for modules with their own JsonStore),
+                           registering that area's ipcMain.handle() channels. deps.ts holds the
+                           shared AppDeps interface + a few cross-module store type aliases
+                           (Bookmark/SavedTest/etc). sessions.ts, recording.ts, a11y.ts, mock.ts,
+                           resilience.ts, emulation.ts, visualRegression.ts, downloads.ts,
+                           permissions.ts, bookmarks.ts, layout.ts, settings.ts, app.ts,
+                           applog.ts, jira.ts, bugreport.ts, tests.ts — grouped to match the
+                           sessionManager.ts manager split below. Adding a channel: add the
+                           ipcMain.handle() call to the matching module (or a new one +
+                           register call in index.ts), update the IPC table below, and add the
+                           matching window.testerBrowser method in src/preload/index.ts.
+src/main/sessionManager.ts BrowserView lifecycle, tab mgmt, CDP dispatch (Fetch.requestPaused,
+                           Runtime.bindingCalled). Composes narrower manager classes — each
+                           owns one feature area's state/logic and is constructed with a
+                           getSession callback (resolving just enough of TestSession) rather
+                           than the whole sessions Map: mockManager.ts, resilienceManager.ts
+                           (+ urlGlob.ts), snapshotManager.ts, emulationManager.ts,
+                           recordingManager.ts, followAlongManager.ts, a11yService.ts (methods
+                           take Electron.WebContents directly, no session lookup).
+                           SessionManager itself keeps only shared CDP plumbing and thin
+                           id-resolving delegate methods to each manager.
 src/main/recorder.ts       CDP debugger → SQLite ring buffer (20 000 events/session cap)
 src/main/appLogger.ts      Central app logger: log.error/warn/info/debug() fan out to the
                            in-memory ring + app-errors.json, DebugLogStore, and a rotating
