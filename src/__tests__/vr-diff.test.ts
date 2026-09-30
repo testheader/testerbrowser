@@ -1,4 +1,4 @@
-import { diffPixels, pixelInAnyIgnoreRegion } from '../../renderer/vr-diff.js';
+import { diffPixels, pixelInAnyIgnoreRegion, clusterChangedCells } from '../../renderer/vr-diff.js';
 
 // Builds a flat RGBA buffer for a w×h image, each pixel opaque [r,g,b,255].
 function makeImage(w: number, h: number, [r, g, b]: [number, number, number]): Uint8ClampedArray {
@@ -126,5 +126,53 @@ describe('diffPixels — ignore regions (#277)', () => {
     const { diffCount, total } = diffPixels(a, b, 1, 1, 15);
     expect(total).toBe(1);
     expect(diffCount).toBe(1);
+  });
+});
+
+describe('changed regions', () => {
+  it('reports no regions for identical images', () => {
+    const a = makeImage(40, 40, [1, 2, 3]);
+    const { changedRegions, changedRegionsTruncated } = diffPixels(a, a.slice(), 40, 40);
+    expect(changedRegions).toEqual([]);
+    expect(changedRegionsTruncated).toBe(false);
+  });
+
+  it('groups separate changed areas into bounding boxes in reading order, with pixel counts', () => {
+    const w = 100, h = 100;
+    const a = makeImage(w, h, [0, 0, 0]);
+    const b = a.slice();
+    const paint = (x0: number, y0: number, x1: number, y1: number) => {
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) b[(y * w + x) * 4] = 255;
+    };
+    paint(70, 70, 80, 75); // lower-right: 10×5 = 50 px
+    paint(2, 2, 6, 6);     // top-left: 4×4 = 16 px
+    const { changedRegions, diffCount } = diffPixels(a, b, w, h, 15, [], 10);
+    expect(diffCount).toBe(66);
+    expect(changedRegions).toHaveLength(2);
+    // Cell-aligned boxes (cell size 10) containing each painted area.
+    expect(changedRegions[0]).toEqual({ x: 0, y: 0, w: 10, h: 10, pixels: 16 });
+    expect(changedRegions[1]).toEqual({ x: 70, y: 70, w: 10, h: 10, pixels: 50 });
+  });
+
+  it('joins areas only one empty cell apart into one region, and clips boxes to the image', () => {
+    const cells = [1, 0, 1, 0, 0, 1];
+    const { regions } = clusterChangedCells(cells, 6, 1, 10, 55, 10);
+    expect(regions).toHaveLength(2);
+    expect(regions[0]).toMatchObject({ x: 0, w: 30 });
+    expect(regions[1]).toMatchObject({ x: 50, w: 5 }); // clipped to w=55
+  });
+
+  it('leaves ignored pixels out of the regions', () => {
+    const a = makeImage(20, 20, [0, 0, 0]);
+    const b = makeImage(20, 20, [255, 255, 255]);
+    const { changedRegions } = diffPixels(a, b, 20, 20, 15, [{ x: 0, y: 0, w: 20, h: 10 }], 10);
+    expect(changedRegions).toEqual([{ x: 0, y: 10, w: 20, h: 10, pixels: 200 }]);
+  });
+
+  it('caps the number of regions and says so', () => {
+    const cells = Array.from({ length: 20 }, (_, i) => (i % 3 === 0 ? 1 : 0));
+    const { regions, truncated } = clusterChangedCells(cells, 20, 1, 1, 20, 1, { max: 3 });
+    expect(regions).toHaveLength(3);
+    expect(truncated).toBe(true);
   });
 });

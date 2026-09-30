@@ -43,9 +43,10 @@ export const PANEL_HELP = {
   vr: {
     title: 'UI diff',
     body: [
-      'Compare what a page looks like now against a saved baseline screenshot.',
-      'Save a baseline, adjust the threshold, and mark regions to ignore (clocks, ads, animations) so they do not count as differences.',
-      'Baselines can be exported and imported to share them.',
+      'Compare what a page looks like now against a baseline screenshot: 1) capture a baseline or pick a saved one, 2) choose which tab is the current page, 3) Compare.',
+      'The result shows the % of pixels changed, a pass/fail against your "Pass if at most" limit, and each changed region — step through them with Prev/Next (or N / P). View them side by side, as an overlay with a slider, or as a diff of just the changed pixels; + / − / 0 zoom.',
+      'Colour tolerance decides how different a pixel must be to count. Ignore regions (clocks, ads, animations) are left out of the % entirely; after changing either, Update result re-runs the compare on the same screenshots.',
+      'Saved baselines can be renamed, exported and imported to share them.',
     ],
   },
   spoof: {

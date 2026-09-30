@@ -14,6 +14,9 @@ export function pixelInAnyIgnoreRegion(x, y, regions) {
   return regions.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
 }
 
+export const REGION_CELL_PX = 16;
+export const MAX_CHANGED_REGIONS = 500;
+
 // data1/data2 are RGBA pixel buffers (Uint8ClampedArray, length w*h*4) —
 // already the same dimensions by the time this runs: the caller draws both
 // source images onto a canvas sized to their max width/height before
@@ -29,19 +32,24 @@ export function pixelInAnyIgnoreRegion(x, y, regions) {
 // translucent-gray "ignored" tint, visually different from both the
 // diff-red highlight and the dimmed-match baseline tint, so it's clear the
 // region was excluded rather than silently matching.
-export function diffPixels(data1, data2, w, h, threshold = 15, regions = []) {
+export function diffPixels(data1, data2, w, h, threshold = 15, regions = [], cellSize = REGION_CELL_PX) {
   const total = w * h;
   const out = new Uint8ClampedArray(total * 4);
   let diffCount = 0;
   let consideredTotal = total;
   const hasRegions = regions && regions.length > 0;
+  // Differing pixels are also tallied into a coarse grid of cellSize×cellSize
+  // cells, which clusterChangedCells() turns into the "changed regions" the
+  // panel steps through — far cheaper than labelling individual pixels.
+  const cols = Math.max(1, Math.ceil(w / cellSize));
+  const rows = Math.max(1, Math.ceil(h / cellSize));
+  const cells = new Uint32Array(cols * rows);
 
-  for (let i = 0; i < total; i++) {
-    const j = i * 4;
-    if (hasRegions) {
-      const x = i % w;
-      const y = (i / w) | 0;
-      if (pixelInAnyIgnoreRegion(x, y, regions)) {
+  for (let y = 0; y < h; y++) {
+    const cellRow = ((y / cellSize) | 0) * cols;
+    for (let x = 0; x < w; x++) {
+      const j = (y * w + x) * 4;
+      if (hasRegions && pixelInAnyIgnoreRegion(x, y, regions)) {
         out[j]     = 128;
         out[j + 1] = 128;
         out[j + 2] = 128;
@@ -49,23 +57,76 @@ export function diffPixels(data1, data2, w, h, threshold = 15, regions = []) {
         consideredTotal--;
         continue;
       }
-    }
-    const dr = Math.abs(data1[j]     - data2[j]);
-    const dg = Math.abs(data1[j + 1] - data2[j + 1]);
-    const db = Math.abs(data1[j + 2] - data2[j + 2]);
-    if (dr + dg + db > threshold) {
-      out[j]     = 255;
-      out[j + 1] = 0;
-      out[j + 2] = 68;
-      out[j + 3] = 255;
-      diffCount++;
-    } else {
-      out[j]     = Math.round(data1[j]     * 0.25);
-      out[j + 1] = Math.round(data1[j + 1] * 0.25);
-      out[j + 2] = Math.round(data1[j + 2] * 0.25);
-      out[j + 3] = 255;
+      const dr = Math.abs(data1[j]     - data2[j]);
+      const dg = Math.abs(data1[j + 1] - data2[j + 1]);
+      const db = Math.abs(data1[j + 2] - data2[j + 2]);
+      if (dr + dg + db > threshold) {
+        out[j]     = 255;
+        out[j + 1] = 0;
+        out[j + 2] = 68;
+        out[j + 3] = 255;
+        diffCount++;
+        cells[cellRow + ((x / cellSize) | 0)]++;
+      } else {
+        out[j]     = Math.round(data1[j]     * 0.25);
+        out[j + 1] = Math.round(data1[j + 1] * 0.25);
+        out[j + 2] = Math.round(data1[j + 2] * 0.25);
+        out[j + 3] = 255;
+      }
     }
   }
 
-  return { diffData: out, diffCount, total: consideredTotal };
+  const { regions: changedRegions, truncated } = diffCount > 0
+    ? clusterChangedCells(cells, cols, rows, cellSize, w, h)
+    : { regions: [], truncated: false };
+  return { diffData: out, diffCount, total: consideredTotal, changedRegions, changedRegionsTruncated: truncated };
+}
+
+// Groups non-empty grid cells (a per-cell count of differing pixels, as
+// diffPixels builds it) into connected clusters and returns each one's
+// bounding box in image pixels, clipped to w×h, in reading order (top to
+// bottom, then left to right) so "next change" moves predictably down the
+// page. Cells up to `gap` empty cells apart still join one cluster — a line
+// of changed text is one region, not one per glyph. At most `max` regions
+// are returned; `truncated` says whether more existed.
+export function clusterChangedCells(cells, cols, rows, cellSize, w, h, { gap = 1, max = MAX_CHANGED_REGIONS } = {}) {
+  const seen = new Uint8Array(cols * rows);
+  const found = [];
+  const stack = [];
+  for (let start = 0; start < cells.length; start++) {
+    if (!cells[start] || seen[start]) continue;
+    let minC = cols, minR = rows, maxC = -1, maxR = -1, pixels = 0;
+    seen[start] = 1;
+    stack.push(start);
+    while (stack.length) {
+      const idx = stack.pop();
+      const c = idx % cols;
+      const r = (idx / cols) | 0;
+      pixels += cells[idx];
+      if (c < minC) minC = c;
+      if (c > maxC) maxC = c;
+      if (r < minR) minR = r;
+      if (r > maxR) maxR = r;
+      for (let dr = -gap - 1; dr <= gap + 1; dr++) {
+        const nr = r + dr;
+        if (nr < 0 || nr >= rows) continue;
+        for (let dc = -gap - 1; dc <= gap + 1; dc++) {
+          const nc = c + dc;
+          if (nc < 0 || nc >= cols) continue;
+          const n = nr * cols + nc;
+          if (cells[n] && !seen[n]) { seen[n] = 1; stack.push(n); }
+        }
+      }
+    }
+    const x = minC * cellSize;
+    const y = minR * cellSize;
+    found.push({
+      x, y,
+      w: Math.min(w, (maxC + 1) * cellSize) - x,
+      h: Math.min(h, (maxR + 1) * cellSize) - y,
+      pixels,
+    });
+  }
+  found.sort((a, b) => a.y - b.y || a.x - b.x);
+  return { regions: found.slice(0, max), truncated: found.length > max };
 }

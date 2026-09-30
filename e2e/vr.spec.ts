@@ -22,29 +22,63 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
-test('the "Compare against" picker sits between Capture baseline and Compare, baselines and view controls are on their own rows', async () => {
+// Opens the saved-baselines drawer (if it isn't already) and returns the
+// list item for the baseline with this exact name.
+async function openBaselines(): Promise<void> {
+  if ((await window.locator('#vrBaselinesToggle').getAttribute('aria-expanded')) !== 'true') {
+    await window.click('#vrBaselinesToggle');
+  }
+  await expect(window.locator('#vrBaselines')).toBeVisible();
+}
+
+async function captureAndCompareSolidColor(nonce: string): Promise<void> {
+  const urlPath = `/vr/solid-color.html?nonce=${Date.now()}-${nonce}`;
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+  await window.click('#consoleTabVR');
+  await window.click('#vrCaptureBtn');
+  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await tab.click('#toggle');
+  await window.click('#vrCompareBtn');
+  await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
+}
+
+test('first run: the three steps are laid out in order, with an empty state saying what to do next', async () => {
   await window.click('#consoleTabVR');
   const rows = window.locator('.vr-toolbar-row');
   await expect(rows).toHaveCount(3);
 
-  const captureRow = rows.nth(0);
-  await expect(captureRow).toContainText('Capture');
-  const captureRowElements = captureRow.locator('#vrCaptureBtn, #vrComparePick, #vrCompareBtn');
-  await expect(captureRowElements).toHaveCount(3);
-  // Order within the row: capture button, then the compare-against picker, then Compare.
-  const ids = await captureRow.locator('button, select').evaluateAll(els => els.map(el => el.id));
+  // Row 1 is the step flow: 1 Baseline (capture / saved) › 2 Current page › 3 Compare.
+  const stepsRow = rows.nth(0);
+  await expect(stepsRow).toContainText('Baseline');
+  await expect(stepsRow).toContainText('Current page');
+  await expect(stepsRow.locator('#vrCaptureBtn, #vrBaselinesToggle, #vrComparePick, #vrCompareBtn')).toHaveCount(4);
+  const ids = await stepsRow.locator('button, select').evaluateAll(els => els.map(el => el.id));
   expect(ids.indexOf('vrCaptureBtn')).toBeLessThan(ids.indexOf('vrComparePick'));
   expect(ids.indexOf('vrComparePick')).toBeLessThan(ids.indexOf('vrCompareBtn'));
+  await expect(window.locator('#vrStep1')).toHaveClass(/current/);
+  await expect(window.locator('#vrCompareBtn')).toBeDisabled();
 
-  const baselinesRow = rows.nth(1);
-  await expect(baselinesRow).toContainText('Baselines');
-  await expect(baselinesRow.locator('#vrBaselinePick')).toBeVisible();
+  await expect(rows.nth(1).locator('#vrSaveBaselineBtn')).toBeVisible();
+  await expect(rows.nth(1).locator('#vrImportBaselineBtn')).toBeVisible();
+  await expect(rows.nth(2).locator('#vrThreshold')).toBeVisible();
+  await expect(rows.nth(2).locator('#vrMaxDiff')).toBeVisible();
+  await expect(rows.nth(2).locator('#vrEditRegionsBtn')).toBeVisible();
 
-  const viewRow = rows.nth(2);
-  await expect(viewRow).toContainText('View');
-  await expect(viewRow.locator('#vrViews')).toBeVisible();
-  await expect(viewRow.locator('#vrThreshold')).toBeVisible();
-  await expect(viewRow.locator('#vrEditRegionsBtn')).toBeVisible();
+  await expect(window.locator('#vrImages')).toContainText('No baseline yet');
+  await expect(window.locator('#vrStats')).toContainText('Start with step 1');
+  // Nothing to view yet, so the viewer controls stay hidden.
+  await expect(window.locator('#vrViewbar')).toBeHidden();
+
+  // The colour tolerance explains itself in plain language, live as it's typed.
+  await expect(window.locator('#vrThresholdHint')).toContainText('Strict');
+  await window.fill('#vrThreshold', '0');
+  await expect(window.locator('#vrThresholdHint')).toContainText('Exact');
+  await window.fill('#vrThreshold', '15');
+  await window.locator('#vrThreshold').dispatchEvent('change');
 });
 
 test('capturing a baseline, mutating the page, and comparing reports a nonzero diff', async () => {
@@ -217,12 +251,14 @@ test('saving a baseline persists it — it stays listed and loadable from a diff
   // own in-memory state.
   await window.click('#newSessionBtn');
   await window.click('#consoleTabVR');
-  const option = window.locator('#vrBaselinePick option', { hasText: 'e2e saved baseline' });
-  await expect(option).toHaveCount(1);
-  const value = await option.getAttribute('value');
-  await window.selectOption('#vrBaselinePick', value!);
-  await window.click('#vrLoadBaselineBtn');
+  await openBaselines();
+  const item = window.locator('.vr-bl-item', { hasText: 'e2e saved baseline' });
+  await expect(item).toHaveCount(1);
+  // Each saved baseline shows a thumbnail once it's been generated.
+  await expect(item.locator('.vr-bl-thumb img')).toBeVisible({ timeout: 10_000 });
+  await item.locator('.vr-bl-use').click();
   await expect(window.locator('#vrBaselineStatus')).toContainText('Loaded "e2e saved baseline"');
+  await expect(window.locator('#vrBaselineChip')).toContainText('e2e saved baseline');
   await expect(window.locator('#vrCompareBtn')).toBeEnabled();
   await expect(window.locator('#vrBaselineImg')).toBeVisible();
 
@@ -322,13 +358,20 @@ test('drawing an ignore region excludes it from the diff count and renders it wi
   await window.mouse.down();
   await window.mouse.move(box.x + box.width * 0.9, box.y + box.height * 0.9, { steps: 5 });
   await window.mouse.up();
+  // The new region is listed (with a remove button) and shown as excluded.
+  await expect(window.locator('#vrIgnoreList .vr-ign-chip')).toHaveCount(1);
+  await expect(window.locator('#vrIgnoreNote')).toContainText('excluded');
+  // Drawing after a compare marks that result as out of date.
+  await expect(window.locator('#vrRecomputeBtn')).toBeVisible();
   await window.click('#vrEditRegionsBtn'); // exit edit mode
+  await expect(window.locator('#vrEditRegionsBtn')).toHaveAttribute('aria-pressed', 'false');
 
   await window.click('#vrCompareBtn');
   await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
   const afterText = (await window.locator('#vrStats').textContent()) || '';
   const afterCount = Number(afterText.match(/^([\d,]+) pixels differ/)![1].replace(/,/g, ''));
   expect(afterCount).toBeLessThan(beforeCount);
+  await expect(window.locator('#vrSumChips')).toContainText('px excluded from the %');
 
   // The rendered diff image shows the ignored-region tint (translucent
   // gray) at a point inside the drawn region, not the diff-red highlight a
@@ -353,6 +396,15 @@ test('drawing an ignore region excludes it from the diff count and renders it wi
   expect(pixel[1]).toBeLessThan(200);
   expect(pixel[2]).toBeGreaterThan(100);
   expect(pixel[2]).toBeLessThan(200);
+
+  // Removing the region from the list takes it out again; "Update result"
+  // re-runs the comparison on the same screenshots without re-capturing.
+  await window.click('#vrIgnoreList [data-remove-region="0"]');
+  await expect(window.locator('#vrIgnoreBar')).toBeHidden();
+  await window.click('#vrRecomputeBtn');
+  await expect(window.locator('#vrRecomputeBtn')).toHaveCount(0, { timeout: 15_000 });
+  const recomputedText = (await window.locator('#vrStats').textContent()) || '';
+  expect(Number(recomputedText.match(/^([\d,]+) pixels differ/)![1].replace(/,/g, ''))).toBeGreaterThan(afterCount);
 
   // Shrink the console panel back down for later tests in this file.
   const handleBoxAfter = (await dragHandle.boundingBox())!;
@@ -381,8 +433,11 @@ test('exporting then importing a saved baseline round-trips its name, dimensions
   await app.evaluate(({ dialog }, filePath) => {
     dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
   }, tmpPath);
-  const savedId = await window.locator('#vrBaselinePick').inputValue();
-  await window.click('#vrExportBaselineBtn');
+  await openBaselines();
+  const savedItem = window.locator('.vr-bl-item.in-use');
+  await expect(savedItem).toContainText('e2e export-import baseline');
+  const savedId = await savedItem.getAttribute('data-id');
+  await savedItem.locator('.vr-bl-export').click();
   await expect.poll(() => fs.existsSync(tmpPath), { timeout: 5_000 }).toBe(true);
   const sidecarPath = tmpPath.replace(/\.png$/, '') + '.json';
   await expect.poll(() => fs.existsSync(sidecarPath), { timeout: 5_000 }).toBe(true);
@@ -396,13 +451,187 @@ test('exporting then importing a saved baseline round-trips its name, dimensions
   await window.click('#vrImportBaselineBtn');
   await expect(window.locator('#vrBaselineStatus')).toContainText('Imported "e2e export-import baseline"');
 
-  const options = window.locator('#vrBaselinePick option', { hasText: 'e2e export-import baseline' });
-  await expect(options).toHaveCount(2); // the original saved one, plus the freshly imported copy
-  const importedId = await options.evaluateAll((els, excludeId) =>
-    (els as HTMLOptionElement[]).map((el) => el.value).find((v) => v !== excludeId), savedId);
+  const items = window.locator('.vr-bl-item', { hasText: 'e2e export-import baseline' });
+  await expect(items).toHaveCount(2); // the original saved one, plus the freshly imported copy
+  const importedId = await items.evaluateAll((els, excludeId) =>
+    (els as HTMLElement[]).map((el) => el.dataset.id).find((v) => v !== excludeId), savedId);
   expect(importedId).toBeTruthy();
   expect(importedId).not.toBe(savedId);
 
   fs.rmSync(tmpPath, { force: true });
   fs.rmSync(sidecarPath, { force: true });
+});
+
+// ── Result summary, view modes, region navigation, baseline management ─────
+
+test('a compare shows a pass/fail verdict against the allowed %, and changed regions can be stepped through by button and keyboard', async () => {
+  await captureAndCompareSolidColor('verdict');
+
+  // Default limit is 0% changed — a whole-page colour change fails.
+  await expect(window.locator('#vrVerdict')).toBeVisible();
+  await expect(window.locator('#vrVerdict')).toHaveClass(/fail/);
+  await expect(window.locator('#vrSumChips')).toContainText('changed region');
+  await expect(window.locator('#vrMeta')).toContainText('unsaved capture');
+  await expect(window.locator('#vrStep3')).toHaveClass(/done/);
+
+  await window.fill('#vrMaxDiff', '100');
+  await window.locator('#vrMaxDiff').dispatchEvent('change');
+  await expect(window.locator('#vrVerdict')).toHaveClass(/pass/);
+  await window.fill('#vrMaxDiff', '0');
+  await window.locator('#vrMaxDiff').dispatchEvent('change');
+  await expect(window.locator('#vrVerdict')).toHaveClass(/fail/);
+
+  await expect(window.locator('#vrNextRegion')).toBeEnabled();
+  await window.click('#vrNextRegion');
+  await expect(window.locator('#vrRegionPos')).toContainText(/Change 1 of \d+/);
+  const total = Number(((await window.locator('#vrRegionPos').textContent()) || '').match(/of (\d+)/)![1]);
+
+  // Keyboard: P goes back (wrapping to the last region) while the viewer has focus.
+  await window.focus('#vrImages');
+  await window.keyboard.press('p');
+  await expect(window.locator('#vrRegionPos')).toContainText(`Change ${total} of ${total}`);
+  await window.keyboard.press('n');
+  await expect(window.locator('#vrRegionPos')).toContainText(`Change 1 of ${total}`);
+});
+
+test('side-by-side, overlay (slider, keyboard-operable) and diff views, with the chosen view remembered', async () => {
+  await captureAndCompareSolidColor('views');
+
+  await window.click('.vr-view-btn[data-view="side"]');
+  await expect(window.locator('.vr-view-btn[data-view="side"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(window.locator('#vrImages .vr-img')).toHaveCount(2);
+
+  await window.click('.vr-view-btn[data-view="overlay"]');
+  await expect(window.locator('.vr-view-btn[data-view="overlay"]')).toHaveAttribute('aria-pressed', 'true');
+  const slider = window.locator('#vrOverlaySlider');
+  await expect(slider).toBeVisible();
+  const before = Number(await slider.inputValue());
+  await slider.focus();
+  await window.keyboard.press('ArrowRight');
+  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(before);
+  await expect(window.locator('#vrOverlayTop')).toHaveAttribute('style', /clip-path/);
+  expect(await window.evaluate(() => localStorage.getItem('vrViewMode'))).toBe('overlay');
+
+  // A fresh compare lands on the remembered view, not the default diff one.
+  await window.click('#vrCompareBtn');
+  await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
+  await expect(window.locator('.vr-view-btn[data-view="overlay"]')).toHaveAttribute('aria-pressed', 'true');
+
+  // Zoom: a fixed level from the picker, then back to Fit.
+  await window.selectOption('#vrZoom', '1');
+  const wrapWidth = await window.locator('#vrOverlayWrap').evaluate((el) => (el as HTMLElement).style.width);
+  const naturalWidth = await window.locator('#vrOverlayWrap').evaluate((el) => (el as HTMLElement).dataset.cw);
+  expect(wrapWidth).toBe(`${naturalWidth}px`);
+  await window.selectOption('#vrZoom', 'fit');
+
+  await window.click('.vr-view-btn[data-view="diff"]');
+  await expect(window.locator('#vrImages .vr-img')).toHaveCount(1);
+});
+
+test('saved baselines can be filtered, renamed, and deleted only after an explicit confirmation', async () => {
+  const urlPath = `/vr/solid-color.html?nonce=${Date.now()}-manage`;
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
+
+  await window.click('#consoleTabVR');
+  await window.click('#vrCaptureBtn');
+  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await window.click('#vrSaveBaselineBtn');
+  await window.fill('#vrSaveNameInput', 'e2e manage original');
+  await window.click('#vrSaveDlgOk');
+  await expect(window.locator('#vrBaselineStatus')).toContainText('Saved as "e2e manage original"');
+
+  await openBaselines();
+  await window.fill('#vrBaselineSearch', 'e2e manage');
+  await expect(window.locator('.vr-bl-item')).toHaveCount(1);
+  await window.fill('#vrBaselineSearch', 'no-such-baseline-xyz');
+  await expect(window.locator('#vrBaselineList')).toContainText('No saved baselines match');
+  await window.fill('#vrBaselineSearch', 'e2e manage');
+
+  const item = window.locator('.vr-bl-item', { hasText: 'e2e manage original' });
+  await item.locator('.vr-bl-rename').click();
+  await expect(window.locator('#vrSaveDlg')).toBeVisible();
+  await window.fill('#vrSaveNameInput', 'e2e manage renamed');
+  await window.click('#vrSaveDlgOk');
+  await expect(window.locator('#vrBaselineStatus')).toContainText('Renamed to "e2e manage renamed"');
+  await expect(window.locator('.vr-bl-item', { hasText: 'e2e manage original' })).toHaveCount(0);
+  const renamed = window.locator('.vr-bl-item', { hasText: 'e2e manage renamed' });
+  await expect(renamed).toHaveCount(1);
+  // Still the baseline in use in this tab.
+  await expect(renamed).toHaveClass(/in-use/);
+  await expect(window.locator('#vrBaselineChip')).toContainText('e2e manage renamed');
+
+  // Delete asks first; Cancel keeps it.
+  await renamed.locator('.vr-bl-delete').click();
+  await expect(renamed.locator('.vr-bl-confirm')).toContainText('permanently');
+  await renamed.locator('[data-act="cancel-delete"]').click();
+  await expect(renamed).toHaveCount(1);
+
+  await renamed.locator('.vr-bl-delete').click();
+  await renamed.locator('[data-act="confirm-delete"]').click();
+  await expect(window.locator('#vrBaselineStatus')).toContainText('Baseline deleted.');
+  await expect(window.locator('.vr-bl-item', { hasText: 'e2e manage renamed' })).toHaveCount(0);
+  // The deleted baseline stays usable in this tab, just unsaved again.
+  await expect(window.locator('#vrBaselineChip')).toContainText('Unsaved capture');
+  await expect(window.locator('#vrCompareBtn')).toBeEnabled();
+  await window.fill('#vrBaselineSearch', '');
+});
+
+// a11y-self-check.spec.ts only sees this panel's empty first-run state — scan
+// it populated too (result summary, overlay slider, ignore-region chips,
+// saved-baselines drawer), in both themes. Same CDP route as that spec,
+// since index.html's CSP blocks page-side script injection.
+test('the populated UI diff panel has no serious/critical axe-core violations (dark and light)', async () => {
+  await captureAndCompareSolidColor('a11y');
+  await window.click('.vr-view-btn[data-view="overlay"]');
+  await window.click('#vrSaveBaselineBtn');
+  await window.fill('#vrSaveNameInput', 'e2e a11y baseline');
+  await window.click('#vrSaveDlgOk');
+  await expect(window.locator('#vrBaselineStatus')).toContainText('Saved as');
+  await window.click('#vrEditRegionsBtn');
+  await expect(window.locator('#vrBaselineImg')).toBeVisible();
+  await expect(window.locator('#vrRegionsCanvas')).toBeInViewport({ ratio: 0.9 });
+  const box = (await window.locator('#vrRegionsCanvas').boundingBox())!;
+  await window.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+  await window.mouse.down();
+  await window.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8, { steps: 3 });
+  await window.mouse.up();
+  await expect(window.locator('#vrIgnoreList .vr-ign-chip')).toHaveCount(1);
+  await window.click('#vrEditRegionsBtn');
+  await openBaselines();
+
+  const axeSource = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf-8');
+  const scan = async (): Promise<string[]> => {
+    const cdp = await window.context().newCDPSession(window);
+    try {
+      const { result } = await cdp.send('Runtime.evaluate', {
+        expression: `(function() {\n${axeSource}\nreturn axe.run(document.getElementById('vrPanel'));\n})()`,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      const violations = (result.value as { violations: { id: string; impact?: string; nodes: { target: string[] }[] }[] }).violations;
+      return violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+        .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+    } finally {
+      await cdp.detach();
+    }
+  };
+
+  expect(await scan()).toEqual([]);
+
+  await window.click('#appName');
+  await window.click('#appMenuSettings');
+  await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
+  await window.selectOption('#themeSelect', 'light');
+  await expect(window.locator('body')).toHaveClass(/light-mode/);
+  await window.click('#closeSettingsBtn');
+  expect(await scan()).toEqual([]);
+
+  await window.click('#appName');
+  await window.click('#appMenuSettings');
+  await window.selectOption('#themeSelect', 'dark');
+  await window.click('#closeSettingsBtn');
 });

@@ -10,6 +10,7 @@ self.onmessage = (e) => {
   const { w, h, buf1, buf2, threshold, regions } = e.data;
   const data1 = new Uint8ClampedArray(buf1);
   const data2 = new Uint8ClampedArray(buf2);
-  const { diffData, diffCount, total } = diffPixels(data1, data2, w, h, threshold, regions);
-  self.postMessage({ diffData: diffData.buffer, diffCount, total }, [diffData.buffer]);
+  const { diffData, diffCount, total, changedRegions, changedRegionsTruncated } =
+    diffPixels(data1, data2, w, h, threshold, regions);
+  self.postMessage({ diffData: diffData.buffer, diffCount, total, changedRegions, changedRegionsTruncated }, [diffData.buffer]);
 };
