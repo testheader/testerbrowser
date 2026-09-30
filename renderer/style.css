@@ -1254,6 +1254,8 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .spoof-help[hidden], .panel-help[hidden] { display: none; }
 .spoof-help p, .panel-help p { margin: 0 0 6px; }
 .spoof-help p:last-child, .panel-help p:last-child { margin-bottom: 0; }
+/* Console-header "?" — fixed so it escapes the panel's overflow; placed by initConsoleHelp() */
+.panel-help.console-help { position: fixed; width: 380px; max-width: calc(100vw - 16px); overflow: auto; z-index: 60; }
 .panel-help code { font-size: 11px; background: var(--bg-hover); padding: 0 3px; border-radius: 2px; }
 
 /* Presets block: one-click chips + UA select */

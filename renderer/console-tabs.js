@@ -12,6 +12,8 @@ import { initFollow, refreshFollowPickers } from './followalong.js';
 import { renderTimeline } from './timeline.js';
 import { getDetailTabsCount } from './detail-panel.js';
 import { initDebugLog } from './debuglog.js';
+import { PANEL_HELP } from './panel-help-content.js';
+import { wireHelpPopover } from './utils.js';
 
 // The only external readers of activeConsoleTab (many — find, timeline,
 // detail-panel, bugreport, mock, resilience, ipc-events, main) go through
@@ -88,6 +90,41 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabDebugLog').addEventListener('click', () => switchConsoleTab('debuglog'));
 
   initTabOverflow();
+  initConsoleHelp();
+}
+
+// One "?" button for every console tab. The popover opens downward (over the
+// panel body): the page's native view sits above the console and would cover
+// anything that opened upward.
+function initConsoleHelp() {
+  const btn = document.getElementById('consoleHelpBtn');
+  const pop = document.getElementById('consoleHelp');
+  const render = () => {
+    const help = PANEL_HELP[activeConsoleTab];
+    pop.replaceChildren();
+    if (!help) return;
+    const h = document.createElement('p');
+    const strong = document.createElement('strong');
+    strong.textContent = help.title;
+    h.appendChild(strong);
+    pop.appendChild(h);
+    for (const text of help.body) {
+      const p = document.createElement('p');
+      p.textContent = text;
+      pop.appendChild(p);
+    }
+  };
+  const place = () => {
+    const r = btn.getBoundingClientRect();
+    pop.style.top = `${r.bottom + 4}px`;
+    pop.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+    pop.style.maxHeight = `${Math.max(80, window.innerHeight - r.bottom - 12)}px`;
+  };
+  const setOpen = wireHelpPopover(btn, pop, document.getElementById('consolePanel'));
+  btn.addEventListener('click', () => { if (!pop.hidden) { render(); place(); } });
+  for (const tab of document.querySelectorAll('#consoleTabsStrip .console-tab')) {
+    tab.addEventListener('click', () => setOpen(false));
+  }
 }
 
 function initTabOverflow() {
