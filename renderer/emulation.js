@@ -62,105 +62,213 @@ let appliedForActiveSession = null;
 // looked up by option index when the UA dropdown changes.
 let uaPresets = [];
 
+
+// The panel's raw fields are grouped into three collapsible sections. `keys`
+// are the EmulationOverrides fields each one owns — used for its applied-
+// value badge, its dirty flag, and the partial patch its own Reset sends
+// (null = clear just that key; keys left out are untouched by setEmulation).
+// Device and Location & time start expanded; Advanced (rarely used media
+// preferences) starts collapsed but expands on its own whenever the active
+// session has one of its values applied, so an applied override is never
+// hidden behind a closed section.
+const SECTIONS = {
+  device:   { title: 'Device',          open: true,  keys: ['deviceMetrics', 'touch', 'userAgent'] },
+  location: { title: 'Location & time', open: true,  keys: ['timezone', 'locale', 'latitude', 'longitude', 'timeOffsetMs'] },
+  advanced: { title: 'Advanced',        open: false, keys: ['colorScheme', 'reducedMotion'] },
+};
+const SECTION_NAMES = Object.keys(SECTIONS);
+
+function sectionHtml(name, bodyHtml) {
+  const { title, open } = SECTIONS[name];
+  return `
+    <section class="spoof-sec" id="spoofSec-${name}" aria-labelledby="spoofSecToggle-${name}">
+      <div class="spoof-sec-head">
+        <button type="button" class="spoof-sec-toggle" id="spoofSecToggle-${name}"
+                aria-expanded="${open}" aria-controls="spoofSecBody-${name}">
+          <span class="spoof-sec-chev" aria-hidden="true"></span>
+          <span class="spoof-sec-title">${title.replace('&', '&amp;')}</span>
+          <span class="spoof-sec-badge" id="spoofSecBadge-${name}" hidden></span>
+          <span class="spoof-sec-edited" id="spoofSecEdited-${name}" hidden>edited</span>
+        </button>
+        <button type="button" class="spoof-sec-reset" id="spoofSecReset-${name}"
+                title="Clear this section's overrides on the active tab"
+                aria-label="Reset ${title.replace('&', '&amp;')}">Reset</button>
+      </div>
+      <div class="spoof-sec-body" id="spoofSecBody-${name}"${open ? '' : ' hidden'}>${bodyHtml}</div>
+    </section>`;
+}
+
 export function initSpoof() {
   const panel = document.getElementById('spoofPanel');
   if (initialized) return;
   initialized = true;
 
-  panel.innerHTML = `
-    <div class="spoof-wrap">
-      <div class="spoof-current" id="spoofCurrent"></div>
-      <div class="spoof-section">
-        <label class="spoof-label">Quick preset</label>
-        <div class="spoof-presets" id="spoofPresets"></div>
+  const deviceBody = `
+    <div class="spoof-fields">
+      <div class="spoof-field">
+        <label class="spoof-label" for="spoofDevicePreset">Viewport</label>
+        <select class="spoof-input" id="spoofDevicePreset" aria-describedby="spoofDeviceHint"></select>
+        <span class="spoof-hint" id="spoofDeviceHint"></span>
       </div>
-      <div class="spoof-section spoof-fields">
-        <div class="spoof-field">
-          <label class="spoof-label">Timezone</label>
-          <input class="spoof-input" id="spoofTimezone" type="text" placeholder="e.g. America/New_York" spellcheck="false" />
-        </div>
-        <div class="spoof-field">
-          <label class="spoof-label">Locale</label>
-          <input class="spoof-input" id="spoofLocale" type="text" placeholder="e.g. en-US" spellcheck="false" />
-        </div>
-        <div class="spoof-field">
-          <label class="spoof-label">Latitude</label>
-          <input class="spoof-input" id="spoofLat" type="number" step="any" placeholder="e.g. 40.7128" />
-        </div>
-        <div class="spoof-field">
-          <label class="spoof-label">Longitude</label>
-          <input class="spoof-input" id="spoofLon" type="number" step="any" placeholder="e.g. -74.006" />
-        </div>
-        <div class="spoof-field spoof-field-offset">
-          <label class="spoof-label">Clock offset</label>
-          <div class="spoof-offset-row">
-            <input class="spoof-input" id="spoofOffsetValue" type="number" step="any" placeholder="e.g. 7 or -1" />
-            <select class="spoof-input spoof-offset-unit" id="spoofOffsetUnit" aria-label="Clock offset unit">
-              <option value="1000">seconds</option>
-              <option value="60000">minutes</option>
-              <option value="3600000">hours</option>
-              <option value="86400000" selected>days</option>
-            </select>
-          </div>
-        </div>
-        <div class="spoof-field spoof-field-ua">
-          <label class="spoof-label">User-Agent</label>
-          <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="e.g. Mozilla/5.0 (...)" spellcheck="false" />
-          <select class="spoof-input spoof-ua-select" id="spoofUaPresets" aria-label="User-Agent presets"></select>
-        </div>
+      <div class="spoof-field spoof-field-toggle">
+        <span class="spoof-label" id="spoofTouchLabel">Touch input</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="spoofTouch" aria-labelledby="spoofTouchLabel" aria-describedby="spoofTouchHint" />
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="spoof-hint" id="spoofTouchHint">Emulates a touch screen instead of a mouse.</span>
       </div>
-      <div class="spoof-section spoof-fields">
-        <div class="spoof-field">
-          <label class="spoof-label">Device</label>
-          <select class="spoof-input" id="spoofDevicePreset" aria-label="Device preset"></select>
+      <div class="spoof-field spoof-field-wide" id="spoofCustomSizeRow" hidden>
+        <span class="spoof-label" id="spoofCustomSizeLabel">Custom size (px) and pixel ratio</span>
+        <div class="spoof-offset-row" role="group" aria-labelledby="spoofCustomSizeLabel">
+          <input class="spoof-input" id="spoofCustomWidth" type="number" min="1" step="1" placeholder="width" aria-label="Custom width (px)" />
+          <input class="spoof-input" id="spoofCustomHeight" type="number" min="1" step="1" placeholder="height" aria-label="Custom height (px)" />
+          <input class="spoof-input" id="spoofCustomDpr" type="number" min="0.5" step="0.25" placeholder="DPR 1" aria-label="Device pixel ratio" />
         </div>
-        <div class="spoof-field spoof-field-offset" id="spoofCustomSizeRow" hidden>
-          <label class="spoof-label">Custom size (px)</label>
-          <div class="spoof-offset-row">
-            <input class="spoof-input" id="spoofCustomWidth" type="number" min="1" step="1" placeholder="width" />
-            <input class="spoof-input" id="spoofCustomHeight" type="number" min="1" step="1" placeholder="height" />
-          </div>
-        </div>
-        <div class="spoof-field">
-          <label class="spoof-label" for="spoofTouch">Touch</label>
-          <label class="toggle-switch">
-            <input type="checkbox" id="spoofTouch" />
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-        <div class="spoof-field">
-          <label class="spoof-label">prefers-color-scheme</label>
-          <select class="spoof-input" id="spoofColorScheme" aria-label="prefers-color-scheme">
-            <option value="">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </div>
-        <div class="spoof-field">
-          <label class="spoof-label">prefers-reduced-motion</label>
-          <select class="spoof-input" id="spoofReducedMotion" aria-label="prefers-reduced-motion">
-            <option value="">System</option>
-            <option value="no-preference">No preference</option>
-            <option value="reduce">Reduce</option>
-          </select>
-        </div>
+        <span class="spoof-hint">Pixel ratio defaults to 1; the Touch toggle also marks the device as mobile.</span>
       </div>
-      <div class="spoof-actions">
-        <button class="spoof-btn spoof-apply" id="spoofApply">Apply to session</button>
-        <button class="spoof-btn spoof-reset" id="spoofReset">Reset overrides</button>
-        <button class="spoof-btn spoof-current-btn" id="spoofUseCurrent" title="Fill the fields with this machine's real timezone, locale and location">Use current values</button>
-        <span class="spoof-dirty" id="spoofDirty" hidden>Unapplied changes</span>
-        <span class="status-msg" id="spoofStatus"></span>
+      <div class="spoof-field spoof-field-wide">
+        <label class="spoof-label" for="spoofUserAgent">User-Agent</label>
+        <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="Empty = browser default" spellcheck="false" aria-describedby="spoofUaHint" />
+        <span class="spoof-hint" id="spoofUaHint">Sent with every request and exposed as navigator.userAgent. Pick one under Presets or paste your own.</span>
       </div>
     </div>`;
 
+  const locationBody = `
+    <div class="spoof-fields">
+      <div class="spoof-field">
+        <label class="spoof-label" for="spoofTimezone">Timezone</label>
+        <input class="spoof-input" id="spoofTimezone" type="text" placeholder="e.g. America/New_York" spellcheck="false" aria-describedby="spoofTimezoneHint" />
+        <span class="spoof-hint" id="spoofTimezoneHint">IANA name; affects Date and Intl in the page.</span>
+      </div>
+      <div class="spoof-field">
+        <label class="spoof-label" for="spoofLocale">Locale</label>
+        <input class="spoof-input" id="spoofLocale" type="text" placeholder="e.g. en-US" spellcheck="false" aria-describedby="spoofLocaleHint" />
+        <span class="spoof-hint" id="spoofLocaleHint">Also sets navigator.language and Accept-Language.</span>
+      </div>
+      <div class="spoof-field">
+        <label class="spoof-label" for="spoofLat">Latitude</label>
+        <input class="spoof-input" id="spoofLat" type="number" step="any" placeholder="e.g. 40.7128" aria-describedby="spoofGeoHint" />
+      </div>
+      <div class="spoof-field">
+        <label class="spoof-label" for="spoofLon">Longitude</label>
+        <input class="spoof-input" id="spoofLon" type="number" step="any" placeholder="e.g. -74.006" aria-describedby="spoofGeoHint" />
+      </div>
+      <span class="spoof-hint spoof-field-wide" id="spoofGeoHint">What navigator.geolocation reports; set both to override the location.</span>
+      <div class="spoof-field spoof-field-wide">
+        <label class="spoof-label" for="spoofOffsetValue">Clock offset</label>
+        <div class="spoof-offset-row">
+          <input class="spoof-input" id="spoofOffsetValue" type="number" step="any" placeholder="e.g. 7 or -1" aria-describedby="spoofOffsetHint" />
+          <select class="spoof-input spoof-offset-unit" id="spoofOffsetUnit" aria-label="Clock offset unit">
+            <option value="1000">seconds</option>
+            <option value="60000">minutes</option>
+            <option value="3600000">hours</option>
+            <option value="86400000" selected>days</option>
+          </select>
+        </div>
+        <span class="spoof-hint" id="spoofOffsetHint">Shifts Date.now() forward (+) or back (−); takes effect on the next page load.</span>
+      </div>
+      <div class="spoof-field-wide">
+        <button type="button" class="spoof-btn spoof-btn-quiet" id="spoofUseCurrent" title="Fill the fields with this machine's real timezone, locale and location">Use this machine's values</button>
+      </div>
+    </div>`;
+
+  const advancedBody = `
+    <div class="spoof-fields">
+      <div class="spoof-field">
+        <label class="spoof-label" for="spoofColorScheme">prefers-color-scheme</label>
+        <select class="spoof-input" id="spoofColorScheme" aria-describedby="spoofMediaHint">
+          <option value="">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+      <div class="spoof-field">
+        <label class="spoof-label" for="spoofReducedMotion">prefers-reduced-motion</label>
+        <select class="spoof-input" id="spoofReducedMotion" aria-describedby="spoofMediaHint">
+          <option value="">System</option>
+          <option value="no-preference">No preference</option>
+          <option value="reduce">Reduce</option>
+        </select>
+      </div>
+      <span class="spoof-hint spoof-field-wide" id="spoofMediaHint">Overrides the page's CSS media queries and matchMedia() only.</span>
+    </div>`;
+
+  panel.innerHTML = `
+    <div class="spoof-wrap">
+      <div class="spoof-summary">
+        <div class="spoof-current" id="spoofCurrent" role="status" aria-live="polite"></div>
+        <button type="button" class="spoof-btn spoof-reset" id="spoofReset" title="Clear every override on the active tab">Reset all</button>
+        <button type="button" class="spoof-help-btn" id="spoofHelpBtn" aria-label="About spoofing" aria-expanded="false" aria-controls="spoofHelp">?</button>
+        <div class="spoof-help" id="spoofHelp" role="note" hidden>
+          <p><b>Spoofing</b> changes what web pages see about their device and environment (screen size, browser, touch, timezone, language, location, clock, colour scheme) without touching your real machine.</p>
+          <p>Overrides apply <b>per tab</b>: to the active tab and any other tab sharing its session. Other sessions are unaffected. Pick presets or edit fields, then click <b>Apply to tab</b>; reload the page so it sees every change.</p>
+        </div>
+      </div>
+
+      <div class="spoof-presets-block" role="group" aria-labelledby="spoofPresetsHeading">
+        <h3 class="spoof-heading" id="spoofPresetsHeading">Presets</h3>
+        <div class="spoof-preset-row">
+          <span class="spoof-preset-row-label" id="spoofDeviceChipsLabel">Device</span>
+          <div class="spoof-presets" id="spoofDeviceChips" role="group" aria-labelledby="spoofDeviceChipsLabel"></div>
+        </div>
+        <div class="spoof-preset-row">
+          <span class="spoof-preset-row-label" id="spoofCityChipsLabel">Location</span>
+          <div class="spoof-presets" id="spoofPresets" role="group" aria-labelledby="spoofCityChipsLabel"></div>
+        </div>
+        <div class="spoof-preset-row">
+          <label class="spoof-preset-row-label" for="spoofUaPresets">Browser</label>
+          <select class="spoof-input spoof-ua-select" id="spoofUaPresets"></select>
+        </div>
+      </div>
+
+      ${sectionHtml('device', deviceBody)}
+      ${sectionHtml('location', locationBody)}
+      ${sectionHtml('advanced', advancedBody)}
+
+      <div class="spoof-actions">
+        <button type="button" class="spoof-btn spoof-apply" id="spoofApply">Apply to tab</button>
+        <span class="spoof-dirty" id="spoofDirty" hidden>Unsaved changes. Click Apply to use them.</span>
+        <span class="status-msg" id="spoofStatus" role="status" aria-live="polite"></span>
+      </div>
+    </div>`;
+
+  // Location chips: a pressed chip means the four location fields currently
+  // hold exactly that city's values; clicking a pressed chip clears them.
   const presetsEl = document.getElementById('spoofPresets');
-  for (const p of PRESETS) {
+  PRESETS.forEach((p, i) => {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'spoof-preset-btn';
+    btn.dataset.city = String(i);
+    btn.setAttribute('aria-pressed', 'false');
     btn.textContent = p.label;
-    btn.addEventListener('click', () => fillPreset(p));
+    btn.title = `${p.timezone} · ${p.locale} · ${p.latitude}, ${p.longitude}`;
+    btn.addEventListener('click', () => {
+      if (btn.getAttribute('aria-pressed') === 'true') clearLocationPresetFields();
+      else fillPreset(p);
+    });
     presetsEl.appendChild(btn);
+  });
+
+  const deviceChipsEl = document.getElementById('spoofDeviceChips');
+  const devicePresetSelect = document.getElementById('spoofDevicePreset');
+  for (const [name, m] of Object.entries(DEVICE_PRESETS)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'spoof-preset-btn';
+    btn.dataset.device = name;
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = name;
+    btn.title = describeMetrics(m);
+    btn.addEventListener('click', () => {
+      // Routed through the Viewport select's own change handler so the chip
+      // and the dropdown can never disagree (Touch default, custom-size row).
+      devicePresetSelect.value = devicePresetSelect.value === name ? '' : name;
+      devicePresetSelect.dispatchEvent(new Event('change'));
+      setSectionOpen('device', true);
+    });
+    deviceChipsEl.appendChild(btn);
   }
 
   uaPresets = buildUaPresets();
@@ -177,6 +285,30 @@ export function initSpoof() {
   uaSelect.addEventListener('change', () => {
     if (uaSelect.value === '') return; // "Custom / none" — leave the field as-is
     fillUaPreset(uaPresets[Number(uaSelect.value)]);
+    setSectionOpen('device', true);
+  });
+
+  for (const name of SECTION_NAMES) {
+    document.getElementById(`spoofSecToggle-${name}`).addEventListener('click', () => {
+      setSectionOpen(name, document.getElementById(`spoofSecBody-${name}`).hidden);
+    });
+    document.getElementById(`spoofSecReset-${name}`).addEventListener('click', () => resetSection(name));
+  }
+
+  const helpBtn = document.getElementById('spoofHelpBtn');
+  helpBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setHelpOpen(document.getElementById('spoofHelp').hidden);
+  });
+  document.addEventListener('click', (e) => {
+    const help = document.getElementById('spoofHelp');
+    if (!help.hidden && !help.contains(e.target)) setHelpOpen(false);
+  });
+  panel.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('spoofHelp').hidden) {
+      setHelpOpen(false);
+      helpBtn.focus();
+    }
   });
 
   document.getElementById('spoofApply').addEventListener('click', applySpoof);
@@ -194,7 +326,6 @@ export function initSpoof() {
   });
   document.getElementById('spoofOffsetUnit').addEventListener('change', updateDirtyState);
 
-  const devicePresetSelect = document.getElementById('spoofDevicePreset');
   devicePresetSelect.innerHTML = '<option value="">System (no override)</option>' +
     `<optgroup label="Presets">${
       Object.keys(DEVICE_PRESETS).map(name => `<option value="${name}">${name}</option>`).join('')
@@ -209,20 +340,43 @@ export function initSpoof() {
     if (preset) document.getElementById('spoofTouch').checked = preset.mobile;
     updateDirtyState();
   });
-  for (const id of ['spoofCustomWidth', 'spoofCustomHeight']) {
+  for (const id of ['spoofCustomWidth', 'spoofCustomHeight', 'spoofCustomDpr']) {
     document.getElementById(id).addEventListener('input', updateDirtyState);
   }
   document.getElementById('spoofTouch').addEventListener('change', updateDirtyState);
   document.getElementById('spoofColorScheme').addEventListener('change', updateDirtyState);
   document.getElementById('spoofReducedMotion').addEventListener('change', updateDirtyState);
 
+  // Enter in any text/number field applies, like submitting a form.
+  panel.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement)) return;
+    if (e.target.type !== 'text' && e.target.type !== 'number') return;
+    e.preventDefault();
+    applySpoof();
+  });
+
   refreshSpoofStatus();
+}
+
+function setSectionOpen(name, open) {
+  document.getElementById(`spoofSecBody-${name}`).hidden = !open;
+  document.getElementById(`spoofSecToggle-${name}`).setAttribute('aria-expanded', String(open));
+}
+
+function setHelpOpen(open) {
+  document.getElementById('spoofHelp').hidden = !open;
+  document.getElementById('spoofHelpBtn').setAttribute('aria-expanded', String(open));
+}
+
+function describeMetrics({ width, height, deviceScaleFactor, mobile }) {
+  return `${width}×${height} @${deviceScaleFactor}x${mobile ? ', mobile' : ''}`;
 }
 
 // Resolves the Device section's current form state to a
 // { width, height, deviceScaleFactor, mobile } object, or null when
 // "System (no override)" is selected or a Custom size has no valid
-// width/height yet.
+// width/height yet. An empty or invalid Custom pixel ratio falls back to 1
+// (applySpoof() rejects an invalid one before it's ever sent).
 function readDeviceMetricsFromFields() {
   const preset = document.getElementById('spoofDevicePreset').value;
   if (preset === '') return null;
@@ -230,7 +384,9 @@ function readDeviceMetricsFromFields() {
   const width = parseInt(document.getElementById('spoofCustomWidth').value, 10);
   const height = parseInt(document.getElementById('spoofCustomHeight').value, 10);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-  return { width, height, deviceScaleFactor: 1, mobile: document.getElementById('spoofTouch').checked };
+  const dpr = parseFloat(document.getElementById('spoofCustomDpr').value);
+  const deviceScaleFactor = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+  return { width, height, deviceScaleFactor, mobile: document.getElementById('spoofTouch').checked };
 }
 
 // Formats a signed offset in ms as the largest whole unit that evenly
@@ -251,6 +407,14 @@ function fillPreset(p) {
   document.getElementById('spoofLocale').value   = p.locale;
   document.getElementById('spoofLat').value      = p.latitude;
   document.getElementById('spoofLon').value      = p.longitude;
+  setSectionOpen('location', true);
+  updateDirtyState();
+}
+
+function clearLocationPresetFields() {
+  for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon']) {
+    document.getElementById(id).value = '';
+  }
   updateDirtyState();
 }
 
@@ -259,7 +423,7 @@ function fillUaPreset(p) {
   updateDirtyState();
 }
 
-// Only fills the input fields, same as fillPreset() — "Apply to session" is
+// Only fills the input fields, same as fillPreset() — "Apply to tab" is
 // still a separate, explicit step. Timezone/locale are synchronous and need
 // no permission; geolocation can fail or hang (this window's session has no
 // permission handler attached), so it's handled independently and never
@@ -307,48 +471,63 @@ export async function refreshSpoofStatus() {
 // Writes the active session's applied overrides into the input fields (or
 // clears them when it has none), so switching tabs shows *that* session's
 // values instead of leaving behind whatever the previously active session's
-// fields happened to say.
-function populateFields(a) {
-  document.getElementById('spoofTimezone').value = a?.timezone ?? '';
-  document.getElementById('spoofLocale').value = a?.locale ?? '';
-  document.getElementById('spoofLat').value = a?.latitude !== undefined ? String(a.latitude) : '';
-  document.getElementById('spoofLon').value = a?.longitude !== undefined ? String(a.longitude) : '';
-  document.getElementById('spoofUserAgent').value = a?.userAgent ?? '';
-  const uaSelectEl = document.getElementById('spoofUaPresets');
-  if (uaSelectEl) uaSelectEl.value = ''; // switching sessions is never "the same preset was just picked"
-  const offsetValueEl = document.getElementById('spoofOffsetValue');
-  const offsetUnitEl = document.getElementById('spoofOffsetUnit');
-  if (a?.timeOffsetMs !== undefined) {
-    const { value, unitMs } = splitOffsetMs(a.timeOffsetMs);
-    offsetValueEl.value = String(value);
-    offsetUnitEl.value = String(unitMs);
-  } else {
-    offsetValueEl.value = '';
-    offsetUnitEl.value = '86400000';
+// fields happened to say. `sections` limits the rewrite to those sections'
+// fields — a per-section Reset must not discard unapplied edits elsewhere.
+// A section that holds an applied value is expanded (never auto-collapsed).
+function populateFields(a, sections = SECTION_NAMES) {
+  if (sections.includes('location')) {
+    document.getElementById('spoofTimezone').value = a?.timezone ?? '';
+    document.getElementById('spoofLocale').value = a?.locale ?? '';
+    document.getElementById('spoofLat').value = a?.latitude !== undefined ? String(a.latitude) : '';
+    document.getElementById('spoofLon').value = a?.longitude !== undefined ? String(a.longitude) : '';
+    const offsetValueEl = document.getElementById('spoofOffsetValue');
+    const offsetUnitEl = document.getElementById('spoofOffsetUnit');
+    if (a?.timeOffsetMs !== undefined) {
+      const { value, unitMs } = splitOffsetMs(a.timeOffsetMs);
+      offsetValueEl.value = String(value);
+      offsetUnitEl.value = String(unitMs);
+    } else {
+      offsetValueEl.value = '';
+      offsetUnitEl.value = '86400000';
+    }
   }
 
-  const devicePresetSelect = document.getElementById('spoofDevicePreset');
-  const customSizeRow = document.getElementById('spoofCustomSizeRow');
-  if (a?.deviceMetrics) {
-    const presetName = findDevicePresetName(a.deviceMetrics);
-    if (presetName) {
-      devicePresetSelect.value = presetName;
-      customSizeRow.hidden = true;
+  if (sections.includes('device')) {
+    document.getElementById('spoofUserAgent').value = a?.userAgent ?? '';
+    const uaSelectEl = document.getElementById('spoofUaPresets');
+    if (uaSelectEl) uaSelectEl.value = ''; // switching sessions is never "the same preset was just picked"
+    const devicePresetSelect = document.getElementById('spoofDevicePreset');
+    const customSizeRow = document.getElementById('spoofCustomSizeRow');
+    if (a?.deviceMetrics) {
+      const presetName = findDevicePresetName(a.deviceMetrics);
+      if (presetName) {
+        devicePresetSelect.value = presetName;
+        customSizeRow.hidden = true;
+      } else {
+        devicePresetSelect.value = '__custom';
+        customSizeRow.hidden = false;
+        document.getElementById('spoofCustomWidth').value = a.deviceMetrics.width;
+        document.getElementById('spoofCustomHeight').value = a.deviceMetrics.height;
+        document.getElementById('spoofCustomDpr').value = a.deviceMetrics.deviceScaleFactor;
+      }
     } else {
-      devicePresetSelect.value = '__custom';
-      customSizeRow.hidden = false;
-      document.getElementById('spoofCustomWidth').value = a.deviceMetrics.width;
-      document.getElementById('spoofCustomHeight').value = a.deviceMetrics.height;
+      devicePresetSelect.value = '';
+      customSizeRow.hidden = true;
+      document.getElementById('spoofCustomWidth').value = '';
+      document.getElementById('spoofCustomHeight').value = '';
+      document.getElementById('spoofCustomDpr').value = '';
     }
-  } else {
-    devicePresetSelect.value = '';
-    customSizeRow.hidden = true;
-    document.getElementById('spoofCustomWidth').value = '';
-    document.getElementById('spoofCustomHeight').value = '';
+    document.getElementById('spoofTouch').checked = !!a?.touch;
   }
-  document.getElementById('spoofTouch').checked = !!a?.touch;
-  document.getElementById('spoofColorScheme').value = a?.colorScheme ?? '';
-  document.getElementById('spoofReducedMotion').value = a?.reducedMotion ?? '';
+
+  if (sections.includes('advanced')) {
+    document.getElementById('spoofColorScheme').value = a?.colorScheme ?? '';
+    document.getElementById('spoofReducedMotion').value = a?.reducedMotion ?? '';
+  }
+
+  for (const name of sections) {
+    if (sectionAppliedParts(name, a).length > 0) setSectionOpen(name, true);
+  }
 }
 
 // Finds the preset name (if any) a resolved deviceMetrics object matches —
@@ -372,75 +551,165 @@ function splitOffsetMs(ms) {
   return { value: ms / 1000, unitMs: 1000 };
 }
 
+function uaLabel(ua) {
+  const preset = uaPresets.find(p => p.userAgent === ua);
+  if (preset) return preset.label;
+  return ua.length > 40 ? `${ua.slice(0, 40)}…` : ua;
+}
+
+// Short, human-readable pieces of what's applied in one section — drives the
+// section header badge (and whether the section auto-expands).
+function sectionAppliedParts(name, a) {
+  if (!a) return [];
+  const parts = [];
+  if (name === 'device') {
+    if (a.deviceMetrics) parts.push(findDevicePresetName(a.deviceMetrics) ?? `${a.deviceMetrics.width}×${a.deviceMetrics.height}`);
+    if (a.touch) parts.push('touch');
+    if (a.userAgent !== undefined) parts.push(uaLabel(a.userAgent));
+  } else if (name === 'location') {
+    if (a.timezone !== undefined) parts.push(a.timezone);
+    if (a.locale !== undefined) parts.push(a.locale);
+    if (a.latitude !== undefined && a.longitude !== undefined) parts.push('geo set');
+    if (a.timeOffsetMs !== undefined) parts.push(`clock ${formatOffsetMs(a.timeOffsetMs)}`);
+  } else if (name === 'advanced') {
+    if (a.colorScheme) parts.push(a.colorScheme);
+    if (a.reducedMotion) parts.push('reduced motion');
+  }
+  return parts;
+}
+
+// The summary strip: one chip per applied override. Each chip's text reads
+// "<what> <value>" (e.g. "timezone Europe/Berlin", "clock +7d"), with the
+// full detail in its tooltip.
 function renderCurrent() {
   const current = document.getElementById('spoofCurrent');
   if (!current) return;
   const a = appliedForActiveSession;
-  const hasAny = a && (
-    a.timezone !== undefined || a.locale !== undefined || a.latitude !== undefined ||
-    a.timeOffsetMs !== undefined || a.userAgent !== undefined ||
-    a.deviceMetrics !== undefined || a.touch !== undefined ||
-    a.colorScheme !== undefined || a.reducedMotion !== undefined
-  );
-  if (!hasAny) {
-    current.textContent = 'No overrides applied to this session.';
+  const chips = [];
+  if (a) {
+    if (a.deviceMetrics) {
+      const presetName = findDevicePresetName(a.deviceMetrics);
+      const { width, height, deviceScaleFactor, mobile } = a.deviceMetrics;
+      chips.push(['viewport', presetName ?? `${width}×${height} @${deviceScaleFactor}x${mobile ? ' mobile' : ''}`, describeMetrics(a.deviceMetrics)]);
+    }
+    if (a.touch) chips.push(['touch', '', 'Touch input emulated']);
+    if (a.userAgent !== undefined) chips.push(['UA', uaLabel(a.userAgent), a.userAgent]);
+    if (a.timezone !== undefined) chips.push(['timezone', a.timezone]);
+    if (a.locale !== undefined) chips.push(['locale', a.locale]);
+    if (a.latitude !== undefined && a.longitude !== undefined) chips.push(['geo', `${a.latitude}, ${a.longitude}`]);
+    if (a.timeOffsetMs !== undefined) {
+      const spoofedNow = new Date(Date.now() + a.timeOffsetMs).toLocaleString();
+      chips.push(['clock', formatOffsetMs(a.timeOffsetMs), `Page clock reads ${spoofedNow}`]);
+    }
+    if (a.colorScheme) chips.push(['prefers-color-scheme:', a.colorScheme]);
+    if (a.reducedMotion) chips.push(['prefers-reduced-motion:', a.reducedMotion]);
+  }
+
+  current.replaceChildren();
+  if (chips.length === 0) {
+    current.textContent = 'Nothing spoofed. No overrides applied to this tab.';
     current.classList.remove('spoof-current-active');
-    return;
+  } else {
+    const lead = document.createElement('span');
+    lead.className = 'spoof-current-lead';
+    lead.textContent = 'Applied to this tab:';
+    current.append(lead);
+    for (const [key, value, title] of chips) {
+      const chip = document.createElement('span');
+      chip.className = 'spoof-chip';
+      if (title) chip.title = title;
+      const k = document.createElement('span');
+      k.className = 'spoof-chip-key';
+      k.textContent = key;
+      chip.append(' ', k);
+      if (value) chip.append(` ${value}`);
+      current.append(chip);
+    }
+    current.classList.add('spoof-current-active');
   }
-  const parts = [];
-  if (a.timezone !== undefined) parts.push(`timezone ${a.timezone}`);
-  if (a.locale !== undefined) parts.push(`locale ${a.locale}`);
-  if (a.latitude !== undefined && a.longitude !== undefined) parts.push(`location ${a.latitude}, ${a.longitude}`);
-  if (a.timeOffsetMs !== undefined) {
-    const spoofedNow = new Date(Date.now() + a.timeOffsetMs).toLocaleString();
-    parts.push(`clock ${formatOffsetMs(a.timeOffsetMs)} (${spoofedNow})`);
+
+  for (const name of SECTION_NAMES) {
+    const badge = document.getElementById(`spoofSecBadge-${name}`);
+    const parts = sectionAppliedParts(name, a);
+    badge.textContent = parts.join(' · ');
+    badge.hidden = parts.length === 0;
   }
-  if (a.userAgent !== undefined) parts.push(`UA ${a.userAgent}`);
-  if (a.deviceMetrics) {
-    const { width, height, deviceScaleFactor, mobile } = a.deviceMetrics;
-    const presetName = findDevicePresetName(a.deviceMetrics);
-    parts.push(`viewport ${presetName ?? `${width}×${height}`} @${deviceScaleFactor}x${mobile ? ' mobile' : ''}`);
+}
+
+// Current form state, normalised the same way applySpoof() sends it, with
+// `undefined` standing in for "no override" — compared against the applied
+// overrides to find unapplied edits.
+function readFormState() {
+  const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
+  const unitMs    = Number(document.getElementById('spoofOffsetUnit').value);
+  const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
+  return {
+    timezone: document.getElementById('spoofTimezone').value.trim(),
+    locale:   document.getElementById('spoofLocale').value.trim(),
+    latRaw:   document.getElementById('spoofLat').value.trim(),
+    lonRaw:   document.getElementById('spoofLon').value.trim(),
+    userAgent: document.getElementById('spoofUserAgent').value.trim(),
+    offsetMs: offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : undefined,
+    deviceMetrics: readDeviceMetricsFromFields(),
+    touch: document.getElementById('spoofTouch').checked,
+    colorScheme: document.getElementById('spoofColorScheme').value || undefined,
+    reducedMotion: document.getElementById('spoofReducedMotion').value === 'reduce' ? 'reduce' : undefined,
+  };
+}
+
+function sectionDirty(name, f, a) {
+  if (name === 'device') {
+    return JSON.stringify(f.deviceMetrics) !== JSON.stringify(a.deviceMetrics ?? null) ||
+      f.touch !== !!a.touch ||
+      f.userAgent !== (a.userAgent ?? '');
   }
-  if (a.touch) parts.push('touch');
-  if (a.colorScheme) parts.push(`prefers-color-scheme: ${a.colorScheme}`);
-  if (a.reducedMotion) parts.push(`prefers-reduced-motion: ${a.reducedMotion}`);
-  current.textContent = `Applied to this session: ${parts.join(' · ')}`;
-  current.classList.add('spoof-current-active');
+  if (name === 'location') {
+    return f.timezone !== (a.timezone ?? '') ||
+      f.locale !== (a.locale ?? '') ||
+      f.latRaw !== (a.latitude !== undefined ? String(a.latitude) : '') ||
+      f.lonRaw !== (a.longitude !== undefined ? String(a.longitude) : '') ||
+      f.offsetMs !== a.timeOffsetMs;
+  }
+  return f.colorScheme !== a.colorScheme || f.reducedMotion !== a.reducedMotion;
 }
 
 function updateDirtyState() {
   const dirty = document.getElementById('spoofDirty');
   if (!dirty) return;
   const a = appliedForActiveSession ?? {};
-  const timezone = document.getElementById('spoofTimezone').value.trim();
-  const locale   = document.getElementById('spoofLocale').value.trim();
-  const latRaw   = document.getElementById('spoofLat').value.trim();
-  const lonRaw   = document.getElementById('spoofLon').value.trim();
-  const userAgent = document.getElementById('spoofUserAgent').value.trim();
-  const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
-  const unitMs   = Number(document.getElementById('spoofOffsetUnit').value);
-  const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
-  const offsetMs = offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : undefined;
+  const f = readFormState();
 
-  const deviceMetrics = readDeviceMetricsFromFields();
-  const touch = document.getElementById('spoofTouch').checked;
-  const colorScheme = document.getElementById('spoofColorScheme').value || undefined;
-  const reducedMotionRaw = document.getElementById('spoofReducedMotion').value;
-  const reducedMotion = reducedMotionRaw === 'reduce' ? 'reduce' : undefined;
+  let anyChanged = false;
+  for (const name of SECTION_NAMES) {
+    const changed = sectionDirty(name, f, a);
+    anyChanged ||= changed;
+    document.getElementById(`spoofSecEdited-${name}`).hidden = !changed;
+    // Reset is only meaningful when there's something applied to clear or
+    // an unapplied edit to discard.
+    document.getElementById(`spoofSecReset-${name}`).disabled =
+      !changed && sectionAppliedParts(name, appliedForActiveSession).length === 0;
+  }
+  dirty.hidden = !anyChanged;
+  document.getElementById('spoofApply').classList.toggle('spoof-apply-pending', anyChanged);
 
-  const changed =
-    timezone !== (a.timezone ?? '') ||
-    locale !== (a.locale ?? '') ||
-    latRaw !== (a.latitude !== undefined ? String(a.latitude) : '') ||
-    lonRaw !== (a.longitude !== undefined ? String(a.longitude) : '') ||
-    userAgent !== (a.userAgent ?? '') ||
-    offsetMs !== a.timeOffsetMs ||
-    JSON.stringify(deviceMetrics) !== JSON.stringify(a.deviceMetrics ?? null) ||
-    touch !== !!a.touch ||
-    colorScheme !== a.colorScheme ||
-    reducedMotion !== a.reducedMotion;
+  // Preset chips mirror the fields they fill.
+  const devicePreset = document.getElementById('spoofDevicePreset').value;
+  for (const btn of document.querySelectorAll('#spoofDeviceChips .spoof-preset-btn')) {
+    btn.setAttribute('aria-pressed', String(btn.dataset.device === devicePreset));
+  }
+  for (const btn of document.querySelectorAll('#spoofPresets .spoof-preset-btn')) {
+    const p = PRESETS[Number(btn.dataset.city)];
+    const match = f.timezone === p.timezone && f.locale === p.locale &&
+      f.latRaw !== '' && f.lonRaw !== '' &&
+      parseFloat(f.latRaw) === p.latitude && parseFloat(f.lonRaw) === p.longitude;
+    btn.setAttribute('aria-pressed', String(match));
+  }
 
-  dirty.hidden = !changed;
+  const hint = document.getElementById('spoofDeviceHint');
+  const preset = DEVICE_PRESETS[devicePreset];
+  hint.textContent = preset ? describeMetrics(preset)
+    : devicePreset === '__custom' ? 'Enter a width and height below.'
+    : "Changes the page's viewport, not the window size.";
 }
 
 // #241: every field's error key, mapped to the label used in the
@@ -457,6 +726,18 @@ const FIELD_ERROR_LABELS = {
   reducedMotion: 'prefers-reduced-motion',
 };
 
+function reportErrors(errors, okMsg) {
+  const failedFields = Object.keys(errors ?? {});
+  if (failedFields.length > 0) {
+    showStatus(
+      failedFields.map(f => `Could not apply ${FIELD_ERROR_LABELS[f] ?? f}: ${errors[f]}`).join('; '),
+      true
+    );
+  } else {
+    showStatus(okMsg, false);
+  }
+}
+
 async function applySpoof() {
   if (!getActiveId()) { showStatus('No active session.', true); return; }
   const timezoneRaw  = document.getElementById('spoofTimezone').value.trim();
@@ -469,10 +750,15 @@ async function applySpoof() {
   const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
   const unitMs    = Number(document.getElementById('spoofOffsetUnit').value);
   const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
+  const dprRaw    = document.getElementById('spoofCustomDpr').value.trim();
+  const dprNum    = dprRaw !== '' ? parseFloat(dprRaw) : NaN;
 
   if (latRaw !== '' && isNaN(latitude))  { showStatus('Invalid latitude.',  true); return; }
   if (lonRaw !== '' && isNaN(longitude)) { showStatus('Invalid longitude.', true); return; }
   if (offsetRaw !== '' && isNaN(offsetNum)) { showStatus('Invalid clock offset.', true); return; }
+  if (document.getElementById('spoofDevicePreset').value === '__custom' && dprRaw !== '' && !(dprNum > 0)) {
+    showStatus('Invalid pixel ratio.', true); return;
+  }
 
   // Every Apply sends the full current form state, mapping an empty field
   // to null (explicitly clear that one override) rather than omitting the
@@ -503,15 +789,7 @@ async function applySpoof() {
   try {
     const errors = await testerBrowser.emulation.set(getActiveId(), patch);
     await refreshSpoofStatus();
-    const failedFields = Object.keys(errors ?? {});
-    if (failedFields.length > 0) {
-      showStatus(
-        failedFields.map(f => `Could not apply ${FIELD_ERROR_LABELS[f] ?? f}: ${errors[f]}`).join('; '),
-        true
-      );
-    } else {
-      showStatus('Overrides applied. Reload the page for full effect.', false);
-    }
+    reportErrors(errors, 'Overrides applied. Reload the page for full effect.');
   } catch {
     showStatus('Failed to apply overrides.', true);
   } finally {
@@ -529,6 +807,28 @@ async function resetSpoof() {
     showStatus('Overrides cleared.', false);
   } finally {
     btn.disabled = false;
+  }
+}
+
+// Clears just one section's overrides (null for each of its keys; every
+// other key is omitted, so setEmulation leaves it alone) and rewrites only
+// that section's fields — unapplied edits in other sections survive.
+async function resetSection(name) {
+  const id = getActiveId();
+  if (!id) { showStatus('No active session.', true); return; }
+  const btn = document.getElementById(`spoofSecReset-${name}`);
+  btn.disabled = true;
+  try {
+    const patch = Object.fromEntries(SECTIONS[name].keys.map(k => [k, null]));
+    const errors = await testerBrowser.emulation.set(id, patch);
+    appliedForActiveSession = await testerBrowser.emulation.get(id);
+    populateFields(appliedForActiveSession, [name]);
+    renderCurrent();
+    reportErrors(errors, `${SECTIONS[name].title} overrides cleared.`);
+  } catch {
+    showStatus('Failed to reset overrides.', true);
+  } finally {
+    updateDirtyState(); // also recomputes this Reset button's disabled state
   }
 }
 

@@ -315,6 +315,60 @@ async function resetToSingleTab() {
   await expect.poll(() => window.locator('.tab').count()).toBe(1);
 }
 
+async function openSpoofSection(name: 'device' | 'location' | 'advanced') {
+  const toggle = window.locator(`#spoofSecToggle-${name}`);
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(window.locator(`#spoofSecBody-${name}`)).toBeVisible();
+}
+
+test('sections collapse via aria-expanded toggles, and a section Reset clears only that section\'s overrides', async () => {
+  await resetToSingleTab();
+  await window.click('#consoleTabSpoof');
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofCurrent')).toContainText('Nothing spoofed', { timeout: 5_000 });
+
+  // Advanced starts collapsed; its toggle reports that and opens it.
+  const advToggle = window.locator('#spoofSecToggle-advanced');
+  await expect(advToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(window.locator('#spoofColorScheme')).toBeHidden();
+  await openSpoofSection('advanced');
+
+  // Device chip mirrors the Viewport select.
+  await window.click('#spoofDeviceChips button.spoof-preset-btn:text("iPhone 14")');
+  await expect(window.locator('#spoofDevicePreset')).toHaveValue('iPhone 14');
+  await expect(window.locator('#spoofDeviceChips button.spoof-preset-btn:text("iPhone 14")')).toHaveAttribute('aria-pressed', 'true');
+  await window.fill('#spoofTimezone', 'Asia/Tokyo');
+  await expect(window.locator('#spoofSecEdited-device')).toBeVisible();
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect(window.locator('#spoofSecBadge-device')).toContainText('iPhone 14');
+  await expect(window.locator('#spoofSecBadge-location')).toContainText('Asia/Tokyo');
+
+  await window.click('#spoofSecReset-device');
+  await expect(window.locator('#spoofStatus')).toContainText('Device overrides cleared', { timeout: 5_000 });
+  await expect(window.locator('#spoofCurrent')).not.toContainText('viewport');
+  await expect(window.locator('#spoofCurrent')).toContainText('timezone Asia/Tokyo');
+  await expect(window.locator('#spoofDevicePreset')).toHaveValue('');
+  await expect(window.locator('#spoofSecBadge-device')).toBeHidden();
+  await expect(window.locator('#spoofDirty')).toBeHidden();
+
+  // Collapsing hides the body and flips aria-expanded back.
+  await advToggle.click();
+  await expect(advToggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(window.locator('#spoofSecBody-advanced')).toBeHidden();
+
+  // The ? help popover opens, and Escape closes it.
+  await window.click('#spoofHelpBtn');
+  await expect(window.locator('#spoofHelp')).toBeVisible();
+  await expect(window.locator('#spoofHelpBtn')).toHaveAttribute('aria-expanded', 'true');
+  await window.keyboard.press('Escape');
+  await expect(window.locator('#spoofHelp')).toBeHidden();
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});
+
 test('clearing one field and re-applying clears just that override, leaving another field\'s override in place (#241)', async () => {
   await resetToSingleTab();
   await window.click('#consoleTabSpoof');
@@ -452,6 +506,8 @@ test('Dark prefers-color-scheme takes effect on a real page\'s matchMedia() (#27
   await tab.waitForLoadState('load');
 
   await window.click('#consoleTabSpoof');
+  // prefers-color-scheme lives in the Advanced section, collapsed by default.
+  await openSpoofSection('advanced');
   await window.selectOption('#spoofColorScheme', 'dark');
   await window.click('#spoofApply');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
