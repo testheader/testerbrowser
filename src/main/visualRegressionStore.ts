@@ -136,7 +136,7 @@ export class VisualRegressionStore {
     const buf = Buffer.from(b64, 'base64');
     const dims = pngDimensions(buf);
     if (!dims) return null;
-    const id = `${slugify(name)}-${Date.now().toString(36)}`;
+    const id = `${slugify(name)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const meta: BaselineMeta = { id, name, url, capturedAt: Date.now(), width: dims.width, height: dims.height, ignoreRegions: [] };
     try {
       fs.writeFileSync(this.pngPath(id), buf);
@@ -229,7 +229,7 @@ export class VisualRegressionStore {
     const { meta, error } = validateBaselineSidecar(json);
     if (error || !meta) return { ok: false, error: error || 'Invalid sidecar file' };
 
-    const id = `${slugify(meta.name)}-${Date.now().toString(36)}`;
+    const id = `${slugify(meta.name)}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const fullMeta: BaselineMeta = { id, ...meta, capturedAt: meta.capturedAt ?? Date.now() };
     try {
       fs.writeFileSync(this.pngPath(id), pngBuf);
