@@ -32,17 +32,21 @@ let loadingOlder    = false;
 // whole request+response(+body) group, not just the request line, and so a
 // failed row's second line can show the URL even though loadingFailed's own
 // CDP payload never carries it.
-const requestMeta = new Map(); // requestId -> { method, url }
+// Exported (not just module-private) so timeline-filters.test.ts can
+// populate them directly — the alternative (threading requestMeta/
+// responseMeta/tagMeta through every filter function as parameters) would
+// touch far more call sites for no benefit outside tests.
+export const requestMeta = new Map(); // requestId -> { method, url }
 // The Req row now carries the response's status/timing inline (see
 // getEventStatus/getEventDuration below) instead of leaving that to a
 // separate Res row — this map is the response-side counterpart of
 // requestMeta, populated the same way from network-response events as they
 // arrive.
-const responseMeta = new Map(); // requestId -> { status, durationMs }
+export const responseMeta = new Map(); // requestId -> { status, durationMs }
 // Which rule (if any) intercepted/altered a call, keyed by requestId — the
 // Mock/Resilience pills need this for kinds like network-body whose own
 // payload never carries mockRuleId/resilienceRuleId directly.
-const tagMeta = new Map(); // requestId -> 'mock' | 'resilience'
+export const tagMeta = new Map(); // requestId -> 'mock' | 'resilience'
 const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
 
 // Rows whose level falls outside these five pills (e.g. CDP Log's 'verbose',
@@ -171,71 +175,84 @@ function getEventLine2(e) {
 
 export function getTimelineEvents() { return timelineEvents; }
 
+const CONSOLE_KINDS = new Set(['console', 'log', 'exception']);
+
+// Pure filter predicates — callers resolve DOM-derived filter state once per
+// render (below) and pass it in, so these run per-event without touching
+// document, and are directly unit-testable (#279). getEventMethod/
+// getEventTag/getEventDuration close over the requestMeta/responseMeta/
+// tagMeta maps above (module state, not DOM), same as the rest of this file.
+export function matchesNetworkFilters(e, { activeTypes, activeMethods, minDuration, filterText }) {
+  // network-response's own status/timing is merged into its request row
+  // (getEventStatus/getEventDuration) instead of rendering as a second,
+  // near-duplicate row — so it's never shown standalone. The Res pill
+  // now solely governs the response body row.
+  const kindVisible = e.kind === 'network-response'
+    ? false
+    : e.kind === 'network-body'
+      ? activeTypes.has('network-response')
+      : activeTypes.has(e.kind);
+  if (!kindVisible) return false;
+
+  const method = getEventMethod(e);
+  const methodVisible = !method || activeMethods.has(KNOWN_METHODS.has(method) ? method : 'Other');
+  if (!methodVisible) return false;
+
+  if (minDuration > 0 && e.kind === 'network-request') {
+    const durationMs = getEventDuration(e);
+    if (typeof durationMs !== 'number' || durationMs < minDuration) return false;
+  }
+
+  const mockOn       = activeTypes.has('mock');
+  const resilienceOn = activeTypes.has('resilience');
+  if (mockOn || resilienceOn) {
+    const tag = getEventTag(e);
+    const tagVisible = (mockOn && tag === 'mock') || (resilienceOn && tag === 'resilience');
+    if (!tagVisible) return false;
+  }
+
+  // Matches summary or payload the same way the console filter already
+  // does — space-separated terms AND together, and a `-term` excludes.
+  // Payload is bounded to prevent O(N × payload_size) string allocations
+  // when the ring buffer is full of large CDP events: tags like
+  // resilienceRuleId are appended near the end of the object, so we
+  // search both a prefix and a suffix of large payloads.
+  let searchText = e.summary;
+  if (e.payload) {
+    const raw = e.payload;
+    const clipped = raw.length > 4096 ? raw.slice(0, 2048) + raw.slice(-512) : raw;
+    searchText = `${e.summary}\n${clipped}`;
+  }
+  return matchesFreeText(searchText, filterText);
+}
+
+export function matchesConsoleFilters(e, { activeLevels, filterText }) {
+  if (!CONSOLE_KINDS.has(e.kind)) return false;
+  const level = getConsoleLevel(e);
+  const levelVisible = !level || !KNOWN_LEVELS.has(level) || activeLevels.has(level);
+  if (!levelVisible) return false;
+  return matchesFreeText(e.summary, filterText);
+}
+
 export function renderTimeline() {
   const panel = document.getElementById('timelinePanel');
   const tab   = getActiveConsoleTab();
 
   let filtered;
   if (tab === 'network') {
-    const netFilter    = document.getElementById('networkFilterText').value;
-    const activeTypes  = activePillValues(document.getElementById('networkPills'), 'type');
-    const activeMethods = activePillValues(document.getElementById('networkMethodPills'), 'method');
-    const minDuration  = parseFloat(document.getElementById('networkMinDuration').value) || 0;
-
-    filtered = timelineEvents.filter(e => {
-      // network-response's own status/timing is merged into its request row
-      // (getEventStatus/getEventDuration) instead of rendering as a second,
-      // near-duplicate row — so it's never shown standalone. The Res pill
-      // now solely governs the response body row.
-      const kindVisible = e.kind === 'network-response'
-        ? false
-        : e.kind === 'network-body'
-          ? activeTypes.has('network-response')
-          : activeTypes.has(e.kind);
-      if (!kindVisible) return false;
-
-      const method = getEventMethod(e);
-      const methodVisible = !method || activeMethods.has(KNOWN_METHODS.has(method) ? method : 'Other');
-      if (!methodVisible) return false;
-
-      if (minDuration > 0 && e.kind === 'network-request') {
-        const durationMs = getEventDuration(e);
-        if (typeof durationMs !== 'number' || durationMs < minDuration) return false;
-      }
-
-      const mockOn       = activeTypes.has('mock');
-      const resilienceOn = activeTypes.has('resilience');
-      if (mockOn || resilienceOn) {
-        const tag = getEventTag(e);
-        const tagVisible = (mockOn && tag === 'mock') || (resilienceOn && tag === 'resilience');
-        if (!tagVisible) return false;
-      }
-
-      // Matches summary or payload the same way the console filter already
-      // does — space-separated terms AND together, and a `-term` excludes.
-      // Payload is bounded to prevent O(N × payload_size) string allocations
-      // when the ring buffer is full of large CDP events: tags like
-      // resilienceRuleId are appended near the end of the object, so we
-      // search both a prefix and a suffix of large payloads.
-      let searchText = e.summary;
-      if (e.payload) {
-        const raw = e.payload;
-        const clipped = raw.length > 4096 ? raw.slice(0, 2048) + raw.slice(-512) : raw;
-        searchText = `${e.summary}\n${clipped}`;
-      }
-      return matchesFreeText(searchText, netFilter);
-    });
+    const filters = {
+      filterText:    document.getElementById('networkFilterText').value,
+      activeTypes:   activePillValues(document.getElementById('networkPills'), 'type'),
+      activeMethods: activePillValues(document.getElementById('networkMethodPills'), 'method'),
+      minDuration:   parseFloat(document.getElementById('networkMinDuration').value) || 0,
+    };
+    filtered = timelineEvents.filter(e => matchesNetworkFilters(e, filters));
   } else {
-    const filterText   = document.getElementById('filterText').value;
-    const activeLevels = activePillValues(document.getElementById('consoleLevelPills'), 'level');
-    const CONSOLE_KINDS = new Set(['console', 'log', 'exception']);
-    filtered = timelineEvents.filter(e => {
-      if (!CONSOLE_KINDS.has(e.kind)) return false;
-      const level = getConsoleLevel(e);
-      const levelVisible = !level || !KNOWN_LEVELS.has(level) || activeLevels.has(level);
-      if (!levelVisible) return false;
-      return matchesFreeText(e.summary, filterText);
-    });
+    const filters = {
+      filterText:   document.getElementById('filterText').value,
+      activeLevels: activePillValues(document.getElementById('consoleLevelPills'), 'level'),
+    };
+    filtered = timelineEvents.filter(e => matchesConsoleFilters(e, filters));
   }
 
   const kindCounts = {};

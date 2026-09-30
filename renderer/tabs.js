@@ -62,8 +62,16 @@ export async function insertAfterActive(id) {
   else tabOrder.splice(idx + 1, 0, id);
 }
 
+// Pure — moves id to the front of an MRU stack, dropping any earlier
+// occurrence. Exported standalone (#279) so the "visiting a tab moves it to
+// the front" behavior is directly unit-testable without switchToSession's
+// DOM/IPC side effects.
+export function pushMru(stack, id) {
+  return [id, ...stack.filter((x) => x !== id)];
+}
+
 export function recordVisit(id) {
-  mruStack = [id, ...mruStack.filter((x) => x !== id)];
+  mruStack = pushMru(mruStack, id);
 }
 
 export async function switchToSession(id) {
@@ -87,9 +95,21 @@ export async function switchToSession(id) {
   await refreshTabs();
 }
 
+// Pure — the id cycleTab would switch to, or null if there's nothing to
+// cycle to (fewer than two tabs). Forward (Ctrl+Tab) always jumps to the
+// second-most-recently-used tab; reverse (Ctrl+Shift+Tab) always jumps to
+// the least-recently-used one — switching either way then moves that tab to
+// the front via recordVisit, so repeated cycling walks the stack rather
+// than bouncing between the same two entries. Exported standalone (#279)
+// for direct unit testing.
+export function nextMruId(stack, reverse) {
+  if (stack.length < 2) return null;
+  return reverse ? stack[stack.length - 1] : stack[1];
+}
+
 export function cycleTab(reverse) {
-  if (mruStack.length < 2) return;
-  switchToSession(reverse ? mruStack[mruStack.length - 1] : mruStack[1]);
+  const next = nextMruId(mruStack, reverse);
+  if (next !== null) switchToSession(next);
 }
 
 // Builds the static skeleton for a tab that never changes for the life of
