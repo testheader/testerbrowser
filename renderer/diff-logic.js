@@ -321,6 +321,12 @@ export function rowStatusClasses(row) {
 // a row with only unclassifiable statuses is never hidden by it. `text`
 // uses the same free-text syntax as the other panels (space-separated
 // terms, `-term` excludes).
+/**
+ * @template {{ url: string }} T
+ * @param {T[]} rows
+ * @param {{ buckets?: Set<string>, statusClasses?: Set<string>, text?: string }} [opts]
+ * @returns {T[]}
+ */
 export function filterDiffRows(rows, { buckets, statusClasses, text = '' } = {}) {
   return rows.filter((r) => {
     if (buckets && !buckets.has(rowBucket(r))) return false;

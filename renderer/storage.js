@@ -73,7 +73,7 @@ export async function fetchStorageData() {
   const sessionId = getActiveId();
   if (!sessionId) return;
 
-  const urlbarVal = document.getElementById('urlbar').value;
+  const urlbarVal = /** @type {HTMLInputElement} */ (document.getElementById('urlbar')).value;
   let currentHostname = '';
   try {
     if (urlbarVal && urlbarVal.startsWith('http')) currentHostname = new URL(urlbarVal).hostname;
@@ -104,7 +104,7 @@ export function renderStoragePanel() {
     return;
   }
   const { sessionId, cookies, ls, ss, idb, loadedDomains, currentHostname, permissions } = cache;
-  const filterText = document.getElementById('storageFilter').value.toLowerCase();
+  const filterText = /** @type {HTMLInputElement} */ (document.getElementById('storageFilter')).value.toLowerCase();
 
   panel.innerHTML = '';
   renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomains, currentHostname);
@@ -754,7 +754,7 @@ export function resumeStorageAutoRefreshIfOn() {
 
 export function initStorage() {
   document.getElementById('refreshStorageBtn').addEventListener('click', fetchStorageData);
-  document.getElementById('storageFilter').addEventListener('input', renderStoragePanel);
+  /** @type {HTMLInputElement} */ (document.getElementById('storageFilter')).addEventListener('input', renderStoragePanel);
 
   const domainFilterBtn = document.getElementById('domainFilterBtn');
   domainFilterBtn.classList.add('active'); // matches domainFilterActive = true default

@@ -46,7 +46,7 @@ export function initFollow() {
 }
 
 export async function refreshFollowPickers() {
-  const pick = document.getElementById('followPickLeader');
+  const pick = /** @type {HTMLSelectElement} */ (document.getElementById('followPickLeader'));
   if (!pick) return; // panel not yet initialised
   await populatePickers();
   await refreshFollowPanel();
@@ -58,9 +58,9 @@ async function populatePickers() {
 }
 
 async function startFollow() {
-  const leaderId   = document.getElementById('followPickLeader')?.value;
-  const followerId = document.getElementById('followPickFollower')?.value;
-  const mirrorNavigation = document.getElementById('followMirrorNav')?.checked ?? false;
+  const leaderId   = /** @type {HTMLSelectElement} */ (document.getElementById('followPickLeader'))?.value;
+  const followerId = /** @type {HTMLSelectElement} */ (document.getElementById('followPickFollower'))?.value;
+  const mirrorNavigation = /** @type {HTMLInputElement} */ (document.getElementById('followMirrorNav'))?.checked ?? false;
   if (!leaderId || !followerId) { setLog('Pick both a leader and a follower session.', 'err'); return; }
   if (leaderId === followerId) { setLog('Pick two different sessions.', 'err'); return; }
 
@@ -114,8 +114,8 @@ async function refreshFollowPanel() {
 
   for (const row of pairsEl.querySelectorAll('.follow-pair')) {
     const leaderId = row.dataset.leader;
-    row.querySelector('.follow-stop-btn').onclick = () => stopFollow(leaderId);
-    row.querySelector('.follow-nav-check').onchange = (e) => toggleMirrorNav(leaderId, e.target.checked);
+    /** @type {HTMLElement} */ (row.querySelector('.follow-stop-btn')).onclick = () => stopFollow(leaderId);
+    /** @type {HTMLElement} */ (row.querySelector('.follow-nav-check')).onchange = (e) => toggleMirrorNav(leaderId, /** @type {HTMLInputElement} */ (e.target).checked);
   }
 }
 

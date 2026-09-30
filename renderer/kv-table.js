@@ -35,6 +35,7 @@ export function addKvRow(container, key, val) {
 // Reads every `.kv-row` under `container` back into a plain object, skipping
 // rows with an empty (or whitespace-only) key.
 export function readKvTable(container) {
+  /** @type {Record<string, string>} */
   const obj = {};
   for (const row of container.querySelectorAll('.kv-row')) {
     const k = row.querySelector('.kv-key').value.trim();

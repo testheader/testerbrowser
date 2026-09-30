@@ -189,44 +189,44 @@ export function initVR() {
     </div>
     <div class="vr-images" id="vrImages" role="region" aria-label="Screenshots" tabindex="0"></div>`;
 
-  $('vrCaptureBtn').addEventListener('click', captureBaseline);
-  $('vrCompareBtn').addEventListener('click', runCompare);
+  /** @type {HTMLButtonElement} */ ($('vrCaptureBtn')).addEventListener('click', captureBaseline);
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).addEventListener('click', runCompare);
   $('vrViews').addEventListener('click', (e) => {
-    const btn = e.target.closest('.vr-view-btn');
+    const btn = /** @type {HTMLButtonElement} */ (/** @type {HTMLElement} */ (e.target).closest('.vr-view-btn'));
     if (!btn || btn.disabled) return;
     setViewMode(btn.dataset.view);
   });
-  $('vrComparePick').addEventListener('change', (e) => {
-    activeData().compareSessionId = e.target.value;
+  /** @type {HTMLSelectElement} */ ($('vrComparePick')).addEventListener('change', (e) => {
+    activeData().compareSessionId = /** @type {HTMLInputElement} */ (e.target).value;
   });
-  $('vrThreshold').addEventListener('input', (e) => {
-    $('vrThresholdHint').textContent = thresholdHint(parseThreshold(e.target.value));
+  /** @type {HTMLInputElement} */ ($('vrThreshold')).addEventListener('input', (e) => {
+    $('vrThresholdHint').textContent = thresholdHint(parseThreshold(/** @type {HTMLInputElement} */ (e.target).value));
   });
-  $('vrThreshold').addEventListener('change', (e) => {
+  /** @type {HTMLInputElement} */ ($('vrThreshold')).addEventListener('change', (e) => {
     const d = activeData();
-    const next = parseThreshold(e.target.value);
-    e.target.value = String(next);
+    const next = parseThreshold(/** @type {HTMLInputElement} */ (e.target).value);
+    /** @type {HTMLInputElement} */ (e.target).value = String(next);
     if (next !== d.threshold) {
       d.threshold = next;
       markStale();
     }
     $('vrThresholdHint').textContent = thresholdHint(next);
   });
-  $('vrMaxDiff').value = String(maxDiffPct);
-  $('vrMaxDiff').addEventListener('change', (e) => {
-    maxDiffPct = parseMaxDiffPct(e.target.value);
-    e.target.value = String(maxDiffPct);
+  /** @type {HTMLInputElement} */ ($('vrMaxDiff')).value = String(maxDiffPct);
+  /** @type {HTMLInputElement} */ ($('vrMaxDiff')).addEventListener('change', (e) => {
+    maxDiffPct = parseMaxDiffPct(/** @type {HTMLInputElement} */ (e.target).value);
+    /** @type {HTMLInputElement} */ (e.target).value = String(maxDiffPct);
     lsSet(LS_MAX_DIFF, String(maxDiffPct));
     renderSummary();
   });
-  $('vrEditRegionsBtn').addEventListener('click', toggleRegionsEditMode);
-  $('vrSaveBaselineBtn').addEventListener('click', saveActiveBaseline);
+  /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).addEventListener('click', toggleRegionsEditMode);
+  /** @type {HTMLButtonElement} */ ($('vrSaveBaselineBtn')).addEventListener('click', saveActiveBaseline);
   $('vrImportBaselineBtn').addEventListener('click', importBaseline);
   $('vrBaselinesToggle').addEventListener('click', () => setBaselinesOpen(!baselinesOpen));
-  $('vrBaselineSearch').addEventListener('input', renderBaselineList);
+  /** @type {HTMLInputElement} */ ($('vrBaselineSearch')).addEventListener('input', renderBaselineList);
   $('vrBaselineList').addEventListener('click', onBaselineListClick);
   $('vrIgnoreList').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-remove-region]');
+    const btn = /** @type {HTMLElement} */ (e.target).closest('[data-remove-region]');
     if (btn) removeIgnoreRegion(Number(btn.dataset.removeRegion));
   });
   const highlightFrom = (e) => {
@@ -248,14 +248,14 @@ export function initVR() {
     drawOverlays();
   });
   $('vrSumChips').addEventListener('click', (e) => {
-    if (e.target.closest('#vrRecomputeBtn')) recomputeFromStored();
+    if (/** @type {HTMLElement} */ (e.target).closest('#vrRecomputeBtn')) recomputeFromStored();
   });
 
-  $('vrZoom').addEventListener('change', (e) => setZoom(normalizeZoom(e.target.value)));
-  $('vrZoomIn').addEventListener('click', () => setZoom(stepZoom(lastScale, 1)));
-  $('vrZoomOut').addEventListener('click', () => setZoom(stepZoom(lastScale, -1)));
-  $('vrPrevRegion').addEventListener('click', () => goToRegion(-1));
-  $('vrNextRegion').addEventListener('click', () => goToRegion(1));
+  /** @type {HTMLSelectElement} */ ($('vrZoom')).addEventListener('change', (e) => setZoom(normalizeZoom(/** @type {HTMLInputElement} */ (e.target).value)));
+  /** @type {HTMLButtonElement} */ ($('vrZoomIn')).addEventListener('click', () => setZoom(stepZoom(lastScale, 1)));
+  /** @type {HTMLButtonElement} */ ($('vrZoomOut')).addEventListener('click', () => setZoom(stepZoom(lastScale, -1)));
+  /** @type {HTMLButtonElement} */ ($('vrPrevRegion')).addEventListener('click', () => goToRegion(-1));
+  /** @type {HTMLButtonElement} */ ($('vrNextRegion')).addEventListener('click', () => goToRegion(1));
 
   panel.addEventListener('keydown', onPanelKeydown);
   // Fit modes depend on the viewer's size — re-lay out when it changes
@@ -274,7 +274,7 @@ export function initVR() {
 // whenever the user opens it, without disturbing an in-progress comparison
 // the way a full refreshVR() (which resets stats/view) would.
 export async function refreshVRComparePicker() {
-  const pick = $('vrComparePick');
+  const pick = /** @type {HTMLSelectElement} */ ($('vrComparePick'));
   if (!pick) return; // panel not initialized yet
 
   const sessions = await testerBrowser.sessions.list();
@@ -290,13 +290,13 @@ export async function refreshVRComparePicker() {
 // whenever the user switches sessions, so a baseline never silently gets
 // compared against a different session's page.
 export function refreshVR() {
-  if (!$('vrCompareBtn')) return; // panel not initialized yet
+  if (!/** @type {HTMLButtonElement} */ ($('vrCompareBtn'))) return; // panel not initialized yet
   const d = activeData();
   // The picker is one shared element — resync its displayed value to the
   // newly-active session's own stored preference, not whatever was left
   // showing for the previously active session.
-  $('vrComparePick').value = d.compareSessionId || '';
-  $('vrThreshold').value = String(d.threshold);
+  /** @type {HTMLSelectElement} */ ($('vrComparePick')).value = d.compareSessionId || '';
+  /** @type {HTMLInputElement} */ ($('vrThreshold')).value = String(d.threshold);
   $('vrThresholdHint').textContent = thresholdHint(d.threshold);
   // Switching sessions leaves regions-edit mode — it's tied to whichever
   // session's baseline is on screen, and following the active session into
@@ -307,9 +307,9 @@ export function refreshVR() {
 
 function renderAll() {
   const d = activeData();
-  $('vrCompareBtn').disabled = !d.baselineB64;
-  $('vrEditRegionsBtn').disabled = !d.baselineB64;
-  $('vrSaveBaselineBtn').disabled = !d.baselineB64;
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).disabled = !d.baselineB64;
+  /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).disabled = !d.baselineB64;
+  /** @type {HTMLButtonElement} */ ($('vrSaveBaselineBtn')).disabled = !d.baselineB64;
   renderSteps();
   renderBaselineChip();
   renderIgnoreBar();
@@ -328,7 +328,7 @@ function renderSteps() {
     el.classList.toggle('current', isCurrent);
     el.querySelector('[data-step-state]').textContent = done[n - 1] ? ' (done)' : isCurrent ? ' (next)' : '';
   });
-  $('vrCompareBtn').classList.toggle('vr-primary-ready', !!d.baselineB64);
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).classList.toggle('vr-primary-ready', !!d.baselineB64);
 }
 
 function renderBaselineChip() {
@@ -471,7 +471,7 @@ function renderImages() {
   const view = currentView();
 
   $('vrViewbar').hidden = !d.baselineB64;
-  document.querySelectorAll('.vr-view-btn').forEach((b) => {
+  document.querySelectorAll('.vr-view-btn').forEach((/** @type {HTMLButtonElement} */ b) => {
     const on = b.dataset.view === view;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
@@ -568,7 +568,7 @@ function applyLayout() {
       img.style.width = `${Math.max(1, Math.round(Number(img.dataset.w) * scale))}px`;
       img.style.height = `${Math.max(1, Math.round(Number(img.dataset.h) * scale))}px`;
     }
-    const canvas = wrap.querySelector('canvas.vr-ov');
+    const canvas = /** @type {HTMLCanvasElement} */ (wrap.querySelector('canvas.vr-ov'));
     if (canvas) {
       canvas.width = Math.max(1, Math.round(cw * scale));
       canvas.height = Math.max(1, Math.round(ch * scale));
@@ -580,12 +580,12 @@ function applyLayout() {
 }
 
 function updateZoomUi() {
-  const sel = $('vrZoom');
+  const sel = /** @type {HTMLSelectElement} */ ($('vrZoom'));
   if (!sel) return;
   sel.value = String(zoom);
   $('vrZoomNow').textContent = typeof zoom === 'number' ? '' : formatZoom(lastScale);
-  $('vrZoomIn').disabled = lastScale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 1e-9;
-  $('vrZoomOut').disabled = lastScale <= ZOOM_STEPS[0] + 1e-9;
+  /** @type {HTMLButtonElement} */ ($('vrZoomIn')).disabled = lastScale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 1e-9;
+  /** @type {HTMLButtonElement} */ ($('vrZoomOut')).disabled = lastScale <= ZOOM_STEPS[0] + 1e-9;
 }
 
 function overlayColors() {
@@ -602,7 +602,7 @@ function drawOverlays(preview = null) {
   const view = currentView();
   const scale = lastScale;
   const { accent } = overlayColors();
-  for (const canvas of $('vrImages').querySelectorAll('canvas.vr-ov')) {
+  for (const canvas of /** @type {NodeListOf<HTMLCanvasElement>} */ ($('vrImages').querySelectorAll('canvas.vr-ov'))) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.font = '600 11px sans-serif';
@@ -666,7 +666,7 @@ function updateOverlayClip() {
   if (!top || !line) return;
   top.style.clipPath = `inset(0 0 0 ${overlayPos}%)`;
   line.style.left = `${overlayPos}%`;
-  const slider = $('vrOverlaySlider');
+  const slider = /** @type {HTMLInputElement} */ ($('vrOverlaySlider'));
   if (slider) {
     slider.value = String(overlayPos);
     slider.setAttribute('aria-valuetext', `${overlayPos}% baseline, ${100 - overlayPos}% current`);
@@ -675,7 +675,7 @@ function updateOverlayClip() {
 
 function wireOverlay() {
   const wrap = $('vrOverlayWrap');
-  const slider = $('vrOverlaySlider');
+  const slider = /** @type {HTMLInputElement} */ ($('vrOverlaySlider'));
   slider.addEventListener('input', () => {
     overlayPos = Number(slider.value);
     updateOverlayClip();
@@ -705,8 +705,8 @@ function renderRegionNav() {
   const r = d.result;
   const count = r ? r.changedRegions.length : 0;
   $('vrNav').hidden = !r;
-  $('vrPrevRegion').disabled = count === 0;
-  $('vrNextRegion').disabled = count === 0;
+  /** @type {HTMLButtonElement} */ ($('vrPrevRegion')).disabled = count === 0;
+  /** @type {HTMLButtonElement} */ ($('vrNextRegion')).disabled = count === 0;
   const pos = $('vrRegionPos');
   if (!r) { pos.textContent = ''; return; }
   if (count === 0) { pos.textContent = 'No changed regions'; return; }
@@ -778,7 +778,7 @@ function onPanelKeydown(e) {
 
 function setRegionsEditMode(on) {
   regionsEditMode = on;
-  const btn = $('vrEditRegionsBtn');
+  const btn = /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn'));
   if (!btn) return;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', String(on));
@@ -813,7 +813,7 @@ function removeIgnoreRegion(idx) {
   drawOverlays();
   // Keep keyboard focus in the list (or on the edit button once it's empty).
   const next = $('vrIgnoreList').querySelector(`[data-remove-region="${Math.min(idx, d.ignoreRegions.length - 1)}"]`);
-  (next || $('vrEditRegionsBtn')).focus();
+  (next || /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn'))).focus();
 }
 
 function renderIgnoreBar() {
@@ -821,7 +821,7 @@ function renderIgnoreBar() {
   const bar = $('vrIgnoreBar');
   const regions = d.ignoreRegions;
   bar.hidden = !d.baselineB64 || (!regions.length && !regionsEditMode);
-  $('vrEditRegionsBtn').textContent = regionsEditMode
+  /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).textContent = regionsEditMode
     ? 'Done editing regions'
     : `Edit ignore regions${regions.length ? ` (${regions.length})` : ''}`;
   $('vrIgnoreClearBtn').hidden = regions.length < 2;
@@ -842,7 +842,7 @@ function renderIgnoreBar() {
 }
 
 function wireRegionsEditing() {
-  const canvas = $('vrRegionsCanvas');
+  const canvas = /** @type {HTMLCanvasElement} */ ($('vrRegionsCanvas'));
   if (!canvas) return;
   canvas.classList.toggle('vr-regions-editable', regionsEditMode);
   if (!regionsEditMode) return;
@@ -897,7 +897,7 @@ function wireRegionsEditing() {
 async function captureBaseline() {
   if (!getActiveId()) return;
   const sessionId  = getActiveId();
-  const captureBtn = $('vrCaptureBtn');
+  const captureBtn = /** @type {HTMLButtonElement} */ ($('vrCaptureBtn'));
 
   captureBtn.disabled = true;
   captureBtn.textContent = 'Capturing…';
@@ -950,9 +950,9 @@ async function runCompare() {
   // single-session behavior) unless the user picked a different one to
   // capture the "current" screenshot from — see #127.
   const targetId = d0.compareSessionId || sessionId;
-  const pick = $('vrComparePick');
+  const pick = /** @type {HTMLSelectElement} */ ($('vrComparePick'));
   const compareLabel = d0.compareSessionId ? (pick.selectedOptions[0]?.textContent || 'another tab') : 'this tab';
-  const compareBtn = $('vrCompareBtn');
+  const compareBtn = /** @type {HTMLButtonElement} */ ($('vrCompareBtn'));
 
   compareBtn.disabled = true;
   compareBtn.textContent = 'Comparing…';
@@ -1025,7 +1025,7 @@ async function computeAndShow(sessionId, currentB64, compareLabel) {
 }
 
 function isFullPage() {
-  return $('vrFullPage').checked;
+  return /** @type {HTMLInputElement} */ ($('vrFullPage')).checked;
 }
 
 // Rejects on a decode failure (corrupt/truncated base64, an unsupported
@@ -1095,7 +1095,7 @@ function setBaselinesOpen(open) {
     pendingDeleteId = null;
     renderBaselineList();
     refreshBaselinesList();
-    $('vrBaselineSearch').focus();
+    /** @type {HTMLInputElement} */ ($('vrBaselineSearch')).focus();
   }
 }
 
@@ -1108,7 +1108,7 @@ async function refreshBaselinesList() {
 
 function renderBaselineList() {
   const list = $('vrBaselineList');
-  const query = $('vrBaselineSearch').value;
+  const query = /** @type {HTMLInputElement} */ ($('vrBaselineSearch')).value;
   const shown = filterBaselines(savedBaselines, query);
   const note = $('vrBaselineFilterNote');
   note.textContent = query.trim() && savedBaselines.length ? `Showing ${shown.length} of ${savedBaselines.length}` : '';
@@ -1231,7 +1231,7 @@ async function loadBaseline(id) {
   statusEl.textContent = `Loaded "${entry.meta.name}".`;
   setBaselinesOpen(false);
   refreshVR();
-  $('vrCompareBtn').focus();
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).focus();
 }
 
 // prompt()/confirm() with a real return value would be simplest here, but
@@ -1259,7 +1259,7 @@ async function promptBaselineName(defaultValue, { title = 'Save baseline as…',
         </div>
       </div>`;
     document.body.appendChild(dlg);
-    const input = $('vrSaveNameInput');
+    const input = /** @type {HTMLInputElement} */ ($('vrSaveNameInput'));
     input.focus();
     input.select();
     const finish = (value) => {
@@ -1366,5 +1366,5 @@ async function deleteBaseline(id) {
   $('vrBaselineStatus').textContent = 'Baseline deleted.';
   await refreshBaselinesList();
   renderAll();
-  $('vrBaselineSearch').focus();
+  /** @type {HTMLInputElement} */ ($('vrBaselineSearch')).focus();
 }

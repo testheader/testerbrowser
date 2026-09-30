@@ -61,7 +61,9 @@ src/main/appLogger.ts      Central app logger: log.error/warn/info/debug() fan o
 src/main/logTail.ts        Pure helpers behind the crash log's/bug report's "App log" tail:
                            readLogTail (main.log + main.log.1), capLogBlock (30k-char cap,
                            drops oldest lines), capIssueBody (60k-char issue body cap).
-src/preload/index.ts       contextBridge → window.testerBrowser (full API surface)
+src/preload/index.ts       contextBridge → window.testerBrowser (full API surface); exports its
+                           type as TesterBrowserApi, which types/renderer-globals.d.ts uses to
+                           type the renderer's testerBrowser global
 renderer/index.html        HTML shell; renderer/style.css holds the styling
 renderer/*.js              Renderer logic, split into ES modules (main.js is the entry point):
                            tabs, URL bar, find, bookmarks, downloads, timeline, storage, …
@@ -287,7 +289,7 @@ Every push (by a non-bot actor) runs:
 
 ```bash
 npm install               # Install deps (runs electron-rebuild for better-sqlite3)
-npm run typecheck         # Type-check only — no output files, fast feedback
+npm run typecheck         # Type-check src/ (tsconfig.json + tsconfig.tests.json) and renderer/*.js (tsconfig.renderer.json) — no output
 npm run lint              # ESLint over renderer/*.js
 npm test                  # Jest unit tests (src/**/__tests__/*.test.ts)
 npm run test:e2e          # build + Playwright e2e
@@ -311,6 +313,7 @@ npm run dist:win          # Full Windows installer build + publish
 - **electron-builder defaults to draft releases** — `electron-updater` ignores drafts. Set `"releaseType": "prerelease"`.
 - **electron-builder needs `GH_TOKEN`** in CI even with `--publish always` — pass as env on the npm step.
 - **Calling `electron-builder` directly in workflow steps fails** — always invoke via `npm run dist:*` (or `npx electron-builder` as the workflow now does).
+- **Renderer JS is type-checked, and must have no `.d.ts` siblings** — `tsconfig.renderer.json` runs checkJs over `renderer/*.js` (non-strict). A `renderer/foo.d.ts` next to `foo.js` would shadow the real JS for both the checker and the unit tests (which read renderer types straight from the JS via `tsconfig.tests.json`'s `allowJs`), so document shapes with JSDoc instead. Cast DOM lookups when you use element-specific properties: `/** @type {HTMLInputElement} */ (document.getElementById('x')).value`.
 - **Unit tests must live in `src/**/__tests__/`** — `jest.config.js` matches nothing else, so a stray `*.test.ts` is silently never run.
 - **E2E launches need an isolated profile** — use `launchApp()` from `e2e/helpers.ts`; a shared user-data dir leaks tab state between spec files and causes run-order-dependent failures.
 - **Infinite bump loop prevention** — `if: github.actor != 'github-actions[bot]'` on bump-version.

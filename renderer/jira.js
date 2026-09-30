@@ -101,7 +101,7 @@ export function initJira() {
   document.getElementById('jiraCancelSettingsBtn').addEventListener('click', closeSettings);
   document.getElementById('jiraTokenReplaceBtn').addEventListener('click', () => setTokenEditing(true));
   document.getElementById('jiraFetchBtn').addEventListener('click', fetchTicket);
-  document.getElementById('jiraTicketKey').addEventListener('keydown', e => { if (e.key === 'Enter') fetchTicket(); });
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraTicketKey')).addEventListener('keydown', e => { if (e.key === 'Enter') fetchTicket(); });
   document.getElementById('jiraAddBugBtn').addEventListener('click', openBugForm);
   document.getElementById('jiraCancelBugBtn').addEventListener('click', closeBugForm);
   document.getElementById('jiraSubmitBugBtn').addEventListener('click', submitBug);
@@ -126,41 +126,41 @@ function loadAttachPrefs() {
 function saveAttachPrefs() {
   try {
     localStorage.setItem(ATTACH_PREFS_KEY, JSON.stringify({
-      screenshot: document.getElementById('jiraAttachScreenshot').checked,
-      har: document.getElementById('jiraAttachHar').checked,
-      harMinutes: document.getElementById('jiraAttachHarMinutes').value,
-      consoleErrors: document.getElementById('jiraAttachConsole').checked,
-      steps: document.getElementById('jiraAttachSteps').checked,
+      screenshot: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachScreenshot')).checked,
+      har: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachHar')).checked,
+      harMinutes: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachHarMinutes')).value,
+      consoleErrors: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachConsole')).checked,
+      steps: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachSteps')).checked,
     }));
   } catch { /* localStorage unavailable — just don't persist */ }
 }
 
 function applyAttachPrefs() {
   const prefs = loadAttachPrefs() || {};
-  document.getElementById('jiraAttachScreenshot').checked = prefs.screenshot ?? true;
-  document.getElementById('jiraAttachHar').checked = prefs.har ?? true;
-  document.getElementById('jiraAttachHarMinutes').value = prefs.harMinutes ?? '15';
-  document.getElementById('jiraAttachConsole').checked = prefs.consoleErrors ?? true;
-  document.getElementById('jiraAttachSteps').checked = prefs.steps ?? false;
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachScreenshot')).checked = prefs.screenshot ?? true;
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachHar')).checked = prefs.har ?? true;
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachHarMinutes')).value = prefs.harMinutes ?? '15';
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachConsole')).checked = prefs.consoleErrors ?? true;
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachSteps')).checked = prefs.steps ?? false;
 }
 
 function readAttachOptions() {
-  const harChecked = document.getElementById('jiraAttachHar').checked;
-  let minutes = parseInt(document.getElementById('jiraAttachHarMinutes').value, 10);
+  const harChecked = /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachHar')).checked;
+  let minutes = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('jiraAttachHarMinutes')).value, 10);
   if (!Number.isFinite(minutes)) minutes = 15;
   minutes = Math.min(120, Math.max(1, minutes));
   return {
-    screenshot: document.getElementById('jiraAttachScreenshot').checked,
+    screenshot: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachScreenshot')).checked,
     harMinutes: harChecked ? minutes : null,
-    consoleErrors: document.getElementById('jiraAttachConsole').checked,
-    steps: document.getElementById('jiraAttachSteps').checked,
+    consoleErrors: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachConsole')).checked,
+    steps: /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachSteps')).checked,
   };
 }
 
 // The Steps checkbox is disabled (with a title explaining why) when the
 // active tab has no current-or-most-recent recording to attach.
 async function updateStepsAvailability() {
-  const checkbox = document.getElementById('jiraAttachSteps');
+  const checkbox = /** @type {HTMLInputElement} */ (document.getElementById('jiraAttachSteps'));
   let steps = [];
   try { steps = await testerBrowser.tests.getEvidenceSteps(getActiveId()); } catch { /* treat as unavailable */ }
   const hasSteps = Array.isArray(steps) && steps.length > 0;
@@ -194,10 +194,10 @@ async function loadSettings() {
   currentHasToken = !!s.hasToken;
   const configured = s.baseUrl && s.email && currentHasToken;
   document.getElementById('jiraNotConfigured').hidden = !!configured;
-  document.getElementById('jiraBaseUrl').value = s.baseUrl || '';
-  document.getElementById('jiraEmail').value = s.email || '';
-  document.getElementById('jiraProjectKey').value = s.projectKey || '';
-  document.getElementById('jiraIssueType').value = s.issueType || 'Bug';
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraBaseUrl')).value = s.baseUrl || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraEmail')).value = s.email || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraProjectKey')).value = s.projectKey || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraIssueType')).value = s.issueType || 'Bug';
   setTokenEditing(!currentHasToken);
 }
 
@@ -206,8 +206,8 @@ async function loadSettings() {
 // real value could never actually populate.
 function setTokenEditing(editing) {
   document.getElementById('jiraTokenSaved').hidden = editing;
-  document.getElementById('jiraApiToken').hidden = !editing;
-  if (editing) document.getElementById('jiraApiToken').value = '';
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraApiToken')).hidden = !editing;
+  if (editing) /** @type {HTMLInputElement} */ (document.getElementById('jiraApiToken')).value = '';
 }
 
 function openSettings() {
@@ -221,13 +221,13 @@ function closeSettings() {
 }
 
 async function saveSettings() {
-  const tokenInput = document.getElementById('jiraApiToken');
+  const tokenInput = /** @type {HTMLInputElement} */ (document.getElementById('jiraApiToken'));
   const typedToken = tokenInput.hidden ? '' : tokenInput.value.trim();
   const s = {
-    baseUrl: document.getElementById('jiraBaseUrl').value.trim().replace(/\/$/, ''),
-    email: document.getElementById('jiraEmail').value.trim(),
-    projectKey: document.getElementById('jiraProjectKey').value.trim().toUpperCase(),
-    issueType: document.getElementById('jiraIssueType').value.trim() || 'Bug',
+    baseUrl: /** @type {HTMLInputElement} */ (document.getElementById('jiraBaseUrl')).value.trim().replace(/\/$/, ''),
+    email: /** @type {HTMLInputElement} */ (document.getElementById('jiraEmail')).value.trim(),
+    projectKey: /** @type {HTMLInputElement} */ (document.getElementById('jiraProjectKey')).value.trim().toUpperCase(),
+    issueType: /** @type {HTMLInputElement} */ (document.getElementById('jiraIssueType')).value.trim() || 'Bug',
   };
   if (typedToken) s.apiToken = typedToken;
 
@@ -251,7 +251,7 @@ async function saveSettings() {
 }
 
 async function fetchTicket() {
-  const key = document.getElementById('jiraTicketKey').value.trim().toUpperCase();
+  const key = /** @type {HTMLInputElement} */ (document.getElementById('jiraTicketKey')).value.trim().toUpperCase();
   if (!key) return;
   const display = document.getElementById('jiraTicketDisplay');
   display.hidden = false;
@@ -293,10 +293,10 @@ async function fetchTicket() {
 function openBugForm() {
   const form = document.getElementById('jiraBugForm');
   form.hidden = false;
-  const currentUrl = document.getElementById('urlbar')?.value ?? '';
+  const currentUrl = /** @type {HTMLInputElement} */ (document.getElementById('urlbar'))?.value ?? '';
   const currentTitle = getTabTitle(getActiveId()) ?? '';
-  document.getElementById('jiraBugSummary').value = `Bug in ${currentTitle || currentUrl}`;
-  document.getElementById('jiraBugDesc').value =
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraBugSummary')).value = `Bug in ${currentTitle || currentUrl}`;
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('jiraBugDesc')).value =
     `URL: ${currentUrl}\n\nSteps to reproduce:\n1. \n\nExpected:\n\nActual:\n`;
   document.getElementById('jiraBugMsg').textContent = '';
   applyAttachPrefs();
@@ -309,8 +309,8 @@ function closeBugForm() {
 }
 
 async function submitBug() {
-  const summary = document.getElementById('jiraBugSummary').value.trim();
-  const desc = document.getElementById('jiraBugDesc').value.trim();
+  const summary = /** @type {HTMLInputElement} */ (document.getElementById('jiraBugSummary')).value.trim();
+  const desc = /** @type {HTMLTextAreaElement} */ (document.getElementById('jiraBugDesc')).value.trim();
   const msg = document.getElementById('jiraBugMsg');
   if (!summary) {
     msg.textContent = 'Summary is required.';

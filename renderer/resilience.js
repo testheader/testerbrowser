@@ -1,8 +1,11 @@
 /* global testerBrowser */
 import { escHtml } from './utils.js';
 import { getActiveId, refreshTabs } from './tabs.js';
+
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { pollWhileVisible } from './poll.js';
+
+/** @typedef {import('../src/main/resilienceManager').ResilienceType} ResilienceType */
 
 // Request headers/body from the captured call the add-rule form is currently
 // prefilled from — read-only provenance, shown in a rule's edit view once
@@ -20,16 +23,16 @@ let capturedRequestBody    = null;
 // common case (500 error, 100%) so a single click plus Add is enough.
 export function openResilienceFromRequest(method, url, requestHeaders, requestBody) {
   switchConsoleTab('resilience'); // also runs initResilience() if this is the first visit
-  const urlInput = document.getElementById('resUrl');
+  const urlInput = /** @type {HTMLInputElement} */ (document.getElementById('resUrl'));
   if (!urlInput) return;
   urlInput.value = url || '*';
 
-  const typeSel = document.getElementById('resType');
+  const typeSel = /** @type {HTMLSelectElement} */ (document.getElementById('resType'));
   typeSel.value = 'error500';
   document.getElementById('resTypeDesc').textContent = TYPES[0].desc;
   document.getElementById('resLatencyField').classList.add('res-hidden');
   document.getElementById('resReleaseField').classList.add('res-hidden');
-  document.getElementById('resProb').value = '100';
+  /** @type {HTMLInputElement} */ (document.getElementById('resProb')).value = '100';
 
   capturedMethod         = method || null;
   capturedRequestHeaders = requestHeaders || null;
@@ -191,8 +194,8 @@ export function initResilience() {
       </div>
     </div>`;
 
-  const networkSelect = document.getElementById('resNetworkSelect');
-  const cpuSelect      = document.getElementById('resCpuSelect');
+  const networkSelect = /** @type {HTMLSelectElement} */ (document.getElementById('resNetworkSelect'));
+  const cpuSelect      = /** @type {HTMLSelectElement} */ (document.getElementById('resCpuSelect'));
   const customFields    = document.getElementById('resCustomNetworkFields');
 
   networkSelect.addEventListener('change', () => {
@@ -202,18 +205,18 @@ export function initResilience() {
   cpuSelect.addEventListener('change', applyConditionsFromForm);
   document.getElementById('resCustomApplyBtn').addEventListener('click', applyConditionsFromForm);
 
-  document.getElementById('resType').addEventListener('change', (e) => {
-    applyTypeFieldVisibility(e.target.value, document.getElementById('resLatencyField'),
-      document.getElementById('resLatency'), document.getElementById('resLatencyLabel'),
+  /** @type {HTMLSelectElement} */ (document.getElementById('resType')).addEventListener('change', (e) => {
+    applyTypeFieldVisibility(/** @type {HTMLInputElement} */ (e.target).value, document.getElementById('resLatencyField'),
+      /** @type {HTMLInputElement} */ (document.getElementById('resLatency')), document.getElementById('resLatencyLabel'),
       document.getElementById('resReleaseField'));
-    const t = TYPES.find(t => t.value === e.target.value);
+    const t = TYPES.find(t => t.value === /** @type {HTMLInputElement} */ (e.target).value);
     if (t) document.getElementById('resTypeDesc').textContent = t.desc;
   });
 
   // Editing the URL by hand after a "⇒ Resilience" prefill means the rule
   // is no longer scoped to the exact call it was captured from — the method
   // scoping only made sense pinned to that call, so it resets to Any.
-  document.getElementById('resUrl').addEventListener('input', () => {
+  /** @type {HTMLInputElement} */ (document.getElementById('resUrl')).addEventListener('input', () => {
     capturedMethod = null;
     updateMethodChip();
   });
@@ -225,18 +228,19 @@ export function initResilience() {
   document.getElementById('resForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!getActiveId()) return;
-    const type = document.getElementById('resType').value;
+    const type = /** @type {ResilienceType} */ (/** @type {HTMLSelectElement} */ (document.getElementById('resType')).value);
+    /** @type {Omit<import('../src/main/resilienceManager').ResilienceRule, 'hitCount' | 'lastHitAt'>} */
     const rule = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type,
-      urlPattern: document.getElementById('resUrl').value.trim() || '*',
+      urlPattern: /** @type {HTMLInputElement} */ (document.getElementById('resUrl')).value.trim() || '*',
       method: capturedMethod || '*',
-      probability: Math.min(1, Math.max(0.01, parseInt(document.getElementById('resProb').value, 10) / 100)),
-      latencyMs: parseInt(document.getElementById('resLatency').value, 10) || (type === 'stall504' ? 30_000 : 2000),
+      probability: Math.min(1, Math.max(0.01, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resProb')).value, 10) / 100)),
+      latencyMs: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resLatency')).value, 10) || (type === 'stall504' ? 30_000 : 2000),
       enabled: true,
     };
     if (type === 'hang') {
-      const releaseSec = Math.min(600, Math.max(0, parseInt(document.getElementById('resRelease').value, 10) || 0));
+      const releaseSec = Math.min(600, Math.max(0, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resRelease')).value, 10) || 0));
       rule.releaseAfterMs = releaseSec * 1000;
     }
     if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
@@ -276,8 +280,8 @@ export async function loadRules() {
 // brand-new tab's real, unthrottled state.
 export async function loadConditions() {
   if (!getActiveId()) return;
-  const networkSelect = document.getElementById('resNetworkSelect');
-  const cpuSelect      = document.getElementById('resCpuSelect');
+  const networkSelect = /** @type {HTMLSelectElement} */ (document.getElementById('resNetworkSelect'));
+  const cpuSelect      = /** @type {HTMLSelectElement} */ (document.getElementById('resCpuSelect'));
   const customFields   = document.getElementById('resCustomNetworkFields');
   if (!networkSelect) return; // panel not yet built
   const c = (await testerBrowser.resilience.getConditions(getActiveId())) || { network: 'none', cpuRate: 1 };
@@ -289,23 +293,24 @@ export async function loadConditions() {
   } else {
     networkSelect.value = 'custom';
     customFields.classList.remove('res-hidden');
-    document.getElementById('resCustomLatency').value  = c.network.custom.latency;
-    document.getElementById('resCustomDownload').value = c.network.custom.downloadKbps;
-    document.getElementById('resCustomUpload').value   = c.network.custom.uploadKbps;
+    /** @type {HTMLInputElement} */ (document.getElementById('resCustomLatency')).value  = c.network.custom.latency;
+    /** @type {HTMLInputElement} */ (document.getElementById('resCustomDownload')).value = c.network.custom.downloadKbps;
+    /** @type {HTMLInputElement} */ (document.getElementById('resCustomUpload')).value   = c.network.custom.uploadKbps;
   }
 }
 
 async function applyConditionsFromForm() {
   if (!getActiveId()) return;
-  const networkSelect = document.getElementById('resNetworkSelect');
-  const cpuSelect      = document.getElementById('resCpuSelect');
+  const networkSelect = /** @type {HTMLSelectElement} */ (document.getElementById('resNetworkSelect'));
+  const cpuSelect      = /** @type {HTMLSelectElement} */ (document.getElementById('resCpuSelect'));
+  /** @type {import('../src/main/networkConditions').NetworkSelection} */
   const network = networkSelect.value === 'custom'
     ? { custom: {
-        latency:      parseInt(document.getElementById('resCustomLatency').value, 10) || 0,
-        downloadKbps: parseInt(document.getElementById('resCustomDownload').value, 10) || 0,
-        uploadKbps:   parseInt(document.getElementById('resCustomUpload').value, 10) || 0,
+        latency:      parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resCustomLatency')).value, 10) || 0,
+        downloadKbps: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resCustomDownload')).value, 10) || 0,
+        uploadKbps:   parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resCustomUpload')).value, 10) || 0,
       } }
-    : networkSelect.value;
+    : /** @type {import('../src/main/networkConditions').NetworkPresetKey} */ (networkSelect.value);
   await testerBrowser.resilience.setConditions(getActiveId(), { network, cpuRate: Number(cpuSelect.value) });
   // setConditions() only updates main-process state — nothing pushes a
   // session-list refresh to the renderer on its own (unlike title/favicon,
@@ -359,7 +364,7 @@ function buildRuleRow(rule) {
     <button class="res-btn res-del-btn" title="Remove" aria-label="Remove rule">✕</button>`;
 
   row.querySelector('.res-enable').addEventListener('change', async (e) => {
-    await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, e.target.checked);
+    await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, /** @type {HTMLInputElement} */ (e.target).checked);
     await loadRules();
   });
   row.querySelector('.res-del-btn').addEventListener('click', async () => {
@@ -408,9 +413,9 @@ function buildEditRow(rule) {
     <button class="res-btn res-cancel-btn" title="Cancel">Cancel</button>
     ${buildProvenanceHtml(rule)}`;
 
-  const typeSel = row.querySelector('.res-edit-type');
-  const latencyInput = row.querySelector('.res-edit-latency');
-  const releaseInput = row.querySelector('.res-edit-release');
+  const typeSel = /** @type {HTMLSelectElement} */ (row.querySelector('.res-edit-type'));
+  const latencyInput = /** @type {HTMLInputElement} */ (row.querySelector('.res-edit-latency'));
+  const releaseInput = /** @type {HTMLInputElement} */ (row.querySelector('.res-edit-release'));
   typeSel.addEventListener('change', () => {
     latencyInput.classList.toggle('res-hidden', !LATENCY_FIELD_TYPES.includes(typeSel.value));
     latencyInput.title = typeSel.value === 'stall504' ? 'Stall ms' : 'Delay ms';
@@ -421,11 +426,11 @@ function buildEditRow(rule) {
     row.replaceWith(buildRuleRow(rule));
   });
   row.querySelector('.res-save-btn').addEventListener('click', async () => {
-    const type = typeSel.value;
+    const type = /** @type {ResilienceType} */ (typeSel.value);
     const patch = {
       type,
-      urlPattern: row.querySelector('.res-edit-url').value.trim() || '*',
-      probability: Math.min(1, Math.max(0.01, parseInt(row.querySelector('.res-edit-prob').value, 10) / 100)),
+      urlPattern: /** @type {HTMLInputElement} */ (row.querySelector('.res-edit-url')).value.trim() || '*',
+      probability: Math.min(1, Math.max(0.01, parseInt(/** @type {HTMLInputElement} */ (row.querySelector('.res-edit-prob')).value, 10) / 100)),
       latencyMs: parseInt(latencyInput.value, 10) || (type === 'stall504' ? 30_000 : 2000),
     };
     if (type === 'hang') {
@@ -441,7 +446,7 @@ function buildEditRow(rule) {
 // Jumps to the Network tab and filters it down to calls matching this rule's
 // URL pattern, so the user can see exactly which traffic the rule affects.
 function viewRuleInNetwork(rule) {
-  const filterInput = document.getElementById('networkFilterText');
+  const filterInput = /** @type {HTMLInputElement} */ (document.getElementById('networkFilterText'));
   if (filterInput) {
     // The network filter matches plain substrings, not globs — strip glob
     // wildcards so a pattern like "*/api/*" becomes the substring "/api/".

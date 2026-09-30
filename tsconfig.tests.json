@@ -1,0 +1,11 @@
+{
+  // Type-checks all of src/ including the unit tests (npm run typecheck — no
+  // output). Tests import renderer/*.js directly, so allowJs lets TypeScript
+  // read their types straight from the JS (plus its JSDoc) — no hand-written
+  // .d.ts copies to drift out of date. tsconfig.json (the build) excludes the
+  // tests, since its rootDir is src/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "allowJs": true, "rootDir": "." },
+  "include": ["src/**/*"],
+  "exclude": []
+}

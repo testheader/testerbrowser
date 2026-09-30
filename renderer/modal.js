@@ -47,6 +47,11 @@ function ensureEscapeListener() {
 // accidental click outside the modal, but Escape still closes it); a modal
 // wanting neither (crash report — a "the app just crashed" notice you don't
 // want dismissed by an errant click OR key) simply never calls initModal().
+/**
+ * @param {string} overlayId
+ * @param {() => unknown} close
+ * @param {{ confirmClose?: () => boolean | Promise<boolean>, backdrop?: boolean }} [opts]
+ */
 export function initModal(overlayId, close, { confirmClose, backdrop = true } = {}) {
   ensureEscapeListener();
   registry.set(overlayId, { close, confirmClose });

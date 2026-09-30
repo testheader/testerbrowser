@@ -26,22 +26,22 @@ export async function openBugReport() {
   const captured = await testerBrowser.bugReport.captureScreenshot();
   await openModal('bugReportOverlay');
   resetForm();
-  document.getElementById('bugReportArea').value = AREA_BY_CONSOLE_TAB[getActiveConsoleTab()] || 'Other';
+  /** @type {HTMLSelectElement} */ (document.getElementById('bugReportArea')).value = AREA_BY_CONSOLE_TAB[getActiveConsoleTab()] || 'Other';
   setScreenshot(captured);
 
   const diag = await testerBrowser.bugReport.getDiagnostics();
-  document.getElementById('bugReportDiagPreview').value = formatDiagnostics(diag);
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('bugReportDiagPreview')).value = formatDiagnostics(diag);
 }
 
 function setScreenshot(b64) {
   screenshotB64 = b64 || null;
-  const img = document.getElementById('bugReportShotPreview');
+  const img = /** @type {HTMLImageElement} */ (document.getElementById('bugReportShotPreview'));
   if (screenshotB64) img.src = `data:image/jpeg;base64,${screenshotB64}`;
   else img.removeAttribute('src');
 }
 
 async function retakeScreenshot() {
-  const btn = document.getElementById('bugReportRetakeBtn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('bugReportRetakeBtn'));
   btn.disabled = true;
   await closeModal('bugReportOverlay');
   // capturePage() reads whatever is currently composited, so wait a couple of
@@ -66,7 +66,7 @@ function uploadScreenshot(file) {
       canvas.getContext('2d').drawImage(image, 0, 0);
       setScreenshot(canvas.toDataURL('image/jpeg', 0.85).split(',')[1] || '');
     };
-    image.src = reader.result;
+    image.src = /** @type {string} */ (reader.result);
   };
   reader.readAsDataURL(file);
 }
@@ -90,10 +90,10 @@ function formatDiagnostics(d) {
 function resetForm() {
   document.getElementById('bugReportFormView').hidden = false;
   document.getElementById('bugReportConfirmView').hidden = true;
-  document.getElementById('bugReportSubmitBtn').hidden = false;
+  /** @type {HTMLButtonElement} */ (document.getElementById('bugReportSubmitBtn')).hidden = false;
   document.getElementById('bugReportDoneBtn').hidden = true;
   document.getElementById('bugReportShowScreenshotBtn').hidden = true;
-  document.getElementById('bugReportDesc').value = '';
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('bugReportDesc')).value = '';
   const msg = document.getElementById('bugReportMsg');
   msg.textContent = '';
   msg.className = '';
@@ -104,16 +104,16 @@ function closeBugReport() {
 }
 
 async function submitBugReport() {
-  const area = document.getElementById('bugReportArea').value;
-  const description = document.getElementById('bugReportDesc').value.trim();
-  const diagnostics = document.getElementById('bugReportDiagPreview').value;
+  const area = /** @type {HTMLSelectElement} */ (document.getElementById('bugReportArea')).value;
+  const description = /** @type {HTMLTextAreaElement} */ (document.getElementById('bugReportDesc')).value.trim();
+  const diagnostics = /** @type {HTMLTextAreaElement} */ (document.getElementById('bugReportDiagPreview')).value;
   const msg = document.getElementById('bugReportMsg');
   if (!description) {
     msg.textContent = 'Please describe what happened.';
     msg.className = 'err';
     return;
   }
-  const btn = document.getElementById('bugReportSubmitBtn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('bugReportSubmitBtn'));
   btn.disabled = true;
   msg.textContent = 'Submitting…';
   msg.className = '';
@@ -149,7 +149,7 @@ async function submitBugReport() {
   document.getElementById('bugReportConfirmText').textContent = text;
   const link = document.getElementById('bugReportLink');
   link.dataset.url = result.url;
-  document.getElementById('bugReportSubmitBtn').hidden = true;
+  /** @type {HTMLButtonElement} */ (document.getElementById('bugReportSubmitBtn')).hidden = true;
   document.getElementById('bugReportDoneBtn').hidden = false;
 }
 
@@ -167,7 +167,7 @@ function handleBugReportKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (!document.getElementById('bugReportSubmitBtn').hidden) submitBugReport();
+    if (!/** @type {HTMLButtonElement} */ (document.getElementById('bugReportSubmitBtn')).hidden) submitBugReport();
   }
 }
 
@@ -178,21 +178,21 @@ export function initBugReport() {
   document.getElementById('bugReportOverlay').onclick = (e) => {
     if (e.target === document.getElementById('bugReportOverlay')) closeBugReport();
   };
-  document.getElementById('bugReportSubmitBtn').onclick = submitBugReport;
-  document.getElementById('bugReportRetakeBtn').onclick = retakeScreenshot;
+  /** @type {HTMLButtonElement} */ (document.getElementById('bugReportSubmitBtn')).onclick = submitBugReport;
+  /** @type {HTMLButtonElement} */ (document.getElementById('bugReportRetakeBtn')).onclick = retakeScreenshot;
   document.getElementById('bugReportUploadBtn').onclick = () => document.getElementById('bugReportShotFile').click();
   document.getElementById('bugReportShotFile').onchange = (e) => {
-    const file = e.target.files[0];
+    const file = /** @type {HTMLInputElement} */ (e.target).files[0];
     if (file) uploadScreenshot(file);
-    e.target.value = '';
+    /** @type {HTMLInputElement} */ (e.target).value = '';
   };
   document.getElementById('bugReportLink').onclick = (e) => {
     e.preventDefault();
-    const url = e.currentTarget.dataset.url;
+    const url = /** @type {HTMLElement} */ (e.currentTarget).dataset.url;
     if (url) testerBrowser.app.openExternal(url);
   };
   document.getElementById('bugReportShowScreenshotBtn').onclick = (e) => {
-    const path = e.currentTarget.dataset.path;
+    const path = /** @type {HTMLElement} */ (e.currentTarget).dataset.path;
     if (path) testerBrowser.bugReport.revealScreenshot(path);
   };
 

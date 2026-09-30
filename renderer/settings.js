@@ -36,16 +36,16 @@ export async function openSettings() {
   await openModal('settingsOverlay');
   applyUpdateStatus(await testerBrowser.app.getVersionInfo());
   const settings = await testerBrowser.settings.get();
-  document.getElementById('redactHeadersToggle').checked = !!settings.redactSensitiveHeaders;
-  document.getElementById('debugModeToggle').checked = !!settings.debugMode;
-  document.getElementById('autoOpenDownloadsPanelToggle').checked = !!settings.autoOpenDownloadsPanel;
-  document.getElementById('autoInstallWhenIdleToggle').checked = !!settings.autoInstallWhenIdle;
-  document.getElementById('allowRealPopupsToggle').checked = !!settings.allowRealPopups;
-  document.getElementById('searchEngineSelect').value = settings.searchEngine || 'google';
-  document.getElementById('recorderMaxEventsInput').value = settings.recorderMaxEvents ?? 20000;
-  document.getElementById('recordingRetentionDaysInput').value = settings.recordingRetentionDays ?? 30;
+  /** @type {HTMLInputElement} */ (document.getElementById('redactHeadersToggle')).checked = !!settings.redactSensitiveHeaders;
+  /** @type {HTMLInputElement} */ (document.getElementById('debugModeToggle')).checked = !!settings.debugMode;
+  /** @type {HTMLInputElement} */ (document.getElementById('autoOpenDownloadsPanelToggle')).checked = !!settings.autoOpenDownloadsPanel;
+  /** @type {HTMLInputElement} */ (document.getElementById('autoInstallWhenIdleToggle')).checked = !!settings.autoInstallWhenIdle;
+  /** @type {HTMLInputElement} */ (document.getElementById('allowRealPopupsToggle')).checked = !!settings.allowRealPopups;
+  /** @type {HTMLSelectElement} */ (document.getElementById('searchEngineSelect')).value = settings.searchEngine || 'google';
+  /** @type {HTMLInputElement} */ (document.getElementById('recorderMaxEventsInput')).value = settings.recorderMaxEvents ?? 20000;
+  /** @type {HTMLInputElement} */ (document.getElementById('recordingRetentionDaysInput')).value = settings.recordingRetentionDays ?? 30;
 
-  document.getElementById('themeSelect').value = getStoredScheme();
+  /** @type {HTMLSelectElement} */ (document.getElementById('themeSelect')).value = getStoredScheme();
 
   await refreshGithubAuthStatus();
 }
@@ -123,42 +123,42 @@ export function initSettings() {
     setTimeout(() => { btn.textContent = prev; }, 1500);
   };
 
-  document.getElementById('redactHeadersToggle').addEventListener('change', (e) => {
-    testerBrowser.settings.set({ redactSensitiveHeaders: e.target.checked });
+  /** @type {HTMLInputElement} */ (document.getElementById('redactHeadersToggle')).addEventListener('change', (e) => {
+    testerBrowser.settings.set({ redactSensitiveHeaders: /** @type {HTMLInputElement} */ (e.target).checked });
   });
 
-  document.getElementById('debugModeToggle').addEventListener('change', (e) => {
-    testerBrowser.settings.set({ debugMode: e.target.checked });
+  /** @type {HTMLInputElement} */ (document.getElementById('debugModeToggle')).addEventListener('change', (e) => {
+    testerBrowser.settings.set({ debugMode: /** @type {HTMLInputElement} */ (e.target).checked });
   });
 
-  document.getElementById('autoInstallWhenIdleToggle').addEventListener('change', (e) => {
-    testerBrowser.settings.set({ autoInstallWhenIdle: e.target.checked });
+  /** @type {HTMLInputElement} */ (document.getElementById('autoInstallWhenIdleToggle')).addEventListener('change', (e) => {
+    testerBrowser.settings.set({ autoInstallWhenIdle: /** @type {HTMLInputElement} */ (e.target).checked });
   });
-  document.getElementById('autoOpenDownloadsPanelToggle').addEventListener('change', (e) => {
-    testerBrowser.settings.set({ autoOpenDownloadsPanel: e.target.checked });
+  /** @type {HTMLInputElement} */ (document.getElementById('autoOpenDownloadsPanelToggle')).addEventListener('change', (e) => {
+    testerBrowser.settings.set({ autoOpenDownloadsPanel: /** @type {HTMLInputElement} */ (e.target).checked });
   });
-  document.getElementById('allowRealPopupsToggle').addEventListener('change', (e) => {
-    testerBrowser.settings.set({ allowRealPopups: e.target.checked });
-  });
-
-  document.getElementById('searchEngineSelect').addEventListener('change', (e) => {
-    testerBrowser.settings.set({ searchEngine: e.target.value });
+  /** @type {HTMLInputElement} */ (document.getElementById('allowRealPopupsToggle')).addEventListener('change', (e) => {
+    testerBrowser.settings.set({ allowRealPopups: /** @type {HTMLInputElement} */ (e.target).checked });
   });
 
-  document.getElementById('recorderMaxEventsInput').addEventListener('change', async (e) => {
-    const updated = await testerBrowser.settings.set({ recorderMaxEvents: Number(e.target.value) });
+  /** @type {HTMLSelectElement} */ (document.getElementById('searchEngineSelect')).addEventListener('change', (e) => {
+    testerBrowser.settings.set({ searchEngine: /** @type {HTMLInputElement} */ (e.target).value });
+  });
+
+  /** @type {HTMLInputElement} */ (document.getElementById('recorderMaxEventsInput')).addEventListener('change', async (e) => {
+    const updated = await testerBrowser.settings.set({ recorderMaxEvents: Number(/** @type {HTMLInputElement} */ (e.target).value) });
     // The main process clamps out-of-range values — reflect whatever it
     // actually stored, not necessarily what was typed.
-    e.target.value = updated.recorderMaxEvents;
+    /** @type {HTMLInputElement} */ (e.target).value = updated.recorderMaxEvents;
   });
 
-  document.getElementById('recordingRetentionDaysInput').addEventListener('change', async (e) => {
-    const updated = await testerBrowser.settings.set({ recordingRetentionDays: Number(e.target.value) });
-    e.target.value = updated.recordingRetentionDays;
+  /** @type {HTMLInputElement} */ (document.getElementById('recordingRetentionDaysInput')).addEventListener('change', async (e) => {
+    const updated = await testerBrowser.settings.set({ recordingRetentionDays: Number(/** @type {HTMLInputElement} */ (e.target).value) });
+    /** @type {HTMLInputElement} */ (e.target).value = updated.recordingRetentionDays;
   });
 
-  document.getElementById('themeSelect').addEventListener('change', (e) => {
-    applyTheme(e.target.value);
+  /** @type {HTMLSelectElement} */ (document.getElementById('themeSelect')).addEventListener('change', (e) => {
+    applyTheme(/** @type {HTMLInputElement} */ (e.target).value);
   });
 
   document.getElementById('githubSignInBtn').onclick = async () => {

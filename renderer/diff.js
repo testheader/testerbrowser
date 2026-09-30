@@ -118,13 +118,13 @@ export function initDiff() {
   renderIgnoreChips();
   renderBody();
   populatePickers();
-  document.getElementById('diffMatchMode').value = matchMode;
+  /** @type {HTMLSelectElement} */ (document.getElementById('diffMatchMode')).value = matchMode;
 
   document.getElementById('diffRunBtn').addEventListener('click', runDiff);
-  document.getElementById('diffHarBtn').addEventListener('click', exportDiffHar);
+  /** @type {HTMLButtonElement} */ (document.getElementById('diffHarBtn')).addEventListener('click', exportDiffHar);
   document.getElementById('diffGroupToggle').addEventListener('change', onGroupToggleChanged);
   document.getElementById('diffResetBtn').addEventListener('click', resetDiff);
-  document.getElementById('diffFilterText').addEventListener('input', renderBody);
+  /** @type {HTMLInputElement} */ (document.getElementById('diffFilterText')).addEventListener('input', renderBody);
   wirePillGroup(document.getElementById('diffCatPills'), renderBody);
   wirePillGroup(document.getElementById('diffStatusPills'), renderBody);
   const helpBtn = document.getElementById('diffHelpBtn');
@@ -142,14 +142,14 @@ export function initDiff() {
     help.style.maxHeight = `${Math.max(80, window.innerHeight - r.bottom - 12)}px`;
   });
 
-  document.getElementById('diffMatchMode').addEventListener('change', (e) => {
-    matchMode = e.target.value;
+  /** @type {HTMLSelectElement} */ (document.getElementById('diffMatchMode')).addEventListener('change', (e) => {
+    matchMode = /** @type {HTMLInputElement} */ (e.target).value;
     if (rawEventsA.length || rawEventsB.length) recomputeFromRaw();
   });
 
   // 'change' fires on Enter and on blur, so typing a param and tabbing away
   // adds it too — nothing typed is silently lost.
-  const ignoreInput = document.getElementById('diffIgnoreParams');
+  const ignoreInput = /** @type {HTMLInputElement} */ (document.getElementById('diffIgnoreParams'));
   ignoreInput.addEventListener('change', () => addIgnoreParams(ignoreInput.value));
   document.getElementById('diffIgnoreAddBtn').addEventListener('click', () => {
     addIgnoreParams(ignoreInput.value);
@@ -159,7 +159,7 @@ export function initDiff() {
     setIgnoreParams([...DEFAULT_IGNORED_PARAMS]);
   });
   document.getElementById('diffIgnoreChips').addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-param]');
+    const btn = /** @type {HTMLElement} */ (e.target).closest('button[data-param]');
     if (!btn) return;
     const idx = ignoreParams.indexOf(btn.dataset.param);
     setIgnoreParams(ignoreParams.filter(p => p !== btn.dataset.param));
@@ -171,11 +171,11 @@ export function initDiff() {
   // Delegated: rows are rebuilt from scratch on every render, so per-row
   // listeners would need re-wiring each time — this survives that.
   document.getElementById('diffBody').addEventListener('click', (e) => {
-    const copyBtn = e.target.closest('button[data-curl]');
+    const copyBtn = /** @type {HTMLElement} */ (e.target).closest('button[data-curl]');
     if (copyBtn) { copyCurl(copyBtn.dataset.key, copyBtn.dataset.curl); return; }
-    if (e.target.closest('#diffShowAllBtn')) { showAllRows(); return; }
-    if (e.target.closest('.diff-detail-row')) return; // let text in the detail be selected
-    const row = e.target.closest('tr.diff-row');
+    if (/** @type {HTMLElement} */ (e.target).closest('#diffShowAllBtn')) { showAllRows(); return; }
+    if (/** @type {HTMLElement} */ (e.target).closest('.diff-detail-row')) return; // let text in the detail be selected
+    const row = /** @type {HTMLElement} */ (e.target).closest('tr.diff-row');
     if (row && row.dataset.expandable === '1') toggleExpanded(row.dataset.key);
   });
 }
@@ -183,7 +183,7 @@ export function initDiff() {
 // ── Ignored query params ────────────────────────────────────────────────
 
 function addIgnoreParams(text) {
-  const input = document.getElementById('diffIgnoreParams');
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('diffIgnoreParams'));
   input.value = '';
   const lower = new Set(ignoreParams.map(p => p.toLowerCase()));
   const toAdd = [];
@@ -225,7 +225,7 @@ function showAllRows() {
     pill.classList.add('on');
     pill.setAttribute('aria-pressed', 'true');
   }
-  document.getElementById('diffFilterText').value = '';
+  /** @type {HTMLInputElement} */ (document.getElementById('diffFilterText')).value = '';
   renderBody();
 }
 
@@ -252,8 +252,8 @@ function resetDiff() {
   truncatedSides = [];
   expandedKeys = new Set();
   bodyDiffCache = new WeakMap();
-  document.getElementById('diffFilterText').value = '';
-  document.getElementById('diffHarBtn').disabled = true;
+  /** @type {HTMLInputElement} */ (document.getElementById('diffFilterText')).value = '';
+  /** @type {HTMLButtonElement} */ (document.getElementById('diffHarBtn')).disabled = true;
   renderBody();
 }
 
@@ -265,7 +265,7 @@ function onGroupToggleChanged(e) {
 }
 
 export async function refreshDiffPickers() {
-  const pickA = document.getElementById('diffPickA');
+  const pickA = /** @type {HTMLSelectElement} */ (document.getElementById('diffPickA'));
   if (!pickA) return; // diff panel not yet initialised
   await populatePickers();
 }
@@ -278,10 +278,10 @@ async function populatePickers() {
 }
 
 async function runDiff() {
-  const idA = document.getElementById('diffPickA')?.value;
-  const idB = document.getElementById('diffPickB')?.value;
+  const idA = /** @type {HTMLSelectElement} */ (document.getElementById('diffPickA'))?.value;
+  const idB = /** @type {HTMLSelectElement} */ (document.getElementById('diffPickB'))?.value;
   const body = document.getElementById('diffBody');
-  const harBtn = document.getElementById('diffHarBtn');
+  const harBtn = /** @type {HTMLButtonElement} */ (document.getElementById('diffHarBtn'));
   if (!idA || !idB) { body.innerHTML = '<div class="diff-hint diff-hint-warn" role="alert">Pick both Session A and Session B first.</div>'; return; }
   if (idA === idB) { body.innerHTML = '<div class="diff-hint diff-hint-warn" role="alert">Pick two different sessions.</div>'; return; }
 
@@ -330,7 +330,7 @@ function computeDiffRowsAndRender() {
   lastDiffRows = computeDiffRows(rawMapA, rawMapB, { groupDuplicates, ignoreHeaders: DEFAULT_IGNORED_HEADERS });
   bodyDiffCache = new WeakMap();
   renderBody();
-  const harBtn = document.getElementById('diffHarBtn');
+  const harBtn = /** @type {HTMLButtonElement} */ (document.getElementById('diffHarBtn'));
   if (harBtn) harBtn.disabled = lastDiffRows.length === 0;
 }
 
@@ -398,7 +398,7 @@ function renderDiffTable(body) {
   const visible = filterDiffRows(lastDiffRows, {
     buckets: activePillValues(document.getElementById('diffCatPills'), 'cat'),
     statusClasses: activePillValues(document.getElementById('diffStatusPills'), 'status'),
-    text: document.getElementById('diffFilterText').value,
+    text: /** @type {HTMLInputElement} */ (document.getElementById('diffFilterText')).value,
   });
 
   const showAllBtn = '<button type="button" class="diff-link-btn" id="diffShowAllBtn">Show all</button>';

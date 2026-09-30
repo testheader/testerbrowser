@@ -230,8 +230,8 @@ function isBookmarkableUrl(url) {
 }
 
 export function updateBookmarkStar() {
-  const starBtn      = document.getElementById('bookmarkBtn');
-  const currentUrl   = document.getElementById('urlbar').value;
+  const starBtn      = /** @type {HTMLButtonElement} */ (document.getElementById('bookmarkBtn'));
+  const currentUrl   = /** @type {HTMLInputElement} */ (document.getElementById('urlbar')).value;
   const bookmarkable = isBookmarkableUrl(currentUrl);
   const isBookmarked = bookmarkable && bookmarks.some(b => b.url === currentUrl);
   starBtn.innerHTML  = isBookmarked ? '&#9733;' : '&#9734;';
@@ -245,7 +245,7 @@ export function updateBookmarkStar() {
 }
 
 export async function toggleBookmark() {
-  const url = document.getElementById('urlbar').value;
+  const url = /** @type {HTMLInputElement} */ (document.getElementById('urlbar')).value;
   if (!isBookmarkableUrl(url)) return;
   const activeId = getActiveId();
   const tabEl    = document.querySelector(`.tab[data-id="${activeId}"] .tab-name`);
@@ -266,5 +266,5 @@ export function toggleBookmarksBar() {
 }
 
 export function initBookmarks() {
-  document.getElementById('bookmarkBtn').onclick = () => toggleBookmark();
+  /** @type {HTMLButtonElement} */ (document.getElementById('bookmarkBtn')).onclick = () => toggleBookmark();
 }

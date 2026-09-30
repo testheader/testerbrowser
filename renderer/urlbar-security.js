@@ -130,7 +130,7 @@ export function initUrlbarSecurity() {
   });
   document.addEventListener('click', (e) => {
     const popover = document.getElementById('securityPopover');
-    if (!popover.contains(e.target) && e.target !== lock) closeSecurityPopover();
+    if (!popover.contains(/** @type {Node} */ (e.target)) && e.target !== lock) closeSecurityPopover();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeSecurityPopover();

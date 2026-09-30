@@ -38,7 +38,7 @@ export function applyTheme(scheme) {
     btn.classList.toggle('theme-system', scheme === 'system');
   }
 
-  const select = document.getElementById('themeSelect');
+  const select = /** @type {HTMLSelectElement} */ (document.getElementById('themeSelect'));
   if (select && select.value !== scheme) select.value = scheme;
 
   // Session views render their own pages (newtab) and need to be told.

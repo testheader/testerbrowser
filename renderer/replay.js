@@ -47,8 +47,8 @@ function readCookiesTable() {
   const pairs     = [];
   const container = document.getElementById('replayCookiesTable');
   for (const row of container.querySelectorAll('.kv-row')) {
-    const k = row.querySelector('.kv-key').value.trim();
-    const v = row.querySelector('.kv-val').value.trim();
+    const k = /** @type {HTMLInputElement} */ (row.querySelector('.kv-key')).value.trim();
+    const v = /** @type {HTMLInputElement} */ (row.querySelector('.kv-val')).value.trim();
     if (k) pairs.push(`${k}=${v}`);
   }
   return pairs.join('; ');
@@ -77,10 +77,10 @@ export async function openReplay(evt, sessionId) {
   const url      = req.url    || '';
   const allHdrs  = req.headers || {};
 
-  const methodSel = document.getElementById('replayMethod');
+  const methodSel = /** @type {HTMLSelectElement} */ (document.getElementById('replayMethod'));
   methodSel.value = ['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].includes(method) ? method : 'GET';
-  document.getElementById('replayUrl').value    = url;
-  document.getElementById('replayBody').value   = req.postData || '';
+  /** @type {HTMLInputElement} */ (document.getElementById('replayUrl')).value    = url;
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('replayBody')).value   = req.postData || '';
   document.getElementById('replayResponse').innerHTML = '';
   document.getElementById('replaySpinner').classList.remove('visible');
   lastReplayResult = null;
@@ -137,7 +137,7 @@ export async function openReplay(evt, sessionId) {
   try { reqHost = new URL(url.startsWith('http') ? url : 'https://' + url).hostname; } catch {}
   sessionPick.dataset.reqHost = reqHost;
 
-  await openModal('replayOverlay', () => document.getElementById('replayUrl').focus());
+  await openModal('replayOverlay', () => /** @type {HTMLInputElement} */ (document.getElementById('replayUrl')).focus());
 }
 
 function closeReplay() {
@@ -154,10 +154,10 @@ export function initReplay() {
     addKvRow(document.getElementById('replayCookiesTable'), '', '');
 
   document.getElementById('replayCookieSessionPick').onchange = async (e) => {
-    const id = e.target.value;
+    const id = /** @type {HTMLInputElement} */ (e.target).value;
     if (!id) return;
     try {
-      const reqHost = e.target.dataset.reqHost || '';
+      const reqHost = /** @type {HTMLElement} */ (e.target).dataset.reqHost || '';
       const cookies = await testerBrowser.sessions.getCookies(id);
       const relevant = reqHost ? cookies.filter(c => cookieMatchesDomain(c, reqHost)) : cookies;
       const ckTable = document.getElementById('replayCookiesTable');
@@ -167,7 +167,7 @@ export function initReplay() {
   };
 
   document.getElementById('replayFormatBody').onclick = () => {
-    const ta  = document.getElementById('replayBody');
+    const ta  = /** @type {HTMLTextAreaElement} */ (document.getElementById('replayBody'));
     const raw = ta.value.trim();
     if (!raw) return;
     try { ta.value = JSON.stringify(JSON.parse(raw), null, 2); return; } catch {}
@@ -178,15 +178,15 @@ export function initReplay() {
   document.getElementById('replayCloseXBtn').onclick = closeReplay;
 
   document.getElementById('sendReplayBtn').onclick = async () => {
-    const method = document.getElementById('replayMethod').value;
-    const url    = document.getElementById('replayUrl').value.trim();
-    const body   = document.getElementById('replayBody').value;
+    const method = /** @type {HTMLSelectElement} */ (document.getElementById('replayMethod')).value;
+    const url    = /** @type {HTMLInputElement} */ (document.getElementById('replayUrl')).value.trim();
+    const body   = /** @type {HTMLTextAreaElement} */ (document.getElementById('replayBody')).value;
     if (!url) return;
 
     const headers = getEditorRequestHeaders();
-    const timeoutInput = document.getElementById('replayTimeout');
+    const timeoutInput = /** @type {HTMLInputElement} */ (document.getElementById('replayTimeout'));
     const timeoutS = Math.min(600, Math.max(1, parseInt(timeoutInput.value, 10) || 30));
-    timeoutInput.value = timeoutS;
+    timeoutInput.value = String(timeoutS);
 
     const spinner = document.getElementById('replaySpinner');
     const resArea = document.getElementById('replayResponse');
@@ -264,8 +264,8 @@ export function initReplay() {
   };
 
   document.getElementById('replayToMockBtn').onclick = () => {
-    const method  = document.getElementById('replayMethod').value;
-    const url     = document.getElementById('replayUrl').value.trim();
+    const method  = /** @type {HTMLSelectElement} */ (document.getElementById('replayMethod')).value;
+    const url     = /** @type {HTMLInputElement} */ (document.getElementById('replayUrl')).value.trim();
     const headers = getEditorRequestHeaders();
     closeReplay();
     if (lastReplayResult) {
@@ -285,10 +285,10 @@ export function initReplay() {
   };
 
   document.getElementById('replayToResilienceBtn').onclick = () => {
-    const method  = document.getElementById('replayMethod').value;
-    const url     = document.getElementById('replayUrl').value.trim();
+    const method  = /** @type {HTMLSelectElement} */ (document.getElementById('replayMethod')).value;
+    const url     = /** @type {HTMLInputElement} */ (document.getElementById('replayUrl')).value.trim();
     const headers = getEditorRequestHeaders();
-    const body    = document.getElementById('replayBody').value;
+    const body    = /** @type {HTMLTextAreaElement} */ (document.getElementById('replayBody')).value;
     closeReplay();
     openResilienceFromRequest(method, url, headers, body || null);
   };

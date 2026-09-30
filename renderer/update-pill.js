@@ -50,7 +50,7 @@ export function initUpdatePill() {
 
   document.addEventListener('click', (e) => {
     if (!isPopoverOpen()) return;
-    if (!document.getElementById('updateReadyWrapper').contains(e.target)) setPopoverOpen(false);
+    if (!document.getElementById('updateReadyWrapper').contains(/** @type {Node} */ (e.target))) setPopoverOpen(false);
   });
 
   testerBrowser.app.onUpdateStatus(({ status, latest }) => {

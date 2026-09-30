@@ -135,6 +135,7 @@ function renderDetailContent() {
   // that reproduces this exact response; actionReqEvt is the raw
   // network-request event Replay needs (it re-derives method/url/headers/body
   // from the payload itself rather than from mockData).
+  /** @type {{ method: string, url: string, requestHeaders: Record<string, string>, requestBody: string | null, statusCode?: number, responseHeaders?: Record<string, string>, body?: string, bodyUnavailable?: boolean } | null} */
   let mockData = null;
   let actionReqEvt = null;
 

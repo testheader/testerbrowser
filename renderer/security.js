@@ -231,9 +231,9 @@ export function initSecurity() {
     <div class="sec-results" id="secResults">
       <div class="sec-hint">Click Scan to analyse headers and cookies for the current page.</div>
     </div>`;
-  document.getElementById('secScanBtn').addEventListener('click', runScan);
-  document.getElementById('secConfigBtn').addEventListener('click', toggleConfigPanel);
-  document.getElementById('secFilterText').addEventListener('input', renderFilteredFindings);
+  /** @type {HTMLButtonElement} */ (document.getElementById('secScanBtn')).addEventListener('click', runScan);
+  /** @type {HTMLButtonElement} */ (document.getElementById('secConfigBtn')).addEventListener('click', toggleConfigPanel);
+  /** @type {HTMLInputElement} */ (document.getElementById('secFilterText')).addEventListener('input', renderFilteredFindings);
   document.querySelectorAll('#secPills .filter-pill').forEach(btn =>
     btn.addEventListener('click', () => { btn.classList.toggle('on'); renderFilteredFindings(); })
   );
@@ -244,7 +244,7 @@ export function initSecurity() {
 
 function setConfigOpen(open) {
   const configEl = document.getElementById('secConfig');
-  const btn = document.getElementById('secConfigBtn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('secConfigBtn'));
   configEl.hidden = !open;
   btn.classList.toggle('active', open);
   btn.setAttribute('aria-pressed', String(open));
@@ -353,7 +353,7 @@ export function clearSecurityFindings() {
 
 async function runScan() {
   if (!getActiveId()) return;
-  const btn    = document.getElementById('secScanBtn');
+  const btn    = /** @type {HTMLButtonElement} */ (document.getElementById('secScanBtn'));
   const status = document.getElementById('secStatus');
   btn.disabled = true;
   status.textContent = 'Scanning…';
@@ -439,7 +439,7 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS, { includeSubresou
 }
 
 function renderFilteredFindings() {
-  const filterText  = document.getElementById('secFilterText').value.toLowerCase();
+  const filterText  = /** @type {HTMLInputElement} */ (document.getElementById('secFilterText')).value.toLowerCase();
   const activeSevs  = new Set([...document.querySelectorAll('#secPills .filter-pill.on')].map(el => el.dataset.sev));
 
   const sevCounts = { high: 0, medium: 0, low: 0 };

@@ -34,8 +34,8 @@ export function updateReloadBtn() {
 
 export function updateNavButtons() {
   const ns = navState[getActiveId()] || {};
-  document.getElementById('backBtn').disabled = !ns.canBack;
-  document.getElementById('fwdBtn').disabled  = !ns.canForward;
+  /** @type {HTMLButtonElement} */ (document.getElementById('backBtn')).disabled = !ns.canBack;
+  /** @type {HTMLButtonElement} */ (document.getElementById('fwdBtn')).disabled  = !ns.canForward;
 }
 
 export function updateZoomDisplay(zoom) {
@@ -47,13 +47,13 @@ export function initToolbar() {
   document.getElementById('zoomIndicator').onclick = () =>
     getActiveId() && testerBrowser.sessions.resetZoom(getActiveId());
 
-  document.getElementById('backBtn').onclick     = () => getActiveId() && testerBrowser.sessions.back(getActiveId());
-  document.getElementById('fwdBtn').onclick      = () => getActiveId() && testerBrowser.sessions.forward(getActiveId());
+  /** @type {HTMLButtonElement} */ (document.getElementById('backBtn')).onclick     = () => getActiveId() && testerBrowser.sessions.back(getActiveId());
+  /** @type {HTMLButtonElement} */ (document.getElementById('fwdBtn')).onclick      = () => getActiveId() && testerBrowser.sessions.forward(getActiveId());
   document.getElementById('devtoolsBtn').onclick = () => getActiveId() && testerBrowser.sessions.devtools(getActiveId());
 
   document.getElementById('urlbar').addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && getActiveId()) {
-      const input = e.target.value;
+      const input = /** @type {HTMLInputElement} */ (e.target).value;
       let navigatedUrl;
       if (looksLikeUrl(input)) {
         navigatedUrl = /^https?:\/\//i.test(input) ? input : `https://${input}`;
@@ -69,9 +69,9 @@ export function initToolbar() {
       // event that would otherwise refresh it only arrives once the actual
       // navigation completes, leaving the previous URL showing until then.
       updateUrlbarSecurity(navigatedUrl);
-      e.target.blur();
+      /** @type {HTMLElement} */ (e.target).blur();
     }
-    if (e.key === 'Escape') e.target.blur();
+    if (e.key === 'Escape') /** @type {HTMLElement} */ (e.target).blur();
   });
 
   testerBrowser.sessions.onNavState(({ id, canBack, canForward }) => {

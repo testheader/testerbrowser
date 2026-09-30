@@ -195,6 +195,12 @@ export function describeRegion(r) {
 
 // Saved-baseline list filter: every whitespace-separated term must appear
 // (case-insensitively) in the name or the URL.
+/**
+ * @template {{ name?: string, url?: string }} T
+ * @param {T[]} list
+ * @param {string} query
+ * @returns {T[]}
+ */
 export function filterBaselines(list, query) {
   const terms = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return list;

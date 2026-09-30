@@ -26,7 +26,7 @@ export function initIpcEvents() {
   // onNavigated touches toolbar (URL bar), bookmarks (star), and storage panel
   testerBrowser.sessions.onNavigated(({ id, url }) => {
     if (id === getActiveId()) {
-      const urlbar = document.getElementById('urlbar');
+      const urlbar = /** @type {HTMLInputElement} */ (document.getElementById('urlbar'));
       if (document.activeElement !== urlbar) urlbar.value = url;
       updateUrlbarSecurity(url);
       updateBookmarkStar();

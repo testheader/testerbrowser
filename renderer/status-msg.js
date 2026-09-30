@@ -8,7 +8,8 @@
 // elements now share the .status-msg/.status-msg-error CSS pair instead, so
 // this is a strict improvement for the spoof panel, not just a refactor.
 export function showStatus(elementId, msg, isError) {
-  const el = document.getElementById(elementId);
+  // _t: the pending clear-timeout, stashed on the element itself.
+  const el = /** @type {HTMLElement & { _t?: ReturnType<typeof setTimeout> }} */ (document.getElementById(elementId));
   if (!el) return;
   el.textContent = msg;
   el.classList.toggle('status-msg-error', !!isError);

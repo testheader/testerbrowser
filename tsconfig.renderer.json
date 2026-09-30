@@ -1,0 +1,21 @@
+{
+  // Type-checks the plain-JS renderer (renderer/*.js) — no output, CI only.
+  // Deliberately looser than tsconfig.json (no strict null checks / implicit any)
+  // so it catches wrong property names, wrong argument types and calls to a
+  // testerBrowser method that doesn't exist, without forcing JSDoc on every line.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["renderer/*.js", "types/renderer-globals.d.ts"],
+  // Runs in a Worker, not a window — the DOM lib types its postMessage wrong.
+  "exclude": ["renderer/vr-worker.js"]
+}

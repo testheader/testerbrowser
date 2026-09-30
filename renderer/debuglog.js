@@ -35,14 +35,14 @@ export async function initDebugLog() {
       <div class="debuglog-wrap"><div id="debugLogList" class="debuglog-list"></div></div>`;
 
     wirePillGroup(document.getElementById('debugLogLevelPills'), renderDebugLog);
-    document.getElementById('debugLogFilterText').addEventListener('input', renderDebugLog);
-    document.getElementById('debugLogSourceFilter').addEventListener('change', renderDebugLog);
-    document.getElementById('debugLogSessionFilter').addEventListener('change', renderDebugLog);
+    /** @type {HTMLInputElement} */ (document.getElementById('debugLogFilterText')).addEventListener('input', renderDebugLog);
+    /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSourceFilter')).addEventListener('change', renderDebugLog);
+    /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSessionFilter')).addEventListener('change', renderDebugLog);
     document.getElementById('copyDebugLogBtn').addEventListener('click', copyDebugLog);
     // Delegated so newly-appended rows (poll ticks never touch existing
     // DOM — see pollDebugLog()) don't need their own listener wired up.
     document.getElementById('debugLogList').addEventListener('click', (e) => {
-      const row = e.target.closest('.debuglog-row.has-ctx');
+      const row = /** @type {HTMLElement} */ (e.target).closest('.debuglog-row.has-ctx');
       if (row) row.closest('.debuglog-entry').classList.toggle('expanded');
     });
     // #254: started once, ever — pollWhileVisible checks isVisible() fresh
@@ -88,8 +88,8 @@ async function pollDebugLog() {
 // touching the user's current selection (a poll tick that introduces a new
 // source must not reset what they're already filtering on).
 function syncFilterOptions() {
-  const sourceSelect = document.getElementById('debugLogSourceFilter');
-  const sessionSelect = document.getElementById('debugLogSessionFilter');
+  const sourceSelect = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSourceFilter'));
+  const sessionSelect = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSessionFilter'));
   const knownSources = new Set([...sourceSelect.options].map((o) => o.value).filter(Boolean));
   const knownSessions = new Set([...sessionSelect.options].map((o) => o.value).filter(Boolean));
 
@@ -121,9 +121,9 @@ function getSessionLabel(sessionId) {
 
 function currentFilters() {
   const activeLevels = activePillValues(document.getElementById('debugLogLevelPills'), 'level');
-  const source = document.getElementById('debugLogSourceFilter').value;
-  const sessionId = document.getElementById('debugLogSessionFilter').value;
-  const filterText = document.getElementById('debugLogFilterText').value;
+  const source = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSourceFilter')).value;
+  const sessionId = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSessionFilter')).value;
+  const filterText = /** @type {HTMLInputElement} */ (document.getElementById('debugLogFilterText')).value;
   return { activeLevels, source, sessionId, filterText };
 }
 
@@ -139,7 +139,7 @@ function updatePillCounts() {
   document.querySelectorAll('#debugLogLevelPills .filter-pill').forEach((btn) => {
     const n = lastEntries.filter((e) => e.level === btn.dataset.level).length;
     const span = btn.querySelector('.pill-count');
-    if (span) span.textContent = n > 0 ? n : '';
+    if (span) span.textContent = n > 0 ? String(n) : '';
   });
 }
 

@@ -8,7 +8,7 @@
   "license": "MIT",
   "scripts": {
     "postinstall": "electron-rebuild -f -w better-sqlite3",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.tests.json && tsc -p tsconfig.renderer.json",
     "lint": "eslint renderer/*.js",
     "test": "jest",
     "test:e2e": "npm run build && playwright test",

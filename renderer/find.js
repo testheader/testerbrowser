@@ -9,7 +9,7 @@ export function openFind() {
     setFindOpen(true);
     document.getElementById('findBar').classList.add('open');
   }
-  const fi = document.getElementById('findInput');
+  const fi = /** @type {HTMLInputElement} */ (document.getElementById('findInput'));
   fi.focus(); fi.select();
 }
 
@@ -17,7 +17,7 @@ export function closeFind() {
   if (!isFindOpen()) return;
   setFindOpen(false);
   document.getElementById('findBar').classList.remove('open');
-  document.getElementById('findInput').classList.remove('no-match');
+  /** @type {HTMLInputElement} */ (document.getElementById('findInput')).classList.remove('no-match');
   document.getElementById('findCount').textContent = '';
   const activeId = getActiveId();
   if (activeId) testerBrowser.sessions.stopFind(activeId);
@@ -30,7 +30,7 @@ export function doFind(forward, next) {
 }
 
 export function initFind() {
-  const findInput = document.getElementById('findInput');
+  const findInput = /** @type {HTMLInputElement} */ (document.getElementById('findInput'));
 
   findInput.addEventListener('input', () => {
     findText = findInput.value;

@@ -5,7 +5,7 @@ import type { ResilienceRule } from '../main/resilienceManager';
 import type { EmulationOverrides, EmulationPatch } from '../main/emulationManager';
 import type { TabConditions } from '../main/networkConditions';
 
-contextBridge.exposeInMainWorld('testerBrowser', {
+const api = {
   sessions: {
     list:        () => ipcRenderer.invoke('sessions:list'),
     create:      (name: string, opts?: { persistent?: boolean; startUrl?: string; partition?: string; color?: string }) =>
@@ -356,4 +356,10 @@ contextBridge.exposeInMainWorld('testerBrowser', {
       ipcRenderer.on('window:maximizedChanged', (_e, maximized) => cb(maximized));
     },
   },
-});
+};
+
+contextBridge.exposeInMainWorld('testerBrowser', api);
+
+// Typed shape of window.testerBrowser — types/renderer-globals.d.ts reads this so
+// renderer/*.js calls are checked against the real API (npm run typecheck).
+export type TesterBrowserApi = typeof api;

@@ -19,7 +19,7 @@ function formatBytes(bytes) {
 function updateDownloadsBadge() {
   const badge = document.getElementById('downloadsBadge');
   badge.style.display = unseenIds.size > 0 ? 'flex' : 'none';
-  badge.textContent   = unseenIds.size;
+  badge.textContent   = String(unseenIds.size);
 }
 
 function markDownloadsSeen() {

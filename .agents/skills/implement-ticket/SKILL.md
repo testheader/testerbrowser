@@ -172,7 +172,7 @@ Where things go in the current architecture:
 | Change | Where |
 |---|---|
 | Backend / session logic | `src/main/sessionManager.ts` |
-| IPC handler | `src/main/index.ts` (`ipcMain.handle`) |
+| IPC handler | the matching `src/main/ipc/<area>.ts` module (`ipcMain.handle`) |
 | Preload exposure | `src/preload/index.ts` (`contextBridge`) |
 | New renderer module | create `renderer/<feature>.js`, export `init<Feature>()`, import and call it from `renderer/main.js` |
 | New console-panel tab | `renderer/index.html` (tab button + panel div), `renderer/console-tabs.js` (switch + init), `renderer/style.css` |
@@ -188,6 +188,26 @@ Test-first where practical:
   `launchApp()` from `e2e/helpers.ts` so each run gets an isolated profile.
 - **Confirm any new test file actually ran** — see it named in the Jest or
   Playwright output. A green run that skipped your test proves nothing.
+
+**Renderer JS is type-checked.** `npm run typecheck` includes
+`tsconfig.renderer.json`, which runs TypeScript over `renderer/*.js` (checkJs,
+non-strict). Write renderer code so it stays at zero errors:
+
+- Cast a DOM lookup when you use an element-specific property —
+  `/** @type {HTMLInputElement} */ (document.getElementById('x')).value`. Same
+  for `querySelector()` results and `e.target`.
+- Assign strings to `.value` / `.textContent` (`String(n)`, not `n`).
+- `testerBrowser.*` calls are checked against `src/preload/index.ts`'s
+  parameter types. Add new preload methods to its `api` object and the
+  renderer's `testerBrowser` global picks them up automatically. If an object
+  literal fails because a `string` should be a union, annotate it:
+  `/** @type {import('../src/main/<module>').<Type>} */`.
+- Document shapes with JSDoc in the `.js` itself. **Never add
+  `renderer/*.d.ts` files** — they shadow the real JS for the type checker, and
+  the unit tests read types straight from the JS.
+- Don't get to green with `// @ts-ignore`, `// @ts-nocheck` or a blanket
+  `/** @type {any} */`. `any` is acceptable only for genuinely untyped IPC
+  payloads.
 
 Keep the change surgical. Don't refactor unrelated code, don't delete or weaken
 existing tests, don't add dependencies without a clear need.

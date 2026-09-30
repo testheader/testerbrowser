@@ -43,7 +43,7 @@ export function initAppMenu() {
   });
 
   document.addEventListener('click', (e) => {
-    if (!wrapper.contains(e.target)) closeAppMenu();
+    if (!wrapper.contains(/** @type {Node} */ (e.target))) closeAppMenu();
   });
 
   document.addEventListener('keydown', (e) => {

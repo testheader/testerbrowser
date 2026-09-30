@@ -11,9 +11,9 @@ let pendingSessionId = null;
 // the app — bugreport.js, crash-report.js, notes.js, replay.js — does this).
 export async function openTestdataModal(sessionId) {
   pendingSessionId = sessionId;
-  document.getElementById('testdataInput').value = '';
+  /** @type {HTMLInputElement} */ (document.getElementById('testdataInput')).value = '';
   await openModal('testdataOverlay', () => {
-    setTimeout(() => document.getElementById('testdataInput').focus(), 50);
+    setTimeout(() => /** @type {HTMLInputElement} */ (document.getElementById('testdataInput')).focus(), 50);
   });
 }
 
@@ -23,7 +23,7 @@ async function close() {
 }
 
 export function initTestdata() {
-  const input      = document.getElementById('testdataInput');
+  const input      = /** @type {HTMLInputElement} */ (document.getElementById('testdataInput'));
   const fillBtn    = document.getElementById('testdataFillBtn');
   const cancelBtn  = document.getElementById('testdataCancelBtn');
   const closeXBtn  = document.getElementById('testdataCloseXBtn');

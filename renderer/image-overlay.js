@@ -7,13 +7,13 @@ import { initModal, openModal, closeModal } from './modal.js';
 // single-form overlays (notes.js, replay.js): detach the native view while
 // open so the overlay actually paints above it, reattach on close.
 export async function openImageOverlay(src) {
-  document.getElementById('imageOverlayImg').src = src;
+  /** @type {HTMLImageElement} */ (document.getElementById('imageOverlayImg')).src = src;
   await openModal('imageOverlay');
 }
 
 async function closeImageOverlay() {
   await closeModal('imageOverlay');
-  document.getElementById('imageOverlayImg').src = '';
+  /** @type {HTMLImageElement} */ (document.getElementById('imageOverlayImg')).src = '';
 }
 
 export function initImageOverlay() {

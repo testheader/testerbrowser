@@ -31,7 +31,7 @@ async function showModal(log) {
   const detectedAt = log.crashedAt ?? log.timestamp;
   const ts = detectedAt ? new Date(detectedAt).toLocaleString() : 'unknown time';
   document.getElementById('crashReportTimestamp').textContent = ts;
-  document.getElementById('crashReportFullUrls').checked = false;
+  /** @type {HTMLInputElement} */ (document.getElementById('crashReportFullUrls')).checked = false;
   await openModal('crashReportOverlay');
 }
 
@@ -44,12 +44,12 @@ async function dismissCrash() {
 async function fileIssue() {
   const log = pendingCrashLog;
   // Read before dismissCrash() below, which hides/resets the crash overlay.
-  const fullUrls = document.getElementById('crashReportFullUrls').checked;
+  const fullUrls = /** @type {HTMLInputElement} */ (document.getElementById('crashReportFullUrls')).checked;
   await dismissCrash(); // restores the view; openBugReport() below hides it again itself
   await openBugReport();
   if (log) {
-    document.getElementById('bugReportDesc').value = formatCrashForIssue(log, { fullUrls });
-    document.getElementById('bugReportArea').value = 'Other';
+    /** @type {HTMLTextAreaElement} */ (document.getElementById('bugReportDesc')).value = formatCrashForIssue(log, { fullUrls });
+    /** @type {HTMLSelectElement} */ (document.getElementById('bugReportArea')).value = 'Other';
   }
 }
 

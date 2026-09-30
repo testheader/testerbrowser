@@ -95,10 +95,10 @@ export function initRecordPlayback() {
 
   initColumnResize();
 
-  document.getElementById('rpStartBtn').addEventListener('click', startRecording);
-  document.getElementById('rpStopBtn').addEventListener('click', stopRecording);
-  document.getElementById('rpSaveBtn').addEventListener('click', saveRecordedTest);
-  document.getElementById('rpDiscardBtn').addEventListener('click', discardRecording);
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpStartBtn')).addEventListener('click', startRecording);
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpStopBtn')).addEventListener('click', stopRecording);
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpSaveBtn')).addEventListener('click', saveRecordedTest);
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpDiscardBtn')).addEventListener('click', discardRecording);
   document.getElementById('rpRunClose').addEventListener('click', () => {
     document.getElementById('rpRunView').hidden = true;
     document.getElementById('rpRunPlaceholder').hidden = false;
@@ -150,7 +150,7 @@ const RP_SPLITTER_W = 6; // matches .rp-splitter's width in style.css
 // (settings.json) rather than localStorage, per this ticket — the same
 // store security.js's rule overrides already use.
 function initColumnResize() {
-  const wrap      = document.querySelector('#testsPanel .rp-wrap');
+  const wrap      = /** @type {HTMLElement} */ (document.querySelector('#testsPanel .rp-wrap'));
   const recordCol = document.getElementById('rpRecordCol');
   const savedCol  = document.getElementById('rpSavedCol');
   const splitter1 = document.getElementById('rpSplitter1');
@@ -262,7 +262,7 @@ function discardRecording() {
 }
 
 async function saveRecordedTest() {
-  const name = document.getElementById('rpTestName').value.trim() || ('Test ' + new Date().toLocaleString());
+  const name = /** @type {HTMLInputElement} */ (document.getElementById('rpTestName')).value.trim() || ('Test ' + new Date().toLocaleString());
   if (currentSteps.length === 0) { showFormStatus('No steps recorded', true); return; }
   const test = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -274,17 +274,17 @@ async function saveRecordedTest() {
   await testerBrowser.tests.save(test);
   currentSteps = [];
   receivedCount = 0;
-  document.getElementById('rpTestName').value = '';
+  /** @type {HTMLInputElement} */ (document.getElementById('rpTestName')).value = '';
   setRecordBtns(false);
   renderLiveSteps();
   await refreshTestList();
 }
 
 function setRecordBtns(recording) {
-  document.getElementById('rpStartBtn').disabled = recording;
-  document.getElementById('rpStopBtn').disabled = !recording;
-  document.getElementById('rpSaveBtn').disabled = recording || currentSteps.length === 0;
-  document.getElementById('rpDiscardBtn').disabled = recording || currentSteps.length === 0;
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpStartBtn')).disabled = recording;
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpStopBtn')).disabled = !recording;
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpSaveBtn')).disabled = recording || currentSteps.length === 0;
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpDiscardBtn')).disabled = recording || currentSteps.length === 0;
 }
 
 function renderLiveSteps() {
@@ -306,7 +306,7 @@ function renderLiveSteps() {
   el.querySelectorAll('.rp-live-step').forEach(row => {
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      showAssertionMenu(parseInt(row.dataset.idx, 10), e.clientX, e.clientY);
+      showAssertionMenu(parseInt(row.dataset.idx, 10), /** @type {MouseEvent} */ (e).clientX, /** @type {MouseEvent} */ (e).clientY);
     });
   });
   el.querySelectorAll('.rp-del-step').forEach(btn => {
@@ -318,8 +318,8 @@ function renderLiveSteps() {
     });
   });
 
-  document.getElementById('rpSaveBtn').disabled = isRecording || currentSteps.length === 0;
-  document.getElementById('rpDiscardBtn').disabled = isRecording || currentSteps.length === 0;
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpSaveBtn')).disabled = isRecording || currentSteps.length === 0;
+  /** @type {HTMLButtonElement} */ (document.getElementById('rpDiscardBtn')).disabled = isRecording || currentSteps.length === 0;
 
   refreshSelectorConfidence();
 }
@@ -379,7 +379,7 @@ function stepRowFieldsHtml(step, idx, editable) {
 export async function refreshSelectorConfidence() {
   const el = document.getElementById('rpLiveSteps');
   if (!el || !getActiveId()) return;
-  const dots = [...el.querySelectorAll('.rp-confidence-dot')];
+  const dots = [.../** @type {NodeListOf<HTMLElement>} */ (el.querySelectorAll('.rp-confidence-dot'))];
   for (const dot of dots) {
     const idx = parseInt(dot.dataset.selectorIdx, 10);
     const step = currentSteps[idx];
@@ -481,9 +481,9 @@ function showAssertionDialog(afterIdx, def) {
   document.body.appendChild(dlg);
 
   document.getElementById('rpAssertOk').addEventListener('click', () => {
-    const selector  = def.needsSelector ? (document.getElementById('rpAssertSel')?.value.trim() || '') : undefined;
-    const attr      = def.needsAttr     ? (document.getElementById('rpAssertAttr')?.value.trim() || '') : undefined;
-    const value     = def.needsValue    ? (document.getElementById('rpAssertVal')?.value.trim() || '') : undefined;
+    const selector  = def.needsSelector ? (/** @type {HTMLInputElement} */ (document.getElementById('rpAssertSel'))?.value.trim() || '') : undefined;
+    const attr      = def.needsAttr     ? (/** @type {HTMLInputElement} */ (document.getElementById('rpAssertAttr'))?.value.trim() || '') : undefined;
+    const value     = def.needsValue    ? (/** @type {HTMLInputElement} */ (document.getElementById('rpAssertVal'))?.value.trim() || '') : undefined;
     const dlgStatus = document.getElementById('rpAssertDlgStatus');
     if (def.needsSelector && !selector) { dlgStatus.textContent = 'Selector required'; return; }
     if (def.needsValue    && !value)    { dlgStatus.textContent = 'Value required'; return; }
@@ -503,7 +503,7 @@ function showAssertionDialog(afterIdx, def) {
   });
 
   document.getElementById('rpAssertCancel').addEventListener('click', removeAssertionDialog);
-  document.getElementById('rpAssertSel')?.focus();
+  /** @type {HTMLInputElement} */ (document.getElementById('rpAssertSel'))?.focus();
 }
 
 function removeAssertionDialog() {
@@ -564,7 +564,7 @@ function renderTestList() {
   });
   el.querySelectorAll('.rp-run-many').forEach(btn => {
     btn.addEventListener('click', () => {
-      const input = el.querySelector(`.rp-repeat-input[data-id="${btn.dataset.id}"]`);
+      const input = /** @type {HTMLInputElement} */ (el.querySelector(`.rp-repeat-input[data-id="${btn.dataset.id}"]`));
       const n = parseInt(input.value, 10);
       if (!Number.isFinite(n) || n < 1) {
         input.classList.add('rp-input-invalid');
@@ -721,7 +721,7 @@ function promptForSensitiveValues(steps) {
     const cleanup = () => dlg.remove();
     document.getElementById('rpSensitiveContinue').addEventListener('click', () => {
       const values = new Map();
-      dlg.querySelectorAll('input[data-step-id]').forEach((input) => {
+      dlg.querySelectorAll('input[data-step-id]').forEach((/** @type {HTMLInputElement} */ input) => {
         values.set(input.dataset.stepId, input.value);
       });
       cleanup();
@@ -791,7 +791,7 @@ async function runTestSteps(test, runCount, sensitiveValues) {
 
   // Step-by-step only makes sense for a single run — Run N× is for flake
   // detection and always executes straight through regardless of the toggle.
-  const stepByStep = runCount === 1 && document.getElementById('rpStepModeToggle').checked;
+  const stepByStep = runCount === 1 && /** @type {HTMLInputElement} */ (document.getElementById('rpStepModeToggle')).checked;
   stepStopped = false;
 
   const allRunResults = [];

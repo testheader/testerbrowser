@@ -33,7 +33,7 @@ e2e/               Playwright specs + fixtures/server.ts (HTTP server for tests)
 ## Commands
 
 ```bash
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # tsc over src/ (build + tests) and renderer/*.js (checkJs)
 npm run lint         # eslint renderer/*.js
 npm test             # Jest unit tests
 npm run test:e2e     # build + Playwright (drives Electron's bundled Chromium)
@@ -164,5 +164,12 @@ pointer file** — edit the skill. Full design in
   parent's colour captured in the `createSession` closure.
 - **electron-builder defaults to draft releases** and `electron-updater` ignores
   drafts — hence `"releaseType": "prerelease"`.
+- **Renderer JS is type-checked** (`tsconfig.renderer.json`, part of
+  `npm run typecheck`). Cast DOM lookups when using element-specific
+  properties (`/** @type {HTMLInputElement} */ (document.getElementById('x'))`),
+  document shapes with JSDoc in the `.js`, and never add `renderer/*.d.ts`
+  files — they shadow the JS for the checker. The `testerBrowser` global's type
+  comes from `TesterBrowserApi` in `src/preload/index.ts`
+  (`types/renderer-globals.d.ts`).
 - **`bump-version` must not retrigger itself** — guarded by
   `github.actor != 'github-actions[bot]'`.

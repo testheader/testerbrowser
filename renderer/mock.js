@@ -31,10 +31,10 @@ function renderCapturedRequestHeaders() {
 // doesn't have to retype them.
 export function openMockFromRequest(method, url, statusCode, body, opts = {}) {
   switchConsoleTab('mock'); // also runs initMock() if this is the first visit
-  const urlInput    = document.getElementById('mockUrl');
-  const methodSel   = document.getElementById('mockMethod');
-  const statusInput = document.getElementById('mockStatus');
-  const bodyInput   = document.getElementById('mockBody');
+  const urlInput    = /** @type {HTMLInputElement} */ (document.getElementById('mockUrl'));
+  const methodSel   = /** @type {HTMLSelectElement} */ (document.getElementById('mockMethod'));
+  const statusInput = /** @type {HTMLInputElement} */ (document.getElementById('mockStatus'));
+  const bodyInput   = /** @type {HTMLTextAreaElement} */ (document.getElementById('mockBody'));
   const bodyNote    = document.getElementById('mockBodyNote');
   const resHeaders  = document.getElementById('mockResponseHeadersTable');
   if (!urlInput || !methodSel) return;
@@ -151,26 +151,27 @@ export function initMock() {
   document.getElementById('mockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!getActiveId()) return;
+    /** @type {Omit<import('../src/main/mockManager').MockRule, 'hitCount' | 'lastHitAt'>} */
     const rule = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      urlPattern: document.getElementById('mockUrl').value.trim(),
-      method: document.getElementById('mockMethod').value,
-      statusCode: parseInt(document.getElementById('mockStatus').value, 10) || 200,
-      delayMs: parseInt(document.getElementById('mockDelay').value, 10) || 0,
-      body: document.getElementById('mockBody').value,
+      urlPattern: /** @type {HTMLInputElement} */ (document.getElementById('mockUrl')).value.trim(),
+      method: /** @type {HTMLSelectElement} */ (document.getElementById('mockMethod')).value,
+      statusCode: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('mockStatus')).value, 10) || 200,
+      delayMs: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('mockDelay')).value, 10) || 0,
+      body: /** @type {HTMLTextAreaElement} */ (document.getElementById('mockBody')).value,
       responseHeaders: readKvTable(document.getElementById('mockResponseHeadersTable')),
-      cors: document.getElementById('mockCors').checked,
+      cors: /** @type {HTMLInputElement} */ (document.getElementById('mockCors')).checked,
       enabled: true,
     };
     if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
     await testerBrowser.mock.addRule(getActiveId(), rule);
 
-    document.getElementById('mockUrl').value  = '';
-    document.getElementById('mockBody').value = '';
-    document.getElementById('mockDelay').value = '0';
+    /** @type {HTMLInputElement} */ (document.getElementById('mockUrl')).value  = '';
+    /** @type {HTMLTextAreaElement} */ (document.getElementById('mockBody')).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById('mockDelay')).value = '0';
     document.getElementById('mockResponseHeadersTable').innerHTML = '';
     document.getElementById('mockBodyNote').hidden = true;
-    document.getElementById('mockCors').checked = false;
+    /** @type {HTMLInputElement} */ (document.getElementById('mockCors')).checked = false;
     capturedRequestHeaders = null;
     renderCapturedRequestHeaders();
 
@@ -256,7 +257,7 @@ function buildMockRuleRow(rule, sessionId, index, total) {
     await loadRules();
   });
   row.querySelector('.mock-enable').addEventListener('change', async (e) => {
-    await testerBrowser.mock.toggleRule(sessionId, rule.id, e.target.checked);
+    await testerBrowser.mock.toggleRule(sessionId, rule.id, /** @type {HTMLInputElement} */ (e.target).checked);
     await loadRules();
   });
   row.querySelector('.mock-del-btn').addEventListener('click', async () => {
@@ -323,13 +324,13 @@ function buildMockEditRow(rule, sessionId, index, total) {
   });
   row.querySelector('.mock-save-btn').addEventListener('click', async () => {
     const patch = {
-      urlPattern: row.querySelector('.mock-edit-url').value.trim(),
-      method: row.querySelector('.mock-edit-method').value,
-      statusCode: parseInt(row.querySelector('.mock-edit-status').value, 10) || 200,
-      delayMs: parseInt(row.querySelector('.mock-edit-delay').value, 10) || 0,
-      body: row.querySelector('.mock-edit-body').value,
+      urlPattern: /** @type {HTMLInputElement} */ (row.querySelector('.mock-edit-url')).value.trim(),
+      method: /** @type {HTMLInputElement} */ (row.querySelector('.mock-edit-method')).value,
+      statusCode: parseInt(/** @type {HTMLInputElement} */ (row.querySelector('.mock-edit-status')).value, 10) || 200,
+      delayMs: parseInt(/** @type {HTMLInputElement} */ (row.querySelector('.mock-edit-delay')).value, 10) || 0,
+      body: /** @type {HTMLInputElement} */ (row.querySelector('.mock-edit-body')).value,
       responseHeaders: readKvTable(headersTable),
-      cors: row.querySelector('.mock-edit-cors').checked,
+      cors: /** @type {HTMLInputElement} */ (row.querySelector('.mock-edit-cors')).checked,
     };
     const ok = await testerBrowser.mock.updateRule(sessionId, rule.id, patch);
     if (!ok) { showMockRowError(row, 'That tab was closed — rule not saved'); return; }

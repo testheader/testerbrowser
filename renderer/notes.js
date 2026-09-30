@@ -19,13 +19,13 @@ export async function openNotes(id) {
   const s = sessions.find((x) => x.id === id);
   document.getElementById('notesTitle').textContent = 'Notes — ' + (s?.name || id);
   loadedText = await testerBrowser.sessions.getNotes(id);
-  document.getElementById('notesTextarea').value = loadedText;
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('notesTextarea')).value = loadedText;
   hideDiscardConfirm();
-  await openModal('notesOverlay', () => document.getElementById('notesTextarea').focus());
+  await openModal('notesOverlay', () => /** @type {HTMLTextAreaElement} */ (document.getElementById('notesTextarea')).focus());
 }
 
 function hasUnsavedChanges() {
-  return document.getElementById('notesTextarea').value !== loadedText;
+  return /** @type {HTMLTextAreaElement} */ (document.getElementById('notesTextarea')).value !== loadedText;
 }
 
 function showDiscardConfirm() {
@@ -58,7 +58,7 @@ export function initNotes() {
 
   document.getElementById('saveNotesBtn').onclick  = async () => {
     if (notesSessionId) {
-      await testerBrowser.sessions.setNotes(notesSessionId, document.getElementById('notesTextarea').value);
+      await testerBrowser.sessions.setNotes(notesSessionId, /** @type {HTMLTextAreaElement} */ (document.getElementById('notesTextarea')).value);
     }
     await closeNotes();
   };

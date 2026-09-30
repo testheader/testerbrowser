@@ -1704,7 +1704,7 @@ export class SessionManager {
       return { ok: false, error };
     }
     const result = await this.a11yService.getViolations(s.view.webContents);
-    if (!result.ok) this.log.error('sessions', `A11y violations audit failed: ${result.error}`, { sessionId: id });
+    if (result.ok === false) this.log.error('sessions', `A11y violations audit failed: ${result.error}`, { sessionId: id });
     return result;
   }
 

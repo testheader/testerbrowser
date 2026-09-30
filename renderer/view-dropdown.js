@@ -44,7 +44,7 @@ export function initViewDropdown() {
   });
 
   document.addEventListener('click', (e) => {
-    if (!viewWrapper.contains(e.target)) closeViewDropdown();
+    if (!viewWrapper.contains(/** @type {Node} */ (e.target))) closeViewDropdown();
   });
 
   document.addEventListener('keydown', (e) => {

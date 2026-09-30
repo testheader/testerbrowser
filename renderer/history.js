@@ -41,7 +41,7 @@ export function initHistory() {
   document.getElementById('closeHistoryBtn').onclick  = () => closeHistory();
   document.getElementById('historyCloseXBtn').onclick = () => closeHistory();
   document.getElementById('historyList').addEventListener('click', async (e) => {
-    const entry = e.target.closest('.history-entry');
+    const entry = /** @type {HTMLElement} */ (e.target).closest('.history-entry');
     if (!entry || !historySessionId) return;
     const sessionId = historySessionId;
     await testerBrowser.sessions.navigate(sessionId, entry.dataset.url);

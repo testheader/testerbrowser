@@ -48,6 +48,7 @@ function modMatches(want, have) {
 // means "don't care" — matching whichever original if-chain condition that
 // entry replaces, most of which never checked every modifier either (e.g.
 // Ctrl+Alt+T still triggers newTab, exactly as before this table existed).
+/** @param {{ ctrl?: boolean, shift?: boolean, alt?: boolean, key: string }} input */
 export function matchShortcut({ ctrl, shift, alt, key }) {
   return SHORTCUTS.find((s) =>
     modMatches(s.ctrl, ctrl) && modMatches(s.shift, shift) && modMatches(s.alt, alt) && s.key === key

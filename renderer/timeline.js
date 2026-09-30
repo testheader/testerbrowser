@@ -241,15 +241,15 @@ export function renderTimeline() {
   let filtered;
   if (tab === 'network') {
     const filters = {
-      filterText:    document.getElementById('networkFilterText').value,
+      filterText:    /** @type {HTMLInputElement} */ (document.getElementById('networkFilterText')).value,
       activeTypes:   activePillValues(document.getElementById('networkPills'), 'type'),
       activeMethods: activePillValues(document.getElementById('networkMethodPills'), 'method'),
-      minDuration:   parseFloat(document.getElementById('networkMinDuration').value) || 0,
+      minDuration:   parseFloat(/** @type {HTMLInputElement} */ (document.getElementById('networkMinDuration')).value) || 0,
     };
     filtered = timelineEvents.filter(e => matchesNetworkFilters(e, filters));
   } else {
     const filters = {
-      filterText:   document.getElementById('filterText').value,
+      filterText:   /** @type {HTMLInputElement} */ (document.getElementById('filterText')).value,
       activeLevels: activePillValues(document.getElementById('consoleLevelPills'), 'level'),
     };
     filtered = timelineEvents.filter(e => matchesConsoleFilters(e, filters));
@@ -696,9 +696,9 @@ export function initTimeline() {
     scrollToBottomBtn.classList.remove('visible');
   };
 
-  document.getElementById('filterText').addEventListener('input', renderTimeline);
-  document.getElementById('networkFilterText').addEventListener('input', renderTimeline);
-  document.getElementById('networkMinDuration').addEventListener('input', renderTimeline);
+  /** @type {HTMLInputElement} */ (document.getElementById('filterText')).addEventListener('input', renderTimeline);
+  /** @type {HTMLInputElement} */ (document.getElementById('networkFilterText')).addEventListener('input', renderTimeline);
+  /** @type {HTMLInputElement} */ (document.getElementById('networkMinDuration')).addEventListener('input', renderTimeline);
 
   wirePillGroup(document.getElementById('networkPills'), renderTimeline);
   wirePillGroup(document.getElementById('networkMethodPills'), renderTimeline);
@@ -727,11 +727,11 @@ export function initTimeline() {
   document.getElementById('clearConsoleBtn').onclick  = clearTimeline;
   document.getElementById('clearNetworkBtn').onclick  = clearTimeline;
 
-  document.getElementById('harExportBtn').onclick = async () => {
+  /** @type {HTMLButtonElement} */ (document.getElementById('harExportBtn')).onclick = async () => {
     const id = getActiveId();
     if (!id) return;
     const statusEl = document.getElementById('harExportStatus');
-    const btn = document.getElementById('harExportBtn');
+    const btn = /** @type {HTMLButtonElement} */ (document.getElementById('harExportBtn'));
     statusEl.classList.remove('err');
     statusEl.textContent = 'Exporting…';
     btn.disabled = true;

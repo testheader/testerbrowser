@@ -53,7 +53,7 @@ export function initA11y() {
     VIEWS[activeView].loaded = true;
     VIEWS[activeView].load();
   });
-  document.getElementById('a11yInspectBtn').addEventListener('click', () => {
+  /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn')).addEventListener('click', () => {
     if (inspecting) disableA11yHover(); else enableA11yHover();
   });
   document.getElementById('a11yFocusOrderBtn').addEventListener('click', () => {
@@ -79,7 +79,7 @@ function switchA11yView(view) {
   for (const v of Object.keys(VIEWS)) {
     document.getElementById(VIEWS[v].btnId)?.classList.toggle('on', v === view);
   }
-  const inspectBtn = document.getElementById('a11yInspectBtn');
+  const inspectBtn = /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn'));
   if (inspectBtn) inspectBtn.style.display = view === 'tree' ? '' : 'none';
   if (view !== 'tree' && inspecting) disableA11yHover();
   // The focus overlay renders its list into the shared content area, same
@@ -100,9 +100,9 @@ export function reloadA11yIfLoaded() {
 export function enableA11yHover() {
   if (!getActiveId()) return;
   inspecting = true;
-  document.getElementById('a11yInspectBtn')?.classList.add('on');
+  /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn'))?.classList.add('on');
   testerBrowser.a11y.setInspect(getActiveId(), true).catch(() => {});
-  testerBrowser.a11y.onNodeHovered((node) => {
+  testerBrowser.a11y.onNodeHovered((/** @type {any} */ node) => {
     if (!node || !node.nodeId) return;
     if (hoveredRow) hoveredRow.classList.remove('a11y-hovered');
     const row = nodeRowMap.get(node.nodeId);
@@ -111,7 +111,7 @@ export function enableA11yHover() {
     row.classList.add('a11y-hovered');
     row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
-  testerBrowser.a11y.onNodeClicked(async (node) => {
+  testerBrowser.a11y.onNodeClicked(async (/** @type {any} */ node) => {
     if (!node || !node.nodeId) return;
     if (selectNode(node.nodeId)) return;
     // Not in the currently rendered tree (e.g. page changed since the last
@@ -135,7 +135,7 @@ function showInspectMessage(text) {
 
 export function disableA11yHover() {
   inspecting = false;
-  document.getElementById('a11yInspectBtn')?.classList.remove('on');
+  /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn'))?.classList.remove('on');
   if (!getActiveId()) return;
   testerBrowser.a11y.setInspect(getActiveId(), false).catch(() => {});
   testerBrowser.a11y.offNodeHovered();
@@ -218,7 +218,7 @@ function buildFocusOrderRow(item) {
 // tree has actually been rendered — otherwise clicking a page element while
 // inspecting is a silent no-op with no row to select.
 function updateInspectAvailability() {
-  const btn = document.getElementById('a11yInspectBtn');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn'));
   if (!btn) return;
   const available = nodeRowMap.size > 0;
   btn.disabled = !available;

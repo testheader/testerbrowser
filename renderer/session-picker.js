@@ -75,8 +75,8 @@ export async function populateSessionPickers(pickAId, pickBId) {
   const sessions = await testerBrowser.sessions.list();
   if (pickerCallSeq.get(key) !== mySeq) return null; // superseded while awaiting
 
-  const pickA = document.getElementById(pickAId);
-  const pickB = document.getElementById(pickBId);
+  const pickA = /** @type {HTMLSelectElement} */ (document.getElementById(pickAId));
+  const pickB = /** @type {HTMLSelectElement} */ (document.getElementById(pickBId));
   if (!pickA || !pickB) return sessions;
 
   const prevA = pickA.value;

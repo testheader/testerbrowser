@@ -332,7 +332,7 @@ export async function refreshTabs() {
 
   const active = sessionMap.get(activeId);
   if (active) {
-    document.getElementById('urlbar').value = active.url || '';
+    /** @type {HTMLInputElement} */ (document.getElementById('urlbar')).value = active.url || '';
     updateUrlbarSecurity(active.url || '');
     updateBookmarkStar();
   }
@@ -467,14 +467,14 @@ export async function newSession({ persistent = true } = {}) {
 export function initTabs() {
   // Persistent by default: an ephemeral tab and everything opened from it is
   // discarded on quit, which is not what a "+" button implies.
-  // e is undefined when triggered programmatically (e.g. the Ctrl+T shortcut
-  // calls this with no event) — treat that the same as an unmodified click.
+  // e is undefined if this is ever called programmatically — treat that the
+  // same as an unmodified click. (Ctrl+T calls newSession() directly.)
   document.getElementById('newSessionBtn').onclick = (e) => newSession({ persistent: !e?.shiftKey });
 
   testerBrowser.sessions.onTitleUpdated(({ id, title }) => {
     tabTitles[id] = title;
     const nameEl = document.querySelector(`.tab[data-id="${id}"] .tab-name`);
-    if (nameEl) nameEl.title = title;
+    if (nameEl) /** @type {HTMLElement} */ (nameEl).title = title;
   });
 
   testerBrowser.sessions.onFaviconUpdated(({ id, favicon }) => {

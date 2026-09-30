@@ -253,7 +253,7 @@ export function initSpoof() {
   });
 
   const deviceChipsEl = document.getElementById('spoofDeviceChips');
-  const devicePresetSelect = document.getElementById('spoofDevicePreset');
+  const devicePresetSelect = /** @type {HTMLSelectElement} */ (document.getElementById('spoofDevicePreset'));
   for (const [name, m] of Object.entries(DEVICE_PRESETS)) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -273,7 +273,7 @@ export function initSpoof() {
   }
 
   uaPresets = buildUaPresets();
-  const uaSelect = document.getElementById('spoofUaPresets');
+  const uaSelect = /** @type {HTMLSelectElement} */ (document.getElementById('spoofUaPresets'));
   uaSelect.innerHTML = '<option value="">Custom / none</option>' +
     Object.entries(
       uaPresets.reduce((groups, p, i) => {
@@ -298,8 +298,8 @@ export function initSpoof() {
 
   wireHelpPopover(document.getElementById('spoofHelpBtn'), document.getElementById('spoofHelp'), panel);
 
-  document.getElementById('spoofApply').addEventListener('click', applySpoof);
-  document.getElementById('spoofReset').addEventListener('click', resetSpoof);
+  /** @type {HTMLButtonElement} */ (document.getElementById('spoofApply')).addEventListener('click', applySpoof);
+  /** @type {HTMLButtonElement} */ (document.getElementById('spoofReset')).addEventListener('click', resetSpoof);
   document.getElementById('spoofUseCurrent').addEventListener('click', useCurrentValues);
   for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon', 'spoofOffsetValue']) {
     document.getElementById(id).addEventListener('input', updateDirtyState);
@@ -307,11 +307,11 @@ export function initSpoof() {
   // Hand-editing the UA field means it's no longer exactly whatever preset
   // was last chosen (if any) — fall the dropdown back to "Custom / none"
   // rather than leave it pointing at a preset the field no longer matches.
-  document.getElementById('spoofUserAgent').addEventListener('input', () => {
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofUserAgent')).addEventListener('input', () => {
     uaSelect.value = '';
     updateDirtyState();
   });
-  document.getElementById('spoofOffsetUnit').addEventListener('change', updateDirtyState);
+  /** @type {HTMLSelectElement} */ (document.getElementById('spoofOffsetUnit')).addEventListener('change', updateDirtyState);
 
   devicePresetSelect.innerHTML = '<option value="">System (no override)</option>' +
     `<optgroup label="Presets">${
@@ -324,15 +324,15 @@ export function initSpoof() {
     // stays overridable afterward — this only runs on the preset dropdown's
     // own change event, never touching the checkbox on unrelated input.
     const preset = DEVICE_PRESETS[devicePresetSelect.value];
-    if (preset) document.getElementById('spoofTouch').checked = preset.mobile;
+    if (preset) /** @type {HTMLInputElement} */ (document.getElementById('spoofTouch')).checked = preset.mobile;
     updateDirtyState();
   });
   for (const id of ['spoofCustomWidth', 'spoofCustomHeight', 'spoofCustomDpr']) {
     document.getElementById(id).addEventListener('input', updateDirtyState);
   }
-  document.getElementById('spoofTouch').addEventListener('change', updateDirtyState);
-  document.getElementById('spoofColorScheme').addEventListener('change', updateDirtyState);
-  document.getElementById('spoofReducedMotion').addEventListener('change', updateDirtyState);
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofTouch')).addEventListener('change', updateDirtyState);
+  /** @type {HTMLSelectElement} */ (document.getElementById('spoofColorScheme')).addEventListener('change', updateDirtyState);
+  /** @type {HTMLSelectElement} */ (document.getElementById('spoofReducedMotion')).addEventListener('change', updateDirtyState);
 
   // Enter in any text/number field applies, like submitting a form.
   panel.addEventListener('keydown', (e) => {
@@ -360,15 +360,15 @@ function describeMetrics({ width, height, deviceScaleFactor, mobile }) {
 // width/height yet. An empty or invalid Custom pixel ratio falls back to 1
 // (applySpoof() rejects an invalid one before it's ever sent).
 function readDeviceMetricsFromFields() {
-  const preset = document.getElementById('spoofDevicePreset').value;
+  const preset = /** @type {HTMLSelectElement} */ (document.getElementById('spoofDevicePreset')).value;
   if (preset === '') return null;
   if (preset !== '__custom') return DEVICE_PRESETS[preset] ?? null;
-  const width = parseInt(document.getElementById('spoofCustomWidth').value, 10);
-  const height = parseInt(document.getElementById('spoofCustomHeight').value, 10);
+  const width = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('spoofCustomWidth')).value, 10);
+  const height = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('spoofCustomHeight')).value, 10);
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-  const dpr = parseFloat(document.getElementById('spoofCustomDpr').value);
+  const dpr = parseFloat(/** @type {HTMLInputElement} */ (document.getElementById('spoofCustomDpr')).value);
   const deviceScaleFactor = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
-  return { width, height, deviceScaleFactor, mobile: document.getElementById('spoofTouch').checked };
+  return { width, height, deviceScaleFactor, mobile: /** @type {HTMLInputElement} */ (document.getElementById('spoofTouch')).checked };
 }
 
 // Formats a signed offset in ms as the largest whole unit that evenly
@@ -377,6 +377,7 @@ function readDeviceMetricsFromFields() {
 function formatOffsetMs(ms) {
   const sign = ms < 0 ? '-' : '+';
   const abs = Math.abs(ms);
+  /** @type {[string, number][]} */
   const units = [['d', 86400000], ['h', 3600000], ['m', 60000], ['s', 1000]];
   for (const [label, unitMs] of units) {
     if (abs % unitMs === 0) return `${sign}${abs / unitMs}${label}`;
@@ -385,23 +386,23 @@ function formatOffsetMs(ms) {
 }
 
 function fillPreset(p) {
-  document.getElementById('spoofTimezone').value = p.timezone;
-  document.getElementById('spoofLocale').value   = p.locale;
-  document.getElementById('spoofLat').value      = p.latitude;
-  document.getElementById('spoofLon').value      = p.longitude;
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofTimezone')).value = p.timezone;
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofLocale')).value   = p.locale;
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofLat')).value      = p.latitude;
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofLon')).value      = p.longitude;
   setSectionOpen('location', true);
   updateDirtyState();
 }
 
 function clearLocationPresetFields() {
   for (const id of ['spoofTimezone', 'spoofLocale', 'spoofLat', 'spoofLon']) {
-    document.getElementById(id).value = '';
+    /** @type {HTMLInputElement} */ (document.getElementById(id)).value = '';
   }
   updateDirtyState();
 }
 
 function fillUaPreset(p) {
-  document.getElementById('spoofUserAgent').value = p.userAgent;
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofUserAgent')).value = p.userAgent;
   updateDirtyState();
 }
 
@@ -411,9 +412,9 @@ function fillUaPreset(p) {
 // permission handler attached), so it's handled independently and never
 // blocks the timezone/locale fill.
 function useCurrentValues() {
-  document.getElementById('spoofTimezone').value = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  document.getElementById('spoofLocale').value   = navigator.language;
-  document.getElementById('spoofOffsetValue').value = '0';
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofTimezone')).value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofLocale')).value   = navigator.language;
+  /** @type {HTMLInputElement} */ (document.getElementById('spoofOffsetValue')).value = '0';
   updateDirtyState();
 
   if (!navigator.geolocation) {
@@ -422,8 +423,8 @@ function useCurrentValues() {
   }
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      document.getElementById('spoofLat').value = pos.coords.latitude;
-      document.getElementById('spoofLon').value = pos.coords.longitude;
+      /** @type {HTMLInputElement} */ (document.getElementById('spoofLat')).value = String(pos.coords.latitude);
+      /** @type {HTMLInputElement} */ (document.getElementById('spoofLon')).value = String(pos.coords.longitude);
       updateDirtyState();
       showStatus('Filled timezone, locale and location from this machine.', false);
     },
@@ -458,12 +459,12 @@ export async function refreshSpoofStatus() {
 // A section that holds an applied value is expanded (never auto-collapsed).
 function populateFields(a, sections = SECTION_NAMES) {
   if (sections.includes('location')) {
-    document.getElementById('spoofTimezone').value = a?.timezone ?? '';
-    document.getElementById('spoofLocale').value = a?.locale ?? '';
-    document.getElementById('spoofLat').value = a?.latitude !== undefined ? String(a.latitude) : '';
-    document.getElementById('spoofLon').value = a?.longitude !== undefined ? String(a.longitude) : '';
-    const offsetValueEl = document.getElementById('spoofOffsetValue');
-    const offsetUnitEl = document.getElementById('spoofOffsetUnit');
+    /** @type {HTMLInputElement} */ (document.getElementById('spoofTimezone')).value = a?.timezone ?? '';
+    /** @type {HTMLInputElement} */ (document.getElementById('spoofLocale')).value = a?.locale ?? '';
+    /** @type {HTMLInputElement} */ (document.getElementById('spoofLat')).value = a?.latitude !== undefined ? String(a.latitude) : '';
+    /** @type {HTMLInputElement} */ (document.getElementById('spoofLon')).value = a?.longitude !== undefined ? String(a.longitude) : '';
+    const offsetValueEl = /** @type {HTMLInputElement} */ (document.getElementById('spoofOffsetValue'));
+    const offsetUnitEl = /** @type {HTMLSelectElement} */ (document.getElementById('spoofOffsetUnit'));
     if (a?.timeOffsetMs !== undefined) {
       const { value, unitMs } = splitOffsetMs(a.timeOffsetMs);
       offsetValueEl.value = String(value);
@@ -475,10 +476,10 @@ function populateFields(a, sections = SECTION_NAMES) {
   }
 
   if (sections.includes('device')) {
-    document.getElementById('spoofUserAgent').value = a?.userAgent ?? '';
-    const uaSelectEl = document.getElementById('spoofUaPresets');
+    /** @type {HTMLInputElement} */ (document.getElementById('spoofUserAgent')).value = a?.userAgent ?? '';
+    const uaSelectEl = /** @type {HTMLSelectElement} */ (document.getElementById('spoofUaPresets'));
     if (uaSelectEl) uaSelectEl.value = ''; // switching sessions is never "the same preset was just picked"
-    const devicePresetSelect = document.getElementById('spoofDevicePreset');
+    const devicePresetSelect = /** @type {HTMLSelectElement} */ (document.getElementById('spoofDevicePreset'));
     const customSizeRow = document.getElementById('spoofCustomSizeRow');
     if (a?.deviceMetrics) {
       const presetName = findDevicePresetName(a.deviceMetrics);
@@ -488,23 +489,23 @@ function populateFields(a, sections = SECTION_NAMES) {
       } else {
         devicePresetSelect.value = '__custom';
         customSizeRow.hidden = false;
-        document.getElementById('spoofCustomWidth').value = a.deviceMetrics.width;
-        document.getElementById('spoofCustomHeight').value = a.deviceMetrics.height;
-        document.getElementById('spoofCustomDpr').value = a.deviceMetrics.deviceScaleFactor;
+        /** @type {HTMLInputElement} */ (document.getElementById('spoofCustomWidth')).value = a.deviceMetrics.width;
+        /** @type {HTMLInputElement} */ (document.getElementById('spoofCustomHeight')).value = a.deviceMetrics.height;
+        /** @type {HTMLInputElement} */ (document.getElementById('spoofCustomDpr')).value = a.deviceMetrics.deviceScaleFactor;
       }
     } else {
       devicePresetSelect.value = '';
       customSizeRow.hidden = true;
-      document.getElementById('spoofCustomWidth').value = '';
-      document.getElementById('spoofCustomHeight').value = '';
-      document.getElementById('spoofCustomDpr').value = '';
+      /** @type {HTMLInputElement} */ (document.getElementById('spoofCustomWidth')).value = '';
+      /** @type {HTMLInputElement} */ (document.getElementById('spoofCustomHeight')).value = '';
+      /** @type {HTMLInputElement} */ (document.getElementById('spoofCustomDpr')).value = '';
     }
-    document.getElementById('spoofTouch').checked = !!a?.touch;
+    /** @type {HTMLInputElement} */ (document.getElementById('spoofTouch')).checked = !!a?.touch;
   }
 
   if (sections.includes('advanced')) {
-    document.getElementById('spoofColorScheme').value = a?.colorScheme ?? '';
-    document.getElementById('spoofReducedMotion').value = a?.reducedMotion ?? '';
+    /** @type {HTMLSelectElement} */ (document.getElementById('spoofColorScheme')).value = a?.colorScheme ?? '';
+    /** @type {HTMLSelectElement} */ (document.getElementById('spoofReducedMotion')).value = a?.reducedMotion ?? '';
   }
 
   for (const name of sections) {
@@ -622,20 +623,20 @@ function renderCurrent() {
 // `undefined` standing in for "no override" — compared against the applied
 // overrides to find unapplied edits.
 function readFormState() {
-  const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
-  const unitMs    = Number(document.getElementById('spoofOffsetUnit').value);
+  const offsetRaw = /** @type {HTMLInputElement} */ (document.getElementById('spoofOffsetValue')).value.trim();
+  const unitMs    = Number(/** @type {HTMLSelectElement} */ (document.getElementById('spoofOffsetUnit')).value);
   const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
   return {
-    timezone: document.getElementById('spoofTimezone').value.trim(),
-    locale:   document.getElementById('spoofLocale').value.trim(),
-    latRaw:   document.getElementById('spoofLat').value.trim(),
-    lonRaw:   document.getElementById('spoofLon').value.trim(),
-    userAgent: document.getElementById('spoofUserAgent').value.trim(),
+    timezone: /** @type {HTMLInputElement} */ (document.getElementById('spoofTimezone')).value.trim(),
+    locale:   /** @type {HTMLInputElement} */ (document.getElementById('spoofLocale')).value.trim(),
+    latRaw:   /** @type {HTMLInputElement} */ (document.getElementById('spoofLat')).value.trim(),
+    lonRaw:   /** @type {HTMLInputElement} */ (document.getElementById('spoofLon')).value.trim(),
+    userAgent: /** @type {HTMLInputElement} */ (document.getElementById('spoofUserAgent')).value.trim(),
     offsetMs: offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : undefined,
     deviceMetrics: readDeviceMetricsFromFields(),
-    touch: document.getElementById('spoofTouch').checked,
-    colorScheme: document.getElementById('spoofColorScheme').value || undefined,
-    reducedMotion: document.getElementById('spoofReducedMotion').value === 'reduce' ? 'reduce' : undefined,
+    touch: /** @type {HTMLInputElement} */ (document.getElementById('spoofTouch')).checked,
+    colorScheme: /** @type {HTMLSelectElement} */ (document.getElementById('spoofColorScheme')).value || undefined,
+    reducedMotion: /** @type {HTMLSelectElement} */ (document.getElementById('spoofReducedMotion')).value === 'reduce' ? 'reduce' : undefined,
   };
 }
 
@@ -668,14 +669,14 @@ function updateDirtyState() {
     document.getElementById(`spoofSecEdited-${name}`).hidden = !changed;
     // Reset is only meaningful when there's something applied to clear or
     // an unapplied edit to discard.
-    document.getElementById(`spoofSecReset-${name}`).disabled =
+    /** @type {HTMLButtonElement} */ (document.getElementById(`spoofSecReset-${name}`)).disabled =
       !changed && sectionAppliedParts(name, appliedForActiveSession).length === 0;
   }
   dirty.hidden = !anyChanged;
-  document.getElementById('spoofApply').classList.toggle('spoof-apply-pending', anyChanged);
+  /** @type {HTMLButtonElement} */ (document.getElementById('spoofApply')).classList.toggle('spoof-apply-pending', anyChanged);
 
   // Preset chips mirror the fields they fill.
-  const devicePreset = document.getElementById('spoofDevicePreset').value;
+  const devicePreset = /** @type {HTMLSelectElement} */ (document.getElementById('spoofDevicePreset')).value;
   for (const btn of document.querySelectorAll('#spoofDeviceChips .spoof-preset-btn')) {
     btn.setAttribute('aria-pressed', String(btn.dataset.device === devicePreset));
   }
@@ -722,23 +723,23 @@ function reportErrors(errors, okMsg) {
 
 async function applySpoof() {
   if (!getActiveId()) { showStatus('No active session.', true); return; }
-  const timezoneRaw  = document.getElementById('spoofTimezone').value.trim();
-  const localeRaw    = document.getElementById('spoofLocale').value.trim();
-  const latRaw    = document.getElementById('spoofLat').value.trim();
-  const lonRaw    = document.getElementById('spoofLon').value.trim();
+  const timezoneRaw  = /** @type {HTMLInputElement} */ (document.getElementById('spoofTimezone')).value.trim();
+  const localeRaw    = /** @type {HTMLInputElement} */ (document.getElementById('spoofLocale')).value.trim();
+  const latRaw    = /** @type {HTMLInputElement} */ (document.getElementById('spoofLat')).value.trim();
+  const lonRaw    = /** @type {HTMLInputElement} */ (document.getElementById('spoofLon')).value.trim();
   const latitude  = latRaw !== '' ? parseFloat(latRaw)  : null;
   const longitude = lonRaw !== '' ? parseFloat(lonRaw) : null;
-  const userAgentRaw = document.getElementById('spoofUserAgent').value.trim();
-  const offsetRaw = document.getElementById('spoofOffsetValue').value.trim();
-  const unitMs    = Number(document.getElementById('spoofOffsetUnit').value);
+  const userAgentRaw = /** @type {HTMLInputElement} */ (document.getElementById('spoofUserAgent')).value.trim();
+  const offsetRaw = /** @type {HTMLInputElement} */ (document.getElementById('spoofOffsetValue')).value.trim();
+  const unitMs    = Number(/** @type {HTMLSelectElement} */ (document.getElementById('spoofOffsetUnit')).value);
   const offsetNum = offsetRaw !== '' ? parseFloat(offsetRaw) : NaN;
-  const dprRaw    = document.getElementById('spoofCustomDpr').value.trim();
+  const dprRaw    = /** @type {HTMLInputElement} */ (document.getElementById('spoofCustomDpr')).value.trim();
   const dprNum    = dprRaw !== '' ? parseFloat(dprRaw) : NaN;
 
   if (latRaw !== '' && isNaN(latitude))  { showStatus('Invalid latitude.',  true); return; }
   if (lonRaw !== '' && isNaN(longitude)) { showStatus('Invalid longitude.', true); return; }
   if (offsetRaw !== '' && isNaN(offsetNum)) { showStatus('Invalid clock offset.', true); return; }
-  if (document.getElementById('spoofDevicePreset').value === '__custom' && dprRaw !== '' && !(dprNum > 0)) {
+  if (/** @type {HTMLSelectElement} */ (document.getElementById('spoofDevicePreset')).value === '__custom' && dprRaw !== '' && !(dprNum > 0)) {
     showStatus('Invalid pixel ratio.', true); return;
   }
 
@@ -747,6 +748,7 @@ async function applySpoof() {
   // key — omitting a key means "leave whatever was already applied alone,"
   // which is exactly the bug this ticket fixes: clearing a field and
   // clicking Apply now actually clears it.
+  /** @type {import('../src/main/emulationManager').EmulationPatch} */
   const patch = {
     timezone: timezoneRaw !== '' ? timezoneRaw : null,
     locale: localeRaw !== '' ? localeRaw : null,
@@ -755,18 +757,18 @@ async function applySpoof() {
     timeOffsetMs: offsetRaw !== '' && !isNaN(offsetNum) && offsetNum !== 0 ? offsetNum * unitMs : null,
     userAgent: userAgentRaw !== '' ? userAgentRaw : null,
     deviceMetrics: readDeviceMetricsFromFields(),
-    touch: document.getElementById('spoofTouch').checked,
-    colorScheme: document.getElementById('spoofColorScheme').value || null,
+    touch: /** @type {HTMLInputElement} */ (document.getElementById('spoofTouch')).checked,
+    colorScheme: /** @type {import('../src/main/deviceEmulation').ColorScheme} */ (/** @type {HTMLSelectElement} */ (document.getElementById('spoofColorScheme')).value) || null,
     // "No preference" is offered as its own option for clarity (it's the
     // actual CSS media-feature value name), but setEmulation only has a
     // real override state for 'reduce' — picking "No preference" clears the
     // override the same as "System" does, rather than the panel needing a
     // third backend state neither CDP's success/failure reporting nor the
     // rest of this API distinguishes from "unset."
-    reducedMotion: document.getElementById('spoofReducedMotion').value === 'reduce' ? 'reduce' : null,
+    reducedMotion: /** @type {HTMLSelectElement} */ (document.getElementById('spoofReducedMotion')).value === 'reduce' ? 'reduce' : null,
   };
 
-  const btn = document.getElementById('spoofApply');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('spoofApply'));
   btn.disabled = true;
   try {
     const errors = await testerBrowser.emulation.set(getActiveId(), patch);
@@ -781,7 +783,7 @@ async function applySpoof() {
 
 async function resetSpoof() {
   if (!getActiveId()) { showStatus('No active session.', true); return; }
-  const btn = document.getElementById('spoofReset');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('spoofReset'));
   btn.disabled = true;
   try {
     await testerBrowser.emulation.set(getActiveId(), { clear: true });
@@ -798,7 +800,7 @@ async function resetSpoof() {
 async function resetSection(name) {
   const id = getActiveId();
   if (!id) { showStatus('No active session.', true); return; }
-  const btn = document.getElementById(`spoofSecReset-${name}`);
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById(`spoofSecReset-${name}`));
   btn.disabled = true;
   try {
     const patch = Object.fromEntries(SECTIONS[name].keys.map(k => [k, null]));
