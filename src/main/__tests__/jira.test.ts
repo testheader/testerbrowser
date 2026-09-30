@@ -15,7 +15,12 @@ describe('validateJiraBaseUrl (M3)', () => {
     expect(validateJiraBaseUrl(undefined)).toEqual({ baseUrl: '' });
   });
 
-  it.each(['http://acme.atlassian.net', 'ftp://acme.test', 'javascript:alert(1)', 'acme.atlassian.net', 'https://user:pw@acme.test'])(
+  it.each(['http://localhost:8080', 'http://127.0.0.1:3000/jira', 'http://[::1]:9000'])(
+    'allows plain http to loopback host %s', (url) => {
+      expect(validateJiraBaseUrl(url)).toEqual({ baseUrl: url });
+    });
+
+  it.each(['http://localhost.evil.test', 'http://127.0.0.1.nip.io', 'http://acme.atlassian.net', 'ftp://acme.test', 'javascript:alert(1)', 'acme.atlassian.net', 'https://user:pw@acme.test'])(
     'rejects %p', (url) => {
       expect(validateJiraBaseUrl(url).error).toBeTruthy();
     }

@@ -112,9 +112,9 @@ export function initSpoof() {
         <span class="spoof-hint" id="spoofDeviceHint"></span>
       </div>
       <div class="spoof-field spoof-field-toggle">
-        <span class="spoof-label" id="spoofTouchLabel">Touch input</span>
+        <label class="spoof-label" id="spoofTouchLabel" for="spoofTouch">Touch input</label>
         <label class="toggle-switch">
-          <input type="checkbox" id="spoofTouch" aria-labelledby="spoofTouchLabel" aria-describedby="spoofTouchHint" />
+          <input type="checkbox" id="spoofTouch" aria-describedby="spoofTouchHint" />
           <span class="toggle-slider"></span>
         </label>
         <span class="spoof-hint" id="spoofTouchHint">Emulates a touch screen instead of a mouse.</span>

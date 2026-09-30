@@ -50,7 +50,10 @@ export function migrateJiraSettings(
 }
 
 // M3: the API token is sent as Basic auth to whatever baseUrl says, so the
-// URL must be https (never cleartext http, never another scheme). An empty
+// URL must be https (never cleartext http, never another scheme) — except
+// plain http to a loopback host (localhost / 127.0.0.1 / [::1]), which never
+// leaves the machine: local Jira instances, dev proxies, the e2e fixture
+// server. An empty
 // value is allowed — it just means "Jira not configured". Returns the
 // normalised URL (trimmed, trailing slash dropped) or an error.
 export function validateJiraBaseUrl(raw: unknown): { baseUrl: string; error?: undefined } | { baseUrl?: undefined; error: string } {
@@ -58,7 +61,10 @@ export function validateJiraBaseUrl(raw: unknown): { baseUrl: string; error?: un
   if (!baseUrl) return { baseUrl: '' };
   let u: URL;
   try { u = new URL(baseUrl); } catch { return { error: 'Jira base URL is not a valid URL' }; }
-  if (u.protocol !== 'https:') return { error: 'Jira base URL must use https://' };
+  const loopback = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) {
+    return { error: 'Jira base URL must use https:// (http:// is only allowed for localhost)' };
+  }
   if (u.username || u.password) return { error: 'Jira base URL must not contain credentials' };
   return { baseUrl };
 }
