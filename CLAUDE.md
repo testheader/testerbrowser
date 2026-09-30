@@ -37,6 +37,10 @@ src/main/ipc/              One file per feature area, each exporting register(de
                            ipcMain.handle() call to the matching module (or a new one +
                            register call in index.ts), update the IPC table below, and add the
                            matching window.testerBrowser method in src/preload/index.ts.
+src/main/ipcGuard.ts       Default-deny IPC sender check, installed in index.ts before any
+                           register*Ipc() call: wraps ipcMain.handle/handleOnce so every channel
+                           answers only the chrome window's top frame, plus NEWTAB_CHANNELS for
+                           the bundled new-tab page. Everything else (sites under test) throws.
 src/main/sessionManager.ts BrowserView lifecycle, tab mgmt, CDP dispatch (Fetch.requestPaused,
                            Runtime.bindingCalled). Composes narrower manager classes — each
                            owns one feature area's state/logic and is constructed with a
@@ -313,6 +317,7 @@ npm run dist:win          # Full Windows installer build + publish
 - **electron-builder defaults to draft releases** — `electron-updater` ignores drafts. Set `"releaseType": "prerelease"`.
 - **electron-builder needs `GH_TOKEN`** in CI even with `--publish always` — pass as env on the npm step.
 - **Calling `electron-builder` directly in workflow steps fails** — always invoke via `npm run dist:*` (or `npx electron-builder` as the workflow now does).
+- **Every IPC channel is sender-checked centrally** (`src/main/ipcGuard.ts`) — handlers don't check the sender themselves. Register with `ipcMain.handle()` only (`ipcMain.on`/`once` aren't guarded, and `ipcGuard.test.ts` fails if they appear). A channel the new-tab page needs must be added to both `src/preload/newtab.ts` and `NEWTAB_CHANNELS`; the test fails if they differ.
 - **Renderer JS is type-checked, and must have no `.d.ts` siblings** — `tsconfig.renderer.json` runs checkJs over `renderer/*.js` (non-strict). A `renderer/foo.d.ts` next to `foo.js` would shadow the real JS for both the checker and the unit tests (which read renderer types straight from the JS via `tsconfig.tests.json`'s `allowJs`), so document shapes with JSDoc instead. Cast DOM lookups when you use element-specific properties: `/** @type {HTMLInputElement} */ (document.getElementById('x')).value`.
 - **Unit tests must live in `src/**/__tests__/`** — `jest.config.js` matches nothing else, so a stray `*.test.ts` is silently never run.
 - **E2E launches need an isolated profile** — use `launchApp()` from `e2e/helpers.ts`; a shared user-data dir leaks tab state between spec files and causes run-order-dependent failures.

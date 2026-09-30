@@ -15,10 +15,10 @@ export interface AppIpcHooks {
 
 /** App version/update-status, external links, error reporting, and crash-log IPC. */
 export function registerAppIpc(deps: AppDeps, hooks: AppIpcHooks): void {
-  const { recordAppError, rejectUntrustedSender } = deps;
+  const { recordAppError } = deps;
   const { getUpdateStatus, getLatestVersion, checkForUpdatesNow, restartAndInstall, getCrashLogPath } = hooks;
 
-  ipcMain.handle('app:versionInfo', (e) => rejectUntrustedSender(e, 'app:versionInfo') ? null : ({
+  ipcMain.handle('app:versionInfo', () => ({
     current: app.getVersion(), latest: getLatestVersion(), status: getUpdateStatus(), isPackaged: app.isPackaged,
   }));
   ipcMain.handle('app:checkForUpdates', () => checkForUpdatesNow());

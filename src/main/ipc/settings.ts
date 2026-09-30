@@ -17,20 +17,18 @@ export interface SettingsIpcStores {
 
 /** App settings and chrome theme IPC. */
 export function registerSettingsIpc(deps: AppDeps, stores: SettingsIpcStores): void {
-  const { getSessionManager, rejectUntrustedSender } = deps;
+  const { getSessionManager } = deps;
   const { settingsStore, themeStore, maybeStartIdleInstallTimer } = stores;
 
-  ipcMain.handle('settings:get', (e) => rejectUntrustedSender(e, 'settings:get') ? null : settingsStore.get());
-  ipcMain.handle('settings:set', (e, patch: unknown) => {
-    if (rejectUntrustedSender(e, 'settings:set')) return;
+  ipcMain.handle('settings:get', () => settingsStore.get());
+  ipcMain.handle('settings:set', (_e, patch: unknown) => {
     const next = settingsStore.update(s => applySettingsPatch(s, patch));
     maybeStartIdleInstallTimer();
     return next;
   });
 
-  ipcMain.handle('theme:get', (e) => rejectUntrustedSender(e, 'theme:get') ? undefined : themeStore.get().scheme);
-  ipcMain.handle('theme:set', (e, scheme: string) => {
-    if (rejectUntrustedSender(e, 'theme:set')) return;
+  ipcMain.handle('theme:get', () => themeStore.get().scheme);
+  ipcMain.handle('theme:set', (_e, scheme: string) => {
     const value = scheme === 'light' ? 'light' : 'dark';
     themeStore.set({ scheme: value });
     getSessionManager()?.broadcastTheme(value);

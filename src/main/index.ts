@@ -1,11 +1,11 @@
-import { app, BrowserWindow, IpcMainInvokeEvent, Menu, net, safeStorage, powerMonitor } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, net, safeStorage, powerMonitor } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, getHostname } from './sessionManager';
 import { VisualRegressionStore } from './visualRegressionStore';
 import { firstHttpUrl } from './singleInstance';
-import { isTrustedNewtabFrame } from './newtabUrl';
+import { installIpcGuard } from './ipcGuard';
 import { canAutoInstall, IDLE_INSTALL_MINUTES } from './idleInstall';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
@@ -86,31 +86,15 @@ process.on('unhandledRejection', (reason) => recordAppError(`Unhandled rejection
 const gotSingleInstanceLock =
   process.env.ELECTRON_SKIP_SINGLE_INSTANCE === '1' || app.requestSingleInstanceLock();
 
-// --- Privileged-IPC sender check (#217) ---
-// src/preload/newtab.ts's contextBridge APIs (speedDial, appTheme, bookmarksApi,
-// appSettings, appInfo) ride on NEWTAB_PRELOAD, which every WebContentsView uses.
-// The preload only exposes them to renderer/newtab.html, but a compromised or
-// hostile page could still send these channels directly. The handlers read/write
-// app-wide state (settings, bookmarks, theme), so only two
-// senders may call them: the chrome window itself (win.webContents, used by
-// renderer/*.js) and a frame actually showing the new-tab page. Everything else —
-// any site under test — is rejected. L1: the new-tab frame must be a top-level
-// frame whose file: URL resolves to exactly the bundled newtab.html (see
-// newtabUrl.ts), not merely contain that name.
-function isTrustedIpcSender(e: IpcMainInvokeEvent): boolean {
-  if (win && e.sender === win.webContents) return true;
-  return isTrustedNewtabFrame(e.senderFrame);
-}
-
-// Returns true (and logs once at warn) when the call should be rejected;
-// callers do `if (rejectUntrustedSender(e, 'channel:name')) return;`.
-function rejectUntrustedSender(e: IpcMainInvokeEvent, channel: string): boolean {
-  if (isTrustedIpcSender(e)) return false;
-  let origin = 'unknown';
-  try { origin = new URL(e.senderFrame?.url ?? '').origin; } catch { /* not a parseable URL (e.g. about:blank) */ }
-  recordAppError(`Rejected untrusted IPC call to '${channel}' from ${origin}`, 'warn');
-  return true;
-}
+// --- IPC sender check ---
+// Default-deny: every ipcMain.handle() channel — registered below or added
+// later — only answers the chrome window, plus a short allow-list for the
+// bundled new-tab page. See ipcGuard.ts. Installed here, before the
+// register*Ipc() calls at the bottom of this file.
+installIpcGuard(ipcMain, {
+  getAppWebContents: () => (win && !win.isDestroyed() ? win.webContents : null),
+  onReject: (channel, origin) => recordAppError(`Rejected untrusted IPC call to '${channel}' from ${origin}`, 'warn'),
+});
 
 // --- Crash detection ---
 // A sentinel file is written on startup and deleted on clean exit. If it still
@@ -688,7 +672,6 @@ const appDeps: AppDeps = {
   log,
   recordAppError,
   persistSessionUrls,
-  rejectUntrustedSender,
 };
 
 registerSessionsIpc(appDeps);

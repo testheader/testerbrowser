@@ -164,6 +164,10 @@ pointer file** — edit the skill. Full design in
   parent's colour captured in the `createSession` closure.
 - **electron-builder defaults to draft releases** and `electron-updater` ignores
   drafts — hence `"releaseType": "prerelease"`.
+- **Every IPC channel is sender-checked centrally** (`src/main/ipcGuard.ts`):
+  only the chrome window may call it, plus `NEWTAB_CHANNELS` for the new-tab
+  page. Register with `ipcMain.handle()` only — never `ipcMain.on` — and add a
+  new-tab channel to both `src/preload/newtab.ts` and `NEWTAB_CHANNELS`.
 - **Renderer JS is type-checked** (`tsconfig.renderer.json`, part of
   `npm run typecheck`). Cast DOM lookups when using element-specific
   properties (`/** @type {HTMLInputElement} */ (document.getElementById('x'))`),

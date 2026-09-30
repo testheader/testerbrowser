@@ -172,7 +172,7 @@ Where things go in the current architecture:
 | Change | Where |
 |---|---|
 | Backend / session logic | `src/main/sessionManager.ts` |
-| IPC handler | the matching `src/main/ipc/<area>.ts` module (`ipcMain.handle`) |
+| IPC handler | the matching `src/main/ipc/<area>.ts` module (`ipcMain.handle` only — `src/main/ipcGuard.ts` sender-checks every channel centrally; a channel the new-tab page calls also goes in `NEWTAB_CHANNELS`) |
 | Preload exposure | `src/preload/index.ts` (`contextBridge`) |
 | New renderer module | create `renderer/<feature>.js`, export `init<Feature>()`, import and call it from `renderer/main.js` |
 | New console-panel tab | `renderer/index.html` (tab button + panel div), `renderer/console-tabs.js` (switch + init), `renderer/style.css` |

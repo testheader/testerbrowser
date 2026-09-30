@@ -35,7 +35,6 @@ function fakeDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     log: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() } as unknown as AppDeps['log'],
     recordAppError: jest.fn(),
     persistSessionUrls: jest.fn(),
-    rejectUntrustedSender: () => false,
     ...overrides,
   };
 }

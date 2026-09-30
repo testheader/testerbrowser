@@ -1,4 +1,4 @@
-import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import type { BrowserWindow } from 'electron';
 import type { SessionManager } from '../sessionManager';
 import type { VisualRegressionStore } from '../visualRegressionStore';
 import type { DebugLogStore } from '../debugLogStore';
@@ -31,11 +31,6 @@ export interface AppDeps {
   log: AppLog;
   recordAppError: (message: string) => void;
   persistSessionUrls: () => void;
-  // #217: only the chrome window itself or a frame actually showing the
-  // new-tab page may call a handful of app-wide-state channels (settings,
-  // bookmarks, theme, speed dial) — see index.ts's own isTrustedIpcSender
-  // for why. Returns true (and logs once) when the call should be rejected.
-  rejectUntrustedSender: (e: IpcMainInvokeEvent, channel: string) => boolean;
 }
 
 export interface Bookmark { url: string; title: string; addedAt: number; folderId: string | null; }
