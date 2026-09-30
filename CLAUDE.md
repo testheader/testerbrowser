@@ -47,6 +47,11 @@ src/main/sessionManager.ts BrowserView lifecycle, tab mgmt, CDP dispatch (Fetch.
                            take Electron.WebContents directly, no session lookup).
                            SessionManager itself keeps only shared CDP plumbing and thin
                            id-resolving delegate methods to each manager.
+src/main/*.ts (other)      Small pure/leaf modules with unit tests in __tests__/: permissionManager.ts
+                           (persisted grants), deviceEmulation.ts (Spoof presets/validation),
+                           networkConditions.ts, har.ts, jira.ts, testdata.ts, snapshotScripts.ts,
+                           visualRegressionStore.ts, downloadManager.ts, settingsPatch.ts, jsonFile.ts
+                           (JsonStore), errorLog.ts/debugLogStore.ts, idleInstall.ts, singleInstance.ts.
 src/main/recorder.ts       CDP debugger → SQLite ring buffer (20 000 events/session cap)
 src/main/appLogger.ts      Central app logger: log.error/warn/info/debug() fan out to the
                            in-memory ring + app-errors.json, DebugLogStore, and a rotating
@@ -153,6 +158,31 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `app:versionInfo` | R→M | current + latest version + update status |
 | `app:checkForUpdates` | R→M | trigger autoUpdater |
 | `app:restartAndInstall` | R→M | quitAndInstall |
+| `app:openExternal` | R→M | open a URL in the OS browser |
+| `app:reportError` / `app:debugLog` / `app:getUpdateLog` | R→M | renderer error → app logger; debug-log entries (optional `afterId` cursor); updater log |
+| `app:captureScreenshot` / `session:captureScreenshot` | R→M | screenshot of the app window / of a tab (`{ fullPage? }`) |
+| `crash:check` / `crash:clear` | R→M | read / dismiss the previous-run crash report |
+| `clipboard:write` | R→M | write text to the OS clipboard |
+| `window:minimize/maximize/close/isMaximized` | R→M | custom title-bar controls |
+| `settings:get/set` | R→M | app settings (`set` takes a validated patch — `settingsPatch.ts`) |
+| `theme:get/set` | R→M | colour scheme |
+| `speeddial:get/set` | R→M | new-tab page tiles |
+| `bookmarks:createFolder/listFolders/move/rename/renameFolder/removeFolder` | R→M | bookmark folders (plain add/list/remove are above) |
+| `sessions:setTabOrder` / `sessions:getHistory` / `sessions:getLoadedDomains` | R→M | persist tab order; per-tab navigation history; domains loaded by the tab |
+| `sessions:setCookie/deleteCookie/clearCookies` | R→M | cookie editing (Storage tab) |
+| `sessions:setLocalStorageKey/deleteLocalStorageKey/clearLocalStorage` | R→M | localStorage editing (Storage tab) |
+| `session:setEmulation` / `session:getEmulation` | R→M | Spoof tab: device metrics, UA, geolocation, timezone, locale — per tab (`emulationManager.ts`) |
+| `mock:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Mock rule CRUD, scoped to the tab's partition (reorder/import/export are above) |
+| `resilience:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Resilience rule CRUD (latency/abort/status injection by URL glob) |
+| `recording:replay` | R→M | re-issue a recorded request from the page context |
+| `tests:list/save/load/delete` | R→M | saved Record/Playback tests (import/export are above) |
+| `session:startRecording/stopRecording/pollRecordingSteps/getEvidenceSteps` | R→M | Record/Playback step capture |
+| `session:playbackStep` / `session:setPlaybackActive` / `session:countSelectorMatches` | R→M | run one step / suppress recording during playback / count selector matches |
+| `testdata:apply` | R→M | fill the page's form fields from a Test Data template |
+| `followalong:start/stop/setMirrorNavigation/list` | R→M | leader→follower tab mirroring (`followAlongManager.ts`) |
+| `jira:getSettings/saveSettings/fetchTicket/createIssue` | R→M | Jira integration (token never returned to the renderer) |
+| `bugreport:startOAuth/signOut/hasToken/checkToken/saveToken/getDiagnostics/submit/revealScreenshot` | R→M | in-app GitHub bug reporting |
+| `layout:setRightPanelWidth` | R→M | resize the right-hand detail panel |
 | `session:navigated` | M→R | fired on did-navigate / did-navigate-in-page |
 | `session:navState` | M→R | canBack / canForward |
 | `session:titleUpdated` | M→R | page title changed |
