@@ -14,7 +14,8 @@ jest.mock('electron', () => ({
   app: { getPath: jest.fn(() => mockUserDataDir) },
 }));
 
-import { A11Y_VIOLATIONS_EXCLUDED_RULES, buildAxeRuleConfig, SessionManager } from '../sessionManager';
+import { A11Y_VIOLATIONS_EXCLUDED_RULES, buildAxeRuleConfig } from '../a11yService';
+import { SessionManager } from '../sessionManager';
 
 describe('buildAxeRuleConfig (#193 — axe-core violations audit)', () => {
   it('disables every rule owned by a sibling A11y tab ticket', () => {
@@ -75,9 +76,10 @@ function installFakeSession(sm: SessionManager, id: string, sendCommand: jest.Mo
 // Forces getAxeSource()'s cache directly rather than mocking fs — its guard
 // is `if (this.axeSource === null)`, so pre-seeding the private field skips
 // the real file read entirely and deterministically simulates either
-// outcome.
+// outcome. #255: that cache now lives on A11yService, reached through
+// SessionManager's own (private) a11yService field.
 function setFakeAxeSource(sm: SessionManager, value: string) {
-  (sm as unknown as { axeSource: string | null }).axeSource = value;
+  (sm as unknown as { a11yService: { axeSource: string | null } }).a11yService.axeSource = value;
 }
 
 describe('getA11yViolations', () => {

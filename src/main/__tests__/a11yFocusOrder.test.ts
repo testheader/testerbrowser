@@ -1,4 +1,4 @@
-import { compareTabOrder, TabOrderCandidate } from '../sessionManager';
+import { compareTabOrder, TabOrderCandidate } from '../a11yService';
 
 describe('compareTabOrder (#197 — focus order overlay)', () => {
   it('orders positive-tabindex elements first, ascending', () => {

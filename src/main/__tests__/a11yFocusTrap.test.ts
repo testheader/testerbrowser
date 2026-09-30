@@ -1,4 +1,4 @@
-import { classifyFocusTrapSequence } from '../sessionManager';
+import { classifyFocusTrapSequence } from '../a11yService';
 
 describe('classifyFocusTrapSequence (#198 — focus trap detector)', () => {
   it('passes when the walk reaches the expected terminal element', () => {
