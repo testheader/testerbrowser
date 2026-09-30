@@ -30,9 +30,6 @@ test-pages/        Static HTML fixtures for exercising the browser itself
 e2e/               Playwright specs + fixtures/server.ts (HTTP server for tests)
 ```
 
-`renderer/renderer.js` is the **legacy monolith** — superseded by the module
-split, no longer loaded, and ESLint-ignored. Never add to it.
-
 ## Commands
 
 ```bash

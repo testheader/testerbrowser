@@ -177,9 +177,7 @@ Where things go in the current architecture:
 | New renderer module | create `renderer/<feature>.js`, export `init<Feature>()`, import and call it from `renderer/main.js` |
 | New console-panel tab | `renderer/index.html` (tab button + panel div), `renderer/console-tabs.js` (switch + init), `renderer/style.css` |
 
-**`renderer/renderer.js` is the legacy monolith** — superseded by the module
-split, no longer loaded by `index.html`, and ESLint-ignored. Never add to it;
-code you put there will not run. `renderer/main.js` is the entry point.
+`renderer/main.js` is the renderer's entry point.
 
 Test-first where practical:
 
@@ -393,7 +391,6 @@ tree. Never carry one ticket's half-finished edits into another's commit.
 - Take consent once per run at Step 0.5, then run unattended — never pause
   mid-loop for approval. Park blocked tickets instead of asking.
 - Never close an issue and never set `status-done` — that is `watch-ci`'s call.
-- Never add to `renderer/renderer.js`.
 - Always update **both** the label and the board column on every transition.
 - If you cannot complete a ticket, park it (comment + correct label + clean
   tree) and move on — never leave the run blocked on a question.

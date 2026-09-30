@@ -2,8 +2,6 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  // renderer.js is the legacy monolithic file, superseded by the module split and no longer loaded.
-  { ignores: ['renderer/renderer.js'] },
   {
     files: ['renderer/*.js'],
     ...js.configs.recommended,

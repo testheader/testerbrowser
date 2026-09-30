@@ -60,8 +60,6 @@ src/preload/index.ts       contextBridge → window.testerBrowser (full API surf
 renderer/index.html        HTML shell; renderer/style.css holds the styling
 renderer/*.js              Renderer logic, split into ES modules (main.js is the entry point):
                            tabs, URL bar, find, bookmarks, downloads, timeline, storage, …
-renderer/renderer.js       LEGACY monolith — superseded by the module split, no longer
-                           loaded, ESLint-ignored. Do not add to it.
 test-pages/                Static HTML fixtures for testing TesterBrowser itself (cookies,
                            console/errors, network, downloads, popups, permissions, perf).
                            Dev/CI only — excluded from the packaged build automatically by
