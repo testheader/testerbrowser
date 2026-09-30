@@ -11,6 +11,10 @@ import {
   MockManager, MockRule, buildMockFulfillParams, buildMockPreflightParams,
 } from './mockManager';
 import { ResilienceManager, ResilienceRule } from './resilienceManager';
+import {
+  SnapshotManager, FrameSnapshot, SessionSnapshot, looksLikeImportableSnapshot, waitForFrameLoad,
+} from './snapshotManager';
+import { EmulationManager, EmulationOverrides, EmulationPatch } from './emulationManager';
 
 import {
   genFirstName, genLastName, genFullName, genEmail, genUUID, genDate, genPhone, genAddress,
@@ -574,43 +578,6 @@ export type IndexedDBSnapshot = Record<string, {
   stores: Record<string, { keyPath: string | string[] | null; autoIncrement: boolean; records: { key: unknown; value: unknown }[] }>;
 }>;
 
-// One entry per frame (main frame + same-page iframes) inside a session
-// snapshot. Storage/IndexedDB/history/scroll/fields are captured and
-// restored; reactState is diagnostic-only (see snapshotScripts.ts) and is
-// never fed back into a page on import.
-export interface FrameSnapshot {
-  url: string;
-  localStorage?: Record<string, string>;
-  sessionStorage?: Record<string, string>;
-  indexedDB?: IndexedDBSnapshot;
-  fields?: { sel: string; kind: 'value' | 'checked'; value?: string; checked?: boolean }[];
-  scroll?: { x: number; y: number };
-  historyState?: unknown;
-  reactState?: { note: string; nodes: { path: string; state: unknown }[] };
-  warnings?: string[];
-}
-
-export interface SessionSnapshot {
-  version: 2;
-  ts: number;
-  sessionName: string;
-  url: string;
-  cookies: Electron.Cookie[];
-  frames: FrameSnapshot[];
-  warnings: string[];
-}
-
-// Mirrors readSnapshotFile's real acceptance check — a file is importable if
-// it has a frames array (v2), a cookies array, or a url, covering both the
-// current multi-frame shape and the original v1 shape (single implicit
-// frame, storage inline). Exported so tests exercise the real check instead
-// of a locally reimplemented copy.
-export function looksLikeImportableSnapshot(obj: unknown): boolean {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-  const s = obj as Record<string, unknown>;
-  return Array.isArray(s.frames) || Array.isArray(s.cookies) || typeof s.url === 'string';
-}
-
 // #266: a request counts as mixed content when CDP already classified it
 // (`blockable`/`optionally-blockable`) or, when CDP gave no classification at
 // all, when it's a plain-http request on an https page — the same fallback
@@ -651,110 +618,6 @@ export interface SecurityPageState extends CertificateSecurityState {
 // Well above the 10 the popover actually displays, so the count stays
 // accurate for any page a tester would plausibly load.
 const MAX_TRACKED_MIXED_CONTENT_URLS = 500;
-
-export interface EmulationOverrides {
-  timezone?: string;
-  locale?: string;
-  latitude?: number;
-  longitude?: number;
-  timeOffsetMs?: number;
-  userAgent?: string;
-  // #271: device/viewport, touch and media-query emulation.
-  deviceMetrics?: DeviceMetrics;
-  touch?: boolean;
-  colorScheme?: ColorScheme;
-  reducedMotion?: ReducedMotion;
-}
-
-// #241: a patch, not the applied state — undefined (the key absent) means
-// "leave this field's current override alone" (used when re-applying a
-// partition's existing overrides to a fresh same-partition tab, and when
-// restoring from disk), null explicitly clears just that one field, and a
-// real value sets it. `clear: true` is sugar for "clear every field."
-// Latitude/longitude are one combined field in practice — CDP has no way to
-// override just one coordinate — so either being null/absent while the
-// other is a real number clears geolocation entirely; both present as
-// numbers sets it.
-export interface EmulationPatch {
-  timezone?: string | null;
-  locale?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  accuracy?: number;
-  timeOffsetMs?: number | null;
-  userAgent?: string | null;
-  // #271: same null=clear/undefined=unchanged rules as the fields above.
-  deviceMetrics?: DeviceMetrics | null;
-  touch?: boolean | null;
-  colorScheme?: ColorScheme | null;
-  reducedMotion?: ReducedMotion | null;
-  clear?: boolean;
-}
-
-// e.g. 'fr-FR' -> 'fr-FR,fr' — CDP's acceptLanguage takes a plain
-// comma-separated preference list with no quality values; Chromium derives
-// the real Accept-Language header's descending ";q=" weights from position
-// itself. Adding our own here double-appends one (observed empirically:
-// "fr-FR,fr;q=0.9;q=0.9" over the wire) rather than being an inert no-op.
-function acceptLanguageForLocale(locale: string): string {
-  const base = locale.split('-')[0];
-  return base && base !== locale ? `${locale},${base}` : locale;
-}
-
-function emulationErrorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-// Overrides window.Date/Date.now() on every new document with a fixed
-// offset from real wall-clock time, so the spoofed clock keeps advancing
-// at normal speed instead of freezing at one instant.
-function buildDateOverrideScript(offsetMs: number): string {
-  return `(() => {
-    if (window.__tbDateOverridden) return;
-    window.__tbDateOverridden = true;
-    const __tbOffset = ${offsetMs};
-    const RealDate = Date;
-    function TBDate(...args) {
-      if (!new.target) return new RealDate(RealDate.now() + __tbOffset).toString();
-      if (args.length === 0) return new RealDate(RealDate.now() + __tbOffset);
-      return new RealDate(...args);
-    }
-    TBDate.prototype = RealDate.prototype;
-    TBDate.now = () => RealDate.now() + __tbOffset;
-    TBDate.parse = RealDate.parse;
-    TBDate.UTC = RealDate.UTC;
-    Object.defineProperty(window, 'Date', { value: TBDate, writable: true, configurable: true });
-  })();`;
-}
-
-// Chromium's CDP Emulation.setUserAgentOverride only touches navigator.userAgent
-// (and the request header, alongside webContents.setUserAgent()) — it leaves
-// navigator.userAgentData / Sec-CH-UA-* Client Hints reporting the *real*
-// browser unless userAgentMetadata is supplied too, which would silently
-// contradict the spoofed UA on any site that reads them. Derive a plausible
-// metadata object from the UA string itself rather than requiring a second
-// field the tester would have to keep in sync by hand.
-function buildUserAgentMetadata(ua: string): {
-  brands: { brand: string; version: string }[];
-  platform: string;
-  platformVersion: string;
-  architecture: string;
-  model: string;
-  mobile: boolean;
-} {
-  const mobile = /Mobi|Android|iPhone|iPad/i.test(ua);
-  const platform =
-    /iPhone|iPad|iPod/i.test(ua) ? 'iOS' :
-    /Android/i.test(ua) ? 'Android' :
-    /Windows/i.test(ua) ? 'Windows' :
-    /Mac OS X/i.test(ua) ? 'macOS' :
-    /Linux/i.test(ua) ? 'Linux' : '';
-  const chromeMatch = ua.match(/Chrome\/(\d+)/);
-  const brands = chromeMatch
-    ? [{ brand: 'Chromium', version: chromeMatch[1] }, { brand: 'Google Chrome', version: chromeMatch[1] }]
-    : [];
-  return { brands, platform, platformVersion: '', architecture: '', model: '', mobile };
-}
 
 const TAB_COLORS = [
   '#e06c75', '#61afef', '#98c379', '#c678dd',
@@ -1144,13 +1007,12 @@ export class SessionManager {
   // its start/end. Backs isBusy() below, which the idle-auto-install check
   // (#259) uses to avoid installing mid-run.
   private playingIds = new Set<string>();
-  // CDP script identifier of the injected Date-override shim, keyed by session id.
-  private dateOverrideScripts = new Map<string, string>();
   // #273: CDP script identifier of RECORDING_SCRIPT, keyed by session id —
-  // same lifecycle as dateOverrideScripts, registered via
-  // Page.addScriptToEvaluateOnNewDocument so the recorder is listening from
-  // a new document's very first script execution (no reactive re-injection
-  // window after did-navigate where interactions go unrecorded).
+  // same lifecycle as EmulationManager's own date-override script map,
+  // registered via Page.addScriptToEvaluateOnNewDocument so the recorder is
+  // listening from a new document's very first script execution (no
+  // reactive re-injection window after did-navigate where interactions go
+  // unrecorded).
   private recordingScripts = new Map<string, string>();
   // Per-session navigation history, newest entry last — cleared on destroy.
   private sessionHistory = new Map<string, HistoryEntry[]>();
@@ -1170,11 +1032,13 @@ export class SessionManager {
   // persisted to disk (see #209's/#264's "Out of scope").
   private mockManager: MockManager;
   private resilienceManager = new ResilienceManager();
-  // #241: emulation overrides, scoped like the two maps above — a partition
-  // with no entry here has never had setEmulation() applied; a present
-  // (possibly empty) object records whatever individual fields are actually
-  // in force. Only the bulk `clear: true` path removes the entry entirely.
-  private emulationByPartition = new Map<string, EmulationOverrides>();
+  // #241: emulation overrides live in EmulationManager (#255), scoped by
+  // partition the same way — a partition with no entry there has never had
+  // setEmulation() applied; a present (possibly empty) object records
+  // whatever individual fields are actually in force. Only the bulk
+  // `clear: true` path removes the entry entirely.
+  private emulationManager: EmulationManager;
+  private snapshotManager: SnapshotManager;
   // Lazily-read, cached contents of the vendored axe-core bundle — read once
   // per app run rather than on every violations scan. '' (not null) marks a
   // failed read so we don't retry the disk hit on every call.
@@ -1221,6 +1085,22 @@ export class SessionManager {
     // sharing a partition (e.g. a middle-clicked link).
     this.permissionManager = new PermissionManager(win, (webContentsId) =>
       Array.from(this.sessions.values()).find((s) => s.view.webContents.id === webContentsId)?.id ?? null
+    );
+    this.emulationManager = new EmulationManager(this.log, (id) => {
+      const s = this.sessions.get(id);
+      return s ? { partition: s.partition, webContents: s.view.webContents, defaultUserAgent: s.defaultUserAgent } : undefined;
+    });
+    this.snapshotManager = new SnapshotManager(
+      win, this.log,
+      (id) => {
+        const s = this.sessions.get(id);
+        return s ? { id: s.id, name: s.name, currentUrl: s.currentUrl, webContents: s.view.webContents } : undefined;
+      },
+      {
+        createSession: (name) => this.createSession(name),
+        switchTo: (id) => this.switchTo(id),
+        destroySession: (id) => this.destroySession(id),
+      }
     );
     this.win.on('resize', () => this.layoutActive());
   }
@@ -1508,7 +1388,7 @@ export class SessionManager {
     // to it, so a partition with existing overrides (popup, "new tab in
     // this session," reopen) needs them re-applied to actually take effect
     // on this specific tab's page, not just be remembered in the map.
-    const existingEmulation = this.emulationByPartition.get(partition);
+    const existingEmulation = this.emulationManager.getByPartition(partition);
     if (existingEmulation && Object.keys(existingEmulation).length > 0) {
       this.setEmulation(id, { ...existingEmulation })
         .catch((e) => this.log.warn('sessions', 'Failed to re-apply emulation overrides to a new same-partition tab', { sessionId: id, error: String(e) }));
@@ -1950,7 +1830,7 @@ export class SessionManager {
       }
       const emulation: Record<string, EmulationOverrides> = {};
       for (const s of persistentSessions) {
-        const applied = this.emulationByPartition.get(s.partition);
+        const applied = this.emulationManager.getByPartition(s.partition);
         if (applied && Object.keys(applied).length > 0) emulation[s.partition] = applied;
       }
       // #264: keyed by partition, like emulation above — mockRulesByPartition
@@ -2256,7 +2136,7 @@ export class SessionManager {
       }
 
       await dest.view.webContents.loadURL(src.currentUrl);
-      await this.waitForFrameLoad(dest.view.webContents);
+      await waitForFrameLoad(dest.view.webContents);
 
       if (preloadScriptId) {
         await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: preloadScriptId })
@@ -2302,211 +2182,22 @@ export class SessionManager {
     return Array.from(this.sessions.get(id)?.loadedDomains ?? []);
   }
 
-  // ── Session snapshots ─────────────────────────────────────────────────────
-
-  // Resolves once the frame either finishes loading, fails to load, or
-  // timeoutMs elapses — whichever comes first — instead of the fixed delay
-  // the old implementation used, which was either too short (subframes not
-  // yet attached) or wastefully long depending on the page.
-  private waitForFrameLoad(wc: Electron.WebContents, timeoutMs = 10000): Promise<void> {
-    return new Promise<void>((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        wc.removeListener('did-finish-load', onLoad);
-        wc.removeListener('did-fail-load', onFail);
-        clearTimeout(timer);
-        resolve();
-      };
-      const onLoad = () => finish();
-      const onFail = () => finish();
-      wc.once('did-finish-load', onLoad);
-      wc.once('did-fail-load', onFail);
-      const timer = setTimeout(finish, timeoutMs);
-    });
-  }
-
-  private async collectSnapshot(id: string): Promise<SessionSnapshot | null> {
-    const s = this.sessions.get(id);
-    if (!s) return null;
-    const cookies = await s.view.webContents.session.cookies.get({});
-    const warnings: string[] = [];
-    const frames: FrameSnapshot[] = [];
-    for (const frame of s.view.webContents.mainFrame.framesInSubtree) {
-      try {
-        const raw = (await frame.executeJavaScript(COLLECT_FRAME_SCRIPT)) as string;
-        const parsed = JSON.parse(raw) as FrameSnapshot;
-        frames.push(parsed);
-        if (parsed.warnings?.length) warnings.push(...parsed.warnings.map((w) => `${parsed.url}: ${w}`));
-      } catch (e) {
-        warnings.push(`frame ${frame.url || '(unknown)'}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
-    return { version: 2, ts: Date.now(), sessionName: s.name, url: s.currentUrl, cookies, frames, warnings };
-  }
-
-  // Restores cookies, then per-frame storage/IndexedDB/history/scroll/form
-  // state. Accepts both the current (version 2, multi-frame) shape and the
-  // original version 1 shape (single implicit frame, storage inline) so
-  // older exported snapshot files still import cleanly. Returns any
-  // warnings collected along the way for the caller to surface.
-  private async restoreSnapshot(id: string, snap: Record<string, unknown>): Promise<string[]> {
-    const s = this.sessions.get(id);
-    if (!s) return [];
-    const warnings: string[] = [];
-
-    if (Array.isArray(snap.cookies)) {
-      await s.view.webContents.session.clearStorageData({ storages: ['cookies'] });
-      for (const c of snap.cookies as Electron.Cookie[]) {
-        const url = `${c.secure ? 'https' : 'http'}://${(c.domain ?? '').replace(/^\./, '')}${c.path ?? '/'}`;
-        try {
-          await s.view.webContents.session.cookies.set({ url, name: c.name, value: c.value, domain: c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, expirationDate: c.expirationDate, sameSite: c.sameSite });
-        } catch (e) {
-          warnings.push(`cookie ${c.name}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-    }
-
-    const frames: FrameSnapshot[] = Array.isArray(snap.frames) && (snap.frames as unknown[]).length
-      ? (snap.frames as FrameSnapshot[])
-      : [{
-          url: typeof snap.url === 'string' ? snap.url : '',
-          localStorage: snap.localStorage as Record<string, string> | undefined,
-          sessionStorage: snap.sessionStorage as Record<string, string> | undefined,
-        }];
-    const [mainFrameSnap, ...subframeSnaps] = frames;
-
-    if (typeof snap.url === 'string' && snap.url) {
-      // Seed the main frame's localStorage/sessionStorage/IndexedDB via a
-      // one-shot CDP script BEFORE navigating, so the page's own bootstrap
-      // JS (e.g. an app reading auth state out of localStorage on load) runs
-      // against the restored values instead of empty storage. Guarded to
-      // only run in the top frame — addScriptToEvaluateOnNewDocument applies
-      // to every frame of the target, and this snapshot's data belongs to
-      // the main frame only. Subframes can't be pre-seeded this way (they
-      // don't exist as separate CDP targets from here) and remain restored
-      // post-load below — an accepted limitation. Form fields/scroll/history
-      // still need a live DOM, so applyFrame() re-runs the full script
-      // post-load anyway; re-seeding storage there is a harmless no-op repeat.
-      const dbg = s.view.webContents.debugger;
-      let preloadScriptId: string | undefined;
-      if (mainFrameSnap) {
-        try {
-          await dbg.sendCommand('Page.enable');
-          const result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-            source: `if (window.top === window.self) { ${buildRestoreFrameScript(mainFrameSnap)} }`,
-          }) as { identifier: string };
-          preloadScriptId = result?.identifier;
-        } catch (e) {
-          warnings.push(`pre-load storage seed: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-
-      await s.view.webContents.loadURL(snap.url);
-      await this.waitForFrameLoad(s.view.webContents);
-
-      if (preloadScriptId) {
-        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: preloadScriptId })
-          .catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
-      }
-
-      // Same-page iframes start loading only after the main frame's load
-      // event fires — give them a brief moment to attach before we walk
-      // the frame tree below.
-      await new Promise<void>((r) => setTimeout(r, 250));
-    }
-
-    const applyFrame = async (frame: Electron.WebFrameMain, snapFrame: FrameSnapshot | undefined) => {
-      if (!snapFrame) return;
-      try {
-        const raw = (await frame.executeJavaScript(buildRestoreFrameScript(snapFrame))) as string;
-        const parsed = JSON.parse(raw) as { warnings?: string[] };
-        if (parsed.warnings?.length) warnings.push(...parsed.warnings.map((w) => `${snapFrame.url}: ${w}`));
-      } catch (e) {
-        warnings.push(`frame ${snapFrame.url}: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    };
-
-    await applyFrame(s.view.webContents.mainFrame, mainFrameSnap);
-    const remaining = [...subframeSnaps];
-    const liveSubframes = s.view.webContents.mainFrame.framesInSubtree.filter((f) => f !== s.view.webContents.mainFrame);
-    for (const liveFrame of liveSubframes) {
-      const idx = remaining.findIndex((f) => f.url === liveFrame.url);
-      if (idx < 0) continue;
-      const [match] = remaining.splice(idx, 1);
-      await applyFrame(liveFrame, match);
-    }
-    if (remaining.length) {
-      warnings.push(`${remaining.length} captured frame(s) had no matching frame on restore (page structure changed)`);
-    }
-    if (frames.some((f) => f.reactState)) {
-      warnings.push('Snapshot includes captured React state (diagnostic only) — component state is not restored on import.');
-    }
-
-    return warnings;
-  }
-
-  private showSnapshotWarnings(title: string, warnings: string[]): void {
-    if (!warnings.length) return;
-    dialog.showMessageBox(this.win, {
-      type: 'warning',
-      title,
-      message: `Completed with ${warnings.length} warning(s):`,
-      detail: warnings.slice(0, 20).join('\n') + (warnings.length > 20 ? `\n…and ${warnings.length - 20} more` : ''),
-    });
-  }
+  // ── Session snapshots (#255: storage/CDP logic lives in SnapshotManager) ──
 
   async exportSnapshotDialog(id: string): Promise<void> {
-    const confirm = await dialog.showMessageBox(this.win, {
-      type: 'warning',
-      title: 'Export session snapshot',
-      message: 'This file will contain cookies, storage and other captured page data in plain text.',
-      detail: 'Anyone with the exported file can read cookies (including session tokens), localStorage/sessionStorage contents and IndexedDB records captured from this session. Password fields are excluded, but other credentials the page stored may not be. Treat the file like a credential.',
-      buttons: ['I understand, export…', 'Cancel'],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (confirm.response !== 0) return;
-
-    const snap = await this.collectSnapshot(id);
-    if (!snap) return;
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const result = await dialog.showSaveDialog(this.win, {
-      title: 'Export session snapshot',
-      defaultPath: `snapshot-${ts}.json`,
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    });
-    if (!result.canceled && result.filePath) {
-      try {
-        fs.writeFileSync(result.filePath, JSON.stringify(snap, null, 2));
-        this.showSnapshotWarnings('Export snapshot', snap.warnings);
-        this.log.info('snapshot', 'Snapshot exported', { sessionId: id });
-      } catch (e) {
-        dialog.showErrorBox('Export failed', 'Could not write the snapshot file.');
-        this.log.warn('snapshot', 'Snapshot export failed', { sessionId: id, error: String(e) });
-      }
-    }
+    return this.snapshotManager.exportSnapshotDialog(id);
   }
 
   async importSnapshotDialog(id: string): Promise<void> {
-    const result = await dialog.showOpenDialog(this.win, {
-      title: 'Import session snapshot',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile'],
-    });
-    if (result.canceled || !result.filePaths[0]) return;
-    const snap = this.readSnapshotFile(result.filePaths[0]);
-    if (!snap) return;
-    try {
-      const warnings = await this.restoreSnapshot(id, snap);
-      this.win.webContents.send('tab:action', { action: 'refresh' });
-      this.showSnapshotWarnings('Import snapshot', warnings);
-      this.log.info('snapshot', 'Snapshot imported', { sessionId: id });
-    } catch (e) {
-      dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
-      this.log.warn('snapshot', 'Snapshot import failed', { sessionId: id, error: String(e) });
-    }
+    return this.snapshotManager.importSnapshotDialog(id);
+  }
+
+  async importSessionAsNewDialog(): Promise<void> {
+    return this.snapshotManager.importSessionAsNewDialog();
+  }
+
+  private showSnapshotWarnings(title: string, warnings: string[]): void {
+    this.snapshotManager.showSnapshotWarnings(title, warnings);
   }
 
   // #232: builds from every stored network-* row for the session (via
@@ -2582,49 +2273,6 @@ export class SessionManager {
     return this.lastRecordingSteps.get(id) ?? [];
   }
 
-  // Creates a brand-new session from an exported snapshot file, rather than
-  // overwriting an existing tab — the entry point for File → Import session.
-  async importSessionAsNewDialog(): Promise<void> {
-    const result = await dialog.showOpenDialog(this.win, {
-      title: 'Import session',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile'],
-    });
-    if (result.canceled || !result.filePaths[0]) return;
-    const snap = this.readSnapshotFile(result.filePaths[0]);
-    if (!snap) return;
-    const sessionName = typeof snap.sessionName === 'string' && snap.sessionName ? snap.sessionName : 'Imported session';
-    const ns = this.createSession(sessionName);
-    try {
-      const warnings = await this.restoreSnapshot(ns.id, snap);
-      this.switchTo(ns.id);
-      this.win.webContents.send('session:newTab', { id: ns.id });
-      this.showSnapshotWarnings('Import session', warnings);
-    } catch {
-      dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
-      this.destroySession(ns.id);
-    }
-  }
-
-  // Reads and validates a snapshot file, showing an error dialog and
-  // returning null if it's missing, malformed, or not shaped like a
-  // snapshot. Accepts both version 1 (legacy, single implicit frame) and
-  // version 2 (multi-frame) shapes.
-  private readSnapshotFile(filePath: string): Record<string, unknown> | null {
-    let snap: unknown;
-    try {
-      snap = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    } catch {
-      dialog.showErrorBox('Import failed', 'The selected file is not valid JSON.');
-      return null;
-    }
-    if (!looksLikeImportableSnapshot(snap)) {
-      dialog.showErrorBox('Import failed', 'The selected file is not a valid session snapshot.');
-      return null;
-    }
-    return snap as Record<string, unknown>;
-  }
-
   // ─────────────────────────────────────────────────────────────────────────
 
   private injectTestData(view: WebContentsView, value: string) {
@@ -2647,187 +2295,13 @@ export class SessionManager {
     this.injectTestData(s.view, resolveTemplate(template));
   }
 
-  // #241: returns a per-field error map (empty when everything requested
-  // actually succeeded) — a field only lands in the partition's recorded
-  // state (and getEmulation()'s result) if its own CDP command resolved;
-  // a rejected command leaves that one field exactly as it was before this
-  // call, so the panel can never claim an override that never took effect.
+  // #241: emulation storage/CDP dispatch lives in EmulationManager (#255).
   async setEmulation(id: string, opts: EmulationPatch): Promise<Record<string, string>> {
-    const s = this.sessions.get(id);
-    if (!s) return {};
-    const clearingEverything = !!opts.clear;
-    if (clearingEverything) {
-      opts = {
-        timezone: null, locale: null, latitude: null, longitude: null, timeOffsetMs: null, userAgent: null,
-        deviceMetrics: null, touch: null, colorScheme: null, reducedMotion: null,
-      };
-    }
-    const dbg = s.view.webContents.debugger;
-    const partition = s.partition;
-    const applied: EmulationOverrides = { ...(this.emulationByPartition.get(partition) ?? {}) };
-    const errors: Record<string, string> = {};
-
-    if (opts.timezone !== undefined) {
-      const ok = await dbg.sendCommand('Emulation.setTimezoneOverride', { timezoneId: opts.timezone ?? '' })
-        .then(() => true)
-        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setTimezoneOverride', e); errors.timezone = emulationErrorMessage(e); return false; });
-      if (ok) { if (opts.timezone === null) delete applied.timezone; else applied.timezone = opts.timezone; }
-    }
-
-    if (opts.latitude !== undefined || opts.longitude !== undefined) {
-      const bothSet = typeof opts.latitude === 'number' && typeof opts.longitude === 'number';
-      if (bothSet) {
-        const latitude = opts.latitude as number;
-        const longitude = opts.longitude as number;
-        const ok = await dbg.sendCommand('Emulation.setGeolocationOverride', { latitude, longitude, accuracy: opts.accuracy ?? 10 })
-          .then(() => true)
-          .catch((e) => { this.warnCdpFailure(id, 'Emulation.setGeolocationOverride', e); errors.latitude = emulationErrorMessage(e); return false; });
-        if (ok) { applied.latitude = latitude; applied.longitude = longitude; }
-      } else {
-        // A lone coordinate (the other left null/absent) is meaningless —
-        // clear geolocation entirely rather than half-apply it.
-        const ok = await dbg.sendCommand('Emulation.clearGeolocationOverride')
-          .then(() => true)
-          .catch((e) => { this.warnCdpFailure(id, 'Emulation.clearGeolocationOverride', e); errors.latitude = emulationErrorMessage(e); return false; });
-        if (ok) { delete applied.latitude; delete applied.longitude; }
-      }
-    }
-
-    if (opts.timeOffsetMs !== undefined) {
-      const existingScriptId = this.dateOverrideScripts.get(id);
-      if (existingScriptId) {
-        await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: existingScriptId }).catch((e) => this.warnCdpFailure(id, 'Page.removeScriptToEvaluateOnNewDocument', e));
-        this.dateOverrideScripts.delete(id);
-      }
-      if (opts.timeOffsetMs === null) {
-        delete applied.timeOffsetMs;
-      } else {
-        const offsetMs = opts.timeOffsetMs;
-        await dbg.sendCommand('Page.enable').catch((e) => this.warnCdpFailure(id, 'Page.enable', e));
-        // The CDP command occasionally fails transiently under system load
-        // (observed in CI) — retry once before giving up, and only report the
-        // offset as applied if the script genuinely got registered, so the UI
-        // never claims an override is active when it silently isn't.
-        let result: { identifier: string } | null = null;
-        for (let attempt = 0; attempt < 2 && !result; attempt++) {
-          result = await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-            source: buildDateOverrideScript(offsetMs),
-          }).catch(() => null) as { identifier: string } | null;
-        }
-        if (result?.identifier) {
-          this.dateOverrideScripts.set(id, result.identifier);
-          applied.timeOffsetMs = offsetMs;
-        } else {
-          this.log.error('sessions', 'Failed to apply clock offset override', { sessionId: id });
-          errors.timeOffsetMs = 'Failed to register the clock override script';
-        }
-      }
-    }
-
-    // Locale and User-Agent both ultimately funnel through the same single
-    // CDP command — Accept-Language only ever travels as
-    // Network.setUserAgentOverride's own acceptLanguage parameter, never a
-    // separate call — so issue exactly one combined call reflecting the
-    // *final* state whenever either is touched. Two separate calls (one per
-    // field) would have the second silently clobber the first's
-    // acceptLanguage, since each call fully replaces the prior override.
-    if (opts.locale !== undefined || opts.userAgent !== undefined) {
-      const nextLocale = opts.locale !== undefined ? (opts.locale === null ? undefined : opts.locale) : applied.locale;
-      const nextUa = opts.userAgent !== undefined
-        ? (opts.userAgent === null ? s.defaultUserAgent : opts.userAgent)
-        : (applied.userAgent ?? s.defaultUserAgent);
-
-      s.view.webContents.setUserAgent(nextUa);
-      const params: Record<string, unknown> = { userAgent: nextUa, userAgentMetadata: buildUserAgentMetadata(nextUa) };
-      if (nextLocale) params.acceptLanguage = acceptLanguageForLocale(nextLocale);
-      let uaError: string | undefined;
-      const uaOk = await dbg.sendCommand('Emulation.setUserAgentOverride', params)
-        .then(() => true)
-        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setUserAgentOverride', e); uaError = emulationErrorMessage(e); return false; });
-
-      if (opts.userAgent !== undefined) {
-        if (uaOk) { if (opts.userAgent === null) delete applied.userAgent; else applied.userAgent = opts.userAgent; }
-        else errors.userAgent = uaError ?? 'Failed to apply User-Agent override';
-      }
-
-      // Intl/navigator.language is a separate CDP surface from the header
-      // above — apply it independently so a failure in one doesn't also
-      // block the other from taking effect.
-      if (opts.locale !== undefined) {
-        const localeOk = await dbg.sendCommand('Emulation.setLocaleOverride', { locale: opts.locale ?? '' })
-          .then(() => true)
-          .catch((e) => { this.warnCdpFailure(id, 'Emulation.setLocaleOverride', e); errors.locale = emulationErrorMessage(e); return false; });
-        if (localeOk) { if (opts.locale === null) delete applied.locale; else applied.locale = opts.locale; }
-      }
-    }
-
-    // #271: viewport/device metrics — only re-issue the clear command when a
-    // metrics override was actually previously applied, so picking "System"
-    // on a tab that was never overridden doesn't send a pointless CDP call.
-    if (opts.deviceMetrics !== undefined) {
-      if (opts.deviceMetrics === null) {
-        if (applied.deviceMetrics) {
-          const ok = await dbg.sendCommand('Emulation.clearDeviceMetricsOverride')
-            .then(() => true)
-            .catch((e) => { this.warnCdpFailure(id, 'Emulation.clearDeviceMetricsOverride', e); errors.deviceMetrics = emulationErrorMessage(e); return false; });
-          if (ok) delete applied.deviceMetrics;
-        }
-      } else {
-        const { width, height, deviceScaleFactor, mobile } = opts.deviceMetrics;
-        const ok = await dbg.sendCommand('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile })
-          .then(() => true)
-          .catch((e) => { this.warnCdpFailure(id, 'Emulation.setDeviceMetricsOverride', e); errors.deviceMetrics = emulationErrorMessage(e); return false; });
-        if (ok) applied.deviceMetrics = { width, height, deviceScaleFactor, mobile };
-      }
-    }
-
-    // #271: touch is a plain enable/disable toggle, not an "override" CDP
-    // needs an explicit clear command for — clearing just means re-issuing
-    // the same command with enabled:false, the same as it never having been
-    // turned on.
-    if (opts.touch !== undefined) {
-      const enabled = !!opts.touch;
-      const ok = await dbg.sendCommand('Emulation.setTouchEmulationEnabled', { enabled })
-        .then(() => true)
-        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setTouchEmulationEnabled', e); errors.touch = emulationErrorMessage(e); return false; });
-      if (ok) { if (enabled) applied.touch = true; else delete applied.touch; }
-    }
-
-    // #271: prefers-color-scheme and prefers-reduced-motion both ultimately
-    // funnel through the same single Emulation.setEmulatedMedia call (its
-    // `features` array carries both) — same reasoning as the combined
-    // locale/User-Agent call above, and CDP reports success/failure for the
-    // call as a whole, not per feature, so a failure here is attributed to
-    // whichever of the two fields this patch actually touched.
-    if (opts.colorScheme !== undefined || opts.reducedMotion !== undefined) {
-      const nextColorScheme = opts.colorScheme !== undefined
-        ? (opts.colorScheme === null ? undefined : opts.colorScheme) : applied.colorScheme;
-      const nextReducedMotion = opts.reducedMotion !== undefined
-        ? (opts.reducedMotion === null ? undefined : opts.reducedMotion) : applied.reducedMotion;
-      let mediaError: string | undefined;
-      const ok = await dbg.sendCommand('Emulation.setEmulatedMedia', { features: buildMediaFeatures(nextColorScheme, nextReducedMotion) })
-        .then(() => true)
-        .catch((e) => { this.warnCdpFailure(id, 'Emulation.setEmulatedMedia', e); mediaError = emulationErrorMessage(e); return false; });
-
-      if (opts.colorScheme !== undefined) {
-        if (ok) { if (opts.colorScheme === null) delete applied.colorScheme; else applied.colorScheme = opts.colorScheme; }
-        else errors.colorScheme = mediaError ?? 'Failed to apply media emulation';
-      }
-      if (opts.reducedMotion !== undefined) {
-        if (ok) { if (opts.reducedMotion === null) delete applied.reducedMotion; else applied.reducedMotion = opts.reducedMotion; }
-        else errors.reducedMotion = mediaError ?? 'Failed to apply media emulation';
-      }
-    }
-
-    if (clearingEverything) this.emulationByPartition.delete(partition);
-    else this.emulationByPartition.set(partition, applied);
-    return errors;
+    return this.emulationManager.setEmulation(id, opts);
   }
 
   getEmulation(id: string): EmulationOverrides | null {
-    const s = this.sessions.get(id);
-    if (!s) return null;
-    return this.emulationByPartition.get(s.partition) ?? null;
+    return this.emulationManager.getEmulation(id);
   }
 
   // #265: per-tab (not per-partition — a sibling tab in the same session
@@ -3610,7 +3084,7 @@ export class SessionManager {
     this.recordingBuffers.delete(id);
     this.lastRecordingSteps.delete(id);
     this.playingIds.delete(id);
-    this.dateOverrideScripts.delete(id);
+    this.emulationManager.cleanupSession(id);
     this.recordingScripts.delete(id);
     this.sessionHistory.delete(id);
     // #276: an in-memory session's permission grants/denials are meant to

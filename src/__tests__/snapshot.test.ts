@@ -1,4 +1,4 @@
-import { looksLikeImportableSnapshot } from '../main/sessionManager';
+import { looksLikeImportableSnapshot } from '../main/snapshotManager';
 import { buildRestoreFrameScript, COLLECT_FRAME_SCRIPT, COLLECT_INDEXEDDB_SCRIPT } from '../main/snapshotScripts';
 
 describe('looksLikeImportableSnapshot (mirrors readSnapshotFile\'s real acceptance check — #243)', () => {

@@ -18,7 +18,8 @@ jest.mock('electron', () => ({
 }));
 
 import { SessionManager } from '../sessionManager';
-import type { TestSession, EmulationOverrides } from '../sessionManager';
+import type { TestSession } from '../sessionManager';
+import type { EmulationOverrides } from '../emulationManager';
 
 function makeManager(): SessionManager {
   const win = { on: jest.fn() } as unknown as BrowserWindow;
@@ -75,8 +76,12 @@ function installFakeSessionFull(
   };
   (sm as unknown as { sessions: Map<string, unknown> }).sessions.set(opts.id, session);
   if (opts.emulation) {
-    (sm as unknown as { emulationByPartition: Map<string, EmulationOverrides> })
-      .emulationByPartition.set(opts.partition, opts.emulation);
+    // #255: emulation storage moved into EmulationManager's own (private)
+    // byPartition map — reach through the emulationManager field the same
+    // way this file already reaches through SessionManager's own private
+    // `sessions` map above.
+    (sm as unknown as { emulationManager: { byPartition: Map<string, EmulationOverrides> } })
+      .emulationManager.byPartition.set(opts.partition, opts.emulation);
   }
 }
 
