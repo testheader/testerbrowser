@@ -88,9 +88,10 @@ const gotSingleInstanceLock =
 
 // --- Privileged-IPC sender check (#217) ---
 // src/preload/newtab.ts's contextBridge APIs (speedDial, appTheme, bookmarksApi,
-// appSettings, appInfo) ride on NEWTAB_PRELOAD, which every WebContentsView uses —
-// including tabs showing a tested website, not only renderer/newtab.html. These
-// handlers read/write app-wide state (settings, bookmarks, theme), so only two
+// appSettings, appInfo) ride on NEWTAB_PRELOAD, which every WebContentsView uses.
+// The preload only exposes them to renderer/newtab.html, but a compromised or
+// hostile page could still send these channels directly. The handlers read/write
+// app-wide state (settings, bookmarks, theme), so only two
 // senders may call them: the chrome window itself (win.webContents, used by
 // renderer/*.js) and a frame actually showing the new-tab page. Everything else —
 // any site under test — is rejected. L1: the new-tab frame must be a top-level

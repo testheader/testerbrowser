@@ -66,12 +66,12 @@ test('a website under test cannot reach appSettings, bookmarksApi or appTheme, a
     return result;
   });
 
-  // The APIs are still injected (NEWTAB_PRELOAD stays on every view — see
-  // ticket's "leave NEWTAB_PRELOAD as-is" note) but every call is rejected
-  // server-side, so none of them changed anything.
-  expect(attempt.hasAppSettings).toBe(true);
-  expect(attempt.hasBookmarksApi).toBe(true);
-  expect(attempt.hasAppTheme).toBe(true);
+  // NEWTAB_PRELOAD still runs on every view, but it only exposes its APIs to
+  // the bundled new-tab page — a website under test sees no extra globals.
+  // (Each call would also be rejected server-side by isTrustedNewtabFrame.)
+  expect(attempt.hasAppSettings).toBe(false);
+  expect(attempt.hasBookmarksApi).toBe(false);
+  expect(attempt.hasAppTheme).toBe(false);
 
   const bookmarksAfter = await window.evaluate(() => (window as any).testerBrowser.bookmarks.list());
   const settingsAfter = await window.evaluate(() => (window as any).testerBrowser.settings.get());
