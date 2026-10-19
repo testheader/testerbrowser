@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.122.1 — 2026-10-19
+
+### Fixes
+
+- log resilience rule hits for crash diagnosis (refs #289) (a855201)
+
 ## v0.122.0 — 2026-10-19
 
 ### Features
