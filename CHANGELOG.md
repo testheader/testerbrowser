@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.120.0 — 2026-10-19
+
+### Features
+
+- two-state UI diff bar with settings cog and diff export (#290) (63998b3)
+
 ## v0.119.1 — 2026-10-19
 
 ### Fixes
