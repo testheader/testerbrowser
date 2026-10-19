@@ -77,6 +77,8 @@ typecheck ┐
 lint      ├─→ bump-version ─→ build-windows ─┐
 unit-test ┘                                  ├─→ publish-release
 e2e (shard 1/2, 2/2) ────────────────────────┘
+
+build-status: after bump-version, build-windows and e2e, whatever their result
 ```
 
 - **typecheck**, **lint** and **unit-test** run in parallel, each its own job
@@ -85,7 +87,15 @@ e2e (shard 1/2, 2/2) ───────────────────�
 - **bump-version** (main only) parses the commit message and pushes a
   `chore: bump version …` commit back to `main` as `github-actions[bot]`:
   `feat:` → minor, `feat!:` / `BREAKING CHANGE` → major, everything else →
-  patch. **Never edit the version in `package.json` by hand.**
+  patch. **Never edit the version in `package.json` by hand.** The same push
+  also prepends the version's section to `CHANGELOG.md` and creates the draft
+  release with that section as its notes (`scripts/release-notes.js`, which
+  groups the commits since the previous `v*` tag by prefix). It skips the
+  `chore: bump version` commits, so write commit subjects for a human reader.
+- **build-status** (after `bump-version`, `build-windows` and `e2e`, runs
+  whatever their result) replaces the build-status block in the release notes
+  with each job's result and a link to the run. It only runs when a release
+  exists, and it never runs for the bot's own pushes.
 - **e2e** runs Playwright on Windows, sharded across 2 runners
   (`--shard=N/2`, `fail-fast: false`) and starting immediately rather than
   waiting on `bump-version` (#250) — the bump commit only touches

@@ -56,6 +56,9 @@ jobs:
         with:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Full history and tags, so the changelog can start from the last release.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -67,6 +70,7 @@ jobs:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           if echo "$COMMIT_MSG" | grep -qiE "BREAKING CHANGE|^feat(\(.+\))?!:"; then
             BUMP="major"
           elif echo "$COMMIT_MSG" | grep -qiE "^feat(\(.+\))?:"; then
@@ -76,15 +80,17 @@ jobs:
           fi
           npm version $BUMP --no-git-tag-version
           VERSION=$(node -p "require('./package.json').version")
+          # Build results are added later by build-status, once the builds have finished.
+          node scripts/release-notes.js changelog --version "$VERSION" --since "$PREV_TAG" --notes-out release-notes.md
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add package.json package-lock.json
+          git add package.json package-lock.json CHANGELOG.md
           git commit -m "chore: bump version to $VERSION"
           git tag "v$VERSION"
           git pull --rebase origin main
           git push
           git push origin "v$VERSION"
-          gh release create "v$VERSION" --draft --title "v$VERSION" --generate-notes
+          gh release create "v$VERSION" --draft --title "v$VERSION" --notes-file release-notes.md
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build-windows:
@@ -213,6 +219,29 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  build-status:
+    # Runs once the builds have finished, whatever their result, and records the
+    # outcome in the release notes. Skipped when there is no release to update.
+    needs: [bump-version, build-windows, e2e]
+    if: "always() && needs.bump-version.result == 'success' && github.actor != 'github-actions[bot]'"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Add build results to the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.bump-version.outputs.version }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh release view "v$VERSION" --repo testheader/testerbrowser --json body --jq .body > release-body.md
+          node scripts/release-notes.js status --body release-body.md --out release-notes.md
+          gh release edit "v$VERSION" --repo testheader/testerbrowser --notes-file release-notes.md
 
   publish-release:
     needs: [bump-version, build-windows, e2e]
