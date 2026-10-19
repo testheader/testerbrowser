@@ -20,4 +20,7 @@ export function registerVisualRegressionIpc(deps: AppDeps): void {
   ipcMain.handle('visualRegression:importBaseline', () =>
     getVisualRegressionStore()?.importBaseline() ?? { ok: false, error: 'No store' }
   );
+  ipcMain.handle('visualRegression:exportDiff', (_e, pngB64: string, suggestedName: string) =>
+    getVisualRegressionStore()?.exportDiff(pngB64, suggestedName) ?? { ok: false, error: 'No store' }
+  );
 }

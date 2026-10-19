@@ -2,7 +2,7 @@ import {
   normalizeViewMode, normalizeZoom, scaleForZoom, stepZoom, formatZoom, ZOOM_STEPS,
   zoomToShowRegion, scrollToCenter, nextIndex, formatPct, parseMaxDiffPct, compareVerdict,
   parseThreshold, thresholdHint, rectFromPoints, clampRegion, regionIndexAt, regionsCoverage,
-  describeRegion, filterBaselines, stepState,
+  describeRegion, filterBaselines, diffExportName,
 } from '../../renderer/vr-logic.js';
 
 describe('view mode + zoom preferences', () => {
@@ -164,9 +164,8 @@ describe('saved baselines + steps', () => {
     expect(filterBaselines(list, 'staging checkout')).toEqual([]);
   });
 
-  it('marks steps done and points at the next one', () => {
-    expect(stepState({ hasBaseline: false, hasResult: false })).toEqual({ done: [false, false, false], current: 1 });
-    expect(stepState({ hasBaseline: true, hasResult: false })).toEqual({ done: [true, false, false], current: 2 });
-    expect(stepState({ hasBaseline: true, hasResult: true })).toEqual({ done: [true, true, true], current: null });
+  it('names a saved diff after the baseline and the compared page', () => {
+    expect(diffExportName('staging home', 'production')).toBe('diff - staging home vs production');
+    expect(diffExportName('', '')).toBe('diff - baseline vs current');
   });
 });

@@ -31,6 +31,24 @@ async function openBaselines(): Promise<void> {
   await expect(window.locator('#vrBaselines')).toBeVisible();
 }
 
+// The rules, baseline saving and ignore regions live behind the cog.
+async function openSettings(): Promise<void> {
+  if (!(await window.locator('#vrSettings').isVisible())) await window.click('#vrCogBtn');
+  await expect(window.locator('#vrSettings')).toBeVisible();
+}
+
+async function closeSettings(): Promise<void> {
+  if (await window.locator('#vrSettings').isVisible()) await window.keyboard.press('Escape');
+  await expect(window.locator('#vrSettings')).toBeHidden();
+}
+
+// A compare from an earlier test can still be showing (the tab persists across
+// tests), and then the setup row is hidden — Reset returns to setup first.
+async function startCapture(): Promise<void> {
+  if (await window.locator('#vrResetBtn').isVisible()) await window.click('#vrResetBtn');
+  await window.click('#vrCaptureBtn');
+}
+
 async function captureAndCompareSolidColor(nonce: string): Promise<void> {
   const urlPath = `/vr/solid-color.html?nonce=${Date.now()}-${nonce}`;
   await window.click('#urlbar');
@@ -39,39 +57,35 @@ async function captureAndCompareSolidColor(nonce: string): Promise<void> {
   const tab = await getTabPage(app, urlPath);
   await tab.waitForLoadState('load');
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
   await tab.click('#toggle');
   await window.click('#vrCompareBtn');
   await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
 }
 
-test('first run: the three steps are laid out in order, with an empty state saying what to do next', async () => {
+test('first run: the setup row is on one line, rules and baseline saving sit behind the cog, and an empty state says what to do next', async () => {
   await window.click('#consoleTabVR');
-  const rows = window.locator('.vr-toolbar-row');
-  await expect(rows).toHaveCount(3);
+  await expect(window.locator('#vrSetup')).toBeVisible();
+  await expect(window.locator('#vrResultBar')).toBeHidden();
 
-  // Row 1 is the step flow: 1 Baseline (capture / saved) › 2 Current page › 3 Compare.
-  const stepsRow = rows.nth(0);
-  await expect(stepsRow).toContainText('Baseline');
-  await expect(stepsRow).toContainText('Current page');
-  await expect(stepsRow.locator('#vrCaptureBtn, #vrBaselinesToggle, #vrComparePick, #vrCompareBtn')).toHaveCount(4);
-  const ids = await stepsRow.locator('button, select').evaluateAll(els => els.map(el => el.id));
-  expect(ids.indexOf('vrCaptureBtn')).toBeLessThan(ids.indexOf('vrComparePick'));
-  expect(ids.indexOf('vrComparePick')).toBeLessThan(ids.indexOf('vrCompareBtn'));
-  await expect(window.locator('#vrStep1')).toHaveClass(/current/);
+  // Capture, the saved list and the page picker come before Compare, in that order.
+  const setupIds = await window.locator('#vrSetup button, #vrSetup select').evaluateAll(els => els.map(el => el.id));
+  expect(setupIds.indexOf('vrCaptureBtn')).toBeLessThan(setupIds.indexOf('vrComparePick'));
+  expect(setupIds.indexOf('vrComparePick')).toBeLessThan(setupIds.indexOf('vrCompareBtn'));
   await expect(window.locator('#vrCompareBtn')).toBeDisabled();
 
-  await expect(rows.nth(1).locator('#vrSaveBaselineBtn')).toBeVisible();
-  await expect(rows.nth(1).locator('#vrImportBaselineBtn')).toBeVisible();
-  await expect(rows.nth(2).locator('#vrThreshold')).toBeVisible();
-  await expect(rows.nth(2).locator('#vrMaxDiff')).toBeVisible();
-  await expect(rows.nth(2).locator('#vrEditRegionsBtn')).toBeVisible();
+  // Closed by default; opened from the cog.
+  await expect(window.locator('#vrSettings')).toBeHidden();
+  await openSettings();
+  await expect(window.locator('#vrThreshold')).toBeVisible();
+  await expect(window.locator('#vrMaxDiff')).toBeVisible();
+  await expect(window.locator('#vrEditRegionsBtn')).toBeVisible();
+  await expect(window.locator('#vrSaveBaselineBtn')).toBeDisabled();
+  await expect(window.locator('#vrSetup #vrImportBaselineBtn')).toBeVisible();
 
   await expect(window.locator('#vrImages')).toContainText('No baseline yet');
-  await expect(window.locator('#vrStats')).toContainText('Start with step 1');
-  // Nothing to view yet, so the viewer controls stay hidden.
-  await expect(window.locator('#vrViewbar')).toBeHidden();
+  await expect(window.locator('#vrStats')).toContainText('Capture a baseline of this page');
 
   // The colour tolerance explains itself in plain language, live as it's typed.
   await expect(window.locator('#vrThresholdHint')).toContainText('Strict');
@@ -79,6 +93,7 @@ test('first run: the three steps are laid out in order, with an empty state sayi
   await expect(window.locator('#vrThresholdHint')).toContainText('Exact');
   await window.fill('#vrThreshold', '15');
   await window.locator('#vrThreshold').dispatchEvent('change');
+  await closeSettings();
 });
 
 test('capturing a baseline, mutating the page, and comparing reports a nonzero diff', async () => {
@@ -89,7 +104,7 @@ test('capturing a baseline, mutating the page, and comparing reports a nonzero d
   const tab = await getTabPage(app, 'heavy-dom.html');
 
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
 
   await tab.click('#render');
@@ -116,7 +131,7 @@ test('comparing against a different session captures that session\'s screenshot,
   const baselineTab = await getTabPage(app, 'heavy-dom.html');
 
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
 
   // A second, unrelated session navigated to the same page and then mutated —
@@ -163,7 +178,7 @@ test('a baseline and current screenshot of different sizes show a visible size-m
   await window.click('#consoleTabVR');
   // Full page stays unchecked, so the capture is a viewport screenshot —
   // its dimensions track the app window's size.
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
 
   const boundsBeforeResize = await getActiveViewBounds(app);
@@ -236,9 +251,10 @@ test('saving a baseline persists it — it stays listed and loadable from a diff
   await (await getTabPage(app, urlPath)).waitForLoadState('load');
 
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
 
+  await openSettings();
   await window.click('#vrSaveBaselineBtn');
   await expect(window.locator('#vrSaveDlg')).toBeVisible();
   await window.fill('#vrSaveNameInput', 'e2e saved baseline');
@@ -277,7 +293,7 @@ test('a higher pixel-difference threshold reports fewer (here, zero) differing p
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
   await tab.click('#render');
 
@@ -291,18 +307,22 @@ test('a higher pixel-difference threshold reports fewer (here, zero) differing p
   // is impossible, so this deterministically drives diffCount to exactly 0,
   // not just "fewer than before" (which a less extreme value would only
   // probabilistically guarantee against this fixture's actual colors).
+  await openSettings();
   await window.fill('#vrThreshold', '765');
   await window.locator('#vrThreshold').dispatchEvent('change');
-  await window.click('#vrCompareBtn');
-  await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
+  await closeSettings();
+  await window.click('#vrRecomputeBtn');
+  await expect(window.locator('#vrRecomputeBtn')).toHaveCount(0, { timeout: 15_000 });
   const lenientText = (await window.locator('#vrStats').textContent()) || '';
   const lenientCount = Number(lenientText.match(/^([\d,]+) pixels differ/)![1].replace(/,/g, ''));
   expect(lenientCount).toBe(0);
   expect(lenientCount).toBeLessThan(defaultCount);
 
   // Reset for later tests.
+  await openSettings();
   await window.fill('#vrThreshold', '15');
   await window.locator('#vrThreshold').dispatchEvent('change');
+  await closeSettings();
 });
 
 test('drawing an ignore region excludes it from the diff count and renders it with the ignored tint, not the diff highlight (#277)', async () => {
@@ -329,7 +349,7 @@ test('drawing an ignore region excludes it from the diff count and renders it wi
   await tab.waitForLoadState('load');
 
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
 
   // The whole page changes color — essentially every pixel differs.
@@ -344,6 +364,7 @@ test('drawing an ignore region excludes it from the diff count and renders it wi
   // Draw an ignore region over the bottom-right area of the baseline image
   // (away from the "toggle color" button in the top-left corner, so it's
   // purely solid-color pixels — a region that genuinely differs).
+  await openSettings();
   await window.click('#vrEditRegionsBtn');
   const canvas = window.locator('#vrRegionsCanvas');
   // The canvas is sized off the <img>'s own rendered box (position:absolute;
@@ -363,11 +384,11 @@ test('drawing an ignore region excludes it from the diff count and renders it wi
   await expect(window.locator('#vrIgnoreNote')).toContainText('excluded');
   // Drawing after a compare marks that result as out of date.
   await expect(window.locator('#vrRecomputeBtn')).toBeVisible();
-  await window.click('#vrEditRegionsBtn'); // exit edit mode
+  await window.click('#vrRegionsDoneBtn'); // exit edit mode
   await expect(window.locator('#vrEditRegionsBtn')).toHaveAttribute('aria-pressed', 'false');
 
-  await window.click('#vrCompareBtn');
-  await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
+  await window.click('#vrRecomputeBtn');
+  await expect(window.locator('#vrRecomputeBtn')).toHaveCount(0, { timeout: 15_000 });
   const afterText = (await window.locator('#vrStats').textContent()) || '';
   const afterCount = Number(afterText.match(/^([\d,]+) pixels differ/)![1].replace(/,/g, ''));
   expect(afterCount).toBeLessThan(beforeCount);
@@ -399,8 +420,10 @@ test('drawing an ignore region excludes it from the diff count and renders it wi
 
   // Removing the region from the list takes it out again; "Update result"
   // re-runs the comparison on the same screenshots without re-capturing.
+  await openSettings();
   await window.click('#vrIgnoreList [data-remove-region="0"]');
   await expect(window.locator('#vrIgnoreBar')).toBeHidden();
+  await closeSettings();
   await window.click('#vrRecomputeBtn');
   await expect(window.locator('#vrRecomputeBtn')).toHaveCount(0, { timeout: 15_000 });
   const recomputedText = (await window.locator('#vrStats').textContent()) || '';
@@ -422,8 +445,9 @@ test('exporting then importing a saved baseline round-trips its name, dimensions
   await (await getTabPage(app, urlPath)).waitForLoadState('load');
 
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await openSettings();
   await window.click('#vrSaveBaselineBtn');
   await window.fill('#vrSaveNameInput', 'e2e export-import baseline');
   await window.click('#vrSaveDlgOk');
@@ -472,8 +496,9 @@ test('a compare shows a pass/fail verdict against the allowed %, and changed reg
   await expect(window.locator('#vrVerdict')).toHaveClass(/fail/);
   await expect(window.locator('#vrSumChips')).toContainText('changed region');
   await expect(window.locator('#vrMeta')).toContainText('unsaved capture');
-  await expect(window.locator('#vrStep3')).toHaveClass(/done/);
+  await expect(window.locator('#vrResultBar')).toBeVisible();
 
+  await openSettings();
   await window.fill('#vrMaxDiff', '100');
   await window.locator('#vrMaxDiff').dispatchEvent('change');
   await expect(window.locator('#vrVerdict')).toHaveClass(/pass/);
@@ -481,6 +506,7 @@ test('a compare shows a pass/fail verdict against the allowed %, and changed reg
   await window.locator('#vrMaxDiff').dispatchEvent('change');
   await expect(window.locator('#vrVerdict')).toHaveClass(/fail/);
 
+  await closeSettings();
   await expect(window.locator('#vrNextRegion')).toBeEnabled();
   await window.click('#vrNextRegion');
   await expect(window.locator('#vrRegionPos')).toContainText(/Change 1 of \d+/);
@@ -492,6 +518,27 @@ test('a compare shows a pass/fail verdict against the allowed %, and changed reg
   await expect(window.locator('#vrRegionPos')).toContainText(`Change ${total} of ${total}`);
   await window.keyboard.press('n');
   await expect(window.locator('#vrRegionPos')).toContainText(`Change 1 of ${total}`);
+});
+
+test('the diff can be saved as a PNG for a bug report, and Reset returns to setup with the baseline kept', async () => {
+  await captureAndCompareSolidColor('savediff');
+
+  const tmpPath = path.join(os.tmpdir(), `testerbrowser-e2e-vr-diff-${Date.now()}.png`);
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
+  }, tmpPath);
+  await window.click('#vrSaveDiffBtn');
+  await expect(window.locator('#vrBaselineStatus')).toContainText('Saved diff to');
+  await expect.poll(() => fs.existsSync(tmpPath), { timeout: 5_000 }).toBe(true);
+  expect(fs.readFileSync(tmpPath).subarray(1, 4).toString('ascii')).toBe('PNG');
+  fs.rmSync(tmpPath, { force: true });
+
+  await window.click('#vrResetBtn');
+  await expect(window.locator('#vrResultBar')).toBeHidden();
+  await expect(window.locator('#vrSetup')).toBeVisible();
+  await expect(window.locator('#vrBaselineChip')).toContainText('Unsaved capture');
+  await expect(window.locator('#vrCompareBtn')).toBeEnabled();
+  await expect(window.locator('#vrStats')).toContainText('Baseline captured');
 });
 
 test('side-by-side, overlay (slider, keyboard-operable) and diff views, with the chosen view remembered', async () => {
@@ -536,8 +583,9 @@ test('saved baselines can be filtered, renamed, and deleted only after an explic
   await (await getTabPage(app, urlPath)).waitForLoadState('load');
 
   await window.click('#consoleTabVR');
-  await window.click('#vrCaptureBtn');
+  await startCapture();
   await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await openSettings();
   await window.click('#vrSaveBaselineBtn');
   await window.fill('#vrSaveNameInput', 'e2e manage original');
   await window.click('#vrSaveDlgOk');
@@ -586,10 +634,12 @@ test('saved baselines can be filtered, renamed, and deleted only after an explic
 test('the populated UI diff panel has no serious/critical axe-core violations (dark and light)', async () => {
   await captureAndCompareSolidColor('a11y');
   await window.click('.vr-view-btn[data-view="overlay"]');
+  await openSettings();
   await window.click('#vrSaveBaselineBtn');
   await window.fill('#vrSaveNameInput', 'e2e a11y baseline');
   await window.click('#vrSaveDlgOk');
   await expect(window.locator('#vrBaselineStatus')).toContainText('Saved as');
+  await openSettings();
   await window.click('#vrEditRegionsBtn');
   await expect(window.locator('#vrBaselineImg')).toBeVisible();
   await expect(window.locator('#vrRegionsCanvas')).toBeInViewport({ ratio: 0.9 });
@@ -599,8 +649,7 @@ test('the populated UI diff panel has no serious/critical axe-core violations (d
   await window.mouse.move(box.x + box.width * 0.8, box.y + box.height * 0.8, { steps: 3 });
   await window.mouse.up();
   await expect(window.locator('#vrIgnoreList .vr-ign-chip')).toHaveCount(1);
-  await window.click('#vrEditRegionsBtn');
-  await openBaselines();
+  await window.click('#vrRegionsDoneBtn');
 
   const axeSource = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf-8');
   const scan = async (): Promise<string[]> => {
@@ -621,6 +670,9 @@ test('the populated UI diff panel has no serious/critical axe-core violations (d
   };
 
   expect(await scan()).toEqual([]);
+
+  await window.click('#vrResetBtn');
+  await openBaselines();
 
   await window.click('#appName');
   await window.click('#appMenuSettings');

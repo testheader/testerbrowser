@@ -207,6 +207,26 @@ export class VisualRegressionStore {
     }
   }
 
+  // The diff image on its own, for attaching to a bug report. No sidecar: a
+  // diff isn't a baseline, so there's nothing for importBaseline to read back.
+  async exportDiff(pngB64: string, suggestedName: string): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> {
+    if (!pngB64) return { ok: false, error: 'No diff to save' };
+    const result = await dialog.showSaveDialog(this.win, {
+      title: 'Save diff',
+      defaultPath: `${slugify(suggestedName)}.png`,
+      filters: [{ name: 'PNG image', extensions: ['png'] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+    try {
+      fs.writeFileSync(result.filePath, Buffer.from(pngB64, 'base64'));
+      log.info('vr', 'Diff exported');
+      return { ok: true, path: result.filePath };
+    } catch (e) {
+      log.warn('vr', 'Diff export failed', { error: String(e) });
+      return { ok: false, error: String(e) };
+    }
+  }
+
   // #277: looks for a same-basename sidecar JSON next to the chosen PNG
   // (exportBaseline's own layout) — a PNG with no sidecar is rejected
   // outright rather than imported with guessed/empty metadata, since a
