@@ -508,6 +508,16 @@ export class SessionManager {
       if (res) {
         this.resilienceManager.recordHit(res);
         testSession.recorder.tagRequest(tagId, { resilienceRuleId: res.id, resilienceType: res.type });
+        // #289: unlike every Fetch.* command below, this fires only when a
+        // Resilience rule actually matches — bounded by deliberate rule
+        // hits, not by request volume — so it's worth the per-hit cost. On
+        // a later crash, this line (now in main.log) is the last thing that
+        // happened to the request right before whatever broke, which is
+        // exactly what's missing today to tell "which hit caused which
+        // crash".
+        this.log.info('resilience', `Resilience rule fired: ${res.type}`, {
+          sessionId: testSession.id, ruleId: res.id, method: request.method, url: request.url,
+        });
         // Every command below is silent: Fetch.requestPaused fires per
         // request, too high-frequency to log per failure (each case still
         // gets its own marker so the empty-catch triage grep is satisfied).

@@ -130,4 +130,29 @@ describe('SessionManager logging (#227)', () => {
     expect(fetchEnableWarnings).toHaveLength(1);
     expect(fetchEnableWarnings[0].ctx).toMatchObject({ sessionId: session.id });
   });
+
+  it('a matched Resilience rule produces one info line naming its type, rule id and the request (#289)', () => {
+    const logger = makeLogger();
+    const sm = makeManager(logger);
+    const session = sm.createSession('Test');
+
+    sm.addResilienceRule(session.id, {
+      id: 'r1', type: 'error500', urlPattern: '*', method: '*', probability: 1,
+      latencyMs: 0, enabled: true, hitCount: 0, lastHitAt: null,
+    });
+
+    const dbg = (session.view as unknown as { webContents: { debugger: import('events').EventEmitter } })
+      .webContents.debugger;
+    dbg.emit('message', {}, 'Fetch.requestPaused', {
+      requestId: 'req1',
+      request: { url: 'https://example.com/api', method: 'GET' },
+    });
+
+    const resilienceInfo = logger.calls.filter((c) => c.level === 'info' && c.source === 'resilience' && c.message.startsWith('Resilience rule fired'));
+    expect(resilienceInfo).toHaveLength(1);
+    expect(resilienceInfo[0].message).toBe('Resilience rule fired: error500');
+    expect(resilienceInfo[0].ctx).toEqual({
+      sessionId: session.id, ruleId: 'r1', method: 'GET', url: 'https://example.com/api',
+    });
+  });
 });
