@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.121.0 — 2026-10-19
+
+### Features
+
+- resizable settings modal (refs #287) (ac8e792)
+- feature toggles for console panel tabs (refs #285) (ddac8c0)
+
 ## v0.120.0 — 2026-10-19
 
 ### Features
