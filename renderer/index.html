@@ -483,12 +483,21 @@
             <div class="setting-row" style="align-items:flex-start;padding:12px 0">
               <div>
                 <div class="setting-label">Install updates automatically when idle</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Once a downloaded update is ready, install and restart by itself after the system has been idle 15+ minutes — but never while a recording, Follow Along pairing, playback run or download is active.</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Once a downloaded update is ready, install and restart by itself after the system has been idle long enough (below) — but never while a recording, Follow Along pairing, playback run or download is active.</div>
               </div>
               <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
                 <input type="checkbox" id="autoInstallWhenIdleToggle" />
                 <span class="toggle-slider"></span>
               </label>
+            </div>
+
+            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+              <div>
+                <div class="setting-label">Idle minutes before auto-install</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">How long the system must be idle before the automatic install above can run (1&ndash;180 minutes). To skip the wait entirely, use "Restart to install" above once an update has downloaded.</div>
+              </div>
+              <input type="number" id="idleInstallMinutesInput" min="1" max="180" step="1"
+                     style="margin-left:auto;width:90px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;" />
             </div>
           </div>
 

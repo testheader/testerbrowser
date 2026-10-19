@@ -89,6 +89,7 @@ export async function openSettings() {
   /** @type {HTMLSelectElement} */ (document.getElementById('searchEngineSelect')).value = settings.searchEngine || 'google';
   /** @type {HTMLInputElement} */ (document.getElementById('recorderMaxEventsInput')).value = settings.recorderMaxEvents ?? 20000;
   /** @type {HTMLInputElement} */ (document.getElementById('recordingRetentionDaysInput')).value = settings.recordingRetentionDays ?? 30;
+  /** @type {HTMLInputElement} */ (document.getElementById('idleInstallMinutesInput')).value = settings.idleInstallMinutes ?? 15;
 
   const disabledTabs = new Set(settings.disabledConsoleTabs || []);
   for (const el of document.querySelectorAll('[data-tab-toggle]')) {
@@ -206,6 +207,11 @@ export function initSettings() {
   /** @type {HTMLInputElement} */ (document.getElementById('recordingRetentionDaysInput')).addEventListener('change', async (e) => {
     const updated = await testerBrowser.settings.set({ recordingRetentionDays: Number(/** @type {HTMLInputElement} */ (e.target).value) });
     /** @type {HTMLInputElement} */ (e.target).value = updated.recordingRetentionDays;
+  });
+
+  /** @type {HTMLInputElement} */ (document.getElementById('idleInstallMinutesInput')).addEventListener('change', async (e) => {
+    const updated = await testerBrowser.settings.set({ idleInstallMinutes: Number(/** @type {HTMLInputElement} */ (e.target).value) });
+    /** @type {HTMLInputElement} */ (e.target).value = updated.idleInstallMinutes;
   });
 
   /** @type {HTMLSelectElement} */ (document.getElementById('themeSelect')).addEventListener('change', (e) => {

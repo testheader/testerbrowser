@@ -4,6 +4,7 @@ const ALL_CLEAR = {
   enabled: true,
   status: 'downloaded',
   idleSeconds: IDLE_INSTALL_MINUTES * 60,
+  idleMinutesThreshold: IDLE_INSTALL_MINUTES,
   recording: false,
   following: false,
   playing: false,
@@ -46,5 +47,14 @@ describe('canAutoInstall (#259)', () => {
 
   it('blocks while a download is in progress', () => {
     expect(canAutoInstall({ ...ALL_CLEAR, downloading: true })).toEqual({ ok: false, reason: expect.any(String) });
+  });
+
+  it('uses a configured idle threshold shorter than the default (#288)', () => {
+    expect(canAutoInstall({ ...ALL_CLEAR, idleMinutesThreshold: 5, idleSeconds: 5 * 60 })).toEqual({ ok: true });
+  });
+
+  it('uses a configured idle threshold longer than the default (#288)', () => {
+    expect(canAutoInstall({ ...ALL_CLEAR, idleMinutesThreshold: 30, idleSeconds: IDLE_INSTALL_MINUTES * 60 }))
+      .toEqual({ ok: false, reason: expect.any(String) });
   });
 });

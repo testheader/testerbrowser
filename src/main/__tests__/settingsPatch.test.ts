@@ -13,6 +13,7 @@ const BASE: AppSettings = {
   autoInstallWhenIdle: false,
   allowRealPopups: false,
   disabledConsoleTabs: [],
+  idleInstallMinutes: 15,
 };
 
 describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
@@ -156,6 +157,29 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
     it('leaves the current value alone when the key is absent from the patch', () => {
       const withCustom = { ...BASE, disabledConsoleTabs: ['jira'] };
       expect(applySettingsPatch(withCustom, { debugMode: true }).disabledConsoleTabs).toEqual(['jira']);
+    });
+  });
+
+  describe('idleInstallMinutes (#288)', () => {
+    it('accepts an in-range value', () => {
+      expect(applySettingsPatch(BASE, { idleInstallMinutes: 45 }).idleInstallMinutes).toBe(45);
+    });
+
+    it('clamps below the 1-minute floor up to it', () => {
+      expect(applySettingsPatch(BASE, { idleInstallMinutes: 0 }).idleInstallMinutes).toBe(1);
+    });
+
+    it('clamps above the 180-minute cap down to it', () => {
+      expect(applySettingsPatch(BASE, { idleInstallMinutes: 999 }).idleInstallMinutes).toBe(180);
+    });
+
+    it('falls back to the current value for a non-number', () => {
+      expect(applySettingsPatch(BASE, { idleInstallMinutes: 'soon' }).idleInstallMinutes).toBe(BASE.idleInstallMinutes);
+    });
+
+    it('leaves the current value alone when the key is absent from the patch', () => {
+      const withCustom = { ...BASE, idleInstallMinutes: 60 };
+      expect(applySettingsPatch(withCustom, { debugMode: true }).idleInstallMinutes).toBe(60);
     });
   });
 });

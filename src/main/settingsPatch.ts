@@ -6,6 +6,8 @@
 // patch — a single malformed field shouldn't stop the rest of a legitimate
 // patch from applying.
 
+import { IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX } from './idleInstall';
+
 export interface AppSettings {
   redactSensitiveHeaders: boolean;
   securityRuleOverrides: Record<string, boolean>;
@@ -19,6 +21,7 @@ export interface AppSettings {
   autoInstallWhenIdle: boolean;
   allowRealPopups: boolean;
   disabledConsoleTabs: string[];
+  idleInstallMinutes: number;
 }
 
 const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
@@ -123,6 +126,12 @@ export function applySettingsPatch(current: AppSettings, patch: unknown): AppSet
 
   if (Array.isArray(patch.disabledConsoleTabs)) {
     next.disabledConsoleTabs = sanitizeDisabledConsoleTabs(patch.disabledConsoleTabs);
+  }
+
+  if (patch.idleInstallMinutes !== undefined) {
+    next.idleInstallMinutes = clampNumberSetting(
+      patch.idleInstallMinutes, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX, current.idleInstallMinutes
+    );
   }
 
   return next;

@@ -6,7 +6,7 @@ import { SessionManager, getHostname } from './sessionManager';
 import { VisualRegressionStore } from './visualRegressionStore';
 import { firstHttpUrl } from './singleInstance';
 import { installIpcGuard } from './ipcGuard';
-import { canAutoInstall, IDLE_INSTALL_MINUTES } from './idleInstall';
+import { canAutoInstall, IDLE_INSTALL_MINUTES, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX } from './idleInstall';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
@@ -227,6 +227,11 @@ function isVersionNewer(a: string, b: string): boolean {
 //   Settings → Features. Console and Network stay on regardless — the
 //   underlying recording they show runs in the background anyway — so
 //   TOGGLEABLE_CONSOLE_TABS (settingsPatch.ts) excludes them.
+// - idleInstallMinutes
+//   #288: how long the system must sit idle before checkIdleInstall() below
+//   will auto-install a downloaded update (replaces the old hardcoded
+//   IDLE_INSTALL_MINUTES, which remains only as this setting's default).
+//   Clamped the same way as recorderMaxEvents/recordingRetentionDays.
 
 const DEFAULT_SETTINGS: AppSettings = {
   redactSensitiveHeaders: false,
@@ -241,6 +246,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoInstallWhenIdle: false,
   allowRealPopups: false,
   disabledConsoleTabs: [],
+  idleInstallMinutes: IDLE_INSTALL_MINUTES,
 };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
@@ -271,6 +277,9 @@ const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETT
     merged.recordingRetentionDays, RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX, DEFAULT_SETTINGS.recordingRetentionDays
   );
   merged.disabledConsoleTabs = sanitizeDisabledConsoleTabs(merged.disabledConsoleTabs);
+  merged.idleInstallMinutes = clampNumberSetting(
+    merged.idleInstallMinutes, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX, DEFAULT_SETTINGS.idleInstallMinutes
+  );
   return merged;
 });
 
@@ -643,6 +652,7 @@ function checkIdleInstall() {
     enabled: settings.autoInstallWhenIdle,
     status: updateStatus,
     idleSeconds: powerMonitor.getSystemIdleTime(),
+    idleMinutesThreshold: settings.idleInstallMinutes,
     recording: busy.recording,
     following: busy.following,
     playing: busy.playing,
@@ -650,7 +660,7 @@ function checkIdleInstall() {
   });
   if (decision.ok) {
     stopIdleInstallTimer();
-    log.info('updater', `Auto-installing update while idle (idle ${IDLE_INSTALL_MINUTES}+ min)`);
+    log.info('updater', `Auto-installing update while idle (idle ${settings.idleInstallMinutes}+ min)`);
     restartAndInstall();
     return;
   }
