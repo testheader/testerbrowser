@@ -44,8 +44,12 @@ async function closeSettings(): Promise<void> {
 
 // A compare from an earlier test can still be showing (the tab persists across
 // tests), and then the setup row is hidden — Reset returns to setup first.
-async function startCapture(): Promise<void> {
+async function backToSetup(): Promise<void> {
   if (await window.locator('#vrResetBtn').isVisible()) await window.click('#vrResetBtn');
+}
+
+async function startCapture(): Promise<void> {
+  await backToSetup();
   await window.click('#vrCaptureBtn');
 }
 
@@ -215,6 +219,7 @@ test('the Compare button re-enables after a failed screenshot instead of staying
   // button/stats recovery UX runCompare's try/catch/finally is responsible
   // for, since that's the same machinery the real fix depends on.
   await window.click('#consoleTabVR');
+  await backToSetup();
   await expect(window.locator('#vrCompareBtn')).toBeEnabled();
 
   await window.evaluate(() => {
@@ -560,6 +565,7 @@ test('side-by-side, overlay (slider, keyboard-operable) and diff views, with the
   expect(await window.evaluate(() => localStorage.getItem('vrViewMode'))).toBe('overlay');
 
   // A fresh compare lands on the remembered view, not the default diff one.
+  await backToSetup();
   await window.click('#vrCompareBtn');
   await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
   await expect(window.locator('.vr-view-btn[data-view="overlay"]')).toHaveAttribute('aria-pressed', 'true');
