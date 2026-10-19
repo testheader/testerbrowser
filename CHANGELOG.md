@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.119.0 — 2026-10-19
+
+### Features
+
+- generate CHANGELOG.md and build status in release notes (a132ddd)
+
 ## v0.118.2 — 2026-09-30
 
 ### Features
