@@ -12,7 +12,7 @@ import { DebugLogStore } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
 import { readLogTail, capLogBlock } from './logTail';
 import {
-  AppSettings, clampNumberSetting,
+  AppSettings, clampNumberSetting, sanitizeDisabledConsoleTabs,
   RECORDER_MAX_EVENTS_MIN, RECORDER_MAX_EVENTS_MAX,
   RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX,
 } from './settingsPatch';
@@ -222,6 +222,11 @@ function isVersionNewer(a: string, b: string): boolean {
 //   active page mid-test. The downloads button shows an unseen-download
 //   badge instead; turning this on restores the old always-auto-open
 //   behaviour.
+// - disabledConsoleTabs
+//   #285: console-panel tabs the user has hidden from the bottom bar via
+//   Settings → Features. Console and Network stay on regardless — the
+//   underlying recording they show runs in the background anyway — so
+//   TOGGLEABLE_CONSOLE_TABS (settingsPatch.ts) excludes them.
 
 const DEFAULT_SETTINGS: AppSettings = {
   redactSensitiveHeaders: false,
@@ -235,6 +240,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   recordingRetentionDays: 30,
   autoInstallWhenIdle: false,
   allowRealPopups: false,
+  disabledConsoleTabs: [],
 };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
@@ -264,6 +270,7 @@ const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETT
   merged.recordingRetentionDays = clampNumberSetting(
     merged.recordingRetentionDays, RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX, DEFAULT_SETTINGS.recordingRetentionDays
   );
+  merged.disabledConsoleTabs = sanitizeDisabledConsoleTabs(merged.disabledConsoleTabs);
   return merged;
 });
 

@@ -1,3 +1,4 @@
+/* global testerBrowser */
 import { loadStoragePanel, stopStorageAutoRefreshPolling, resumeStorageAutoRefreshIfOn } from './storage.js';
 import { initA11y, disableA11yHover, disableA11yFocusOrder } from './a11y.js';
 import { initDiff } from './diff.js';
@@ -15,6 +16,15 @@ import { initDebugLog } from './debuglog.js';
 import { PANEL_HELP } from './panel-help-content.js';
 import { wireHelpPopover } from './utils.js';
 
+// Console-tab name -> its button id. Shared by switchConsoleTab() and
+// applyConsoleTabVisibility() (#285 — Settings → Features tab toggles).
+const CONSOLE_TAB_BUTTONS = {
+  console: 'consoleTabConsole', network: 'consoleTabNetwork', storage: 'consoleTabStorage',
+  a11y: 'consoleTabA11y', diff: 'consoleTabDiff', vr: 'consoleTabVR', spoof: 'consoleTabSpoof',
+  security: 'consoleTabSecurity', mock: 'consoleTabMock', resilience: 'consoleTabResilience',
+  jira: 'consoleTabJira', tests: 'consoleTabTests', follow: 'consoleTabFollow', debuglog: 'consoleTabDebugLog',
+};
+
 // The only external readers of activeConsoleTab (many — find, timeline,
 // detail-panel, bugreport, mock, resilience, ipc-events, main) go through
 // getActiveConsoleTab(); nothing outside this file writes it.
@@ -22,18 +32,23 @@ let activeConsoleTab = 'console';
 
 export function getActiveConsoleTab() { return activeConsoleTab; }
 
+// #285: hides/shows console-tab buttons per the user's Settings → Features
+// toggles. If the currently active tab just got hidden, falls back to the
+// Console tab (which, like Network, is never in disabledConsoleTabs).
+export function applyConsoleTabVisibility(disabledTabs) {
+  const disabled = new Set(disabledTabs || []);
+  for (const [tabName, id] of Object.entries(CONSOLE_TAB_BUTTONS)) {
+    document.getElementById(id).hidden = disabled.has(tabName);
+  }
+  if (disabled.has(activeConsoleTab)) switchConsoleTab('console');
+}
+
 export function switchConsoleTab(tab) {
   const prevTab = activeConsoleTab;
   activeConsoleTab = tab;
   if (prevTab === 'a11y' && tab !== 'a11y') { disableA11yHover(); disableA11yFocusOrder(); }
   if (prevTab === 'storage' && tab !== 'storage') stopStorageAutoRefreshPolling();
-  const consoleTabButtons = {
-    console: 'consoleTabConsole', network: 'consoleTabNetwork', storage: 'consoleTabStorage',
-    a11y: 'consoleTabA11y', diff: 'consoleTabDiff', vr: 'consoleTabVR', spoof: 'consoleTabSpoof',
-    security: 'consoleTabSecurity', mock: 'consoleTabMock', resilience: 'consoleTabResilience',
-    jira: 'consoleTabJira', tests: 'consoleTabTests', follow: 'consoleTabFollow', debuglog: 'consoleTabDebugLog',
-  };
-  for (const [tabName, id] of Object.entries(consoleTabButtons)) {
+  for (const [tabName, id] of Object.entries(CONSOLE_TAB_BUTTONS)) {
     const el = document.getElementById(id);
     const selected = tab === tabName;
     el.classList.toggle('active', selected);
@@ -91,6 +106,7 @@ export function initConsoleTabs() {
 
   initTabOverflow();
   initConsoleHelp();
+  testerBrowser.settings.get().then((s) => applyConsoleTabVisibility(s.disabledConsoleTabs));
 }
 
 // One "?" button for every console tab. The popover opens downward (over the

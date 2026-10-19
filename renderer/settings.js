@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { applyTheme, getStoredScheme } from './theme.js';
 import { initModal, openModal, closeModal } from './modal.js';
+import { applyConsoleTabVisibility } from './console-tabs.js';
 
 const STATUS_CONFIG = {
   checking:          { cls: 'info', text: 'Checking for updates…' },
@@ -44,6 +45,11 @@ export async function openSettings() {
   /** @type {HTMLSelectElement} */ (document.getElementById('searchEngineSelect')).value = settings.searchEngine || 'google';
   /** @type {HTMLInputElement} */ (document.getElementById('recorderMaxEventsInput')).value = settings.recorderMaxEvents ?? 20000;
   /** @type {HTMLInputElement} */ (document.getElementById('recordingRetentionDaysInput')).value = settings.recordingRetentionDays ?? 30;
+
+  const disabledTabs = new Set(settings.disabledConsoleTabs || []);
+  for (const el of document.querySelectorAll('[data-tab-toggle]')) {
+    /** @type {HTMLInputElement} */ (el).checked = !disabledTabs.has(el.dataset.tabToggle);
+  }
 
   /** @type {HTMLSelectElement} */ (document.getElementById('themeSelect')).value = getStoredScheme();
 
@@ -160,6 +166,19 @@ export function initSettings() {
   /** @type {HTMLSelectElement} */ (document.getElementById('themeSelect')).addEventListener('change', (e) => {
     applyTheme(/** @type {HTMLInputElement} */ (e.target).value);
   });
+
+  // #285: each console-tab toggle in the Features pane re-derives the full
+  // disabledConsoleTabs list from every checkbox's current state, rather
+  // than tracking a diff, so it can't drift out of sync with the DOM.
+  for (const el of document.querySelectorAll('[data-tab-toggle]')) {
+    el.addEventListener('change', async () => {
+      const disabled = [...document.querySelectorAll('[data-tab-toggle]')]
+        .filter((cb) => !/** @type {HTMLInputElement} */ (cb).checked)
+        .map((cb) => cb.dataset.tabToggle);
+      const updated = await testerBrowser.settings.set({ disabledConsoleTabs: disabled });
+      applyConsoleTabVisibility(updated.disabledConsoleTabs);
+    });
+  }
 
   document.getElementById('githubSignInBtn').onclick = async () => {
     const status = document.getElementById('githubTokenStatus');

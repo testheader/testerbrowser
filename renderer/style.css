@@ -677,6 +677,11 @@ button.timeline-load-older:hover { color: var(--text-primary); background: var(-
 .feature-item { padding: 8px 0; border-bottom: 1px solid var(--border-color); }
 .feature-item:last-child { border-bottom: none; }
 .feature-name { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; }
+.feature-name-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+.feature-name-row .feature-name { margin-bottom: 0; }
+.feature-toggle { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); white-space: nowrap; cursor: pointer; }
+.feature-toggle input { cursor: pointer; }
+.feature-toggle-locked { cursor: default; color: var(--text-faint); }
 .feature-item p { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 .feature-item p b { color: var(--text-secondary); font-weight: 600; }
 .feature-item p code { font-family: monospace; font-size: 11px; background: var(--bg-hover); border-radius: 3px; padding: 1px 4px; }

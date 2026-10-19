@@ -18,9 +18,27 @@ export interface AppSettings {
   autoOpenDownloadsPanel: boolean;
   autoInstallWhenIdle: boolean;
   allowRealPopups: boolean;
+  disabledConsoleTabs: string[];
 }
 
 const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
+
+// Console tabs a user can hide via Settings → Features. Console and Network
+// show the always-on recorded timeline (CDP capture runs regardless of which
+// panel is open, per the app's architecture), so they're excluded here and
+// can never end up in disabledConsoleTabs.
+export const TOGGLEABLE_CONSOLE_TABS = [
+  'storage', 'security', 'mock', 'resilience', 'a11y', 'vr', 'diff', 'spoof', 'jira', 'tests',
+] as const;
+const TOGGLEABLE_CONSOLE_TABS_SET: ReadonlySet<string> = new Set(TOGGLEABLE_CONSOLE_TABS);
+
+// Shared by the JsonStore load path (a hand-edited or stale settings.json)
+// and applySettingsPatch() below — filters to known toggleable tab names and
+// drops duplicates, same spirit as clampNumberSetting().
+export function sanitizeDisabledConsoleTabs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((v): v is string => typeof v === 'string' && TOGGLEABLE_CONSOLE_TABS_SET.has(v)))];
+}
 
 export const RECORDER_MAX_EVENTS_MIN = 1000;
 export const RECORDER_MAX_EVENTS_MAX = 200000;
@@ -101,6 +119,10 @@ export function applySettingsPatch(current: AppSettings, patch: unknown): AppSet
     next.recordingRetentionDays = clampNumberSetting(
       patch.recordingRetentionDays, RECORDING_RETENTION_DAYS_MIN, RECORDING_RETENTION_DAYS_MAX, current.recordingRetentionDays
     );
+  }
+
+  if (Array.isArray(patch.disabledConsoleTabs)) {
+    next.disabledConsoleTabs = sanitizeDisabledConsoleTabs(patch.disabledConsoleTabs);
   }
 
   return next;

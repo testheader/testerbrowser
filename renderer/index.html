@@ -374,47 +374,80 @@
             <h3 class="feature-group-title">Console panel tabs</h3>
 
             <div class="feature-item">
-              <div class="feature-name">Console tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Console tab</div>
+                <span class="feature-toggle feature-toggle-locked">Always shown</span>
+              </div>
               <p>Shows the live console/log portion of the session's always-on recorded timeline — page <code>console.*</code> calls and browser log entries, color-coded by level (error/warn/info/log). Type in the filter box to substring-match log text; click a line with extra payload data to open it in the detail panel. <b>Clear</b> empties the visible buffer.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Storage tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Storage tab</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-storage" checked data-tab-toggle="storage"> Show in bottom bar</label>
+              </div>
               <p>Live tables of the active session's cookies, localStorage, sessionStorage and IndexedDB. Cookies show domain/name/value/path/SameSite/expiry/Secure/HttpOnly with a badge distinguishing first- vs third-party, and a domain filter can narrow the list to cookies relevant to the page currently loaded. Double-click a cookie or localStorage row to edit it inline (a failed cookie edit never loses the original value), click to copy a value, use <b>+ Add</b> to create new entries (the cookie form includes SameSite/expiry/Secure/HttpOnly), and <b>×</b> / <b>Clear All</b> to delete. sessionStorage and IndexedDB (expandable by database → object store) are read-only. The filter box matches everything already loaded with no extra round-trips per keystroke; <b>Auto-refresh</b> polls everything every 2s while this tab is visible.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Security tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Security tab</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-security" checked data-tab-toggle="security"> Show in bottom bar</label>
+              </div>
               <p>Click <b>Scan session</b> to run a heuristic pass over everything recorded so far: plain-HTTP requests, missing security headers (CSP, X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy) on HTTPS responses, cookies set without Secure/HttpOnly, and 401/403 auth failures. Findings are grouped High/Medium/Low with a filter and severity toggles; clicking one opens the underlying request/response in the detail panel.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Mock tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Mock tab</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-mock" checked data-tab-toggle="mock"> Show in bottom bar</label>
+              </div>
               <p>Define request-interception rules — a URL glob pattern, an HTTP method (or Any), a fake status code and a response body — then <b>Add rule</b> to apply it immediately to the active session's traffic. A response without an explicit Content-Type gets one inferred from the body; <b>Add CORS headers</b> adds access-control-allow-* headers to the response (echoing the request's Origin) and answers a matching preflight. Rules track live hit counts and last-hit time, can be toggled on/off, and matched requests show a MOCK badge in the timeline.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Resilience tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Resilience tab</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-resilience" checked data-tab-toggle="resilience"> Show in bottom bar</label>
+              </div>
               <p>Injects network failure conditions into the active session so you can see how the app under test copes: 500 errors, an immediate or stalled 504, a genuine hang (no response at all, optionally released after N seconds), offline, 404s, corrupted responses, added latency, or a random-500 chance. Pick a failure type, a URL pattern and a probability %, then <b>Add rule</b> — matched responses get a RESILIENCE badge in the timeline, and each rule tracks how many times it's fired. When multiple rules match the same request, they're tried in order and the first whose probability roll succeeds wins. "⇒ Resilience" from a captured call scopes the rule to that call's method; editing the URL pattern by hand clears that scoping back to Any.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">A11y tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">A11y tab</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-a11y" checked data-tab-toggle="a11y"> Show in bottom bar</label>
+              </div>
               <p>Click <b>Refresh</b> to pull the full accessibility tree (role, accessible name, description, states) for the current page into an expandable tree view. <b>Inspect element</b> turns on a live hover/click mode over the page itself — hovering highlights the matching node in the tree, so you can quickly check what role and name a specific element actually exposes.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">VR tab (visual regression)</div>
+              <div class="feature-name-row">
+                <div class="feature-name">VR tab (visual regression)</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-vr" checked data-tab-toggle="vr"> Show in bottom bar</label>
+              </div>
               <p>Click <b>Capture baseline</b> to screenshot the current page (the visible viewport, or the whole scrollable page with "Full page" checked). After making a change, click <b>Compare</b> to take a new screenshot and generate a pixel-level diff — differing pixels highlighted, the rest dimmed — plus the percentage of the page that changed. View toggles switch between Baseline / Current / Diff / side-by-side.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Diff tab (network diff)</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Diff tab (network diff)</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-diff" checked data-tab-toggle="diff"> Show in bottom bar</label>
+              </div>
               <p>Pick two open sessions (Session A / Session B) and click <b>Compare</b> to diff their recorded requests — same, different status, or only present in one side — in a color-coded table. <b>Match by</b> switches between comparing full URLs or just the path (so staging and production on different hosts still line up); query params in the editable ignore list (saved locally) are dropped before matching. Click a row present on both sides to expand response-header and body differences and the duration delta; a row whose status matches but headers or body differ still counts as "same" but gets a "&ne; headers/body" marker. A banner warns if either session had more than 5,000 recorded events, since only the most recent 5,000 are compared. Once a comparison has run, <b>Export diff (JSON)</b> downloads it as a JSON file.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Spoof tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Spoof tab</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-spoof" checked data-tab-toggle="spoof"> Show in bottom bar</label>
+              </div>
               <p>Changes what the page sees about its device and environment for the active tab (and other tabs in the same session): viewport/device, User-Agent, touch, timezone, locale, geolocation, clock offset and CSS media preferences. The strip at the top shows what is currently applied. One-click presets (device, city, browser) fill the fields below, grouped into collapsible <b>Device</b>, <b>Location &amp; time</b> and <b>Advanced</b> sections; nothing takes effect until you click <b>Apply to tab</b>. Each section has its own <b>Reset</b>, and <b>Reset all</b> clears every override. Reload the page afterwards so it picks up the new values.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Jira tab</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Jira tab</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-jira" checked data-tab-toggle="jira"> Show in bottom bar</label>
+              </div>
               <p>Configure your Jira URL, email, API token and default project once via the gear icon. Type a ticket key and click <b>Load</b> to see its summary, status, assignee and priority right next to the page under test. <b>+ Add Bug</b> opens a form pre-filled from the current tab's URL/title, and <b>Submit Bug</b> files it as a real Jira issue.</p>
             </div>
             <div class="feature-item">
-              <div class="feature-name">Tests tab (record &amp; playback)</div>
+              <div class="feature-name-row">
+                <div class="feature-name">Tests tab (record &amp; playback)</div>
+                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-tests" checked data-tab-toggle="tests"> Show in bottom bar</label>
+              </div>
               <p>Click <b>Start</b> to record real clicks, fills and navigations on the page as a step list — right-click a step to insert assertions (visible, text, URL, wait-for) — then <b>Stop</b> and <b>Save</b> to name the test. Saved tests can be run once, or repeated many times in a row to flag flaky steps, with a pass/fail breakdown per run and an auto-captured screenshot on failure. No AI involved — it's a literal record/replay of the actions you performed.</p>
             </div>
 

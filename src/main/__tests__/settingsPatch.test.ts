@@ -1,4 +1,4 @@
-import { applySettingsPatch, AppSettings, clampNumberSetting } from '../settingsPatch';
+import { applySettingsPatch, AppSettings, clampNumberSetting, sanitizeDisabledConsoleTabs } from '../settingsPatch';
 
 const BASE: AppSettings = {
   redactSensitiveHeaders: false,
@@ -12,6 +12,7 @@ const BASE: AppSettings = {
   autoOpenDownloadsPanel: false,
   autoInstallWhenIdle: false,
   allowRealPopups: false,
+  disabledConsoleTabs: [],
 };
 
 describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
@@ -129,6 +130,49 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
       const withCustom = { ...BASE, recorderMaxEvents: 75000 };
       expect(applySettingsPatch(withCustom, { debugMode: true }).recorderMaxEvents).toBe(75000);
     });
+  });
+
+  describe('disabledConsoleTabs (#285)', () => {
+    it('keeps known toggleable tab names', () => {
+      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['storage', 'mock'] });
+      expect(result.disabledConsoleTabs).toEqual(['storage', 'mock']);
+    });
+
+    it('drops names that are not toggleable, including console and network', () => {
+      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['console', 'network', 'bogus', 'mock'] });
+      expect(result.disabledConsoleTabs).toEqual(['mock']);
+    });
+
+    it('dedupes repeated names', () => {
+      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['mock', 'mock', 'jira'] });
+      expect(result.disabledConsoleTabs).toEqual(['mock', 'jira']);
+    });
+
+    it('ignores a non-array value and keeps the current value', () => {
+      const withCustom = { ...BASE, disabledConsoleTabs: ['jira'] };
+      expect(applySettingsPatch(withCustom, { disabledConsoleTabs: 'nope' }).disabledConsoleTabs).toEqual(['jira']);
+    });
+
+    it('leaves the current value alone when the key is absent from the patch', () => {
+      const withCustom = { ...BASE, disabledConsoleTabs: ['jira'] };
+      expect(applySettingsPatch(withCustom, { debugMode: true }).disabledConsoleTabs).toEqual(['jira']);
+    });
+  });
+});
+
+describe('sanitizeDisabledConsoleTabs (#285)', () => {
+  it('filters to known toggleable names and drops the rest', () => {
+    expect(sanitizeDisabledConsoleTabs(['storage', 'console', 'bogus', 'vr'])).toEqual(['storage', 'vr']);
+  });
+
+  it('dedupes repeated names', () => {
+    expect(sanitizeDisabledConsoleTabs(['mock', 'mock'])).toEqual(['mock']);
+  });
+
+  it('returns an empty array for a non-array value', () => {
+    expect(sanitizeDisabledConsoleTabs('nope')).toEqual([]);
+    expect(sanitizeDisabledConsoleTabs(undefined)).toEqual([]);
+    expect(sanitizeDisabledConsoleTabs(null)).toEqual([]);
   });
 });
 
