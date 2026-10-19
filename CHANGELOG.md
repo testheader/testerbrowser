@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.122.0 — 2026-10-19
+
+### Features
+
+- configurable idle-install threshold (refs #288) (e473d9d)
+
 ## v0.121.0 — 2026-10-19
 
 ### Features
