@@ -33,7 +33,51 @@ function applyUpdateStatus({ status, current, latest }) {
   }
 }
 
+const SETTINGS_MODAL_SIZE_KEY = 'settingsModalSize';
+const SETTINGS_MODAL_MIN_W = 480;
+const SETTINGS_MODAL_MIN_H = 360;
+
+function restoreSettingsModalSize() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_MODAL_SIZE_KEY);
+    if (!raw) return;
+    const { width, height } = JSON.parse(raw);
+    const modal = document.getElementById('settingsModal');
+    if (typeof width === 'number' && width >= SETTINGS_MODAL_MIN_W) modal.style.width = `${width}px`;
+    if (typeof height === 'number' && height >= SETTINGS_MODAL_MIN_H) modal.style.height = `${height}px`;
+  } catch { /* ignore malformed/missing storage — keep the CSS default */ }
+}
+
+function initSettingsModalResize() {
+  const handle = document.getElementById('settingsModalResizeHandle');
+  const modal  = document.getElementById('settingsModal');
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = modal.offsetWidth;
+    const startH = modal.offsetHeight;
+    const maxW = window.innerWidth - 40;
+    const maxH = window.innerHeight - 40;
+    const onMove = (ev) => {
+      modal.style.width  = `${Math.max(SETTINGS_MODAL_MIN_W, Math.min(startW + (ev.clientX - startX), maxW))}px`;
+      modal.style.height = `${Math.max(SETTINGS_MODAL_MIN_H, Math.min(startH + (ev.clientY - startY), maxH))}px`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      try {
+        localStorage.setItem(SETTINGS_MODAL_SIZE_KEY, JSON.stringify({ width: modal.offsetWidth, height: modal.offsetHeight }));
+      } catch { /* per-viewer convenience only — fine to lose */ }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
+
 export async function openSettings() {
+  restoreSettingsModalSize();
   await openModal('settingsOverlay');
   applyUpdateStatus(await testerBrowser.app.getVersionInfo());
   const settings = await testerBrowser.settings.get();
@@ -98,6 +142,7 @@ function closeSettings() {
 
 export function initSettings() {
   initModal('settingsOverlay', closeSettings);
+  initSettingsModalResize();
   document.querySelectorAll('.settings-nav-btn').forEach((btn) =>
     btn.addEventListener('click', () => switchSettingsTab(btn.dataset.pane))
   );

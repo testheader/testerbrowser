@@ -787,9 +787,15 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 #settingsOverlay.open { display: flex; }
 #settingsOverlay.open #settingsModal { animation: modal-pop-in 150ms ease; }
 #settingsModal { background: var(--bg-secondary); border: 1px solid var(--border-strong); border-radius: 8px;
-                 width: 640px; height: 480px; padding: 28px 32px 20px; display: flex; flex-direction: column;
+                 width: 760px; height: 560px; min-width: 480px; min-height: 360px;
+                 max-width: calc(100vw - 40px); max-height: calc(100vh - 40px);
+                 padding: 28px 32px 20px; display: flex; flex-direction: column;
                  box-shadow: 0 8px 32px rgba(0,0,0,0.5); position: relative; }
 #settingsModal h2 { margin: 0 0 20px; font-size: 16px; font-weight: 600; color: var(--text-strong); flex-shrink: 0; }
+#settingsModalResizeHandle { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize;
+                             background: linear-gradient(135deg, transparent 0 50%, var(--border-strong) 50% 56%, transparent 56% 63%, var(--border-strong) 63% 69%, transparent 69% 76%, var(--border-strong) 76% 82%, transparent 82% 100%);
+                             border-bottom-right-radius: 8px; }
+#settingsModalResizeHandle:hover { background-color: var(--bg-hover); }
 .settings-body { display: flex; flex: 1; min-height: 0; gap: 20px; }
 .settings-sidebar { display: flex; flex-direction: column; gap: 2px; width: 150px; flex-shrink: 0;
                     border-right: 1px solid var(--border-color); padding-right: 16px; }
