@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.119.1 — 2026-10-19
+
+### Fixes
+
+- stop e2e UI-state races and retry failed tests once in CI (d443b6a)
+
 ## v0.119.0 — 2026-10-19
 
 ### Features
