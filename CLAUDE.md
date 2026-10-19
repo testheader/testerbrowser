@@ -147,6 +147,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `visualRegression:deleteBaseline` | R→M | remove a saved baseline's PNG + sidecar |
 | `visualRegression:exportBaseline` | R→M | `dialog.showSaveDialog` for the PNG path, write it plus a same-basename sidecar JSON (no `id`) next to it — `{ ok, path?, canceled?, error? }` |
 | `visualRegression:importBaseline` | R→M | `dialog.showOpenDialog` for a PNG, requires a same-basename sidecar JSON next to it, validates and copies both in under a fresh id — `{ ok, imported?, canceled?, error? }` |
+| `visualRegression:exportDiff` | R→M | `dialog.showSaveDialog` for a PNG, write the diff image on its own (no sidecar) for a bug report — `(pngB64, suggestedName)` → `{ ok, path?, canceled?, error? }` |
 | `resilience:setConditions` | R→M | per-tab `Network.emulateNetworkConditions` + `Emulation.setCPUThrottlingRate`; re-applied on `did-navigate` in case of a process swap |
 | `resilience:getConditions` | R→M | the active tab's current `{ network, cpuRate }`, or `null` if never touched (unthrottled) |
 | `security:pageState` | R→M | cert/connection details + mixed-content URLs for a tab's current main-frame document — `{ protocol, keyExchange, cipher, subjectName, issuer, validFrom, validTo, mixedContentUrls }`, or `null` for a scheme the lock-icon popover doesn't cover (file:, the new-tab page, …) |

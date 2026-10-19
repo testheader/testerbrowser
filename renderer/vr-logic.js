@@ -210,10 +210,8 @@ export function filterBaselines(list, query) {
   });
 }
 
-// Which of the three steps (1 baseline, 2 current page, 3 compare) are
-// done, and which one the tester should do next (null once all are done).
-export function stepState({ hasBaseline, hasResult }) {
-  const done = [hasBaseline, hasResult, hasResult];
-  const current = !hasBaseline ? 1 : !hasResult ? 2 : null;
-  return { done, current };
+// The name a saved diff is offered under, e.g. "diff - staging vs production"
+// (the main process turns it into a file name).
+export function diffExportName(baselineName, compareLabel) {
+  return `diff - ${baselineName || 'baseline'} vs ${compareLabel || 'current'}`;
 }

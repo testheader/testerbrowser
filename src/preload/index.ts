@@ -203,6 +203,7 @@ const api = {
     deleteBaseline: (id: string) => ipcRenderer.invoke('visualRegression:deleteBaseline', id),
     exportBaseline: (id: string) => ipcRenderer.invoke('visualRegression:exportBaseline', id),
     importBaseline: () => ipcRenderer.invoke('visualRegression:importBaseline'),
+    exportDiff: (pngB64: string, suggestedName: string) => ipcRenderer.invoke('visualRegression:exportDiff', pngB64, suggestedName),
   },
 
   mock: {

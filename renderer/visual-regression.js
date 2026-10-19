@@ -7,7 +7,7 @@ import {
   zoomToShowRegion, scrollToCenter, nextIndex, formatPct, parseMaxDiffPct, compareVerdict,
   DEFAULT_THRESHOLD, MAX_THRESHOLD, parseThreshold, thresholdHint,
   rectFromPoints, clampRegion, regionIndexAt, regionsCoverage, describeRegion,
-  filterBaselines, stepState,
+  filterBaselines, diffExportName,
 } from './vr-logic.js';
 
 // Lazily created, reused across comparisons — spinning up a Worker has real
@@ -56,6 +56,7 @@ let maxDiffPct = 0;
 let overlayPos = 50;
 let lastScale = 1;
 let regionsEditMode = false;
+let settingsOpen = false;
 let highlightedIgnoreIdx = -1;
 let savedBaselines = [];
 let baselinesOpen = false;
@@ -85,8 +86,9 @@ function activeData() {
 const $ = (id) => document.getElementById(id);
 const png = (b64) => `data:image/png;base64,${b64}`;
 
+// The baseline on its own isn't a button any more: it's what the viewer shows
+// before a compare, and while ignore regions are being edited.
 const VIEW_BUTTONS = [
-  ['baseline', 'Baseline', 'The baseline screenshot on its own — draw ignore regions here'],
   ['side', 'Side by side', 'Baseline and current screenshot next to each other'],
   ['overlay', 'Overlay', 'Current screenshot laid over the baseline, with a slider to reveal either'],
   ['diff', 'Diff', 'Only the changed pixels, highlighted in red; ignored areas in grey'],
@@ -101,49 +103,96 @@ export function initVR() {
   zoom = normalizeZoom(lsGet(LS_ZOOM));
   maxDiffPct = parseMaxDiffPct(lsGet(LS_MAX_DIFF));
 
-  const step = (n, title) => `<span class="vr-step" id="vrStep${n}"><span class="vr-step-num" aria-hidden="true">${n}</span>` +
-    `<span class="diff-sr">Step ${n}: </span>${title}<span class="diff-sr" data-step-state></span></span>`;
+  const viewButtons = VIEW_BUTTONS.map(([v, label, title]) =>
+    `<button type="button" class="vr-btn vr-view-btn" data-view="${v}" aria-pressed="false" title="${title}">${label}</button>`).join('');
 
+  // Two states share one bar: before a compare it holds the setup controls,
+  // after one it holds the result controls. The settings cog is always there.
   panel.innerHTML = `
-    <div class="vr-toolbar">
-      <div class="vr-toolbar-row vr-steps" role="group" aria-label="Comparison steps">
-        ${step(1, 'Baseline')}
+    <div class="vr-bar">
+      <div class="vr-setup" id="vrSetup">
         <button type="button" class="vr-btn" id="vrCaptureBtn" title="Screenshot the active tab as the reference to compare against">Capture baseline</button>
         <button type="button" class="vr-btn" id="vrBaselinesToggle" aria-expanded="false" aria-controls="vrBaselines"
           title="Pick, rename, export or delete a saved baseline">Saved baselines<span class="vr-count" id="vrBaselineCount"></span></button>
-        <span class="vr-step-sep" aria-hidden="true">›</span>
-        ${step(2, 'Current page')}
+        <button type="button" class="vr-btn" id="vrImportBaselineBtn" title="Import a baseline (PNG + sidecar JSON) exported from this or another machine">Import…</button>
+        <span class="panel-chip vr-baseline-chip" id="vrBaselineChip">None yet</span>
+        <span class="vr-bar-sep" aria-hidden="true"></span>
         <label class="diff-label" title="Tab to capture the 'current' screenshot from when comparing">from
           <select class="diff-pick" id="vrComparePick"></select>
         </label>
         <label class="vr-toggle" title="Capture the whole scrollable page instead of just the viewport (baseline and current)">
           <input type="checkbox" id="vrFullPage" /> Full page
         </label>
-        <span class="vr-step-sep" aria-hidden="true">›</span>
-        ${step(3, 'Compare')}
         <button type="button" class="vr-btn vr-primary" id="vrCompareBtn" disabled
           title="Capture the current page and compare it with the baseline">Compare</button>
       </div>
-      <div class="vr-toolbar-row">
-        <span class="vr-toolbar-label" id="vrBaselineLabel">Baseline</span>
-        <span class="panel-chip vr-baseline-chip" id="vrBaselineChip">None yet</span>
-        <button type="button" class="vr-btn" id="vrSaveBaselineBtn" disabled title="Save the current baseline screenshot for reuse across tabs and restarts">Save as…</button>
-        <button type="button" class="vr-btn" id="vrImportBaselineBtn" title="Import a baseline (PNG + sidecar JSON) exported from this or another machine">Import…</button>
-        <span class="status-msg" id="vrBaselineStatus" role="status" aria-live="polite"></span>
+      <div class="vr-result" id="vrResultBar" hidden>
+        <span class="vr-verdict" id="vrVerdict" hidden></span>
+        <div class="vr-nav" id="vrNav" role="group" aria-label="Changed regions">
+          <button type="button" class="vr-btn" id="vrPrevRegion" aria-keyshortcuts="P" title="Previous changed region (P)" disabled>‹ Prev</button>
+          <span class="vr-region-pos" id="vrRegionPos" aria-live="polite"></span>
+          <button type="button" class="vr-btn" id="vrNextRegion" aria-keyshortcuts="N" title="Next changed region (N)" disabled>Next ›</button>
+        </div>
+        <div class="vr-views" id="vrViews" role="group" aria-label="View">${viewButtons}</div>
+        <div class="vr-zoom" role="group" aria-label="Zoom">
+          <button type="button" class="vr-btn vr-icon-btn" id="vrZoomOut" aria-label="Zoom out" aria-keyshortcuts="-" title="Zoom out (−)">−</button>
+          <select class="diff-pick" id="vrZoom" aria-label="Zoom level">
+            <option value="fit">Fit</option>
+            <option value="width">Fit width</option>
+            ${ZOOM_STEPS.map((z) => `<option value="${z}">${formatZoom(z)}</option>`).join('')}
+          </select>
+          <button type="button" class="vr-btn vr-icon-btn" id="vrZoomIn" aria-label="Zoom in" aria-keyshortcuts="+" title="Zoom in (+)">+</button>
+          <span class="vr-hint-inline" id="vrZoomNow" aria-live="polite"></span>
+        </div>
+        <button type="button" class="vr-btn" id="vrSaveDiffBtn" title="Save the diff image as a PNG, e.g. to attach to a bug report">Save diff…</button>
+        <button type="button" class="vr-btn" id="vrResetBtn" title="Clear this comparison and pick a page to compare again. The baseline stays.">Reset</button>
       </div>
-      <div class="vr-toolbar-row">
-        <span class="vr-toolbar-label">Rules</span>
-        <label class="diff-label" for="vrThreshold">Colour tolerance</label>
-        <input type="number" id="vrThreshold" min="0" max="${MAX_THRESHOLD}" value="${DEFAULT_THRESHOLD}" class="vr-threshold-input"
-          aria-describedby="vrThresholdHint"
-          title="Per-pixel colour difference (R+G+B summed, 0–${MAX_THRESHOLD}) above which a pixel counts as changed. Higher = more lenient." />
-        <span class="vr-hint-inline" id="vrThresholdHint"></span>
-        <label class="diff-label" for="vrMaxDiff">Pass if at most</label>
-        <input type="number" id="vrMaxDiff" min="0" max="100" step="0.01" class="vr-threshold-input" aria-describedby="vrMaxDiffUnit" />
-        <span class="diff-label" id="vrMaxDiffUnit">% of pixels changed</span>
-        <button type="button" class="vr-btn" id="vrEditRegionsBtn" disabled aria-pressed="false"
-          title="Draw rectangles on the baseline that are left out of the comparison (clocks, ads, animations)">Edit ignore regions</button>
+      <button type="button" class="vr-btn vr-icon-btn vr-cog" id="vrCogBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="vrSettings"
+        title="Comparison settings" aria-label="Comparison settings">⚙</button>
+      <div class="vr-settings" id="vrSettings" role="dialog" aria-label="Comparison settings" hidden>
+        <section class="vr-set-section">
+          <h3 class="vr-set-title">Rules</h3>
+          <div class="vr-set-row">
+            <label class="diff-label" for="vrThreshold">Colour tolerance</label>
+            <input type="number" id="vrThreshold" min="0" max="${MAX_THRESHOLD}" value="${DEFAULT_THRESHOLD}" class="vr-threshold-input"
+              aria-describedby="vrThresholdHint"
+              title="Per-pixel colour difference (R+G+B summed, 0–${MAX_THRESHOLD}) above which a pixel counts as changed. Higher = more lenient." />
+          </div>
+          <div class="vr-hint-inline" id="vrThresholdHint"></div>
+          <div class="vr-set-row">
+            <label class="diff-label" for="vrMaxDiff">Pass if at most</label>
+            <input type="number" id="vrMaxDiff" min="0" max="100" step="0.01" class="vr-threshold-input" aria-describedby="vrMaxDiffUnit" />
+            <span class="diff-label" id="vrMaxDiffUnit">% of pixels changed</span>
+          </div>
+        </section>
+        <section class="vr-set-section">
+          <h3 class="vr-set-title">Baseline</h3>
+          <div class="vr-set-row">
+            <button type="button" class="vr-btn" id="vrSaveBaselineBtn" disabled title="Save the baseline screenshot for reuse across tabs and restarts">Save as…</button>
+          </div>
+        </section>
+        <section class="vr-set-section">
+          <h3 class="vr-set-title">Ignore regions</h3>
+          <div class="vr-set-row">
+            <button type="button" class="vr-btn" id="vrEditRegionsBtn" disabled aria-pressed="false"
+              title="Draw rectangles on the baseline that are left out of the comparison (clocks, ads, animations)">Edit ignore regions</button>
+          </div>
+          <ul class="diff-ignore-chips" id="vrIgnoreList" aria-label="Ignore regions"></ul>
+          <div class="vr-set-row">
+            <button type="button" class="diff-link-btn" id="vrIgnoreClearBtn">Remove all</button>
+            <span class="vr-hint-inline" id="vrIgnoreNote"></span>
+          </div>
+        </section>
+        <section class="vr-set-section">
+          <h3 class="vr-set-title">Details</h3>
+          <div class="diff-meta vr-meta" id="vrMeta"></div>
+        </section>
       </div>
+    </div>
+    <div class="vr-status-row">
+      <span class="vr-stats" id="vrStats" role="status" aria-live="polite"></span>
+      <ul class="diff-counts vr-sum-chips" id="vrSumChips"></ul>
+      <span class="status-msg" id="vrBaselineStatus" role="status" aria-live="polite"></span>
     </div>
     <div class="vr-baselines" id="vrBaselines" role="region" aria-label="Saved baselines" hidden>
       <div class="vr-bl-head">
@@ -152,40 +201,9 @@ export function initVR() {
       </div>
       <ul class="vr-bl-list" id="vrBaselineList"></ul>
     </div>
-    <div class="vr-ignore-bar" id="vrIgnoreBar" role="group" aria-labelledby="vrIgnoreLabel" hidden>
-      <span class="vr-toolbar-label" id="vrIgnoreLabel">Ignored</span>
-      <ul class="diff-ignore-chips" id="vrIgnoreList" aria-labelledby="vrIgnoreLabel"></ul>
-      <button type="button" class="diff-link-btn" id="vrIgnoreClearBtn">Remove all</button>
-      <span class="vr-hint-inline" id="vrIgnoreNote"></span>
-      <span class="vr-hint-inline vr-edit-hint" id="vrRegionsHint" hidden>Drag on the baseline to add a region · click a region to remove it</span>
-    </div>
-    <div class="vr-summary" id="vrSummary">
-      <span class="vr-verdict" id="vrVerdict" hidden></span>
-      <span class="vr-stats" id="vrStats" role="status" aria-live="polite"></span>
-      <ul class="diff-counts vr-sum-chips" id="vrSumChips"></ul>
-      <div class="diff-meta vr-meta" id="vrMeta"></div>
-    </div>
-    <div class="vr-viewbar" id="vrViewbar" hidden>
-      <span class="vr-toolbar-label" id="vrViewLabel">View</span>
-      <div class="vr-views" id="vrViews" role="group" aria-labelledby="vrViewLabel">
-        ${VIEW_BUTTONS.map(([v, label, title]) =>
-          `<button type="button" class="vr-btn vr-view-btn" data-view="${v}" aria-pressed="false" title="${title}">${label}</button>`).join('')}
-      </div>
-      <div class="vr-zoom" role="group" aria-label="Zoom">
-        <button type="button" class="vr-btn vr-icon-btn" id="vrZoomOut" aria-label="Zoom out" aria-keyshortcuts="-" title="Zoom out (−)">−</button>
-        <select class="diff-pick" id="vrZoom" aria-label="Zoom level">
-          <option value="fit">Fit</option>
-          <option value="width">Fit width</option>
-          ${ZOOM_STEPS.map((z) => `<option value="${z}">${formatZoom(z)}</option>`).join('')}
-        </select>
-        <button type="button" class="vr-btn vr-icon-btn" id="vrZoomIn" aria-label="Zoom in" aria-keyshortcuts="+" title="Zoom in (+)">+</button>
-        <span class="vr-hint-inline" id="vrZoomNow" aria-live="polite"></span>
-      </div>
-      <div class="vr-nav" id="vrNav" role="group" aria-label="Changed regions">
-        <button type="button" class="vr-btn" id="vrPrevRegion" aria-keyshortcuts="P" title="Previous changed region (P)" disabled>‹ Prev</button>
-        <span class="vr-region-pos" id="vrRegionPos" aria-live="polite"></span>
-        <button type="button" class="vr-btn" id="vrNextRegion" aria-keyshortcuts="N" title="Next changed region (N)" disabled>Next ›</button>
-      </div>
+    <div class="vr-ignore-bar" id="vrIgnoreBar" role="group" aria-label="Editing ignore regions" hidden>
+      <span class="vr-edit-hint">Drag on the baseline to add an ignore region · click one to remove it</span>
+      <button type="button" class="vr-btn" id="vrRegionsDoneBtn">Done</button>
     </div>
     <div class="vr-images" id="vrImages" role="region" aria-label="Screenshots" tabindex="0"></div>`;
 
@@ -219,8 +237,25 @@ export function initVR() {
     lsSet(LS_MAX_DIFF, String(maxDiffPct));
     renderSummary();
   });
-  /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).addEventListener('click', toggleRegionsEditMode);
-  /** @type {HTMLButtonElement} */ ($('vrSaveBaselineBtn')).addEventListener('click', saveActiveBaseline);
+  // The settings popover steps aside for the two actions that open something
+  // else: region editing (which needs the image) and the save dialog.
+  /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).addEventListener('click', () => {
+    setSettingsOpen(false);
+    toggleRegionsEditMode();
+  });
+  /** @type {HTMLButtonElement} */ ($('vrSaveBaselineBtn')).addEventListener('click', () => {
+    setSettingsOpen(false);
+    saveActiveBaseline();
+  });
+  $('vrCogBtn').addEventListener('click', () => setSettingsOpen(!settingsOpen));
+  $('vrRegionsDoneBtn').addEventListener('click', toggleRegionsEditMode);
+  $('vrResetBtn').addEventListener('click', resetCompare);
+  $('vrSaveDiffBtn').addEventListener('click', saveDiff);
+  // The page itself is a separate native view, so clicks on it never reach
+  // this document — the popover only has to handle clicks in the panel.
+  document.addEventListener('pointerdown', (e) => {
+    if (settingsOpen && !(/** @type {HTMLElement} */ (e.target)).closest('#vrSettings, #vrCogBtn')) setSettingsOpen(false);
+  });
   $('vrImportBaselineBtn').addEventListener('click', importBaseline);
   $('vrBaselinesToggle').addEventListener('click', () => setBaselinesOpen(!baselinesOpen));
   /** @type {HTMLInputElement} */ ($('vrBaselineSearch')).addEventListener('input', renderBaselineList);
@@ -302,15 +337,23 @@ export function refreshVR() {
   // session's baseline is on screen, and following the active session into
   // it unannounced would let a drag meant for one baseline edit another's.
   setRegionsEditMode(false);
+  setSettingsOpen(false);
   renderAll();
 }
 
+// Two states: before a compare the setup row is shown, after one the result
+// bar is. The saved-baselines drawer only belongs to the setup state.
 function renderAll() {
   const d = activeData();
-  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).disabled = !d.baselineB64;
-  /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).disabled = !d.baselineB64;
-  /** @type {HTMLButtonElement} */ ($('vrSaveBaselineBtn')).disabled = !d.baselineB64;
-  renderSteps();
+  const hasBaseline = !!d.baselineB64;
+  const hasResult = !!d.result;
+  $('vrSetup').hidden = hasResult;
+  $('vrResultBar').hidden = !hasResult;
+  $('vrBaselines').hidden = !baselinesOpen || hasResult;
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).disabled = !hasBaseline;
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).classList.toggle('vr-primary-ready', hasBaseline);
+  /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).disabled = !hasBaseline;
+  /** @type {HTMLButtonElement} */ ($('vrSaveBaselineBtn')).disabled = !hasBaseline;
   renderBaselineChip();
   renderIgnoreBar();
   renderSummary();
@@ -318,17 +361,38 @@ function renderAll() {
   if (baselinesOpen) renderBaselineList();
 }
 
-function renderSteps() {
+// ─── Settings popover (cog) ─────────────────────────────────────────────────
+// Rules, baseline saving and ignore regions live here rather than in the bar:
+// they're set once per comparison setup, not on every pass.
+
+function setSettingsOpen(open) {
+  settingsOpen = open;
+  $('vrSettings').hidden = !open;
+  $('vrCogBtn').setAttribute('aria-expanded', String(open));
+  $('vrCogBtn').classList.toggle('active', open);
+  if (open) /** @type {HTMLInputElement} */ ($('vrThreshold')).focus();
+}
+
+// Back to picking a page to compare. The baseline stays, so trying another
+// tab under "from" is one pick away; capturing a new baseline replaces it.
+function resetCompare() {
+  setRegionsEditMode(false);
+  resetComparison(activeData());
+  renderAll();
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).focus();
+}
+
+// Saves the diff image on its own (no sidecar) for attaching to a bug report.
+async function saveDiff() {
   const d = activeData();
-  const { done, current } = stepState({ hasBaseline: !!d.baselineB64, hasResult: !!d.result });
-  [1, 2, 3].forEach((n) => {
-    const el = $(`vrStep${n}`);
-    const isCurrent = current === n || (current === 2 && n === 3);
-    el.classList.toggle('done', done[n - 1]);
-    el.classList.toggle('current', isCurrent);
-    el.querySelector('[data-step-state]').textContent = done[n - 1] ? ' (done)' : isCurrent ? ' (next)' : '';
-  });
-  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).classList.toggle('vr-primary-ready', !!d.baselineB64);
+  if (!d.diffDataUrl) return;
+  const statusEl = $('vrBaselineStatus');
+  const name = diffExportName(d.baselineInfo?.name, d.result?.compareLabel);
+  const result = await testerBrowser.visualRegression.exportDiff(d.diffDataUrl.slice(d.diffDataUrl.indexOf(',') + 1), name);
+  if (result.canceled) { statusEl.textContent = ''; return; }
+  statusEl.textContent = result.ok
+    ? `Saved diff to ${result.path.split(/[\\/]/).pop()}`
+    : (result.error || 'Save failed');
 }
 
 function renderBaselineChip() {
@@ -377,11 +441,11 @@ function renderSummary() {
   if (d.message) {
     stats.textContent = d.message;
   } else if (!d.baselineB64) {
-    stats.textContent = 'Start with step 1: capture a baseline of this page, or pick one from Saved baselines.';
+    stats.textContent = 'Capture a baseline of this page, or pick one from Saved baselines.';
   } else if (!r) {
     stats.textContent = d.baselineInfo?.source === 'capture'
-      ? 'Baseline captured. Interact with the page (or pick another tab under Current page), then click Compare.'
-      : 'Baseline ready. Get the page into the state to check (or pick another tab under Current page), then click Compare.';
+      ? 'Baseline captured. Interact with the page (or pick another tab under “from”), then click Compare.'
+      : 'Baseline ready. Get the page into the state to check (or pick another tab under “from”), then click Compare.';
   } else {
     const pct = formatPct(r.diffCount, r.total);
     let text = `${r.diffCount.toLocaleString()} pixels differ (${pct}% of ${r.total.toLocaleString()})`;
@@ -470,7 +534,6 @@ function renderImages() {
   const d = activeData();
   const view = currentView();
 
-  $('vrViewbar').hidden = !d.baselineB64;
   document.querySelectorAll('.vr-view-btn').forEach((/** @type {HTMLButtonElement} */ b) => {
     const on = b.dataset.view === view;
     b.classList.toggle('active', on);
@@ -751,6 +814,13 @@ function goToRegion(dir) {
 // isn't in a text field, and never with a modifier (those belong to the
 // app-wide shortcuts in shortcuts.js).
 function onPanelKeydown(e) {
+  if (e.key === 'Escape' && settingsOpen) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSettingsOpen(false);
+    /** @type {HTMLButtonElement} */ ($('vrCogBtn')).focus();
+    return;
+  }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
@@ -782,7 +852,6 @@ function setRegionsEditMode(on) {
   if (!btn) return;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', String(on));
-  $('vrRegionsHint').hidden = !on;
   renderIgnoreBar();
 }
 
@@ -816,11 +885,12 @@ function removeIgnoreRegion(idx) {
   (next || /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn'))).focus();
 }
 
+// The hint bar only shows while regions are being drawn; the list of regions
+// lives in the settings popover.
 function renderIgnoreBar() {
   const d = activeData();
-  const bar = $('vrIgnoreBar');
   const regions = d.ignoreRegions;
-  bar.hidden = !d.baselineB64 || (!regions.length && !regionsEditMode);
+  $('vrIgnoreBar').hidden = !regionsEditMode || !d.baselineB64;
   /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).textContent = regionsEditMode
     ? 'Done editing regions'
     : `Edit ignore regions${regions.length ? ` (${regions.length})` : ''}`;
@@ -830,7 +900,7 @@ function renderIgnoreBar() {
         <span><b>${i + 1}</b> ${escHtml(describeRegion(r))}</span>
         <button type="button" class="diff-chip-x" data-remove-region="${i}" aria-label="Remove ignore region ${i + 1} (${escHtml(describeRegion(r))})" title="Remove">×</button>
       </li>`).join('')
-    : '<li class="diff-ignore-none">None — drag on the baseline to add one.</li>';
+    : '<li class="diff-ignore-none">None yet.</li>';
   const info = d.baselineInfo;
   if (regions.length && info) {
     const covered = regionsCoverage(regions, info.w, info.h);
@@ -1088,7 +1158,7 @@ function computeDiffInWorker(img1, img2, w, h, threshold, regions) {
 
 function setBaselinesOpen(open) {
   baselinesOpen = open;
-  $('vrBaselines').hidden = !open;
+  $('vrBaselines').hidden = !open || !!activeData().result;
   $('vrBaselinesToggle').setAttribute('aria-expanded', String(open));
   $('vrBaselinesToggle').classList.toggle('active', open);
   if (open) {
