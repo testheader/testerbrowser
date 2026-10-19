@@ -115,17 +115,22 @@ test('reopening a closed tab restores its notes and emulation (#231)', async () 
 
   await window.keyboard.press('Control+Shift+T');
   await expect.poll(tabCount).toBe(before);
+  // The reopened tab becomes active and gets its notes/emulation restored a
+  // moment after the tab count changes, so poll each of them rather than
+  // reading them once.
+  await expect.poll(activeTabId).not.toBe(id);
   const reopenedId = await activeTabId();
 
-  const notes = await window.evaluate(
+  await expect.poll(() => window.evaluate(
     (id) => (window as unknown as { testerBrowser: any }).testerBrowser.sessions.getNotes(id), reopenedId
-  );
-  expect(notes).toBe('reopen test notes');
+  )).toBe('reopen test notes');
 
-  const emulation = await window.evaluate(
-    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.emulation.get(id), reopenedId
-  );
-  expect(emulation?.locale).toBe('fr-FR');
+  await expect.poll(async () => {
+    const emulation = await window.evaluate(
+      (id) => (window as unknown as { testerBrowser: any }).testerBrowser.emulation.get(id), reopenedId
+    );
+    return emulation?.locale;
+  }).toBe('fr-FR');
 });
 
 test('sessions:reopen restores a pinned tab as pinned (#231)', async () => {

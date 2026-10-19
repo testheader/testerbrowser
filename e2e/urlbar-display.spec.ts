@@ -74,7 +74,7 @@ test('#urlbarDisplay reflects the just-submitted URL immediately, without waitin
   // pending when this test checks the display a moment after submitting —
   // proving the display doesn't depend on that round-trip to show the right
   // URL.
-  const slowUrl = fixtures.url('/network/slow?ms=2000');
+  const slowUrl = fixtures.url('/network/slow?ms=5000');
   const historyBefore: string | undefined = await window.evaluate(
     () => (window as any).testerBrowser.urlHistory.get().then((h: string[]) => h[0])
   );
@@ -91,9 +91,8 @@ test('#urlbarDisplay reflects the just-submitted URL immediately, without waitin
   // activeElement — a focus-based proxy that can resolve `true` for reasons
   // unrelated to this handler's own blur() and was flaky in CI. The instant
   // the history entry lands, updateUrlbarSecurity()+blur() have already run
-  // too (same tick), so reading displayText right after, with no further
-  // retrying, still verifies it didn't wait on the — here, still 2s away —
-  // 'session:navigated' round-trip.
+  // too (same tick). The display is then checked below, with a bounded retry,
+  // while the — here, still 5s away — 'session:navigated' round-trip is pending.
   await expect.poll(
     () => window.evaluate(() => (window as any).testerBrowser.urlHistory.get().then((h: string[]) => h[0])),
     { timeout: 5_000 },
@@ -102,13 +101,14 @@ test('#urlbarDisplay reflects the just-submitted URL immediately, without waitin
   // urlHistory.add() the poll above just observed landing — but on a
   // slower/more contended runner, a single unretried read straight after is
   // still trusting that same-tick assumption more tightly than it needs to.
-  // Poll the display text directly instead (a short, bounded retry, still
-  // nowhere near the slow response's still ~2s-away arrival), rather than
-  // asserting on the very first read.
-  await expect(window.locator('#urlbarDisplay')).toContainText('/network/slow', { timeout: 1_000 });
+  // Poll the display text directly instead (a bounded retry, still well short
+  // of the slow response's ~5s arrival), rather than asserting on the very
+  // first read. Other renderer code (renderTabs, onNavigated) rewrites this
+  // display from the tab's old URL, so the poll may need a moment to win.
+  await expect(window.locator('#urlbarDisplay')).toContainText('/network/slow', { timeout: 3_000 });
 
   // Let the slow response land so it doesn't bleed into the next test —
-  // wait on the actual tab finishing its (still in-flight, ~2s) navigation
+  // wait on the actual tab finishing its (still in-flight, ~5s) navigation
   // rather than a fixed sleep slightly longer than the fixture's delay.
   const slowTab = await getTabPage(app, '/network/slow');
   await slowTab.waitForLoadState('load');

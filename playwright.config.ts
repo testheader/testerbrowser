@@ -6,7 +6,11 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   expect: { timeout: 10_000 }, // slow CI runners need more than the 5s default
-  retries: 0, // no silent retries — a failing test should fail the CI run visibly
+  // CI retries a failed test once. A retry that passes is reported as "flaky"
+  // in the HTML report, not hidden, but it no longer blocks publish-release
+  // on a timing race (see the three UI-state races fixed alongside this).
+  // Local runs stay at 0 so a real failure is visible straight away.
+  retries: process.env.CI ? 1 : 0,
   // #249: each spec file gets its own Electron launch with an isolated
   // --user-data-dir (launchApp() in helpers.ts) and its own fixture server
   // bound to port 0, and the app takes no single-instance lock — nothing is

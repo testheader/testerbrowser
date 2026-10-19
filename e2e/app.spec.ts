@@ -204,15 +204,15 @@ test('replay cookie session picker lists all available sessions', async () => {
   await window.click('#closeReplayBtn');
 });
 
-// The session picker's change handler fetches cookies via IPC
-// (testerBrowser.sessions.getCookies) and, when the result is empty for the
-// active domain filter, leaves no DOM change to poll for — call the same
-// endpoint ourselves as a completion proxy: dispatched strictly after the
-// handler's own identical call (selectOption already fired the change
-// event), it resolves no earlier, so by the time it does, the handler's own
-// synchronous re-render has already run too.
-async function waitForReplayCookiesSettled(win: Page, sessionId: string) {
-  await win.evaluate((id) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
+// The session picker's change handler fetches cookies over IPC, then clears
+// and refills the table. Callers poll these rows until the expected cookie
+// appears. (They used to fire a second getCookies call and assume the
+// handler's re-render had run by the time it resolved, but the two IPC
+// replies race, so the table was sometimes still empty.)
+async function readReplayCookieNames(win: Page): Promise<string[]> {
+  return win.locator('#replayCookiesTable .kv-key').evaluateAll(
+    els => (els as HTMLInputElement[]).map(el => el.value)
+  );
 }
 
 test('replay cookie session picker filters out cookies from unrelated domains', async () => {
@@ -233,6 +233,7 @@ test('replay cookie session picker filters out cookies from unrelated domains', 
     const ses = electronSession.fromPartition(part);
     await ses.cookies.set({ url: 'http://example.com', name: 'example_cookie', value: 'v1', domain: 'example.com' });
     await ses.cookies.set({ url: 'http://facebook.com', name: 'fb_cookie',      value: 'v2', domain: 'facebook.com' });
+    await ses.cookies.set({ url: 'http://127.0.0.1', name: 'replay_ok_tok', value: '1' });
   }, partition);
 
   await openReplayOverlay(window, testPort);
@@ -245,11 +246,10 @@ test('replay cookie session picker filters out cookies from unrelated domains', 
 
   // Select the session — the change handler should filter by the request's hostname.
   await window.selectOption('#replayCookieSessionPick', { value: sessionId });
-  await waitForReplayCookiesSettled(window, sessionId);
-
-  const cookieNames: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
-    els => (els as HTMLInputElement[]).map(el => el.value)
-  );
+  // Wait for the in-domain cookie to render, so the checks below can't pass
+  // just because the table hasn't been refilled yet.
+  await expect.poll(() => readReplayCookieNames(window)).toContain('replay_ok_tok');
+  const cookieNames = await readReplayCookieNames(window);
 
   // Foreign-domain cookies must not appear when replaying a 127.0.0.1 request.
   expect(cookieNames).not.toContain('example_cookie');
@@ -294,17 +294,13 @@ test('replay cookie session picker shows each session\'s own cookies independent
 
   // ── Session 1 ──
   await window.selectOption('#replayCookieSessionPick', { value: session1Id });
-  await waitForReplayCookiesSettled(window, session1Id);
-  const s1Names: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
-    els => (els as HTMLInputElement[]).map(el => el.value)
-  );
+  await expect.poll(() => readReplayCookieNames(window)).toContain('s1_unique_tok');
+  const s1Names = await readReplayCookieNames(window);
 
   // ── Session 2 — the picker handler clears and refills the table ──
   await window.selectOption('#replayCookieSessionPick', { value: session2Id });
-  await waitForReplayCookiesSettled(window, session2Id);
-  const s2Names: string[] = await window.locator('#replayCookiesTable .kv-key').evaluateAll(
-    els => (els as HTMLInputElement[]).map(el => el.value)
-  );
+  await expect.poll(() => readReplayCookieNames(window)).toContain('s2_unique_tok');
+  const s2Names = await readReplayCookieNames(window);
 
   // Each session's cookie appears only when that session is selected.
   expect(s1Names).toContain('s1_unique_tok');
