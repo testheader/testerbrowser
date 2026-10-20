@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.125.0 — 2026-10-20
+
+### Features
+
+- restyle toolbar and URL bar with session chip (refs #295) (0981e2d)
+
 ## v0.124.1 — 2026-10-20
 
 ### Other
