@@ -253,7 +253,7 @@ carry extra data) and stay as their own branches in both
 
 The console panel sits fixed at the bottom of the window. Height is drag-resizable. `layout:setConsoleHeight(0)` tells the main process to give the BrowserView the full height (console hidden).
 
-**Help (`?`)** — the button in the console header (`#consoleHelpBtn`) opens a short popover for whichever tab is active. The text lives in `renderer/panel-help-content.js` (one entry per tab, keyed like `switchConsoleTab()`); add an entry there when adding a console tab — `src/__tests__/panel-help-content.test.ts` fails if the counts drift. The popover opens *downward* because the page's native view covers anything that would open upward. Spoof and Network diff additionally have their own in-panel `?` popovers via `wireHelpPopover()` in `renderer/utils.js`.
+**Collapse** — the chevron at the right of the tab strip (`#consolePanelMinBtn`) collapses the panel to just the 39px tab strip (`layout.js`'s `applyMinimized()`, persisted in localStorage); clicking any tab while collapsed expands it. There is no panel-wide help button — Spoof and Network diff keep their own in-panel `?` popovers via `wireHelpPopover()` in `renderer/utils.js`.
 
 **Console tab** — streams timeline events polled every 1 s via `recording:timeline`. Five pill toggle buttons filter by event kind (Req/Res/Err/JS/Log). Click a pill to toggle. HAR export and clear buttons on the right.
 

@@ -1,7 +1,7 @@
 /* global testerBrowser */
 import { TOPBAR_BASE, FIND_BAR_H, BOOKMARKS_BAR_H } from './state.js';
 
-const CONSOLE_HEADER_H = 42; // drag handle (6px) + header (36px)
+const CONSOLE_HEADER_H = 39; // tab strip (38px) + its 1px bottom border; the drag grip overlays the top edge
 const LS_MIN_KEY = 'consoleMinimized';
 
 // Layout owns every pure visibility/dimension flag that feeds the topbar and
@@ -33,6 +33,9 @@ export function toggleBookmarksBarVisible() {
   return bookmarksBarVisible;
 }
 
+export function isConsolePanelMinimized() { return consolePanelMinimized; }
+export function expandConsolePanel() { if (consolePanelMinimized) applyMinimized(false); }
+
 export function isConsoleVisible() { return consoleVisible; }
 export function toggleConsoleVisible() {
   consoleVisible = !consoleVisible;
@@ -47,7 +50,8 @@ function applyMinimized(minimized) {
   const btn  = document.getElementById('consolePanelMinBtn');
   const panel = document.getElementById('consolePanel');
   body.style.display = minimized ? 'none' : '';
-  btn.innerHTML = minimized ? '&#8963;' : '&#8964;';
+  btn.innerHTML = `<i class="icon-chevron-${minimized ? 'up' : 'down'}" aria-hidden="true"></i>`;
+  panel.classList.toggle('collapsed', minimized);
   btn.title = minimized ? 'Restore panel' : 'Minimize panel';
   panel.style.height = (minimized ? CONSOLE_HEADER_H : consoleHeight) + 'px';
   syncConsoleViewHeight();

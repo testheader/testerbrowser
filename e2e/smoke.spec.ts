@@ -67,6 +67,24 @@ test.describe('minimize.spec', () => {
   });
 });
 
+// #297: collapsed panel is exactly the tab strip; a tab click restores it.
+test.describe('collapse to tab strip (#297)', () => {
+  test('collapsing leaves a 39px panel, and clicking a tab expands and selects it', async () => {
+    await window.click('#consolePanelMinBtn');
+    const collapsed = await window.evaluate(() => (document.getElementById('consolePanel') as HTMLElement).getBoundingClientRect().height);
+    expect(Math.round(collapsed)).toBe(39);
+    await expect(window.locator('#consolePanelBody')).toBeHidden();
+
+    await window.click('#consoleTabMock');
+    await expect(window.locator('#consolePanelBody')).toBeVisible();
+    await expect(window.locator('#consoleTabMock')).toHaveClass(/active/);
+    const expanded = await window.evaluate(() => (document.getElementById('consolePanel') as HTMLElement).getBoundingClientRect().height);
+    expect(expanded).toBeGreaterThan(100);
+    await expect(window.locator('#consoleHelpBtn')).toHaveCount(0);
+    await window.click('#consoleTabConsole');
+  });
+});
+
 // #32: scrollbar in always-available console.
 //
 // Verifies that #timelinePanel has a non-zero height after tab-switching,
