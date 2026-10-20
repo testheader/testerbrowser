@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.140.0 — 2026-10-20
+
+### Features
+
+- Mock rules table and inline form (refs #310) (8e3fbe4)
+
 ## v0.139.0 — 2026-10-20
 
 ### Features
