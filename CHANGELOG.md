@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.130.0 — 2026-10-20
+
+### Features
+
+- Network rows as a table, one row per request (refs #300) (b6a712a)
+
 ## v0.129.0 — 2026-10-20
 
 ### Features
