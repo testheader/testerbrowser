@@ -70,7 +70,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
   document.getElementById('followPanel').style.display          = tab === 'follow'     ? 'flex'  : 'none';
   document.getElementById('debugLogPanel').style.display        = tab === 'debuglog'   ? 'flex'  : 'none';
-  const hasDetailTabs = getDetailTabsCount() > 0 && (timelineVisible || tab === 'security');
+  const hasDetailTabs = getDetailTabsCount() > 0 && timelineVisible;
   document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
   document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? 'block' : 'none';
   if (tab === 'console' || tab === 'network') renderTimeline();

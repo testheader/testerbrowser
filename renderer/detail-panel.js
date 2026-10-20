@@ -384,10 +384,9 @@ export function renderDetailPanel() {
   const panel        = document.getElementById('detailPanel');
   const resizeHandle = document.getElementById('detailPanelResizeHandle');
   // The timeline is shared by the Console and Network tabs, so rows on either
-  // can open the pane. Security findings link back to the network event that
-  // produced them, so the Security tab shares the same detail panel.
+  // can open the pane. (The Security tab has its own finding pane, #306.)
   const activeConsoleTab = getActiveConsoleTab();
-  const showsDetail  = activeConsoleTab === 'console' || activeConsoleTab === 'network' || activeConsoleTab === 'security';
+  const showsDetail  = activeConsoleTab === 'console' || activeConsoleTab === 'network';
   const hasOpen      = !!current && showsDetail;
   panel.classList.toggle('open', hasOpen);
   resizeHandle.style.display = hasOpen ? 'block' : 'none';

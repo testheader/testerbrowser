@@ -1,6 +1,6 @@
 // Regression tests for the Security tab's analyze() — imports the real renderer
 // module so a field-name drift (e.g. reading ev.type instead of ev.kind) fails here.
-import { analyze, computeEnabledRuleIds, computeGroupCheckState } from '../../renderer/security.js';
+import { analyze, computeEnabledRuleIds, computeGroupCheckState, WHY, findingReport } from '../../renderer/security.js';
 
 // Mirrors what SessionRecorder stores: a row with `kind` and a JSON-string `payload`
 // holding raw CDP Network.responseReceived params. `type` is CDP's own
@@ -446,5 +446,35 @@ describe('computeGroupCheckState (#187 — severity master checkboxes)', () => {
 
   it('treats undefined overrides as every rule enabled', () => {
     expect(computeGroupCheckState(rules, undefined)).toBe('checked');
+  });
+});
+
+describe('finding metadata (#306)', () => {
+  it('every rule that can fire has a one-sentence "why"', () => {
+    const ids = [...computeEnabledRuleIds({})];
+    expect(ids.length).toBeGreaterThan(20);
+    for (const id of ids) {
+      expect(typeof WHY[id as keyof typeof WHY]).toBe('string');
+      expect(WHY[id as keyof typeof WHY].length).toBeGreaterThan(20);
+    }
+  });
+
+  it('findings carry a category, a row target and the request method', () => {
+    const req = { kind: 'network-request', ts: 1, summary: 'GET', payload: JSON.stringify({ requestId: 'r', request: { method: 'POST', url: 'http://x.test/a' } }) };
+    const res = { kind: 'network-response', ts: 2, summary: 'r', payload: JSON.stringify({ requestId: 'r', type: 'Document', response: { url: 'http://x.test/a?q=1', status: 200, headers: { 'set-cookie': 'sid=abc; Path=/' } } }) };
+    const findings = analyze([req, res]).findings;
+    const http = findings.find((f: any) => f.ruleId === 'http-unencrypted') as any;
+    expect(http).toMatchObject({ category: 'Transport', target: 'http://x.test/a?q=1', method: 'POST' });
+    const cookie = findings.find((f: any) => f.ruleId === 'cookie-insecure') as any;
+    expect(cookie).toMatchObject({ category: 'Cookies', target: 'sid' });
+  });
+
+  it('findingReport builds a Jira summary and description', () => {
+    const f = { severity: 'high', category: 'Transport', url: 'http://x.test/', ruleId: 'http-unencrypted', method: 'GET', detail: 'Request sent over HTTP, not HTTPS', issue: 'HTTP (unencrypted)' };
+    const r = findingReport(f);
+    expect(r.summary).toBe('Security: HTTP (unencrypted)');
+    expect(r.description).toContain('Severity: High');
+    expect(r.description).toContain('Why it matters:');
+    expect(r.description).toContain('GET http://x.test/');
   });
 });

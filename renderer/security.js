@@ -1,6 +1,9 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
-import { openDetailTab } from './detail-panel.js';
+import { getEventTabId } from './utils.js';
+import { switchConsoleTab } from './console-tabs.js';
+import { focusNetworkRequest } from './timeline.js';
+import { openJiraBugFromFinding } from './jira.js';
 import { setTabBadge } from './tab-badges.js';
 import { renderEmptyState } from './empty-state.js';
 
@@ -168,7 +171,64 @@ const ALL_RULES = [
 ];
 const ALL_RULE_IDS = new Set(ALL_RULES.map(r => r.id));
 
+// #306: the group each finding is listed under (the row's right-hand column).
+for (const r of TRANSPORT_RULES) r.category = r.id === 'cookie-set-without-cache-control' ? 'Cookies' : 'Transport';
+for (const r of [...HEADER_PRESENCE_RULES, ...HEADER_VALUE_RULES]) r.category = 'Headers';
+for (const r of COOKIE_RULES) r.category = 'Cookies';
+for (const r of CORS_RULES) r.category = 'CORS';
+for (const r of STATUS_RULES) r.category = 'Auth';
+
+// #306: one sentence per rule on why the finding matters (detail pane).
+export const WHY = {
+  'http-unencrypted': 'Traffic can be read or changed by anyone on the network, including cookies and form input.',
+  'insecure-redirect': 'An HTTPS request is redirected to plain HTTP, exposing everything that follows.',
+  'cookie-set-without-cache-control': 'A shared cache or proxy could store and replay a response that sets a session cookie.',
+  'missing-content-security-policy': "Without a Content-Security-Policy the browser can't block injected scripts or unexpected content sources.",
+  'missing-x-frame-options': 'The page can be embedded in another site\'s frame, which enables clickjacking.',
+  'missing-x-content-type-options': "Browsers may guess a response's content type, which can turn uploads into executable content.",
+  'missing-strict-transport-security': 'Without Strict-Transport-Security, browsers can be downgraded to HTTP on later visits.',
+  'missing-referrer-policy': 'Without a Referrer-Policy, full URLs can leak to other sites in the Referer header.',
+  'missing-permissions-policy': 'The page does not restrict which powerful browser features embedded content may use.',
+  'missing-cross-origin-opener-policy': 'Without Cross-Origin-Opener-Policy, other windows can keep a reference to this page.',
+  'missing-cross-origin-embedder-policy': "Without Cross-Origin-Embedder-Policy, the page can't opt in to cross-origin isolation.",
+  'missing-cross-origin-resource-policy': 'Other sites can embed this resource because no Cross-Origin-Resource-Policy limits it.',
+  'missing-x-xss-protection': 'The legacy X-XSS-Protection header is absent; modern sites should rely on a Content-Security-Policy instead.',
+  'csp-unsafe-inline': "'unsafe-inline' lets injected inline scripts run, which defeats most of what a CSP protects against.",
+  'csp-unsafe-eval': "'unsafe-eval' lets injected strings run as code through eval and similar APIs.",
+  'csp-wildcard-source': "A '*' source allows content to load from any origin, weakening the policy.",
+  'xfo-not-deny-or-sameorigin': 'Values other than DENY or SAMEORIGIN are ignored by browsers, leaving the page frameable.',
+  'hsts-short-max-age': 'A short max-age lets the HTTPS-only protection expire quickly.',
+  'hsts-no-include-subdomains': 'Subdomains are not covered by HSTS and can still be downgraded to HTTP.',
+  'referrer-policy-unsafe-url': 'unsafe-url sends the full URL, including path and query, to every destination.',
+  'server-header-discloses-version': 'Version details help attackers look up known vulnerabilities for your server.',
+  'x-powered-by-present': 'Revealing the framework or platform helps attackers pick targeted exploits.',
+  'cookie-insecure': 'Without Secure, the cookie is also sent over plain HTTP where it can be intercepted.',
+  'cookie-missing-httponly': 'Without HttpOnly, scripts running on the page can read this cookie.',
+  'cookie-missing-samesite': 'Without SameSite, the cookie is sent on cross-site requests, which enables CSRF.',
+  'cookie-samesite-none-without-secure': 'Browsers reject SameSite=None cookies that are not Secure, so this cookie is dropped.',
+  'cors-acao-wildcard': 'Any website can read this response from a browser.',
+  'cors-acao-wildcard-with-credentials': 'Browsers refuse this combination, and intending it suggests credentials could be exposed.',
+  'auth-failure': 'The server rejected the request as unauthenticated or forbidden.',
+};
+
 function resolve(val, ctx) { return typeof val === 'function' ? val(ctx) : val; }
+
+// The name of the first cookie in a Set-Cookie value ("sid=abc; Path=/" → "sid").
+function cookieNameOf(setCookie) {
+  const first = String(setCookie || '').split('\n')[0].split(';')[0];
+  const eq = first.indexOf('=');
+  return (eq === -1 ? first : first.slice(0, eq)).trim();
+}
+
+// What the row's second line points at: the cookie's name for a cookie
+// finding, the full URL for a transport finding, otherwise "path · type".
+function targetOf(rule, ctx) {
+  if (rule.category === 'Cookies' && ctx.setCookie && ctx.setCookie !== '[REDACTED]') return cookieNameOf(ctx.setCookie);
+  if (rule.category === 'Transport') return ctx.url;
+  let path = ctx.url;
+  try { const u = new URL(ctx.url); path = u.pathname + u.search; } catch { /* not a URL */ }
+  return ctx.resourceType ? `${path} \u00b7 ${String(ctx.resourceType).toLowerCase()}` : path;
+}
 
 function pushFinding(findings, rule, ctx, ev) {
   findings.push({
@@ -178,6 +238,9 @@ function pushFinding(findings, rule, ctx, ev) {
     detail: resolve(rule.detail, ctx),
     sourceEvent: ev,
     ruleId: rule.id,
+    category: rule.category || 'Other',
+    target: targetOf(rule, ctx),
+    method: ctx.method || 'GET',
   });
 }
 
@@ -210,33 +273,51 @@ let lastFindings = [];
 let lastSkipped = { cookieRulesRedacted: false };
 let lastTruncated = false;
 
+// #306: single-selection severity segment (All / High / Medium / Low) and the
+// selected finding (kept across re-renders by a stable key).
+let secSeverity = 'all';
+let selectedFindingKey = null;
+
+function findingKey(f) { return `${f.ruleId}|${f.url}|${f.target}`; }
+
 export function initSecurity() {
   const panel = document.getElementById('securityPanel');
   if (panel.dataset.initialized) return;
   panel.dataset.initialized = '1';
   panel.innerHTML = `
     <div class="sec-toolbar">
-      <button class="sec-btn" id="secScanBtn">Scan session</button>
-      <button class="sec-btn sec-config-btn" id="secConfigBtn" title="Configure checks"
-              aria-label="Configure checks" aria-pressed="false">&#9881;</button>
+      <div class="seg" id="secPills" role="group" aria-label="Severity">
+        <button class="seg-btn on" data-sev="all" aria-pressed="true">All<span class="pill-count"></span></button>
+        <button class="seg-btn" data-sev="high" aria-pressed="false"><span class="sec-dot sec-dot-high"></span>High<span class="pill-count"></span></button>
+        <button class="seg-btn" data-sev="medium" aria-pressed="false"><span class="sec-dot sec-dot-medium"></span>Medium<span class="pill-count"></span></button>
+        <button class="seg-btn" data-sev="low" aria-pressed="false"><span class="sec-dot sec-dot-low"></span>Low<span class="pill-count"></span></button>
+      </div>
+      <div class="net-search sec-search"><i class="icon-search" aria-hidden="true"></i><input id="secFilterText" placeholder="Filter by issue or URL" aria-label="Filter findings" /></div>
+      <button class="net-chip sec-config-btn" id="secConfigBtn" title="Configure checks"
+              aria-label="Configure checks" aria-pressed="false"><i class="icon-settings-2" aria-hidden="true"></i></button>
+      <span class="net-spacer"></span>
       <span class="sec-status" id="secStatus"></span>
+      <button class="net-chip sec-btn" id="secScanBtn"><i class="icon-refresh-cw" aria-hidden="true"></i><span id="secScanLabel">Scan session</span></button>
     </div>
     <div class="sec-config" id="secConfig" hidden></div>
-    <div class="sec-filterbar">
-      <input id="secFilterText" placeholder="Filter by issue or URL…" />
-      <div class="filter-pills" id="secPills">
-        <button class="filter-pill on sec-pill-high"   data-sev="high">High<span class="pill-count"></span></button>
-        <button class="filter-pill on sec-pill-medium" data-sev="medium">Medium<span class="pill-count"></span></button>
-        <button class="filter-pill on sec-pill-low"    data-sev="low">Low<span class="pill-count"></span></button>
-      </div>
-    </div>
-    <div class="sec-results" id="secResults"></div>`;
+    <div class="sec-body">
+      <div class="sec-results" id="secResults"></div>
+      <aside class="sec-detail-pane" id="secDetail" aria-label="Finding details" hidden></aside>
+    </div>`;
   document.getElementById('secResults').replaceChildren(securityEmptyState());
   /** @type {HTMLButtonElement} */ (document.getElementById('secScanBtn')).addEventListener('click', runScan);
   /** @type {HTMLButtonElement} */ (document.getElementById('secConfigBtn')).addEventListener('click', toggleConfigPanel);
   /** @type {HTMLInputElement} */ (document.getElementById('secFilterText')).addEventListener('input', renderFilteredFindings);
-  document.querySelectorAll('#secPills .filter-pill').forEach(btn =>
-    btn.addEventListener('click', () => { btn.classList.toggle('on'); renderFilteredFindings(); })
+  document.querySelectorAll('#secPills .seg-btn').forEach(btn =>
+    btn.addEventListener('click', () => {
+      secSeverity = /** @type {HTMLElement} */ (btn).dataset.sev;
+      document.querySelectorAll('#secPills .seg-btn').forEach((b) => {
+        const on = /** @type {HTMLElement} */ (b).dataset.sev === secSeverity;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      renderFilteredFindings();
+    })
   );
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !document.getElementById('secConfig').hidden) setConfigOpen(false);
@@ -346,7 +427,7 @@ function securityEmptyState() {
   return renderEmptyState({
     icon: 'shield-check', tone: 'accent', title: 'Security scan',
     text: 'Scan this tab\'s recorded traffic for insecure headers and cookies.',
-    actionLabel: 'Scan', onAction: () => runScan(),
+    actionLabel: 'Scan session', onAction: () => runScan(),
   });
 }
 
@@ -358,7 +439,12 @@ export function clearSecurityFindings() {
   if (results) results.replaceChildren(securityEmptyState());
   const status = document.getElementById('secStatus');
   if (status) status.textContent = '';
+  const scanLabel = document.getElementById('secScanLabel');
+  if (scanLabel) scanLabel.textContent = 'Scan session';
   document.querySelectorAll('#secPills .pill-count').forEach((el) => { el.textContent = ''; });
+  selectedFindingKey = null;
+  const detail = document.getElementById('secDetail');
+  if (detail) { detail.hidden = true; detail.replaceChildren(); }
   setTabBadge('security', 0);
 }
 
@@ -380,7 +466,11 @@ async function runScan() {
   lastTruncated = events.length >= 5000;
   renderFilteredFindings();
   setTabBadge('security', lastFindings.length);
-  status.textContent = `${lastFindings.length} issue${lastFindings.length !== 1 ? 's' : ''} found`;
+  const scanned = events.filter((e) => e.kind === 'network-response').length;
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  status.textContent = `Scanned ${scanned} request${scanned === 1 ? '' : 's'} \u00b7 ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  document.getElementById('secScanLabel').textContent = 'Scan again';
   btn.disabled = false;
 }
 
@@ -388,6 +478,17 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS, { includeSubresou
   const findings = [];
   const seenUrls = new Set();
   let cookieRulesRedacted = false;
+
+  // requestId -> method, from the request events (a response payload doesn't
+  // carry it) — shown in a finding's evidence.
+  const methodById = new Map();
+  for (const ev of events) {
+    if (ev.kind !== 'network-request' || !ev.payload) continue;
+    try {
+      const p = JSON.parse(ev.payload);
+      if (p.requestId && p.request?.method) methodById.set(p.requestId, p.request.method);
+    } catch { /* skip malformed */ }
+  }
 
   for (const ev of events) {
     if (ev.kind !== 'network-response') continue;
@@ -405,7 +506,7 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS, { includeSubresou
     );
     const status    = payload.status ?? payload.response?.status ?? 0;
     const setCookie = norm['set-cookie'] ?? '';
-    const ctx = { url, norm, status, setCookie };
+    const ctx = { url, norm, status, setCookie, method: methodById.get(payload.requestId), resourceType: undefined };
 
     // #240: header-presence/value rules only matter on the document itself
     // by default — a missing CSP on a third-party image isn't a real
@@ -416,6 +517,7 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS, { includeSubresou
     // — old recordings keep scanning exactly as they did before this.
     const resourceType = payload.type ?? payload.response?.type;
     const isDocument = resourceType === undefined || resourceType === 'Document';
+    ctx.resourceType = resourceType;
 
     for (const rule of TRANSPORT_RULES) {
       if (enabledRuleIds.has(rule.id) && rule.check(ctx)) pushFinding(findings, rule, ctx, ev);
@@ -452,18 +554,17 @@ export function analyze(events, enabledRuleIds = ALL_RULE_IDS, { includeSubresou
 
 function renderFilteredFindings() {
   const filterText  = /** @type {HTMLInputElement} */ (document.getElementById('secFilterText')).value.toLowerCase();
-  const activeSevs  = new Set([...document.querySelectorAll('#secPills .filter-pill.on')].map(el => el.dataset.sev));
 
   const sevCounts = { high: 0, medium: 0, low: 0 };
   for (const f of lastFindings) sevCounts[f.severity] = (sevCounts[f.severity] || 0) + 1;
-  document.querySelectorAll('#secPills .filter-pill').forEach(btn => {
+  document.querySelectorAll('#secPills .seg-btn').forEach(btn => {
     const span = btn.querySelector('.pill-count');
-    const n    = sevCounts[btn.dataset.sev] || 0;
+    const n    = btn.dataset.sev === 'all' ? lastFindings.length : (sevCounts[btn.dataset.sev] || 0);
     if (span) span.textContent = n > 0 ? n : '';
   });
 
   const filtered = lastFindings.filter(f =>
-    activeSevs.has(f.severity) &&
+    (secSeverity === 'all' || f.severity === secSeverity) &&
     (!filterText ||
       f.issue.toLowerCase().includes(filterText) ||
       f.url.toLowerCase().includes(filterText) ||
@@ -483,65 +584,153 @@ function bannersHtml() {
   return html;
 }
 
+const SEV_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
+
 function renderFindings(findings) {
   const results = document.getElementById('secResults');
   const banners = bannersHtml();
 
   if (!lastFindings.length) {
     results.innerHTML = banners + '<div class="sec-hint sec-ok">No issues detected in recorded traffic.</div>';
+    showFindingDetail(null);
     return;
   }
   if (!findings.length) {
     results.innerHTML = banners + '<div class="sec-hint">No findings match the current filter.</div>';
+    showFindingDetail(null);
     return;
   }
 
   results.innerHTML = banners;
 
-  const bySev = { high: [], medium: [], low: [] };
-  for (const f of findings) (bySev[f.severity] ?? bySev.low).push(f);
+  // Rows in severity order (high → medium → low), one flat list.
+  const ordered = [];
+  for (const sev of SEVERITIES) for (const f of findings) if (f.severity === sev) ordered.push(f);
 
-  for (const sev of SEVERITIES) {
-    const items = bySev[sev];
-    if (!items.length) continue;
+  // Keep the selection across re-renders; otherwise open the first finding.
+  const selected = ordered.find((f) => findingKey(f) === selectedFindingKey) ?? ordered[0];
+  selectedFindingKey = findingKey(selected);
+  for (const f of ordered) {
+    const row = document.createElement('div');
+    row.className = `sec-row sec-row-${f.severity}`;
+    row.dataset.key = findingKey(f);
+    row.tabIndex = 0;
+    row.setAttribute('role', 'button');
 
-    const group = document.createElement('div');
-    group.className = 'sec-group';
+    const sevEl = document.createElement('span');
+    sevEl.className = `sec-sev sec-sev-${f.severity}`;
+    sevEl.textContent = SEV_LABELS[f.severity] ?? f.severity;
+    row.appendChild(sevEl);
 
-    const label = document.createElement('div');
-    label.className = `sec-group-label sec-${sev}`;
-    label.textContent = `${sev.toUpperCase()} (${items.length})`;
-    group.appendChild(label);
+    const main = document.createElement('span');
+    main.className = 'sec-main';
+    const issueEl = document.createElement('span');
+    issueEl.className = 'sec-issue';
+    issueEl.textContent = f.issue;
+    main.appendChild(issueEl);
+    const urlEl = document.createElement('span');
+    urlEl.className = 'sec-url';
+    urlEl.title = f.url;
+    urlEl.textContent = f.target || f.url;
+    main.appendChild(urlEl);
+    row.appendChild(main);
 
-    for (const f of items) {
-      const row = document.createElement('div');
-      row.className = `sec-row sec-row-${sev}`;
-      row.title = 'Click to view the request/response that produced this finding';
+    const cat = document.createElement('span');
+    cat.className = 'sec-cat';
+    cat.textContent = f.category || '';
+    row.appendChild(cat);
 
-      const issueEl = document.createElement('span');
-      issueEl.className = 'sec-issue';
-      issueEl.textContent = f.issue;
-      row.appendChild(issueEl);
-
-      const urlEl = document.createElement('span');
-      urlEl.className = 'sec-url';
-      urlEl.title = f.url;
-      urlEl.textContent = trunc(f.url, 60);
-      row.appendChild(urlEl);
-
-      const detailEl = document.createElement('span');
-      detailEl.className = 'sec-detail';
-      detailEl.textContent = f.detail;
-      row.appendChild(detailEl);
-
-      if (f.sourceEvent) {
-        row.addEventListener('click', () => openDetailTab(f.sourceEvent));
-      }
-
-      group.appendChild(row);
-    }
-    results.appendChild(group);
+    if (selected && f === selected) row.classList.add('selected');
+    const select = () => {
+      selectedFindingKey = findingKey(f);
+      results.querySelectorAll('.sec-row.selected').forEach((r) => r.classList.remove('selected'));
+      row.classList.add('selected');
+      showFindingDetail(f);
+    };
+    row.addEventListener('click', select);
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); }
+    });
+    results.appendChild(row);
   }
+  showFindingDetail(selected);
 }
 
-function trunc(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+// The "Report to Jira" prefill for a finding.
+export function findingReport(f) {
+  const lines = [
+    `Severity: ${SEV_LABELS[f.severity] ?? f.severity}`,
+    `Category: ${f.category}`,
+    `URL: ${f.url}`,
+    '',
+    `Why it matters: ${WHY[f.ruleId] ?? ''}`,
+    '',
+    'Evidence:',
+    `${f.method} ${f.url}`,
+    f.detail,
+  ];
+  return { summary: `Security: ${f.issue}`, description: lines.join('\n') };
+}
+
+function showFindingDetail(f) {
+  const pane = document.getElementById('secDetail');
+  if (!pane) return;
+  pane.replaceChildren();
+  pane.hidden = !f;
+  if (!f) return;
+
+  const top = document.createElement('div');
+  top.className = 'sec-detail-top';
+  const pill = document.createElement('span');
+  pill.className = `sec-pill sec-pill-${f.severity}`;
+  pill.textContent = SEV_LABELS[f.severity] ?? f.severity;
+  const cat = document.createElement('span');
+  cat.className = 'sec-detail-cat';
+  cat.textContent = f.category || '';
+  top.append(pill, cat);
+  pane.appendChild(top);
+
+  const title = document.createElement('div');
+  title.className = 'sec-detail-title';
+  title.textContent = f.issue;
+  pane.appendChild(title);
+
+  const why = document.createElement('p');
+  why.className = 'sec-detail-why';
+  why.textContent = WHY[f.ruleId] ?? f.detail;
+  pane.appendChild(why);
+
+  const evLabel = document.createElement('div');
+  evLabel.className = 'sec-detail-label';
+  evLabel.textContent = 'Evidence';
+  pane.appendChild(evLabel);
+  const ev = document.createElement('pre');
+  ev.className = 'sec-evidence';
+  ev.textContent = `${f.method} ${f.url}\n${f.detail}`;
+  pane.appendChild(ev);
+
+  const actions = document.createElement('div');
+  actions.className = 'sec-detail-actions';
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'sec-action strong';
+  open.id = 'secOpenRequestBtn';
+  open.innerHTML = '<i class="icon-globe" aria-hidden="true"></i>Open request';
+  open.addEventListener('click', () => {
+    switchConsoleTab('network');
+    if (f.sourceEvent) focusNetworkRequest(getEventTabId(f.sourceEvent));
+  });
+  const jira = document.createElement('button');
+  jira.type = 'button';
+  jira.className = 'sec-action';
+  jira.id = 'secReportJiraBtn';
+  jira.innerHTML = '<i class="icon-ticket" aria-hidden="true"></i>Report to Jira';
+  jira.addEventListener('click', () => {
+    const r = findingReport(f);
+    openJiraBugFromFinding(r.summary, r.description);
+  });
+  actions.append(open, jira);
+  pane.appendChild(actions);
+}
+
+

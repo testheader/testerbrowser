@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { escHtml } from './utils.js';
 import { getActiveId, getTabTitle } from './tabs.js';
+import { switchConsoleTab } from './console-tabs.js';
 
 let initialized = false;
 let currentHasToken = false;
@@ -302,6 +303,15 @@ function openBugForm() {
   applyAttachPrefs();
   updateStepsAvailability();
   updateHarRedactionWarning();
+}
+
+// #306: "Report to Jira" on a Security finding — opens the Jira tab's bug form
+// with the summary and description already filled in.
+export function openJiraBugFromFinding(summary, description) {
+  switchConsoleTab('jira'); // also runs initJira() on the first visit
+  openBugForm();
+  /** @type {HTMLInputElement} */ (document.getElementById('jiraBugSummary')).value = summary;
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('jiraBugDesc')).value = description;
 }
 
 function closeBugForm() {

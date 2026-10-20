@@ -115,6 +115,21 @@ function isErrorRequest(e) {
 
 export function getTimelineEvents() { return timelineEvents; }
 
+// #306: "Open request" from a Security finding — selects the request's row in
+// the Network table and opens its detail pane. Returns false when the request
+// isn't in the loaded window (evicted or older than what's been fetched).
+export function focusNetworkRequest(requestId) {
+  const reqEvt = [...timelineEvents].reverse().find((e) => e.kind === 'network-request' && getEventTabId(e) === requestId);
+  if (!reqEvt) return false;
+  selectedRequestId = requestId;
+  autoScroll = false;
+  openDetailTab(reqEvt);
+  renderTimeline();
+  const row = document.querySelector(`#timelinePanel .evt.network-request[data-tab-id="${CSS.escape(requestId)}"]`);
+  if (row) row.scrollIntoView({ block: 'center' });
+  return !!row;
+}
+
 const CONSOLE_KINDS = new Set(['console', 'log', 'exception']);
 
 // Pure filter predicates — callers resolve DOM-derived filter state once per

@@ -36,9 +36,13 @@ test('scan reports a real HTTP finding, and a row opens the detail panel', async
   // Fixture server is plain HTTP — this finding always fires for any page load.
   await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first()).toBeVisible();
 
+  // #306: a row selects the finding in the Security tab's own detail pane.
   await page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first().click();
-  await expect(page.locator('#detailPanel')).toHaveClass(/\bopen\b/);
-  await expect(page.locator('#detailPanelTabBar .detail-tab.active')).toHaveCount(1);
+  await expect(page.locator('#secDetail')).toBeVisible();
+  await expect(page.locator('#secDetail .sec-detail-title')).toHaveText('HTTP (unencrypted)');
+  await expect(page.locator('#secDetail .sec-evidence')).toContainText('http://');
+  await expect(page.locator('#secOpenRequestBtn')).toBeVisible();
+  await expect(page.locator('#secReportJiraBtn')).toBeVisible();
 });
 
 // #260: real Set-Cookie coverage — the recorder now listens to
@@ -153,7 +157,7 @@ test('a severity master checkbox toggles the whole group, and goes indeterminate
   await page.click('#secConfigBtn'); // close
   await page.click('#secScanBtn');
   await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
-  await expect(page.locator('.sec-group-label.sec-medium')).toHaveCount(0);
+  await expect(page.locator('.sec-row-medium')).toHaveCount(0);
 
   // Restore full state for later tests in this file.
   await page.click('#secConfigBtn');
@@ -356,4 +360,32 @@ test('chrome CSP allows same-origin fonts and the vendored fonts actually load (
   expect(result.mono).toBe(true);
   expect(result.lucide).toBe(true);
   expect(result.iconWidth).toBeGreaterThan(0);
+});
+
+// #306: Open request jumps to the Network tab with that request selected; Report to Jira prefills the bug form.
+test('a finding\'s "Open request" selects its request in the Network tab, and "Report to Jira" prefills the bug form (#306)', async () => {
+  const urlPath = '/storage/set-cookie?name=sec_open&value=1';
+  await page.click('#urlbar');
+  await page.fill('#urlbar', fixtures.url(urlPath));
+  await page.press('#urlbar', 'Enter');
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
+
+  await page.click('#consoleTabSecurity');
+  await page.click('#secScanBtn');
+  await expect(page.locator('#secStatus')).toContainText('Scanned', { timeout: 5_000 });
+  await expect(page.locator('#secScanLabel')).toHaveText('Scan again');
+
+  const row = page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first();
+  await row.click();
+  await page.click('#secOpenRequestBtn');
+  await expect(page.locator('#consoleTabNetwork')).toHaveClass(/\bactive\b/);
+  await expect(page.locator('#timelinePanel .evt.network-request.selected')).toHaveCount(1, { timeout: 5_000 });
+  await expect(page.locator('#detailPanelHeader .detail-url')).toContainText('/storage/set-cookie');
+
+  await page.click('#consoleTabSecurity');
+  await page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first().click();
+  await page.click('#secReportJiraBtn');
+  await expect(page.locator('#consoleTabJira')).toHaveClass(/\bactive\b/);
+  await expect(page.locator('#jiraBugSummary')).toHaveValue('Security: HTTP (unencrypted)');
+  await expect(page.locator('#jiraBugDesc')).toHaveValue(/Why it matters:/);
 });
