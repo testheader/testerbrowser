@@ -74,7 +74,7 @@ Toolbar has a 2px session-colour border, a permanent zoom readout, and text/emoj
 - [ ] Right side: bookmark `star`, downloads `download` (badge kept), report bug `bug` (opens existing bug report), ⋯ `ellipsis` opening a menu with the existing View items (Console panel, Bookmarks bar), DevTools (F12) and Settings.
 **Implementation notes**
 `renderer/index.html` `#toolbar`, `#urlbarWrap`, `#viewWrapper`, `#devtoolsBtn`; `renderer/toolbar.js`, `renderer/urlbar-security.js`, `renderer/view-dropdown.js`, `renderer/app-menu.js`, `renderer/bugreport.js`. Keep `#urlbar` / `#urlbarDisplay` overlay logic. Keep `#viewDropdown` IDs for `e2e/menus.spec.ts`.
-**Decision needed:** remove the visible DevTools gear (recommended: yes; F12 + ⋯ menu remain).
+**Decision (resolved by spec):** remove the visible DevTools gear (recommended: yes; F12 + ⋯ menu remain).
 **Test plan**
 `e2e/urlbar-display.spec.ts`, `urlbar-search.spec.ts`, `menus.spec.ts`, `shortcuts.spec.ts` stay green; add tests for the session chip text and zoom indicator visibility at 100% / 110%.
 **Out of scope**
@@ -109,7 +109,7 @@ Minimising the panel should leave only the tabs visible, and a tab click should 
 - [ ] The `?` help button (`#consoleHelpBtn`) is removed from the strip.
 **Implementation notes**
 `renderer/layout.js` (panel bounds / native view resize), `renderer/console-tabs.js`, `renderer/index.html` `#consoleHeader`, `src/main/ipc/layout.ts` if persisted bounds change shape. `#consoleDragHandle` becomes a 5px invisible grip on the top edge.
-**Decision needed:** remove `#consoleHelpBtn` / `panel-help-content.js` entirely or keep it reachable from ⋯ › Help (recommended: remove and rely on empty states; delete `src/__tests__/panel-help-content.test.ts` with it).
+**Decision (resolved by spec):** remove `#consoleHelpBtn` / `panel-help-content.js` entirely or keep it reachable from ⋯ › Help (recommended: remove and rely on empty states; delete `src/__tests__/panel-help-content.test.ts` with it).
 **Test plan**
 `e2e/timeline-layout.spec.ts`, `app.spec.ts` panel tests green; add an e2e: collapse → panel height ≈ 39px and web-view bounds grow; click `#consoleTabMock` → panel expanded and Mock active.
 **Out of scope**
@@ -159,7 +159,7 @@ Requests, responses and bodies appear as separate monospace timeline lines. READ
 - [ ] Performance: `e2e/perf.spec.ts` (network flood) stays within its current budget.
 **Implementation notes**
 `renderer/timeline.js` (network branch: `.evt.network-request` / `-response` / `-body`), pairing by `requestId` already present in recorded events; `renderer/detail-panel.js` for selection. Console tab rendering is untouched here.
-**Decision needed:** response bodies no longer appear as inline timeline rows (only in the detail Response tab). Recommended: yes.
+**Decision (resolved by spec):** response bodies no longer appear as inline timeline rows (only in the detail Response tab). Recommended: yes.
 **Test plan**
 Update `e2e/app.spec.ts` network assertions that look for `.evt-line2` text; add a test that one request → exactly one row containing status and path. Unit-test the row model (pairing) in `src/__tests__/`.
 **Out of scope**
@@ -177,7 +177,7 @@ README § 3 detail pane: status pill, meta, URL, four actions, tabbed sections.
 - [ ] Pane width 480px default, still resizable via `#detailPanelResizeHandle`.
 **Implementation notes**
 `renderer/detail-panel.js`, `renderer/replay.js`, `renderer/index.html` `#detailPanel`, `#detailPanelTabBar`; timing data from the recorder's `Network.responseReceived` timing.
-**Decision needed:** today `#detailPanelTabBar` holds one tab per opened request. Recommended: replace with single-selection + section tabs (the prototype); keep middle-click on a row to "pin" as a follow-up if wanted.
+**Decision (resolved by spec):** today `#detailPanelTabBar` holds one tab per opened request. Recommended: replace with single-selection + section tabs (the prototype); keep middle-click on a row to "pin" as a follow-up if wanted.
 **Test plan**
 `src/__tests__/detail-timing.test.ts`, `copy-as-curl.test.ts` green; e2e: select a row → pill text matches status; click Mock → Mock tab active with pattern pre-filled (extend `app.spec.ts` lines ~322–349).
 **Out of scope**
@@ -303,7 +303,7 @@ README § 10.
 - [ ] Nothing applies until Apply and reload (current behaviour); the page reloads after applying.
 **Implementation notes**
 `renderer/emulation.js`, `src/main/emulationManager.ts`, `deviceEmulation.ts`, `networkConditions.ts`; `src/__tests__/device-presets.test.ts`.
-**Decision needed:** the button currently says "Apply to tab" and asks the user to reload by hand. Recommended: "Apply and reload", reloading automatically.
+**Decision (resolved by spec):** the button currently says "Apply to tab" and asks the user to reload by hand. Recommended: "Apply and reload", reloading automatically.
 **Test plan**
 `e2e/spoof.spec.ts` green; `src/main/__tests__/emulation.test.ts` green.
 **Out of scope**
