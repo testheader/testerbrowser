@@ -329,3 +329,30 @@ test('cookie-redaction banner appears when a response carries a redacted set-coo
     });
   }
 });
+
+// ── #292: vendored Lucide icons + JetBrains Mono ───────────────────────
+
+test('chrome CSP allows same-origin fonts and the vendored fonts actually load (#292)', async () => {
+  const csp = await page.evaluate(() =>
+    document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content') ?? '');
+  expect(csp).toContain("font-src 'self'");
+
+  const result = await page.evaluate(async () => {
+    await document.fonts.ready;
+    await document.fonts.load('400 12px "JetBrains Mono"');
+    await document.fonts.load('12px lucide');
+    const icon = document.createElement('i');
+    icon.className = 'icon-globe';
+    document.body.appendChild(icon);
+    const width = icon.getBoundingClientRect().width;
+    icon.remove();
+    return {
+      mono: document.fonts.check('12px "JetBrains Mono"'),
+      lucide: document.fonts.check('12px lucide'),
+      iconWidth: width,
+    };
+  });
+  expect(result.mono).toBe(true);
+  expect(result.lucide).toBe(true);
+  expect(result.iconWidth).toBeGreaterThan(0);
+});
