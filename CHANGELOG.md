@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.124.1 — 2026-10-20
+
+### Other
+
+- add UI redesign screenshots (a3223c5)
+
 ## v0.124.0 — 2026-10-20
 
 ### Features
