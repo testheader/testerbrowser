@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.135.0 — 2026-10-20
+
+### Features
+
+- A11y panel tree and detail pane (refs #305) (9a25eea)
+
 ## v0.134.0 — 2026-10-20
 
 ### Features
