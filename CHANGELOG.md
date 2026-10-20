@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.137.0 — 2026-10-20
+
+### Features
+
+- Network diff layout (refs #307) (d9391e6)
+
 ## v0.136.0 — 2026-10-20
 
 ### Features
