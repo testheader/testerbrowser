@@ -133,20 +133,30 @@
       <div id="consoleTabsWrap">
       <button class="console-tabs-chevron" id="consoleTabsPrevBtn" title="Scroll tabs left" aria-label="Scroll tabs left" hidden>&#8249;</button>
       <div class="console-tabs" id="consoleTabsStrip" role="tablist" aria-label="Console panel">
-        <button class="console-tab active" id="consoleTabConsole" role="tab" aria-selected="true">Console</button>
-        <button class="console-tab" id="consoleTabNetwork" role="tab" aria-selected="false">Network</button>
-        <button class="console-tab" id="consoleTabStorage" role="tab" aria-selected="false">Storage</button>
-        <button class="console-tab" id="consoleTabA11y" role="tab" aria-selected="false">A11y</button>
-        <button class="console-tab" id="consoleTabDiff" role="tab" aria-selected="false">Network diff</button>
-        <button class="console-tab" id="consoleTabVR" role="tab" aria-selected="false">UI diff</button>
-        <button class="console-tab" id="consoleTabSpoof" role="tab" aria-selected="false">Spoof</button>
-        <button class="console-tab" id="consoleTabSecurity" role="tab" aria-selected="false">Security</button>
-        <button class="console-tab" id="consoleTabMock" role="tab" aria-selected="false">Mock</button>
-        <button class="console-tab" id="consoleTabResilience" role="tab" aria-selected="false">Resilience</button>
-        <button class="console-tab" id="consoleTabJira" role="tab" aria-selected="false">Jira</button>
-        <button class="console-tab" id="consoleTabTests" role="tab" aria-selected="false">Record Playback</button>
-        <button class="console-tab" id="consoleTabFollow" role="tab" aria-selected="false">Follow Along</button>
-        <button class="console-tab" id="consoleTabDebugLog" role="tab" aria-selected="false">Debug Log</button>
+        <div class="console-tab-group" role="presentation">
+          <button class="console-tab" id="consoleTabNetwork" role="tab" aria-selected="false"><i class="icon-globe" aria-hidden="true"></i><span>Network</span></button>
+          <button class="console-tab active" id="consoleTabConsole" role="tab" aria-selected="true"><i class="icon-terminal" aria-hidden="true"></i><span>Console</span></button>
+          <button class="console-tab" id="consoleTabStorage" role="tab" aria-selected="false"><i class="icon-database" aria-hidden="true"></i><span>Storage</span></button>
+          <button class="console-tab" id="consoleTabA11y" role="tab" aria-selected="false"><i class="icon-accessibility" aria-hidden="true"></i><span>A11y</span></button>
+          <button class="console-tab" id="consoleTabSecurity" role="tab" aria-selected="false"><i class="icon-shield-check" aria-hidden="true"></i><span>Security</span></button>
+        </div>
+        <div class="console-tab-group" role="presentation">
+          <button class="console-tab" id="consoleTabDiff" role="tab" aria-selected="false"><i class="icon-git-compare" aria-hidden="true"></i><span>Network diff</span></button>
+          <button class="console-tab" id="consoleTabVR" role="tab" aria-selected="false"><i class="icon-scan-eye" aria-hidden="true"></i><span>UI diff</span></button>
+        </div>
+        <div class="console-tab-group" role="presentation">
+          <button class="console-tab" id="consoleTabMock" role="tab" aria-selected="false"><i class="icon-replace" aria-hidden="true"></i><span>Mock</span></button>
+          <button class="console-tab" id="consoleTabResilience" role="tab" aria-selected="false"><i class="icon-zap-off" aria-hidden="true"></i><span>Resilience</span></button>
+          <button class="console-tab" id="consoleTabSpoof" role="tab" aria-selected="false"><i class="icon-map-pin" aria-hidden="true"></i><span>Spoof</span></button>
+        </div>
+        <div class="console-tab-group" role="presentation">
+          <button class="console-tab" id="consoleTabTests" role="tab" aria-selected="false"><i class="icon-circle-dot" aria-hidden="true"></i><span>Record</span></button>
+          <button class="console-tab" id="consoleTabFollow" role="tab" aria-selected="false"><i class="icon-users" aria-hidden="true"></i><span>Follow</span></button>
+        </div>
+        <div class="console-tab-group" role="presentation">
+          <button class="console-tab" id="consoleTabJira" role="tab" aria-selected="false"><i class="icon-ticket" aria-hidden="true"></i><span>Jira</span></button>
+          <button class="console-tab" id="consoleTabDebugLog" role="tab" aria-selected="false"><i class="icon-scroll-text" aria-hidden="true"></i><span>Debug log</span></button>
+        </div>
       </div>
       <button class="console-tabs-chevron" id="consoleTabsNextBtn" title="Scroll tabs right" aria-label="Scroll tabs right" hidden>&#8250;</button>
       </div>

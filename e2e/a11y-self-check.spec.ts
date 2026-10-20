@@ -138,3 +138,19 @@ test('every console panel tab has no serious/critical axe-core violations (light
   }
   expect(allViolations, describeViolations(allViolations)).toEqual([]);
 });
+
+// #296: grouped tool tab strip.
+test('tool tabs are grouped in the specced order, in sentence case (#296)', async () => {
+  const ids = await window.evaluate(() => [...document.querySelectorAll('#consoleTabsStrip .console-tab')].map((t) => t.id));
+  expect(ids).toEqual([
+    'consoleTabNetwork', 'consoleTabConsole', 'consoleTabStorage', 'consoleTabA11y', 'consoleTabSecurity',
+    'consoleTabDiff', 'consoleTabVR',
+    'consoleTabMock', 'consoleTabResilience', 'consoleTabSpoof',
+    'consoleTabTests', 'consoleTabFollow',
+    'consoleTabJira', 'consoleTabDebugLog',
+  ]);
+  const groups = await window.locator('#consoleTabsStrip .console-tab-group').count();
+  expect(groups).toBe(5);
+  const transform = await window.evaluate(() => getComputedStyle(document.getElementById('consoleTabNetwork') as HTMLElement).textTransform);
+  expect(transform).toBe('none');
+});

@@ -417,26 +417,19 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 .console-tabs { display: flex; height: 100%; overflow-x: auto; min-width: 0; scrollbar-width: none;
                 scroll-behavior: smooth; }
 .console-tabs::-webkit-scrollbar { display: none; }
-.console-tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-faint);
-               font-size: 12px; cursor: pointer; padding: 0 14px; text-transform: uppercase;
-               letter-spacing: 0.5px; font-family: inherit; height: 100%; }
-.console-tab:hover:not(.active) { color: var(--text-muted); }
-.console-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
-.console-tab::before { font-size: 13px; margin-right: 5px; text-transform: none; letter-spacing: normal;
-                        display: inline-block; }
-#consoleTabConsole::before    { content: '\26A1'; }
-#consoleTabNetwork::before    { content: '\1F310'; }
-#consoleTabStorage::before    { content: '\1F4E6'; }
-#consoleTabA11y::before       { content: '\267F'; }
-#consoleTabDiff::before       { content: '\27F7'; }
-#consoleTabVR::before         { content: '\1F441'; }
-#consoleTabSpoof::before      { content: '\1F30D'; }
-#consoleTabSecurity::before   { content: '\1F512'; }
-#consoleTabMock::before       { content: '\1F3AD'; }
-#consoleTabResilience::before { content: '\26A0'; }
-#consoleTabJira::before       { content: '\1F3AB'; }
-#consoleTabTests::before      { content: '\25B6'; }
-#consoleTabFollow::before     { content: '\1F463'; }
+/* #296: tabs are grouped (Inspect / Compare / Simulate / Automate / Connect),
+   a 1px divider between groups; icons are Lucide, labels sentence case. */
+.console-tabs { padding: 0 4px; }
+.console-tab-group { display: flex; height: 100%; padding: 0 3px; border-left: 1px solid var(--tb-line); }
+.console-tab-group:first-child { border-left: none; }
+.console-tab-group:not(:has(.console-tab:not([hidden]))) { display: none; }
+.console-tab { display: flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap;
+               background: none; border: none; border-bottom: 2px solid transparent; color: var(--tb-text-2);
+               font-size: 12.5px; font-weight: 400; cursor: pointer; padding: 0 8px; font-family: inherit; height: 100%; }
+.console-tab[hidden] { display: none; }
+.console-tab i { font-size: 14px; }
+.console-tab:hover:not(.active) { color: var(--tb-text); }
+.console-tab.active { color: var(--tb-text); font-weight: 600; border-bottom-color: var(--tb-accent); }
 /* Per-tab filter/search sub-header, docked to the top of that tab's own panel
    (not the shared tab-strip row) so it visually reads as part of the active
    panel. Hidden until switchConsoleTab shows it — lives here, not in a style
