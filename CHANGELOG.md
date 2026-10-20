@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.126.0 — 2026-10-20
+
+### Features
+
+- grouped tool tab strip with Lucide icons and sentence case (refs #296) (7dcd064)
+
 ## v0.125.0 — 2026-10-20
 
 ### Features
