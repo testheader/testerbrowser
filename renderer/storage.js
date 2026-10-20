@@ -14,6 +14,13 @@ let autoRefreshTimer = null;
 // without any further IPC round-trip — see fetchStorageData()/renderStoragePanel().
 let cache = null;
 
+// #304: the section nav shows one section at a time.
+const SECTIONS = ['cookies', 'local', 'session', 'idb', 'permissions'];
+let activeSection = 'cookies';
+// Add / Clear all handlers of whichever section is currently rendered (null
+// for the read-only ones); the toolbar buttons call through these.
+let sectionActions = { add: null, clear: null };
+
 const ROW_ERROR_TTL_MS = 6000;
 
 function formatCookieExpiry(ts) {
@@ -97,9 +104,25 @@ export async function fetchStorageData() {
 // needs a real refresh."
 export const loadStoragePanel = fetchStorageData;
 
+function updateStorageNav(counts) {
+  for (const name of SECTIONS) {
+    const item = document.querySelector(`#storageNav [data-section="${name}"]`);
+    if (!item) continue;
+    item.classList.toggle('active', name === activeSection);
+    item.setAttribute('aria-current', name === activeSection ? 'true' : 'false');
+    item.querySelector('.storage-nav-count').textContent = counts ? String(counts[name]) : '';
+  }
+  const addBtn = /** @type {HTMLButtonElement} */ (document.getElementById('storageAddBtn'));
+  const clearBtn = /** @type {HTMLButtonElement} */ (document.getElementById('storageClearBtn'));
+  addBtn.hidden = !sectionActions.add;
+  clearBtn.hidden = !sectionActions.clear;
+}
+
 export function renderStoragePanel() {
   const panel = document.getElementById('storagePanelContent');
   if (!cache || cache.sessionId !== getActiveId()) {
+    sectionActions = { add: null, clear: null };
+    updateStorageNav(null);
     panel.innerHTML = '<div class="storage-empty">Loading…</div>';
     return;
   }
@@ -107,11 +130,20 @@ export function renderStoragePanel() {
   const filterText = /** @type {HTMLInputElement} */ (document.getElementById('storageFilter')).value.toLowerCase();
 
   panel.innerHTML = '';
-  renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomains, currentHostname);
-  renderLocalStorageSection(panel, sessionId, ls, filterText);
-  renderSessionStorageSection(panel, ss, filterText);
-  renderIndexedDBSection(panel, idb, filterText);
-  renderPermissionsSection(panel, sessionId, permissions || [], filterText);
+  sectionActions = { add: null, clear: null };
+  if (activeSection === 'cookies') sectionActions = renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomains, currentHostname);
+  else if (activeSection === 'local') sectionActions = renderLocalStorageSection(panel, sessionId, ls, filterText);
+  else if (activeSection === 'session') renderSessionStorageSection(panel, ss, filterText);
+  else if (activeSection === 'idb') renderIndexedDBSection(panel, idb, filterText);
+  else renderPermissionsSection(panel, sessionId, permissions || [], filterText);
+
+  updateStorageNav({
+    cookies: cookies.length,
+    local: Object.keys(ls).length,
+    session: Object.keys(ss).length,
+    idb: Object.keys(idb || {}).length,
+    permissions: (permissions || []).length,
+  });
 }
 
 // ── Cookies ──
@@ -130,54 +162,35 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
         loadedDomains.some(d => cookieMatchesDomain(c, d)))
     : textFiltered;
 
-  const cookieHdr = document.createElement('div');
-  cookieHdr.className = 'storage-section-header';
-  const cookieTitle = document.createElement('span');
-  cookieTitle.className = 'storage-section-title';
-  cookieTitle.textContent = `Cookies (${filteredCookies.length}${filterText && filteredCookies.length !== cookies.length ? '/' + cookies.length : ''})`;
-  cookieHdr.appendChild(cookieTitle);
-  const cookieAddBtn = document.createElement('button');
-  cookieAddBtn.className   = 'storage-add-btn';
-  cookieAddBtn.textContent = '+ Add';
-  cookieAddBtn.title       = 'Add a new cookie';
-  cookieHdr.appendChild(cookieAddBtn);
-  if (cookies.length > 0) {
-    const clearBtn = document.createElement('button');
-    clearBtn.className   = 'storage-clear-btn';
-    clearBtn.textContent = 'Clear All';
-    clearBtn.title       = 'Delete all cookies for this session';
-    clearBtn.onclick = async () => {
-      await testerBrowser.sessions.clearCookies(sessionId);
-      fetchStorageData();
-    };
-    cookieHdr.appendChild(clearBtn);
-  }
-  panel.appendChild(cookieHdr);
-
   const cookieTable = document.createElement('table');
-  cookieTable.className = 'storage-table';
-  cookieTable.innerHTML = '<thead><tr><th>Domain</th><th>Name</th><th>Value</th><th>Path</th><th>SameSite</th><th>Expires</th><th>Secure</th><th>HttpOnly</th><th></th></tr></thead>';
+  cookieTable.className = 'storage-table storage-cookie-table';
+  cookieTable.innerHTML = '<colgroup><col style="width:170px"><col><col style="width:190px"><col style="width:40px"><col style="width:96px"><col style="width:200px"><col style="width:36px"></colgroup>' +
+    '<thead><tr><th>Name</th><th>Value</th><th>Domain</th><th>Path</th><th>Expires</th><th>Flags</th><th></th></tr></thead>';
   const cookieTbody = document.createElement('tbody');
 
-  cookieAddBtn.onclick = () => {
+  const add = () => {
     if (cookieTable.querySelector('.storage-add-row')) return;
     const addTr = document.createElement('tr');
     addTr.className = 'storage-add-row';
 
-    const domainInput = document.createElement('input');
-    domainInput.className   = 'ls-edit-input';
-    domainInput.placeholder = 'domain';
-    domainInput.value       = currentHostname || '';
     const nameInput = document.createElement('input');
     nameInput.className   = 'ls-edit-input';
     nameInput.placeholder = 'name';
     const valInput = document.createElement('input');
     valInput.className   = 'ls-edit-input';
     valInput.placeholder = 'value';
+    const domainInput = document.createElement('input');
+    domainInput.className   = 'ls-edit-input';
+    domainInput.placeholder = 'domain';
+    domainInput.value       = currentHostname || '';
     const pathInput = document.createElement('input');
     pathInput.className   = 'ls-edit-input';
     pathInput.placeholder = 'path';
     pathInput.value       = '/';
+    const expiryInput = document.createElement('input');
+    expiryInput.type  = 'datetime-local';
+    expiryInput.className = 'ls-edit-input';
+    expiryInput.title = 'Leave blank for a session cookie';
     const sameSiteSelect = document.createElement('select');
     [['', 'Default'], ['lax', 'Lax'], ['strict', 'Strict'], ['no_restriction', 'None']]
       .forEach(([value, label]) => {
@@ -185,18 +198,21 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
         opt.value = value; opt.textContent = label;
         sameSiteSelect.appendChild(opt);
       });
-    const expiryInput = document.createElement('input');
-    expiryInput.type  = 'datetime-local';
-    expiryInput.className = 'ls-edit-input';
-    expiryInput.title = 'Leave blank for a session cookie';
+    sameSiteSelect.setAttribute('aria-label', 'SameSite');
     const secureInput = document.createElement('input');
     secureInput.type  = 'checkbox';
     secureInput.title = 'Secure';
+    secureInput.setAttribute('aria-label', 'Secure');
     const httpOnlyInput = document.createElement('input');
     httpOnlyInput.type  = 'checkbox';
     httpOnlyInput.title = 'HttpOnly';
+    httpOnlyInput.setAttribute('aria-label', 'HttpOnly');
 
-    const cells = [domainInput, nameInput, valInput, pathInput, sameSiteSelect, expiryInput, secureInput, httpOnlyInput];
+    // Cell order matches the table: Name · Value · Domain · Path · Expires · Flags · ×
+    const flagsCell = document.createElement('div');
+    flagsCell.className = 'storage-add-flags';
+    flagsCell.append(sameSiteSelect, secureInput, httpOnlyInput);
+    const cells = [nameInput, valInput, domainInput, pathInput, expiryInput, flagsCell];
     for (const el of cells) {
       const td = document.createElement('td');
       td.appendChild(el);
@@ -240,16 +256,21 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     };
     const cancel = () => { if (done) return; done = true; renderStoragePanel(); };
     cancelBtn.onclick = cancel;
-    [domainInput, nameInput, valInput, pathInput, expiryInput].forEach(inp => {
+    [nameInput, valInput, domainInput, pathInput, expiryInput].forEach(inp => {
       inp.addEventListener('keydown', ev => {
         if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
         if (ev.key === 'Escape') cancel();
       });
     });
-    valInput.addEventListener('blur', () => setTimeout(() => {
+    addTr.addEventListener('focusout', () => setTimeout(() => {
       if (!addTr.contains(document.activeElement)) commit();
     }, 100));
   };
+
+  const clear = cookies.length > 0 ? async () => {
+    await testerBrowser.sessions.clearCookies(sessionId);
+    fetchStorageData();
+  } : null;
 
   if (filteredCookies.length === 0) {
     const empty = document.createElement('div');
@@ -264,32 +285,18 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     const isUnrelated3P = !isFirstParty && !isRelevant3P;
 
     const tr = document.createElement('tr');
+    // Third-party rows read quieter (60%); one set during a different
+    // navigation, which the page never loaded, quieter still.
     if (isUnrelated3P && currentHostname) tr.classList.add('cookie-row-irrelevant');
-
-    const domainTd = document.createElement('td');
-    domainTd.textContent = c.domain || '';
-    if (isRelevant3P && currentHostname) {
-      const badge = document.createElement('span');
-      badge.className   = 'cookie-3p relevant';
-      badge.textContent = '3P';
-      badge.title       = 'Set by a resource loaded on this page';
-      domainTd.appendChild(badge);
-    } else if (isUnrelated3P && currentHostname) {
-      const badge = document.createElement('span');
-      badge.className   = 'cookie-3p other';
-      badge.textContent = '3P';
-      badge.title       = 'Set during a different navigation';
-      domainTd.appendChild(badge);
-    }
-    tr.appendChild(domainTd);
+    else if (isRelevant3P && domainFilterActive) tr.classList.add('cookie-row-3p');
 
     const nameTd = document.createElement('td');
+    nameTd.className = 'storage-key';
     nameTd.textContent = c.name;
     tr.appendChild(nameTd);
 
     const valTd = document.createElement('td');
-    valTd.className  = 'copyable';
-    valTd.style.cssText = 'max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    valTd.className  = 'copyable storage-val';
     valTd.textContent = c.value;
     valTd.title       = 'Click to copy · Double-click to edit';
     valTd.onclick     = () => { copyToClipboard(c.value); flashCopied(valTd); };
@@ -322,7 +329,7 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
           });
         } catch (err) {
           revertValueCell(valTd, c.value);
-          showRowError(tr, 9, `Failed to save cookie: ${err?.message || err}`);
+          showRowError(tr, 7, `Failed to save cookie: ${err?.message || err}`);
           return;
         }
         fetchStorageData();
@@ -336,18 +343,45 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     };
     tr.appendChild(valTd);
 
-    const pathTd = document.createElement('td'); pathTd.textContent = c.path || '/'; tr.appendChild(pathTd);
-    const ssTd   = document.createElement('td'); ssTd.textContent   = formatSameSite(c.sameSite); tr.appendChild(ssTd);
+    const domainTd = document.createElement('td');
+    domainTd.className = 'storage-domain';
+    domainTd.appendChild(document.createTextNode(c.domain || ''));
+    if (currentHostname) {
+      const tag = document.createElement('span');
+      if (isFirstParty) {
+        tag.className = 'cookie-3p first';
+        tag.textContent = '1st';
+        tag.title = 'Set by this page\'s own domain';
+      } else {
+        tag.className = isRelevant3P ? 'cookie-3p relevant' : 'cookie-3p other';
+        tag.textContent = '3rd';
+        tag.title = isRelevant3P ? 'Set by a resource loaded on this page' : 'Set during a different navigation';
+      }
+      domainTd.appendChild(tag);
+    }
+    tr.appendChild(domainTd);
+
+    const pathTd = document.createElement('td'); pathTd.className = 'storage-path'; pathTd.textContent = c.path || '/'; tr.appendChild(pathTd);
     const expTd  = document.createElement('td');
-    expTd.style.whiteSpace = 'nowrap';
+    expTd.className = 'storage-expires';
     expTd.textContent = formatCookieExpiry(c.expirationDate);
     tr.appendChild(expTd);
-    const secureTd   = document.createElement('td');
-    secureTd.innerHTML  = `<span class="storage-badge ${c.secure   ? 'yes' : 'no'}">${c.secure   ? '✓' : '—'}</span>`;
-    tr.appendChild(secureTd);
-    const httpOnlyTd  = document.createElement('td');
-    httpOnlyTd.innerHTML = `<span class="storage-badge ${c.httpOnly ? 'yes' : 'no'}">${c.httpOnly ? '✓' : '—'}</span>`;
-    tr.appendChild(httpOnlyTd);
+
+    // Flags as outline tags: HttpOnly, Secure, then Lax / Strict / None.
+    const flagsTd = document.createElement('td');
+    flagsTd.className = 'storage-flags';
+    const flags = [];
+    if (c.httpOnly) flags.push('HttpOnly');
+    if (c.secure) flags.push('Secure');
+    const ssLabel = formatSameSite(c.sameSite);
+    if (ssLabel !== '—') flags.push(ssLabel);
+    for (const f of flags) {
+      const tag = document.createElement('span');
+      tag.className = 'storage-tag';
+      tag.textContent = f;
+      flagsTd.appendChild(tag);
+    }
+    tr.appendChild(flagsTd);
 
     const delTd  = document.createElement('td');
     const delBtn = document.createElement('button');
@@ -365,6 +399,7 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
   }
   cookieTable.appendChild(cookieTbody);
   panel.appendChild(cookieTable);
+  return { add, clear };
 }
 
 // ── Local Storage ──
@@ -376,36 +411,18 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
         k.toLowerCase().includes(filterText) || v.toLowerCase().includes(filterText))
     : lsEntries;
 
-  const lsHdr = document.createElement('div');
-  lsHdr.className = 'storage-section-header';
-  const lsTitle = document.createElement('span');
-  lsTitle.className   = 'storage-section-title';
-  lsTitle.textContent = `Local Storage (${filteredLs.length}${filterText && filteredLs.length !== lsEntries.length ? '/' + lsEntries.length : ''})`;
-  lsHdr.appendChild(lsTitle);
-  const lsAddBtn = document.createElement('button');
-  lsAddBtn.className   = 'storage-add-btn';
-  lsAddBtn.textContent = '+ Add';
-  lsAddBtn.title       = 'Add a new localStorage entry';
-  lsHdr.appendChild(lsAddBtn);
-  if (lsEntries.length > 0) {
-    const clearBtn = document.createElement('button');
-    clearBtn.className   = 'storage-clear-btn';
-    clearBtn.textContent = 'Clear All';
-    clearBtn.title       = 'Clear all localStorage for this page';
-    clearBtn.onclick = async () => {
-      await testerBrowser.sessions.clearLocalStorage(sessionId);
-      fetchStorageData();
-    };
-    lsHdr.appendChild(clearBtn);
-  }
-  panel.appendChild(lsHdr);
+  const clear = lsEntries.length > 0 ? async () => {
+    await testerBrowser.sessions.clearLocalStorage(sessionId);
+    fetchStorageData();
+  } : null;
 
   const lsTable  = document.createElement('table');
   lsTable.className = 'storage-table';
-  lsTable.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th><th></th></tr></thead>';
+  lsTable.className = 'storage-table storage-kv-table';
+  lsTable.innerHTML = '<colgroup><col style="width:260px"><col><col style="width:60px"><col style="width:36px"></colgroup><thead><tr><th>Key</th><th>Value</th><th>Size</th><th></th></tr></thead>';
   const lsTbody = document.createElement('tbody');
 
-  lsAddBtn.onclick = () => {
+  const add = () => {
     if (lsTable.querySelector('.storage-add-row')) return;
     const addTr    = document.createElement('tr');
     addTr.className = 'storage-add-row';
@@ -417,6 +434,7 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
     valInput.placeholder = 'value';
     const keyTd = document.createElement('td'); keyTd.appendChild(keyInput); addTr.appendChild(keyTd);
     const valTd2 = document.createElement('td'); valTd2.appendChild(valInput); addTr.appendChild(valTd2);
+    addTr.appendChild(document.createElement('td'));
     const cancelTd = document.createElement('td');
     const cancelBtn = document.createElement('button');
     cancelBtn.className   = 'storage-delete-btn';
@@ -456,6 +474,7 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
     const tr = document.createElement('tr');
 
     const keyTd = document.createElement('td');
+    keyTd.className   = 'storage-key';
     keyTd.textContent = k;
     keyTd.title       = 'Double-click to rename key';
     keyTd.ondblclick  = (e) => {
@@ -486,8 +505,7 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
     tr.appendChild(keyTd);
 
     const valTd = document.createElement('td');
-    valTd.className  = 'copyable';
-    valTd.style.cssText = 'max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    valTd.className  = 'copyable storage-val';
     valTd.textContent = v;
     valTd.title       = 'Click to copy · Double-click to edit';
     valTd.onclick     = () => { copyToClipboard(v); flashCopied(valTd); };
@@ -514,6 +532,11 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
     };
     tr.appendChild(valTd);
 
+    const sizeTd = document.createElement('td');
+    sizeTd.className = 'storage-size';
+    sizeTd.textContent = String(new Blob([k, v]).size);
+    tr.appendChild(sizeTd);
+
     const delTd  = document.createElement('td');
     const delBtn = document.createElement('button');
     delBtn.className   = 'storage-delete-btn';
@@ -530,6 +553,7 @@ function renderLocalStorageSection(panel, sessionId, ls, filterText) {
   }
   lsTable.appendChild(lsTbody);
   panel.appendChild(lsTable);
+  return { add, clear };
 }
 
 // ── Session Storage (read-only) ──
@@ -541,14 +565,6 @@ function renderSessionStorageSection(panel, ss, filterText) {
         k.toLowerCase().includes(filterText) || v.toLowerCase().includes(filterText))
     : ssEntries;
 
-  const hdr = document.createElement('div');
-  hdr.className = 'storage-section-header';
-  const title = document.createElement('span');
-  title.className   = 'storage-section-title';
-  title.textContent = `Session Storage (${filteredSs.length}${filterText && filteredSs.length !== ssEntries.length ? '/' + ssEntries.length : ''})`;
-  hdr.appendChild(title);
-  panel.appendChild(hdr);
-
   if (filteredSs.length === 0) {
     const empty = document.createElement('div');
     empty.className   = 'storage-empty';
@@ -558,19 +574,22 @@ function renderSessionStorageSection(panel, ss, filterText) {
   }
 
   const table = document.createElement('table');
-  table.className = 'storage-table';
-  table.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th></tr></thead>';
+  table.className = 'storage-table storage-kv-table';
+  table.innerHTML = '<colgroup><col style="width:260px"><col><col style="width:60px"></colgroup><thead><tr><th>Key</th><th>Value</th><th>Size</th></tr></thead>';
   const tbody = document.createElement('tbody');
   for (const [k, v] of filteredSs) {
     const tr = document.createElement('tr');
-    const keyTd = document.createElement('td'); keyTd.textContent = k; tr.appendChild(keyTd);
+    const keyTd = document.createElement('td'); keyTd.className = 'storage-key'; keyTd.textContent = k; tr.appendChild(keyTd);
     const valTd = document.createElement('td');
-    valTd.className  = 'copyable';
-    valTd.style.cssText = 'max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    valTd.className  = 'copyable storage-val';
     valTd.textContent = v;
     valTd.title       = 'Click to copy';
     valTd.onclick     = () => { copyToClipboard(v); flashCopied(valTd); };
     tr.appendChild(valTd);
+    const sizeTd = document.createElement('td');
+    sizeTd.className = 'storage-size';
+    sizeTd.textContent = String(new Blob([k, v]).size);
+    tr.appendChild(sizeTd);
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
@@ -581,14 +600,6 @@ function renderSessionStorageSection(panel, ss, filterText) {
 
 function renderIndexedDBSection(panel, idb, filterText) {
   const dbNames = Object.keys(idb || {});
-
-  const hdr = document.createElement('div');
-  hdr.className = 'storage-section-header';
-  const title = document.createElement('span');
-  title.className   = 'storage-section-title';
-  title.textContent = `IndexedDB (${dbNames.length})`;
-  hdr.appendChild(title);
-  panel.appendChild(hdr);
 
   if (dbNames.length === 0) {
     const empty = document.createElement('div');
@@ -631,16 +642,15 @@ function renderIndexedDBSection(panel, idb, filterText) {
       storeDetails.appendChild(storeSummary);
 
       const table = document.createElement('table');
-      table.className = 'storage-table';
-      table.innerHTML = '<thead><tr><th style="width:35%">Key</th><th>Value</th></tr></thead>';
+      table.className = 'storage-table storage-kv-table';
+      table.innerHTML = '<colgroup><col style="width:260px"><col></colgroup><thead><tr><th>Key</th><th>Value</th></tr></thead>';
       const tbody = document.createElement('tbody');
       for (const r of records) {
         const tr = document.createElement('tr');
         const keyTd = document.createElement('td'); keyTd.textContent = JSON.stringify(r.key); tr.appendChild(keyTd);
         const valStr = JSON.stringify(r.value);
         const valTd = document.createElement('td');
-        valTd.className  = 'copyable';
-        valTd.style.cssText = 'max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        valTd.className  = 'copyable storage-val';
         valTd.textContent = valStr;
         valTd.title       = 'Click to copy';
         valTd.onclick     = () => { copyToClipboard(valStr); flashCopied(valTd); };
@@ -653,6 +663,11 @@ function renderIndexedDBSection(panel, idb, filterText) {
     }
     panel.appendChild(dbDetails);
   }
+
+  const note = document.createElement('div');
+  note.className = 'storage-hint';
+  note.textContent = 'IndexedDB is read-only.';
+  panel.appendChild(note);
 
   if (filterText && !anyVisible) {
     const empty = document.createElement('div');
@@ -675,14 +690,6 @@ function renderPermissionsSection(panel, sessionId, permissions, filterText) {
     ? permissions.filter(p =>
         p.origin.toLowerCase().includes(filterText) || p.permission.toLowerCase().includes(filterText))
     : permissions;
-
-  const hdr = document.createElement('div');
-  hdr.className = 'storage-section-header';
-  const title = document.createElement('span');
-  title.className   = 'storage-section-title';
-  title.textContent = `Permissions (${filtered.length}${filterText && filtered.length !== permissions.length ? '/' + permissions.length : ''})`;
-  hdr.appendChild(title);
-  panel.appendChild(hdr);
 
   if (filtered.length === 0) {
     const empty = document.createElement('div');
@@ -753,6 +760,16 @@ export function resumeStorageAutoRefreshIfOn() {
 }
 
 export function initStorage() {
+  // #304: section nav + the toolbar's Add / Clear all act on the active section.
+  for (const item of document.querySelectorAll('#storageNav [data-section]')) {
+    item.addEventListener('click', () => {
+      activeSection = /** @type {HTMLElement} */ (item).dataset.section;
+      renderStoragePanel();
+    });
+  }
+  document.getElementById('storageAddBtn').addEventListener('click', () => sectionActions.add?.());
+  document.getElementById('storageClearBtn').addEventListener('click', () => sectionActions.clear?.());
+
   document.getElementById('refreshStorageBtn').addEventListener('click', fetchStorageData);
   /** @type {HTMLInputElement} */ (document.getElementById('storageFilter')).addEventListener('input', renderStoragePanel);
 

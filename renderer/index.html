@@ -214,13 +214,24 @@
       </div>
       <div id="storagePanel">
         <div id="storageControls">
-          <span class="filter-label">Filter</span>
-          <input id="storageFilter" placeholder="Filter…" />
-          <button class="storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
-          <button class="storage-domain-btn" id="storageAutoRefreshBtn" title="Poll cookies, storage and IndexedDB every 2s while this tab is visible">Auto-refresh</button>
-          <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage" aria-label="Refresh storage">&#8635;</button>
+          <div class="net-search"><i class="icon-search" aria-hidden="true"></i><input id="storageFilter" placeholder="Filter name or value" aria-label="Filter storage" /></div>
+          <button class="net-chip storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
+          <button class="net-chip storage-domain-btn" id="storageAutoRefreshBtn" title="Poll cookies, storage and IndexedDB every 2s while this tab is visible"><i class="icon-refresh-cw" aria-hidden="true"></i>Auto-refresh</button>
+          <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage" aria-label="Refresh storage"><i class="icon-refresh-cw" aria-hidden="true"></i></button>
+          <span class="net-spacer"></span>
+          <button class="net-chip storage-add-btn" id="storageAddBtn" title="Add an entry to this section"><i class="icon-plus" aria-hidden="true"></i>Add</button>
+          <button class="net-chip storage-clear-btn" id="storageClearBtn" title="Delete every entry in this section"><i class="icon-trash-2" aria-hidden="true"></i>Clear all</button>
         </div>
-        <div id="storagePanelContent"></div>
+        <div id="storageBody">
+          <nav id="storageNav" aria-label="Storage sections">
+            <button class="storage-nav-item active" data-section="cookies"><i class="icon-cookie" aria-hidden="true"></i><span class="storage-nav-label">Cookies</span><span class="storage-nav-count"></span></button>
+            <button class="storage-nav-item" data-section="local"><i class="icon-hard-drive" aria-hidden="true"></i><span class="storage-nav-label">Local storage</span><span class="storage-nav-count"></span></button>
+            <button class="storage-nav-item" data-section="session"><i class="icon-timer" aria-hidden="true"></i><span class="storage-nav-label">Session storage</span><span class="storage-nav-count"></span></button>
+            <button class="storage-nav-item" data-section="idb"><i class="icon-database" aria-hidden="true"></i><span class="storage-nav-label">IndexedDB</span><span class="storage-nav-count"></span></button>
+            <button class="storage-nav-item" data-section="permissions"><i class="icon-shield-check" aria-hidden="true"></i><span class="storage-nav-label">Permissions</span><span class="storage-nav-count"></span></button>
+          </nav>
+          <div id="storagePanelContent"></div>
+        </div>
       </div>
       <div id="a11yPanel"></div>
       <div id="diffPanel"></div>

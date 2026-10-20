@@ -702,6 +702,7 @@ test('storage/localstorage.html: seeded keys appear in the Storage tab', async (
   await tab.click('button:text("Seed 3 keys")');
   await window.click('#consoleTabStorage');
   await window.click('#refreshStorageBtn');
+  await window.click('#storageNav [data-section="local"]'); // #304: one section at a time
 
   await expect(window.locator('#storagePanel')).toContainText('username');
   await expect(window.locator('#storagePanel')).toContainText('tester');

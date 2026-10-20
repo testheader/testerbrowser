@@ -102,6 +102,7 @@ test('revoking a granted permission from the Storage tab causes the prompt to re
   await expect(window.locator('.perm-notif')).toHaveCount(0);
 
   await window.click('#consoleTabStorage');
+  await window.click('#storageNav [data-section="permissions"]'); // #304: one section at a time
   const permRow = window.locator('.storage-table tr', { hasText: 'geolocation' }).filter({ hasText: 'Granted' });
   await expect(permRow).toHaveCount(1);
   await permRow.locator('.storage-delete-btn').click();

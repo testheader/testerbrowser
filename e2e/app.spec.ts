@@ -591,6 +591,8 @@ async function openStorageTab(win: Page, port: number) {
   await expect(win.locator('#urlbar')).toHaveValue(/127\.0\.0\.1/, { timeout: 5_000 });
   await win.click('#consoleTabStorage');
   await waitForStorageSettled(win);
+  // The Storage tab remembers its section (#304); every test starts on Cookies.
+  await win.click('#storageNav [data-section="cookies"]');
 }
 
 // storage.js's renderStoragePanel() shows a "Loading…" placeholder until
@@ -602,15 +604,19 @@ async function waitForStorageSettled(win: Page) {
   await expect(win.locator('#storagePanelContent')).not.toContainText('Loading…', { timeout: 10_000 });
 }
 
-// storage-section-title spans are recreated on every re-render in a fixed
-// order (Cookies, Local Storage, Session Storage, IndexedDB) with a
-// "Label (N)" or "Label (N/M)" (while filtered) text — waiting for the
-// expected count is a precise, content-aware signal that a specific
-// clear/set/refresh this test triggered has actually landed, stronger than
-// waitForStorageSettled alone (which only proves *some* fetch finished).
+// #304: each section's total count lives in the Storage nav (Cookies, Local
+// storage, Session storage, IndexedDB) — waiting for the expected count is a
+// precise, content-aware signal that a specific clear/set/refresh this test
+// triggered has actually landed, stronger than waitForStorageSettled alone
+// (which only proves *some* fetch finished).
 async function waitForStorageSectionCount(win: Page, label: string, expected: number) {
-  await expect(win.locator('.storage-section-title', { hasText: label }))
-    .toHaveText(new RegExp(`^${label} \\(${expected}(?:/\\d+)?\\)$`));
+  const section = ({ 'Cookies': 'cookies', 'Local Storage': 'local', 'Session Storage': 'session', 'IndexedDB': 'idb' } as Record<string, string>)[label];
+  await expect(win.locator(`#storageNav [data-section="${section}"] .storage-nav-count`)).toHaveText(String(expected));
+}
+
+// The Storage tab shows one section at a time (#304).
+async function showStorageSection(win: Page, section: 'cookies' | 'local' | 'session' | 'idb' | 'permissions') {
+  await win.click(`#storageNav [data-section="${section}"]`);
 }
 
 // Returns the session the Storage tab is actually bound to (state.activeId,
@@ -641,14 +647,15 @@ test('storage tab: add cookie via "+ Add" button', async () => {
   await window.click('#refreshStorageBtn');
   await waitForStorageSectionCount(window, 'Cookies', 0);
 
-  // Click "+ Add" in the cookie section header.
-  await window.locator('.storage-add-btn').first().click();
+  // Click "Add" in the toolbar (Cookies is the default section).
+  await showStorageSection(window, 'cookies');
+  await window.click('#storageAddBtn');
 
-  // Fill in the add-row inputs: domain(0), name(1), value(2), path(3).
+  // Fill in the add-row inputs: name(0), value(1), domain(2), path(3).
   const addRow = window.locator('.storage-add-row').first();
-  await addRow.locator('input').nth(1).fill('e2e_added_cookie');
-  await addRow.locator('input').nth(2).fill('e2e_value');
-  await addRow.locator('input').nth(1).press('Enter');
+  await addRow.locator('input').nth(0).fill('e2e_added_cookie');
+  await addRow.locator('input').nth(1).fill('e2e_value');
+  await addRow.locator('input').nth(0).press('Enter');
 
   let added: { name: string; value: string } | undefined;
   await expect(async () => {
@@ -674,11 +681,11 @@ test('storage tab: edit cookie value by double-clicking', async () => {
   await window.click('#refreshStorageBtn');
   await waitForStorageSectionCount(window, 'Cookies', 1);
 
-  // dblclick on the value cell (td[2]); the name cell (td[1]) keeps its text so
+  // dblclick on the value cell (td[1]); the name cell (td[0]) keeps its text so
   // the row filter stays valid for the chained input locator.
   const cookieRow = window.locator('#storagePanel .storage-table tbody tr')
     .filter({ hasText: 'e2e_edit_cookie' });
-  await cookieRow.locator('td').nth(2).dblclick();
+  await cookieRow.locator('td').nth(1).dblclick();
 
   const editInput = cookieRow.locator('input.ls-edit-input');
   await editInput.fill('updated');
@@ -686,7 +693,7 @@ test('storage tab: edit cookie value by double-clicking', async () => {
 
   // commit() calls setCookie() then fetchStorageData() — wait for the
   // re-rendered cell to actually show the new value.
-  await expect(cookieRow.locator('td').nth(2)).toHaveText('updated');
+  await expect(cookieRow.locator('td').nth(1)).toHaveText('updated');
 
   const cookies: Array<{ name: string; value: string }> =
     await window.evaluate((id: string) => (window as any).testerBrowser.sessions.getCookies(id), sessionId);
@@ -703,8 +710,9 @@ test('storage tab: add localStorage entry via "+ Add" button', async () => {
   await window.click('#refreshStorageBtn');
   await waitForStorageSectionCount(window, 'Local Storage', 0);
 
-  // Click "+ Add" in the localStorage section (second .storage-add-btn).
-  await window.locator('.storage-add-btn').nth(1).click();
+  // Switch to Local storage and click "Add" in the toolbar.
+  await showStorageSection(window, 'local');
+  await window.click('#storageAddBtn');
 
   const addRow = window.locator('#storagePanel .storage-add-row');
   await addRow.locator('input').nth(0).fill('e2e_ls_key');
@@ -731,6 +739,7 @@ test('storage tab: rename localStorage key by double-clicking', async () => {
 
   await window.click('#refreshStorageBtn');
   await waitForStorageSectionCount(window, 'Local Storage', 1);
+  await showStorageSection(window, 'local');
 
   const lsRow = window.locator('#storagePanel .storage-table tbody tr')
     .filter({ hasText: 'old_key' });
@@ -806,13 +815,14 @@ test('storage tab: add cookie with Secure + SameSite=Strict round-trips through 
   await window.click('#refreshStorageBtn');
   await waitForStorageSectionCount(window, 'Cookies', 0);
 
-  await window.locator('.storage-add-btn').first().click();
+  await showStorageSection(window, 'cookies');
+  await window.click('#storageAddBtn');
   const addRow = window.locator('.storage-add-row').first();
-  await addRow.locator('input').nth(1).fill('e2e_secure_cookie');
-  await addRow.locator('input').nth(2).fill('e2e_value');
+  await addRow.locator('input').nth(0).fill('e2e_secure_cookie');
+  await addRow.locator('input').nth(1).fill('e2e_value');
   await addRow.locator('select').selectOption('strict');
   await addRow.locator('input[type="checkbox"]').nth(0).check(); // Secure
-  await addRow.locator('input').nth(1).press('Enter');
+  await addRow.locator('input').nth(0).press('Enter');
 
   let added: { name: string; value: string; secure: boolean; sameSite: string } | undefined;
   await expect(async () => {
@@ -842,7 +852,7 @@ test('storage tab: a failed cookie edit leaves the original value and shows an e
 
   const cookieRow = window.locator('#storagePanel .storage-table tbody tr')
     .filter({ hasText: 'e2e_safe_edit_cookie' });
-  await cookieRow.locator('td').nth(2).dblclick();
+  await cookieRow.locator('td').nth(1).dblclick();
 
   const editInput = cookieRow.locator('input.ls-edit-input');
   // A semicolon is illegal inside a cookie value (it's the attribute
@@ -876,6 +886,7 @@ test('storage tab: sessionStorage section shows page-set entries', async () => {
   await waitForStorageSettled(window);
   await window.click('#refreshStorageBtn');
   await waitForStorageSectionCount(window, 'Session Storage', 1);
+  await showStorageSection(window, 'session');
 
   const ssRow = window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'e2e_ss_key' });
   await expect(ssRow).toContainText('e2e_ss_val');
@@ -955,4 +966,34 @@ test('Console: the level control is a segmented All/Errors/Warnings/Info/Debug, 
   await expect(window.locator('#consoleLevelPills .seg-btn[data-level="all"]')).toHaveAttribute('aria-pressed', 'true');
   // At least one console row from the page's own script has a clickable source.
   await expect(window.locator('.con-src-link').first()).toBeVisible();
+});
+
+// #304: Storage section nav — one section at a time, counts in the nav, Add/Clear only where they apply.
+test('Storage nav switches sections, shows counts, and the toolbar Add/Clear follow the section (#304)', async () => {
+  await openStorageTab(window, testPort);
+  const { id: sessionId } = await activeSession(window);
+  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.clearLocalStorage(id), sessionId);
+  await window.evaluate(([id, k, v]: string[]) =>
+    (window as any).testerBrowser.sessions.setLocalStorageKey(id, k, v), [sessionId, 'nav_key', 'nav_val']);
+  await window.click('#refreshStorageBtn');
+  await waitForStorageSectionCount(window, 'Local Storage', 1);
+
+  await expect(window.locator('#storageNav .storage-nav-item')).toHaveText([/^Cookies/, /^Local storage/, /^Session storage/, /^IndexedDB/, /^Permissions/]);
+  await expect(window.locator('#storageNav [data-section="cookies"]')).toHaveClass(/\bactive\b/);
+  await expect(window.locator('#storageAddBtn')).toBeVisible();
+
+  await showStorageSection(window, 'local');
+  await expect(window.locator('#storageNav [data-section="local"]')).toHaveClass(/\bactive\b/);
+  await expect(window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'nav_key' })).toBeVisible();
+  await expect(window.locator('#storageClearBtn')).toBeVisible();
+
+  // Read-only sections have neither Add nor Clear all.
+  await showStorageSection(window, 'session');
+  await expect(window.locator('#storageAddBtn')).toBeHidden();
+  await expect(window.locator('#storageClearBtn')).toBeHidden();
+
+  await showStorageSection(window, 'idb');
+  await expect(window.locator('#storagePanelContent')).toContainText('IndexedDB is read-only.');
+
+  await showStorageSection(window, 'cookies');
 });
