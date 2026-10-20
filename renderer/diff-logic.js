@@ -206,6 +206,10 @@ function withDetailAndCategory(row, a, b, ignoreHeaders) {
   row.detail = detail;
   row.requestA = firstCall(a)?.request ?? null;
   row.requestB = firstCall(b)?.request ?? null;
+  // #307: per-side time for the table's A time / B time / Δ time columns —
+  // available even when only one side has the request (no detail then).
+  row.durationA = firstCall(a)?.durationMs ?? null;
+  row.durationB = firstCall(b)?.durationMs ?? null;
   // A "same" row (status matches) can still have a secondary "differs"
   // marker for headers/body — its category is deliberately left
   // unchanged so the same/diff/only-a/only-b legend counts don't shift.

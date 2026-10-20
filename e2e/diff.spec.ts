@@ -102,7 +102,7 @@ test('comparing two sessions categorizes matching and unique requests correctly'
   // Default filter is "differences only": identical rows are counted in the
   // summary but not listed until Unchanged is switched on.
   await expect(window.locator('.diff-row[data-bucket="unchanged"]')).toHaveCount(0);
-  await expect(window.locator('.diff-sum.total')).toBeVisible();
+  await expect(window.locator('#diffCatPills .filter-pill[data-cat="removed"] .pill-count')).not.toHaveText('');
 
   // Both sessions loaded status-codes.html → same.
   await showAllCategories();
@@ -127,14 +127,14 @@ test('category pills filter the table while the summary keeps showing totals', a
   const unchangedRows = window.locator('.diff-row[data-bucket="unchanged"]');
   const unchangedBefore = await unchangedRows.count();
   expect(unchangedBefore).toBeGreaterThan(0);
-  await expect(window.locator('.diff-sum.unchanged')).toHaveText(`${unchangedBefore} unchanged`);
+  await expect(window.locator('#diffCatPills .filter-pill[data-cat="unchanged"] .pill-count')).toHaveText(`${unchangedBefore}`);
 
   const pill = window.locator('#diffCatPills .filter-pill[data-cat="unchanged"]');
   await pill.click();
   await expect(pill).toHaveAttribute('aria-pressed', 'false');
   await expect(unchangedRows).toHaveCount(0);
-  // Summary count is unaffected by the pill filter.
-  await expect(window.locator('.diff-sum.unchanged')).toHaveText(`${unchangedBefore} unchanged`);
+  // The chip's count is unaffected by the pill filter.
+  await expect(window.locator('#diffCatPills .filter-pill[data-cat="unchanged"] .pill-count')).toHaveText(`${unchangedBefore}`);
 
   await pill.click();
   await expect(unchangedRows).toHaveCount(unchangedBefore);
@@ -240,13 +240,13 @@ test('a positive free-text term narrows the table to matching URLs, and clearing
 
   const totalRows = await window.locator('.diff-row').count();
   expect(totalRows).toBeGreaterThan(1);
-  const sameCount = await window.locator('.diff-sum.unchanged').textContent();
+  const sameCount = await window.locator('#diffCatPills .filter-pill[data-cat="unchanged"] .pill-count').textContent();
 
   await window.fill('#diffFilterText', 'sample.txt');
   await expect(window.locator('.diff-row')).toHaveCount(1);
   await expect(window.locator('.diff-row', { hasText: '/downloads/sample.txt' })).toBeVisible();
   // Summary is unaffected by the text filter, same as the category pills.
-  await expect(window.locator('.diff-sum.unchanged')).toHaveText(sameCount!);
+  await expect(window.locator('#diffCatPills .filter-pill[data-cat="unchanged"] .pill-count')).toHaveText(sameCount!);
   await expect(window.locator('.diff-filter-note')).toContainText(`Showing 1 of ${totalRows}`);
 
   await window.fill('#diffFilterText', '');
@@ -327,17 +327,17 @@ test('"Path only" matching treats the same path on two different hosts as the sa
   await window.click('#consoleTabDiff');
   await window.selectOption('#diffPickA', sessionAId);
   await window.selectOption('#diffPickB', sessionBId);
-  await expect(window.locator('#diffMatchMode')).toHaveValue('full');
+  await expect(window.locator('#diffMatchSeg [data-mode="full"]')).toHaveClass(/\bon\b/);
   await window.click('#diffRunBtn');
   await showAllCategories();
 
   // Full URL mode: different hosts, so this pair never lands as "same".
   await expect(window.locator('.diff-row.same', { hasText: sharedPath })).toHaveCount(0);
 
-  await window.selectOption('#diffMatchMode', 'path');
+  await window.click('#diffMatchSeg [data-mode="path"]');
   await expect(window.locator('.diff-row.same', { hasText: sharedPath })).toBeVisible();
 
-  await window.selectOption('#diffMatchMode', 'full'); // leave state clean for later tests
+  await window.click('#diffMatchSeg [data-mode="full"]'); // leave state clean for later tests
   await window.click('#diffResetBtn');
 });
 
@@ -380,12 +380,12 @@ test('expanding a matched row shows a changed response header, once its query pa
   await expect(row).toHaveAttribute('data-bucket', 'changed');
   await expect(row.locator('.diff-badge.hb-diff')).toBeVisible();
 
-  const toggle = row.locator('.diff-exp-btn');
-  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  // #307: selecting a row shows its differences in the right-hand pane.
+  await expect(window.locator('#diffDetail')).toContainText('Select a row');
   await row.click();
-  const detail = window.locator('.diff-detail-row');
-  await expect(detail).toBeVisible();
-  await expect(row.locator('.diff-exp-btn')).toHaveAttribute('aria-expanded', 'true');
+  const detail = window.locator('#diffDetail');
+  await expect(detail).toContainText('Headers · 1 differs');
+  await expect(row).toHaveAttribute('aria-selected', 'true');
   const changedHeader = detail.locator('.diff-hdr-table tr.changed', { hasText: 'x-variant' });
   await expect(changedHeader).toBeVisible();
   await expect(changedHeader.locator('.diff-mark-a')).toHaveText('1');
@@ -402,11 +402,11 @@ test('expanding a matched row shows a changed response header, once its query pa
     expect(violations.map(v => `${theme}: ${v.id} ${v.nodes.map(n => n.target.join(' ')).join(', ')}`)).toEqual([]);
   }
 
-  // Keyboard: the row's toggle button collapses it again and keeps focus.
-  await row.locator('.diff-exp-btn').focus();
+  // Keyboard: Enter on a focused row selects it (and keeps focus on the row).
+  await window.locator('.diff-row', { hasText: '/network/header' }).focus();
   await window.keyboard.press('Enter');
-  await expect(window.locator('.diff-detail-row')).toHaveCount(0);
-  await expect(row.locator('.diff-exp-btn')).toBeFocused();
+  await expect(window.locator('.diff-row.selected')).toHaveCount(1);
+  await expect(window.locator('.diff-row.selected')).toBeFocused();
 
   // Removing the chip un-ignores `v` and re-matches without a re-fetch: the
   // two calls no longer share a key, so they split into removed + added.
@@ -452,11 +452,21 @@ test('status-class pills filter rows, and a row can be copied as cURL', async ()
   await pill4xx.click();
   await expect(row404).toBeVisible();
 
-  await row404.locator('button[data-curl]').click();
+  await row404.click();
+  await window.locator('#diffDetail button[data-curl="A"]').click();
   await expect(window.locator('#diffStatus')).toContainText('Copied cURL');
   const clipboardText = await app.evaluate(({ clipboard }) => clipboard.readText());
   expect(clipboardText).toContain(fixtures.url('/network/status/404'));
   expect(clipboardText).toContain('curl ');
 
   await window.click('#diffResetBtn');
+});
+
+// #307: the result chips carry counts and filter the table; a row's tag names the result.
+test('result chips show counts, and a row\'s Result tag matches its bucket (#307)', async () => {
+  await window.click('#consoleTabDiff');
+  await expect(window.locator('#diffCatPills .filter-pill')).toHaveText([/^Different/, /^Only in A/, /^Only in B/, /^Same/]);
+  await expect(window.locator('.diff-table thead th')).toHaveText(['Path', 'Method', 'A status', 'A time', 'B status', 'B time', 'Δ time', 'Result']);
+  const onlyA = window.locator('.diff-row.only-a').first();
+  if (await onlyA.count()) await expect(onlyA.locator('.diff-res .diff-badge')).toHaveText('Only in A');
 });

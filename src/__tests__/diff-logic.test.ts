@@ -194,3 +194,20 @@ describe('diffHeaders', () => {
     expect(result).toEqual({ added: [], removed: [], changed: [] });
   });
 });
+
+describe('per-side durations on a row (#307)', () => {
+  it('carries each side\'s time, including a row present on only one side', () => {
+    const a = buildRequestMap([
+      requestEvent('a1', 'GET', 'https://x/api/both'), responseEvent('a1', 200, { durationMs: 140 }),
+      requestEvent('a2', 'GET', 'https://x/api/only-a'), responseEvent('a2', 200, { durationMs: 74 }),
+    ]);
+    const b = buildRequestMap([
+      requestEvent('b1', 'GET', 'https://x/api/both'), responseEvent('b1', 200, { durationMs: 131 }),
+    ]);
+    const rows = computeDiffRows(a, b);
+    const both = rows.find((r: any) => r.url.endsWith('/both')) as any;
+    const onlyA = rows.find((r: any) => r.url.endsWith('/only-a')) as any;
+    expect([both.durationA, both.durationB]).toEqual([140, 131]);
+    expect([onlyA.durationA, onlyA.durationB]).toEqual([74, null]);
+  });
+});

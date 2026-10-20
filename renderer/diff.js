@@ -28,7 +28,7 @@ let groupDuplicates = true;
 let matchMode = 'full'; // 'full' | 'path'
 let ignoreParams = loadIgnoreParams();
 let truncatedSides = []; // subset of ['A', 'B']
-let expandedKeys = new Set();
+let selectedKey = null;
 // Session names must be captured at compare time, not looked up later by id:
 // destroySession removes a closed session from sessions.list() entirely, so
 // a later re-lookup would silently fail once a compared session is closed.
@@ -49,8 +49,8 @@ function saveIgnoreParams(list) {
   try { localStorage.setItem(IGNORE_PARAMS_LS_KEY, list.join(',')); } catch {}
 }
 
-const bucketPill = (cat, label, title) =>
-  `<button type="button" class="filter-pill${DEFAULT_BUCKETS.includes(cat) ? ' on' : ''}" data-cat="${cat}" title="${title}">${label}</button>`;
+const bucketPill = (cat, label, title, key) =>
+  `<button type="button" class="filter-pill${DEFAULT_BUCKETS.includes(cat) ? ' on' : ''}" data-cat="${cat}" title="${title}"><span class="diff-key diff-key-${key}"></span>${label}<span class="pill-count"></span></button>`;
 const statusPill = (cls, label) =>
   `<button type="button" class="filter-pill on" data-status="${cls}" title="Show rows with a ${label} status on either side">${label}</button>`;
 
@@ -60,27 +60,26 @@ export function initDiff() {
   panel.dataset.initialized = '1';
 
   panel.innerHTML = `
-    <div class="diff-toolbar">
-      <label class="diff-label">Session A
-        <select class="diff-pick" id="diffPickA"></select>
+    <div class="diff-toolbar diff-toolbar-main">
+      <label class="diff-pickwrap"><span class="diff-pick-key">A</span>
+        <select class="diff-pick" id="diffPickA" aria-label="Session A"></select>
       </label>
-      <span class="diff-vs" aria-hidden="true">vs</span>
-      <label class="diff-label">Session B
-        <select class="diff-pick" id="diffPickB"></select>
+      <button type="button" class="console-icon-btn" id="diffSwapBtn" title="Swap A and B" aria-label="Swap sessions A and B"><i class="icon-arrow-left-right" aria-hidden="true"></i></button>
+      <label class="diff-pickwrap"><span class="diff-pick-key">B</span>
+        <select class="diff-pick" id="diffPickB" aria-label="Session B"></select>
       </label>
-      <button type="button" class="diff-run-btn" id="diffRunBtn">Compare</button>
-      <label class="diff-label">Match by
-        <select class="diff-pick" id="diffMatchMode">
-          <option value="full">Full URL</option>
-          <option value="path">Path only (ignore host)</option>
-        </select>
-      </label>
+      <div class="seg" id="diffMatchSeg" role="group" aria-label="Match by">
+        <button type="button" class="seg-btn on" data-mode="full" aria-pressed="true" title="Match requests by method + full URL">Match full URL</button>
+        <button type="button" class="seg-btn" data-mode="path" aria-pressed="false" title="Match requests by method + path, ignoring the host">Match path</button>
+      </div>
       <label class="diff-label diff-group-toggle" title="Collapse repeated calls to the same request into one row">
         <input type="checkbox" id="diffGroupToggle" checked /> Group duplicates
       </label>
       <span class="diff-spacer"></span>
-      <button type="button" class="diff-har-btn" id="diffHarBtn" disabled>Export diff (JSON)</button>
-      <button type="button" class="console-icon-btn" id="diffResetBtn" title="Reset comparison" aria-label="Reset comparison">&#10005;</button>
+      <span class="status-msg" id="diffStatus" role="status" aria-live="polite"></span>
+      <button type="button" class="net-chip" id="diffHarBtn" disabled><i class="icon-file-down" aria-hidden="true"></i>Export JSON</button>
+      <button type="button" class="console-icon-btn" id="diffResetBtn" title="Reset comparison" aria-label="Reset comparison"><i class="icon-ban" aria-hidden="true"></i></button>
+      <button type="button" class="diff-run-btn" id="diffRunBtn">Compare</button>
     </div>
     <div class="diff-toolbar diff-toolbar-row2" role="group" aria-labelledby="diffIgnoreLabel">
       <span class="diff-label" id="diffIgnoreLabel">Ignored query params</span>
@@ -91,27 +90,23 @@ export function initDiff() {
       <button type="button" class="diff-link-btn" id="diffIgnoreDefaultsBtn">Restore defaults</button>
     </div>
     <div class="diff-toolbar diff-toolbar-row2 diff-filter-row">
-      <span class="diff-label" id="diffShowLabel">Show</span>
-      <div class="filter-pills" id="diffCatPills" role="group" aria-labelledby="diffShowLabel">
-        ${bucketPill('changed', 'Changed', 'Status, response headers or body differ')}
-        ${bucketPill('added', 'Added', 'Only in Session B')}
-        ${bucketPill('removed', 'Removed', 'Only in Session A')}
-        ${bucketPill('unchanged', 'Unchanged', 'Identical in both sessions')}
+      <div class="filter-pills diff-chips" id="diffCatPills" role="group" aria-label="Result">
+        ${bucketPill('changed', 'Different', 'Status, response headers or body differ', 'changed')}
+        ${bucketPill('removed', 'Only in A', 'Only in Session A', 'removed')}
+        ${bucketPill('added', 'Only in B', 'Only in Session B', 'added')}
+        ${bucketPill('unchanged', 'Same', 'Identical in both sessions', 'unchanged')}
       </div>
       <div class="filter-pills" id="diffStatusPills" role="group" aria-label="Status class">
         ${statusPill('2xx', '2xx')}${statusPill('3xx', '3xx')}${statusPill('4xx', '4xx')}${statusPill('5xx', '5xx')}${statusPill('failed', 'Failed')}
       </div>
       <input type="text" class="diff-filter-text" id="diffFilterText" aria-label="Filter requests by URL"
         placeholder="Filter URLs, e.g. api -analytics" />
-      <span class="status-msg" id="diffStatus" role="status" aria-live="polite"></span>
     </div>
     <div class="diff-body" id="diffBody" role="region" aria-label="Comparison results" tabindex="0"></div>`;
 
   renderIgnoreChips();
   renderBody();
   populatePickers();
-  /** @type {HTMLSelectElement} */ (document.getElementById('diffMatchMode')).value = matchMode;
-
   document.getElementById('diffRunBtn').addEventListener('click', runDiff);
   /** @type {HTMLButtonElement} */ (document.getElementById('diffHarBtn')).addEventListener('click', exportDiffHar);
   document.getElementById('diffGroupToggle').addEventListener('change', onGroupToggleChanged);
@@ -119,9 +114,19 @@ export function initDiff() {
   /** @type {HTMLInputElement} */ (document.getElementById('diffFilterText')).addEventListener('input', renderBody);
   wirePillGroup(document.getElementById('diffCatPills'), renderBody);
   wirePillGroup(document.getElementById('diffStatusPills'), renderBody);
-  /** @type {HTMLSelectElement} */ (document.getElementById('diffMatchMode')).addEventListener('change', (e) => {
-    matchMode = /** @type {HTMLInputElement} */ (e.target).value;
+  document.querySelectorAll('#diffMatchSeg .seg-btn').forEach((btn) => btn.addEventListener('click', () => {
+    matchMode = /** @type {HTMLElement} */ (btn).dataset.mode;
+    document.querySelectorAll('#diffMatchSeg .seg-btn').forEach((b) => {
+      const on = /** @type {HTMLElement} */ (b).dataset.mode === matchMode;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
     if (rawEventsA.length || rawEventsB.length) recomputeFromRaw();
+  }));
+  document.getElementById('diffSwapBtn').addEventListener('click', () => {
+    const pa = /** @type {HTMLSelectElement} */ (document.getElementById('diffPickA'));
+    const pb = /** @type {HTMLSelectElement} */ (document.getElementById('diffPickB'));
+    [pa.value, pb.value] = [pb.value, pa.value];
   });
 
   // 'change' fires on Enter and on blur, so typing a param and tabbing away
@@ -147,13 +152,19 @@ export function initDiff() {
 
   // Delegated: rows are rebuilt from scratch on every render, so per-row
   // listeners would need re-wiring each time — this survives that.
-  document.getElementById('diffBody').addEventListener('click', (e) => {
-    const copyBtn = /** @type {HTMLElement} */ (e.target).closest('button[data-curl]');
+  const diffBody = document.getElementById('diffBody');
+  diffBody.addEventListener('click', (e) => {
+    const target = /** @type {HTMLElement} */ (e.target);
+    const copyBtn = target.closest('button[data-curl]');
     if (copyBtn) { copyCurl(copyBtn.dataset.key, copyBtn.dataset.curl); return; }
-    if (/** @type {HTMLElement} */ (e.target).closest('#diffShowAllBtn')) { showAllRows(); return; }
-    if (/** @type {HTMLElement} */ (e.target).closest('.diff-detail-row')) return; // let text in the detail be selected
-    const row = /** @type {HTMLElement} */ (e.target).closest('tr.diff-row');
-    if (row && row.dataset.expandable === '1') toggleExpanded(row.dataset.key);
+    if (target.closest('#diffShowAllBtn')) { showAllRows(); return; }
+    if (target.closest('#diffDetail')) return; // let text in the pane be selected
+    const row = target.closest('tr.diff-row');
+    if (row) selectRow(row.dataset.key);
+  });
+  diffBody.addEventListener('keydown', (e) => {
+    const row = /** @type {HTMLElement} */ (e.target).closest?.('tr.diff-row');
+    if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectRow(row.dataset.key); }
   });
 }
 
@@ -188,13 +199,11 @@ function renderIgnoreChips() {
 
 // ── Actions ─────────────────────────────────────────────────────────────
 
-function toggleExpanded(key) {
-  if (expandedKeys.has(key)) expandedKeys.delete(key);
-  else expandedKeys.add(key);
+function selectRow(key) {
+  selectedKey = key;
   renderBody();
-  // The table was rebuilt: put focus back on the same row's toggle.
-  const btn = [...document.querySelectorAll('#diffBody .diff-exp-btn')].find(b => b.dataset.key === key);
-  btn?.focus();
+  const row = [...document.querySelectorAll('#diffBody tr.diff-row')].find((r) => /** @type {HTMLElement} */ (r).dataset.key === key);
+  /** @type {HTMLElement | undefined} */ (row)?.focus();
 }
 
 function showAllRows() {
@@ -227,7 +236,7 @@ function resetDiff() {
   lastDiffRows = [];
   diffMeta = null;
   truncatedSides = [];
-  expandedKeys = new Set();
+  selectedKey = null;
   bodyDiffCache = new WeakMap();
   /** @type {HTMLInputElement} */ (document.getElementById('diffFilterText')).value = '';
   /** @type {HTMLButtonElement} */ (document.getElementById('diffHarBtn')).disabled = true;
@@ -237,7 +246,7 @@ function resetDiff() {
 function onGroupToggleChanged(e) {
   groupDuplicates = e.target.checked;
   if (rawMapA.size === 0 && rawMapB.size === 0) return;
-  expandedKeys = new Set(); // grouped vs. per-call keys aren't comparable
+  selectedKey = null; // grouped vs. per-call keys aren't comparable
   computeDiffRowsAndRender();
 }
 
@@ -289,7 +298,7 @@ async function runDiff() {
     ...(isTruncated(evA, RECORDING_FETCH_LIMIT) ? ['A'] : []),
     ...(isTruncated(evB, RECORDING_FETCH_LIMIT) ? ['B'] : []),
   ];
-  expandedKeys = new Set();
+  selectedKey = null;
 
   recomputeFromRaw();
   harBtn.disabled = lastDiffRows.length === 0;
@@ -350,24 +359,17 @@ function truncationBannerHtml() {
   return `<div class="diff-truncation-warning" role="note">${lines.join('<br>')}</div>`;
 }
 
-function summaryHtml(counts) {
-  // Always reflects the full comparison, independent of the filters below.
-  const chip = (cls, n, label, title) =>
-    `<li class="diff-sum ${cls}" title="${title}"><b>${n}</b> ${label}</li>`;
-  return `<div class="diff-summary">
-    ${metaHtml()}
-    <ul class="diff-counts" aria-label="Comparison summary">
-      ${chip('changed', counts.changed, 'changed', 'Status, response headers or body differ')}
-      ${chip('added', counts.added, 'added', 'Only in Session B')}
-      ${chip('removed', counts.removed, 'removed', 'Only in Session A')}
-      ${chip('unchanged', counts.unchanged, 'unchanged', 'Identical in both sessions')}
-      ${chip('total', counts.total, 'total', 'Distinct requests compared')}
-    </ul>
-  </div>`;
+function updateChipCounts(counts) {
+  // Always reflects the full comparison, independent of the filters.
+  for (const [bucket, n] of Object.entries(counts)) {
+    const span = document.querySelector(`#diffCatPills .filter-pill[data-cat="${bucket}"] .pill-count`);
+    if (span) span.textContent = String(n);
+  }
 }
 
 function renderDiffTable(body) {
   const counts = summarizeDiffRows(lastDiffRows);
+  updateChipCounts(counts);
   const visible = filterDiffRows(lastDiffRows, {
     buckets: activePillValues(document.getElementById('diffCatPills'), 'cat'),
     statusClasses: activePillValues(document.getElementById('diffStatusPills'), 'status'),
@@ -385,63 +387,59 @@ function renderDiffTable(body) {
     filterNote = `<div class="diff-filter-note">Showing ${visible.length} of ${lastDiffRows.length}. ${showAllBtn}</div>`;
   }
 
-  const rows = visible.map((r, i) => rowHtml(r, i)).join('');
+  const rows = visible.map((r) => rowHtml(r)).join('');
   const table = visible.length ? `<div class="diff-table-wrap"><table class="diff-table">
+    <colgroup><col><col style="width:56px"><col style="width:76px"><col style="width:72px"><col style="width:76px"><col style="width:72px"><col style="width:76px"><col style="width:150px"></colgroup>
     <thead><tr>
-      <th class="diff-exp"><span class="diff-sr">Details</span></th>
-      <th>Method</th><th>Request</th><th>Status A &rarr; B</th><th>Differences</th>
-      <th><span class="diff-sr">Actions</span></th>
+      <th>Path</th><th>Method</th><th class="diff-num">A status</th><th class="diff-num">A time</th>
+      <th class="diff-num">B status</th><th class="diff-num">B time</th><th class="diff-num">&Delta; time</th><th>Result</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table></div>` : '';
 
-  body.innerHTML = truncationBannerHtml() + summaryHtml(counts) + filterNote + table;
+  const selected = visible.find((r) => r.key === selectedKey) ?? null;
+  body.innerHTML = `<div class="diff-split">
+    <div class="diff-main">${truncationBannerHtml()}${metaHtml()}${filterNote}${table}</div>
+    <aside class="diff-pane" id="diffDetail" aria-label="Request differences">${selected ? renderDetailPane(selected) : '<div class="diff-pane-hint">Select a row to see how the request differs.</div>'}</aside>
+  </div>`;
 }
 
-function rowHtml(r, i) {
+function timeText(ms) { return typeof ms === 'number' ? `${Math.round(ms)} ms` : ''; }
+
+function rowHtml(r) {
   const bucket = rowBucket(r);
-  const expandable = !!r.detail;
-  const expanded = expandable && expandedKeys.has(r.key);
   const { host, path } = splitUrlForDisplay(r.url);
   const key = escHtml(r.key);
-  const detailId = `diffDetail-${i}`;
-  const label = `${r.method} ${path}`;
+  const selected = r.key === selectedKey;
+  const delta = (typeof r.durationA === 'number' && typeof r.durationB === 'number')
+    ? Math.round(r.durationB - r.durationA) : null;
+  const deltaText = delta === null ? '' : `${delta > 0 ? '+' : ''}${delta} ms`;
 
-  const toggle = expandable
-    ? `<button type="button" class="diff-exp-btn" data-key="${key}" aria-expanded="${expanded}"${expanded ? ` aria-controls="${detailId}"` : ''} aria-label="${expanded ? 'Hide' : 'Show'} details for ${escHtml(label)}"></button>`
-    : '';
-  const side = r.requestA ? 'A' : 'B';
-  const curlBtn = (r.requestA || r.requestB)
-    ? `<button type="button" class="diff-small-btn" data-curl="${side}" data-key="${key}" title="Copy the request from Session ${side} as a cURL command" aria-label="Copy ${escHtml(label)} as cURL">cURL</button>`
-    : '';
-
-  const html = `<tr class="diff-row ${r.category} bucket-${bucket}${expandable ? ' diff-row-expandable' : ''}" data-key="${key}" data-expandable="${expandable ? '1' : '0'}" data-bucket="${bucket}">
-    <td class="diff-exp">${toggle}</td>
-    <td class="diff-method">${escHtml(r.method)}</td>
+  return `<tr class="diff-row ${r.category} bucket-${bucket}${selected ? ' selected' : ''}" data-key="${key}" data-bucket="${bucket}" tabindex="0" aria-selected="${selected}">
     <td class="diff-url" title="${escHtml(r.url)}"><span class="diff-path">${escHtml(path)}</span>${host ? ` <span class="diff-host">${escHtml(host)}</span>` : ''}</td>
-    <td class="diff-st">${statusPairHtml(r)}</td>
-    <td class="diff-hb">${notesHtml(r, bucket)}</td>
-    <td class="diff-actions">${curlBtn}</td>
+    <td class="diff-method">${escHtml(r.method)}</td>
+    <td class="diff-st diff-num">${cellHtml(r.a, 'A')}</td>
+    <td class="diff-time diff-num">${timeText(r.durationA)}</td>
+    <td class="diff-st diff-num">${cellHtml(r.b, 'B')}</td>
+    <td class="diff-time diff-num">${timeText(r.durationB)}</td>
+    <td class="diff-time diff-num${delta !== null && delta > 200 ? ' diff-slow' : ''}">${deltaText}</td>
+    <td class="diff-res">${notesHtml(r, bucket)}</td>
   </tr>`;
-  const detail = expanded
-    ? `<tr class="diff-detail-row"><td colspan="6" id="${detailId}">${renderDetailBlock(r)}</td></tr>`
-    : '';
-  return html + detail;
 }
 
+// The Result column's tag: Same / Same · ≠ body / Different status / Only in A / Only in B.
 function notesHtml(r, bucket) {
-  if (bucket === 'added') return '<span class="diff-badge only-b">only in B</span>';
-  if (bucket === 'removed') return '<span class="diff-badge only-a">only in A</span>';
-  const parts = [];
-  if (r.category === 'diff') parts.push('<span class="diff-badge diff">status</span>');
+  if (bucket === 'added') return '<span class="diff-badge only-b">Only in B</span>';
+  if (bucket === 'removed') return '<span class="diff-badge only-a">Only in A</span>';
+  if (r.category === 'diff') return '<span class="diff-badge diff">Different status</span>';
   if (r.headerBodyDiffer && r.detail) {
     const what = [
       r.detail.headersDiffer ? 'headers' : null,
       r.detail.bodiesMatch === false ? 'body' : null,
     ].filter(Boolean).join(', ');
-    parts.push(`<span class="diff-badge hb-diff" title="Response ${what} differ (first call on each side)">&ne; ${what}</span>`);
+    return `<span class="diff-badge hb-diff" title="Response ${what} differ (first call on each side)">Same &middot; &ne; ${what}</span>`;
   }
-  return parts.join(' ');
+  return '<span class="diff-badge same">Same</span>';
 }
 
 function statusCodeHtml(label) {
@@ -456,12 +454,6 @@ function cellHtml(cell, side) {
     ? `<span class="diff-cache ${cell.cache}" title="${cell.cache === 'all' ? 'served from cache' : 'some calls served from cache'}">cache${cell.cache === 'mixed' ? '*' : ''}</span>`
     : '';
   return `${statusCodeHtml(cell.label)}${count}${cache}`;
-}
-
-function statusPairHtml(r) {
-  const changed = r.category === 'diff';
-  return `<span class="diff-st-pair${changed ? ' diff-st-changed' : ''}">${cellHtml(r.a, 'A')}` +
-    `<span class="diff-arrow" aria-hidden="true">&rarr;</span><span class="diff-sr"> to </span>${cellHtml(r.b, 'B')}</span>`;
 }
 
 function highlightedPair(a, b) {
@@ -522,23 +514,45 @@ function bodyDiffHtml(detail) {
     <div class="diff-body-diff" role="region" aria-label="Body diff" tabindex="0">${lines}${more}</div>`;
 }
 
-function renderDetailBlock(r) {
-  const detail = r.detail;
-  const durA = detail.durationA !== null ? `${detail.durationA}ms` : '—';
-  const durB = detail.durationB !== null ? `${detail.durationB}ms` : '—';
-  const durDelta = (detail.durationA !== null && detail.durationB !== null)
-    ? ` (&Delta; ${detail.durationB - detail.durationA > 0 ? '+' : ''}${detail.durationB - detail.durationA}ms)` : '';
+// "Response body · 2 lines differ" under the pane's title.
+function bodySummary(detail) {
+  if (detail.bodiesMatch === null) return 'Response body · not captured on both sides';
+  if (detail.bodiesMatch) return 'Response body · identical';
+  const result = bodyDiffCache.get(detail);
+  if (result && !result.binary && !result.identical && !result.tooLarge && result.lines) {
+    const del = result.lines.filter((l) => l.type === '-').length;
+    const add = result.lines.filter((l) => l.type === '+').length;
+    const n = Math.max(del, add);
+    return `Response body · ${n} line${n === 1 ? '' : 's'} differ`;
+  }
+  return 'Response body · differs';
+}
+
+function headerSummary(detail) {
+  const hd = detail.headerDiff;
+  const n = hd.changed.length + hd.added.length + hd.removed.length;
+  return n === 0 ? 'Headers · identical' : `Headers · ${n} differ${n === 1 ? 's' : ''}`;
+}
+
+function renderDetailPane(r) {
+  const { path } = splitUrlForDisplay(r.url);
   const key = escHtml(r.key);
+  const detail = r.detail;
   const copy = ['A', 'B'].filter(s => (s === 'A' ? r.requestA : r.requestB))
     .map(s => `<button type="button" class="diff-small-btn" data-curl="${s}" data-key="${key}">Copy ${s} as cURL</button>`).join('');
 
-  return `<div class="diff-detail">
-    <div class="diff-detail-section"><span class="diff-detail-label">Full URL</span><span class="diff-detail-url">${escHtml(r.url)}</span></div>
-    <div class="diff-detail-section"><span class="diff-detail-label">Response headers</span>${headerTableHtml(detail.headerDiff)}</div>
-    <div class="diff-detail-section"><span class="diff-detail-label">Body</span>${bodyDiffHtml(detail)}</div>
-    <div class="diff-detail-section"><span class="diff-detail-label">Duration</span> A ${durA} vs B ${durB}${durDelta}</div>
-    ${copy ? `<div class="diff-detail-actions">${copy}</div>` : ''}
-  </div>`;
+  let html = `<div class="diff-pane-title">${escHtml(r.method)} ${escHtml(path)}</div>`;
+  if (!detail) {
+    // Present on one side only: nothing to compare, just say which.
+    html += `<div class="diff-pane-sub">${r.requestA ? 'Only in Session A' : 'Only in Session B'}</div>`;
+  } else {
+    const bodyHtml = bodyDiffHtml(detail); // fills bodyDiffCache, read by bodySummary
+    html += `<div class="diff-pane-sub">${escHtml(bodySummary(detail))}</div>${bodyHtml}`;
+    html += `<div class="diff-pane-sub">${escHtml(headerSummary(detail))}</div>${headerTableHtml(detail.headerDiff)}`;
+  }
+  html += `<div class="diff-pane-meta"><span class="diff-detail-label">Full URL</span> <span class="diff-detail-url">${escHtml(r.url)}</span></div>`;
+  if (copy) html += `<div class="diff-detail-actions">${copy}</div>`;
+  return html;
 }
 
 // #232: this was never real HAR (a HAR entry doesn't have category/statusA/
