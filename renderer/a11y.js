@@ -10,6 +10,12 @@ let hoveredRow = null;
 let selectedRow = null;
 let inspecting = false;
 let focusOverlayOn = false;
+// #305: tree node lookup for the detail pane, and the last audit's violations
+// (null = not run yet / the audit failed) feeding the issues chip and the
+// pane's "Issues on this page" cards.
+const treeNodes = new Map();
+let lastViolations = null;
+let selectedNodeId = null;
 let activeView = 'tree'; // 'tree' | 'violations' | 'contrast' | 'structure' | 'altlabels'
 
 // One entry per view: its toolbar button id, empty-state message, whether
@@ -42,6 +48,9 @@ export function initA11y() {
   panel.dataset.initialized = '1';
   panel.innerHTML = `
     <div class="a11y-toolbar">
+      <button class="a11y-btn a11y-inspect-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first"><i class="icon-mouse-pointer-2" aria-hidden="true"></i>Inspect element</button>
+      <div class="net-search a11y-search" id="a11ySearchWrap"><i class="icon-search" aria-hidden="true"></i><input id="a11ySearch" placeholder="Find role or name" aria-label="Find role or name" /></div>
+      <button class="a11y-issues-chip" id="a11yIssuesChip" hidden title="Issues found by the accessibility audit"><i class="icon-triangle-alert" aria-hidden="true"></i><span id="a11yIssuesCount"></span></button>
       <div class="a11y-view-toggle">
         <button class="a11y-btn on" id="a11yViewTreeBtn" data-view="tree">Tree</button>
         <button class="a11y-btn" id="a11yViewViolationsBtn" data-view="violations">Violations</button>
@@ -50,11 +59,12 @@ export function initA11y() {
         <button class="a11y-btn" id="a11yViewAltLabelsBtn" data-view="altlabels">Alt &amp; Labels</button>
       </div>
       <span class="a11y-toolbar-sep"></span>
-      <button class="a11y-btn" id="a11yRefreshBtn">Refresh</button>
-      <button class="a11y-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first">Inspect element</button>
       <button class="a11y-btn" id="a11yFocusOrderBtn" title="Show a numbered tab-order overlay on the page">Focus order</button>
       <button class="a11y-btn" id="a11yFocusTrapBtn" title="Check whether Tab/Shift+Tab can reach every part of the page">Focus trap</button>
       <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
+      <span class="net-spacer"></span>
+      <span class="a11y-nodecount" id="a11yNodeCount"></span>
+      <button class="console-icon-btn" id="a11yRefreshBtn" title="Refresh" aria-label="Refresh"><i class="icon-refresh-cw" aria-hidden="true"></i></button>
     </div>
     <div class="a11y-content" id="a11yContent"></div>`;
   document.getElementById('a11yContent').replaceChildren(a11yEmptyState('tree'));
@@ -77,6 +87,7 @@ export function initA11y() {
     }
   });
   document.getElementById('a11yFocusTrapBtn').addEventListener('click', () => runA11yFocusTrapCheck());
+  document.getElementById('a11ySearch').addEventListener('input', applyTreeSearch);
   for (const view of Object.keys(VIEWS)) {
     document.getElementById(VIEWS[view].btnId).addEventListener('click', () => switchA11yView(view));
   }
@@ -90,6 +101,8 @@ function switchA11yView(view) {
   }
   const inspectBtn = /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn'));
   if (inspectBtn) inspectBtn.style.display = view === 'tree' ? '' : 'none';
+  document.getElementById('a11ySearchWrap').style.display = view === 'tree' ? '' : 'none';
+  if (view !== 'tree') document.getElementById('a11yNodeCount').textContent = '';
   if (view !== 'tree' && inspecting) disableA11yHover();
   // The focus overlay renders its list into the shared content area, same
   // as any view's Refresh — switching views would otherwise leave stale
@@ -235,6 +248,161 @@ function updateInspectAvailability() {
   if (!available && inspecting) disableA11yHover();
 }
 
+// ── Detail pane (#305) ──
+
+// "Name from" — where the accessible name came from, per CDP's name sources.
+function nameSourceLabel(node) {
+  const src = node.name?.sources?.find((s) => !s.superseded && s.value && s.type);
+  return src ? src.type : '—';
+}
+
+function propRow(label, value, mono) {
+  const row = document.createElement('div');
+  row.className = 'a11y-prop';
+  const k = document.createElement('span');
+  k.className = 'a11y-prop-key';
+  k.textContent = label;
+  const v = document.createElement('span');
+  v.className = 'a11y-prop-val' + (mono ? ' mono' : '');
+  v.textContent = String(value);
+  row.append(k, v);
+  return row;
+}
+
+function showNodeDetail(nodeId) {
+  const pane = document.getElementById('a11yDetail');
+  if (!pane) return;
+  selectedNodeId = nodeId;
+  pane.replaceChildren();
+  const node = nodeId ? treeNodes.get(nodeId) : null;
+  if (node) {
+    const title = document.createElement('div');
+    title.className = 'a11y-detail-title';
+    const role = document.createElement('span');
+    role.className = 'a11y-role';
+    role.textContent = node.role?.value ?? 'unknown';
+    title.appendChild(role);
+    if (node.name?.value) title.appendChild(document.createTextNode(` ${node.name.value}`));
+    pane.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'a11y-props';
+    const level = getAxPropertyValue(node, 'level');
+    grid.append(
+      propRow('Name from', nameSourceLabel(node)),
+      propRow('Level', level ?? '—'),
+      propRow('Focusable', getAxPropertyValue(node, 'focusable') ?? false, true),
+      propRow('Hidden', getAxPropertyValue(node, 'hidden') ?? node.ignored ?? false, true),
+    );
+    pane.appendChild(grid);
+  } else {
+    const hint = document.createElement('div');
+    hint.className = 'a11y-detail-hint';
+    hint.textContent = 'Select a node to see its properties.';
+    pane.appendChild(hint);
+  }
+  pane.appendChild(buildIssueCards());
+}
+
+function buildIssueCards() {
+  const wrap = document.createElement('div');
+  wrap.className = 'a11y-issues';
+  const h = document.createElement('div');
+  h.className = 'a11y-issues-title';
+  h.textContent = 'Issues on this page';
+  wrap.appendChild(h);
+  if (lastViolations === null) {
+    const note = document.createElement('div');
+    note.className = 'a11y-detail-hint';
+    note.textContent = 'The accessibility audit has not produced results yet.';
+    wrap.appendChild(note);
+    return wrap;
+  }
+  if (lastViolations.length === 0) {
+    const note = document.createElement('div');
+    note.className = 'a11y-detail-hint';
+    note.textContent = 'No issues found on this page.';
+    wrap.appendChild(note);
+    return wrap;
+  }
+  for (const v of lastViolations) {
+    const selector = v.nodes?.[0]?.target?.[0];
+    const card = document.createElement('div');
+    card.className = 'a11y-issue-card' + (selector ? ' a11y-issue-card-clickable' : '');
+    const icon = document.createElement('i');
+    icon.className = 'icon-triangle-alert';
+    icon.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = 'a11y-issue-body';
+    const t = document.createElement('div');
+    t.className = 'a11y-issue-title';
+    t.textContent = v.help || v.description || v.id;
+    body.appendChild(t);
+    if (selector) {
+      const s = document.createElement('div');
+      s.className = 'a11y-issue-selector';
+      s.textContent = String(selector);
+      body.appendChild(s);
+      card.addEventListener('click', () => highlightA11yNode(String(selector)));
+    }
+    const impact = document.createElement('span');
+    impact.className = 'a11y-issue-impact';
+    impact.textContent = v.impact ? v.impact.charAt(0).toUpperCase() + v.impact.slice(1) : '';
+    card.append(icon, body, impact);
+    wrap.appendChild(card);
+  }
+  return wrap;
+}
+
+// Records the audit result (null = unavailable), then updates the toolbar's
+// issues chip, the A11y tab badge and the open detail pane's issue cards.
+function setIssues(violations) {
+  lastViolations = violations;
+  const chip = document.getElementById('a11yIssuesChip');
+  const count = violations ? violations.length : 0;
+  if (chip) {
+    chip.hidden = count === 0;
+    document.getElementById('a11yIssuesCount').textContent = `${count} issue${count === 1 ? '' : 's'}`;
+  }
+  setTabBadge('a11y', count);
+  if (document.getElementById('a11yDetail')) showNodeDetail(selectedNodeId);
+}
+
+// Runs the existing axe audit in the background after a tree load.
+async function refreshIssues(id) {
+  try {
+    const result = await testerBrowser.a11y.getViolations(id);
+    if (getActiveId() !== id) return;
+    if (result && result.ok === false) { setIssues(null); return; }
+    setIssues(result?.violations ?? []);
+  } catch {
+    if (getActiveId() === id) setIssues(null);
+  }
+}
+
+// Filters the tree by role/name: a node stays visible when it or any
+// descendant matches, and matching branches are expanded.
+function applyTreeSearch() {
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById('a11ySearch'));
+  const root = document.querySelector('#a11yContent .a11y-tree');
+  if (!input || !root) return;
+  const q = input.value.trim().toLowerCase();
+  const visit = (li) => {
+    const own = !q || (li.dataset.search || '').includes(q);
+    const childLis = [...li.querySelectorAll(':scope > .a11y-children > li.a11y-node')];
+    let anyChild = false;
+    for (const c of childLis) if (visit(c)) anyChild = true;
+    const show = own || anyChild;
+    li.hidden = !show;
+    if (q && anyChild) {
+      const list = li.querySelector(':scope > .a11y-children');
+      if (list) list.style.display = '';
+    }
+    return show;
+  };
+  for (const li of root.querySelectorAll(':scope > li.a11y-node')) visit(li);
+}
+
 function selectNode(nodeId) {
   const row = nodeRowMap.get(nodeId);
   if (!row) return false;
@@ -251,6 +419,7 @@ function selectNode(nodeId) {
     }
   }
   row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  showNodeDetail(nodeId);
   return true;
 }
 
@@ -261,6 +430,7 @@ export async function loadA11yTree() {
     content.innerHTML = '<div class="a11y-empty">No active session.</div>';
     return;
   }
+  setIssues(null); // the last audit belongs to whatever page was loaded before
   content.innerHTML = '<div class="a11y-loading">Loading accessibility tree…</div>';
   try {
     const nodes = await testerBrowser.a11y.getTree(getActiveId());
@@ -270,6 +440,8 @@ export async function loadA11yTree() {
       return;
     }
     renderA11yTree(content, nodes);
+    document.getElementById('a11yNodeCount').textContent = `${nodes.length} nodes · updated on navigation`;
+    refreshIssues(getActiveId());
   } catch (e) {
     nodeRowMap.clear();
     content.innerHTML = `<div class="a11y-empty">Error: ${escHtml(e?.message ?? 'unknown')}</div>`;
@@ -280,20 +452,61 @@ export async function loadA11yTree() {
 
 function renderA11yTree(panel, nodes) {
   nodeRowMap.clear();
+  treeNodes.clear();
   hoveredRow = null;
   selectedRow = null;
+  selectedNodeId = null;
   const nodeMap = new Map();
-  for (const n of nodes) nodeMap.set(n.nodeId, n);
+  for (const n of nodes) { nodeMap.set(n.nodeId, n); treeNodes.set(n.nodeId, n); }
   const root = nodes.find(n => !n.parentId) ?? nodes[0];
   if (!root) {
     panel.innerHTML = '<div class="a11y-empty">Empty tree.</div>';
     return;
   }
+  issueTags = computeIssueTags(nodes);
   panel.innerHTML = '';
+  const layout = document.createElement('div');
+  layout.className = 'a11y-tree-layout';
+  const treeWrap = document.createElement('div');
+  treeWrap.className = 'a11y-tree-wrap';
   const ul = document.createElement('ul');
   ul.className = 'a11y-tree';
   ul.appendChild(buildNode(root, nodeMap));
-  panel.appendChild(ul);
+  treeWrap.appendChild(ul);
+  const detail = document.createElement('aside');
+  detail.className = 'a11y-detail';
+  detail.id = 'a11yDetail';
+  detail.setAttribute('aria-label', 'Selected node');
+  layout.append(treeWrap, detail);
+  panel.appendChild(layout);
+  showNodeDetail(null);
+  applyTreeSearch();
+}
+
+// ── Issue tags on tree rows (derived from the tree itself) ──
+let issueTags = new Map(); // nodeId -> string[]
+
+const NAME_REQUIRED_ROLES = new Set([
+  'image', 'img', 'link', 'button', 'textbox', 'searchbox', 'checkbox', 'radio', 'combobox', 'switch', 'slider', 'spinbutton',
+]);
+
+// "No name" for an interactive/image node with no accessible name, and
+// "Level skips" for a heading whose level jumps by more than one.
+export function computeIssueTags(nodes) {
+  const tags = new Map();
+  const add = (id, tag) => { if (!tags.has(id)) tags.set(id, []); tags.get(id).push(tag); };
+  for (const n of nodes) {
+    const role = n.role?.value;
+    if (!n.ignored && NAME_REQUIRED_ROLES.has(role) && !(n.name?.value || '').trim()) add(n.nodeId, 'No name');
+  }
+  const ordered = flattenAxTree(nodes);
+  const headingNodeByBackendId = new Map();
+  for (const n of ordered) if (n.role?.value === 'heading') headingNodeByBackendId.set(n.backendDOMNodeId, n);
+  for (const skip of findHeadingSkips(extractHeadings(ordered))) {
+    const node = headingNodeByBackendId.get(skip.heading.backendDOMNodeId);
+    if (node) add(node.nodeId, 'Level skips');
+  }
+  return tags;
 }
 
 function buildNode(node, nodeMap) {
@@ -349,6 +562,18 @@ function buildNode(node, nodeMap) {
     }
   }
 
+  for (const tag of issueTags.get(node.nodeId) || []) {
+    const tagEl = document.createElement('span');
+    tagEl.className = 'a11y-issue-tag';
+    tagEl.textContent = tag;
+    row.appendChild(tagEl);
+  }
+
+  li.dataset.search = `${node.role?.value ?? ''} ${name ?? ''}`.toLowerCase();
+  row.addEventListener('click', (ev) => {
+    if (/** @type {HTMLElement} */ (ev.target).closest('.a11y-toggle')) return;
+    selectNode(node.nodeId);
+  });
   nodeRowMap.set(node.nodeId, row);
   li.appendChild(row);
 
@@ -406,7 +631,7 @@ async function loadA11yViolations() {
 }
 
 function renderA11yViolations(panel, violations) {
-  setTabBadge('a11y', violations ? violations.length : 0);
+  setIssues(violations ?? []);
   if (!violations || violations.length === 0) {
     panel.innerHTML = '<div class="a11y-empty">No violations found.</div>';
     return;

@@ -319,3 +319,26 @@ test('Focus trap detector reports no trap on a clean page (#198)', async () => {
   // Both directions (Forward and Backward) should report clean, not just one.
   await expect(content.locator('.a11y-empty', { hasText: 'No focus trap detected' })).toHaveCount(2);
 });
+
+// #305: selecting a tree node opens the detail pane; the toolbar carries search, node count and the issues chip.
+test('selecting a tree node shows its properties and the issues cards; search filters the tree (#305)', async () => {
+  const urlPath = '/accessibility/index.html';
+  await getTabPage(app, urlPath);
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yViewTreeBtn');
+  await window.click('#a11yRefreshBtn');
+
+  await expect(window.locator('#a11yContent')).toContainText('Save changes', { timeout: 10_000 });
+  await expect(window.locator('#a11yNodeCount')).toContainText('nodes');
+  await expect(window.locator('#a11yDetail')).toContainText('Select a node');
+
+  // Search narrows the tree to matching branches and expands them.
+  await window.fill('#a11ySearch', 'Save changes');
+  const match = window.locator('.a11y-row', { hasText: 'Save changes' }).first();
+  await expect(match).toBeVisible();
+  await match.click();
+  await expect(window.locator('#a11yDetail .a11y-detail-title')).toContainText('Save changes');
+  await expect(window.locator('#a11yDetail .a11y-prop-key').first()).toHaveText('Name from');
+  await expect(window.locator('#a11yDetail .a11y-issues-title')).toHaveText('Issues on this page');
+  await window.fill('#a11ySearch', '');
+});

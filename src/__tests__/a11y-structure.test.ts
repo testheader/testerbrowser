@@ -1,5 +1,5 @@
 import {
-  flattenAxTree, extractHeadings, extractLandmarks, findHeadingSkips, hasMainLandmark,
+  flattenAxTree, extractHeadings, extractLandmarks, findHeadingSkips, hasMainLandmark, computeIssueTags,
 } from '../../renderer/a11y.js';
 
 // A small synthetic AX tree, deliberately NOT in document order in the raw
@@ -81,5 +81,26 @@ describe('hasMainLandmark', () => {
 
   it('is true when a main landmark is present', () => {
     expect(hasMainLandmark([{ role: 'banner' }, { role: 'main' }])).toBe(true);
+  });
+});
+
+describe('computeIssueTags (#305 — tree row issue tags)', () => {
+  const nodes = [
+    { nodeId: 'root', role: { value: 'RootWebArea' }, name: { value: '' }, childIds: ['1', '2', '3', '4', '5'] },
+    { nodeId: '1', role: { value: 'image' }, name: { value: '' }, backendDOMNodeId: 11, childIds: [] },
+    { nodeId: '2', role: { value: 'button' }, name: { value: 'Save' }, backendDOMNodeId: 12, childIds: [] },
+    { nodeId: '3', role: { value: 'heading' }, name: { value: 'Title' }, properties: [{ name: 'level', value: { value: 1 } }], backendDOMNodeId: 13, childIds: [] },
+    { nodeId: '4', role: { value: 'heading' }, name: { value: 'Jump' }, properties: [{ name: 'level', value: { value: 3 } }], backendDOMNodeId: 14, childIds: [] },
+    { nodeId: '5', role: { value: 'link' }, name: { value: '  ' }, ignored: true, backendDOMNodeId: 15, childIds: [] },
+  ];
+
+  it('flags nameless images/controls and heading level skips, but not ignored or named nodes', () => {
+    const tags = computeIssueTags(nodes);
+    expect(tags.get('1')).toEqual(['No name']);
+    expect(tags.get('4')).toEqual(['Level skips']);
+    expect(tags.has('2')).toBe(false); // named button
+    expect(tags.has('3')).toBe(false); // first heading is never a skip
+    expect(tags.has('5')).toBe(false); // ignored node
+    expect(tags.has('root')).toBe(false);
   });
 });
