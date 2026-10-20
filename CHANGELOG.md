@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.128.0 — 2026-10-20
+
+### Features
+
+- count badges on Console, A11y and Security tabs (refs #298) (44b6e20)
+
 ## v0.127.0 — 2026-10-20
 
 ### Features
