@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.124.0 — 2026-10-20
+
+### Features
+
+- restyle title bar and browser tabs (refs #294) (3ccde21)
+
 ## v0.123.0 — 2026-10-20
 
 ### Features
