@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.123.0 — 2026-10-20
+
+### Features
+
+- new theme tokens for light and dark (refs #293) (371c6ef)
+
 ## v0.122.4 — 2026-10-20
 
 ### Other
