@@ -11,6 +11,11 @@ let app: ElectronApplication;
 let window: Page;
 let fixtures: FixtureServer;
 
+/** Opens the inline new-rule form if it is not already showing. */
+async function openNewMockRule(win: Page = window): Promise<void> {
+  if (!(await win.locator('#mockForm').isVisible())) await win.click('#mockNewRuleBtn');
+}
+
 test.beforeAll(async () => {
   fixtures = await startFixtureServer();
   app = await launchApp(MAIN_PATH);
@@ -31,6 +36,7 @@ test('a rule actually intercepts a matching fetch and its hit count increments',
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/widgets');
   await window.fill('#mockStatus', '201');
   await window.fill('#mockBody', '{"mocked":true}');
@@ -44,7 +50,7 @@ test('a rule actually intercepts a matching fetch and its hit count increments',
   expect(out.status).toBe(201);
   expect(out.body).toContain('"mocked":true');
 
-  await expect(window.locator('.mock-hits-badge')).toHaveText('Hits: 1', { timeout: 3_000 });
+  await expect(window.locator('.mock-hits-badge')).toHaveText('1', { timeout: 3_000 });
 });
 
 test('an existing mock rule can be edited in place (#182)', async () => {
@@ -73,7 +79,7 @@ test('an existing mock rule can be edited in place (#182)', async () => {
   await expect(tab.locator('#apiOut')).toContainText('"status":503', { timeout: 5_000 });
   // hitCount carried over from the pre-edit rule (was 1) rather than
   // resetting, and the id stayed the same (same row, not a duplicate).
-  await expect(savedRow.locator('.mock-hits-badge')).toHaveText('Hits: 2', { timeout: 3_000 });
+  await expect(savedRow.locator('.mock-hits-badge')).toHaveText('2', { timeout: 3_000 });
   await expect(window.locator('.mock-rule-row')).toHaveCount(1);
 });
 
@@ -98,7 +104,6 @@ test('a disabled mock rule does not intercept, and stays visibly disabled across
   await row.locator('.mock-enable').uncheck();
 
   await expect(row).toHaveClass(/rule-row-disabled/);
-  await expect(row.locator('.rule-inactive-badge')).toBeVisible();
   // Still editable while disabled.
   await expect(row.locator('.mock-edit-btn')).toBeEnabled();
 
@@ -181,6 +186,7 @@ test('a mock rule\'s response headers actually reach the page (#180)', async () 
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/headers-check');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{}');
@@ -248,6 +254,7 @@ test('a mock rule on one tab is visible from, and intercepted by, a new tab in t
   const tab1 = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/session-scope');
   await window.fill('#mockStatus', '202');
   await window.fill('#mockBody', '{"scoped":true}');
@@ -282,7 +289,7 @@ test('a mock rule on one tab is visible from, and intercepted by, a new tab in t
   // the same partition-scoped one tab1's panel already showed — confirms
   // there's exactly one shared rule set, not two racing copies.
   await expect(window.locator('.mock-rule-row', { hasText: '/api/session-scope' }).locator('.mock-hits-badge'))
-    .toHaveText('Hits: 1', { timeout: 3_000 });
+    .toHaveText('1', { timeout: 3_000 });
 });
 
 test('console rows show no Replay/Mock/Resilience action row', async () => {
@@ -305,6 +312,7 @@ test('a rule with a quote/HTML-bearing URL pattern and body renders safely, and 
   const evilBody = '<b>bold</b>"quote"';
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', evilPattern);
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', evilBody);
@@ -347,6 +355,7 @@ test('a mock rule for a URL containing "?" actually matches and intercepts that 
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/items?page=2');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{"mocked":true}');
@@ -398,6 +407,7 @@ test('"⇒ Mock" from a gzip-encoded response leaves out encoding headers, and a
   // payload decodes to — the old bug truncated/corrupted this via a stale
   // content-length carried into the fulfilled response.
   const longerBody = JSON.stringify({ from: 'server', edited: true, padding: 'x'.repeat(200) });
+  await openNewMockRule(window);
   await window.fill('#mockUrl', fixtures.url('/network/gzip-json'));
   await window.fill('#mockBody', longerBody);
   await window.click('.mock-add-btn');
@@ -420,6 +430,7 @@ test('a mock rule row keeps the tab it was rendered for, even after switching ta
   const tabAId = await window.locator('.tab.active').getAttribute('data-id');
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/owning-tab');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{"v":1}');
@@ -473,6 +484,7 @@ test('a mock rule with a delay fulfills only after that delay, with the mocked b
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/delayed');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockDelay', '1500');
@@ -508,6 +520,7 @@ test('mock rules match top to bottom — moving a rule up changes which one wins
   // #303: the inline explanation line is gone.
   await expect(window.locator('.mock-hint')).toHaveCount(0);
 
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/network/status/*');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockDelay', '0');
@@ -516,6 +529,7 @@ test('mock rules match top to bottom — moving a rule up changes which one wins
   const broadRow = window.locator('.mock-rule-row', { hasText: '*/network/status/*' });
   await expect(broadRow).toBeVisible();
 
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/network/status/200');
   await window.fill('#mockBody', 'specific');
   await window.click('.mock-add-btn');
@@ -553,6 +567,7 @@ test('exporting then importing mock rules round-trips a rule (#264)', async () =
   await expect.poll(() => window.locator('.tab').count()).toBe(1);
 
   await window.click('#consoleTabMock');
+  await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/export-roundtrip');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{"exported":true}');
@@ -648,6 +663,7 @@ test.describe('Mock rules persist across a full app restart (#264)', () => {
       await win.waitForLoadState('domcontentloaded');
 
       await win.click('#consoleTabMock');
+      await openNewMockRule(win);
       await win.fill('#mockUrl', '*/api/restart-survives');
       await win.fill('#mockStatus', '200');
       await win.fill('#mockBody', '{"restarted":true}');

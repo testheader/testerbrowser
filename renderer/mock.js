@@ -1,5 +1,6 @@
 /* global testerBrowser */
-import { escHtml, MOCK_STRIPPED_RESPONSE_HEADERS } from './utils.js';
+import { escHtml, MOCK_STRIPPED_RESPONSE_HEADERS, formatAgo } from './utils.js';
+import { renderEmptyState } from './empty-state.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { addKvRow, readKvTable } from './kv-table.js';
@@ -58,7 +59,27 @@ export function openMockFromRequest(method, url, statusCode, body, opts = {}) {
   capturedRequestHeaders = opts.requestHeaders || null;
   renderCapturedRequestHeaders();
 
+  setMockFormOpen(true);
   urlInput.focus();
+}
+
+// #310: the add-rule form is inline and closed by default — New rule opens it,
+// as does "Mock" on a captured request; Cancel / Add rule close it again.
+function setMockFormOpen(open) {
+  const form = document.getElementById('mockForm');
+  if (form) form.hidden = !open;
+}
+
+function resetMockForm() {
+  /** @type {HTMLInputElement} */ (document.getElementById('mockUrl')).value  = '';
+  /** @type {HTMLTextAreaElement} */ (document.getElementById('mockBody')).value = '';
+  /** @type {HTMLInputElement} */ (document.getElementById('mockDelay')).value = '0';
+  /** @type {HTMLInputElement} */ (document.getElementById('mockStatus')).value = '200';
+  document.getElementById('mockResponseHeadersTable').innerHTML = '';
+  document.getElementById('mockBodyNote').hidden = true;
+  /** @type {HTMLInputElement} */ (document.getElementById('mockCors')).checked = false;
+  capturedRequestHeaders = null;
+  renderCapturedRequestHeaders();
 }
 
 export function initMock() {
@@ -67,32 +88,37 @@ export function initMock() {
   panel.dataset.initialized = '1';
 
   panel.innerHTML = `
+    <div class="mock-toolbar">
+      <span class="mock-sub" id="mockSubtitle">Replace responses for this session</span>
+      <span class="mock-spacer"></span>
+      <span class="mock-io-status" id="mockIoStatus"></span>
+      <button class="net-chip mock-export-btn" id="mockExportBtn" type="button"><i class="icon-file-down" aria-hidden="true"></i>Export…</button>
+      <button class="net-chip mock-import-btn" id="mockImportBtn" type="button"><i class="icon-file-up" aria-hidden="true"></i>Import…</button>
+      <button class="mock-primary" id="mockNewRuleBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>New rule</button>
+    </div>
     <div class="mock-wrap">
-      <form class="mock-form" id="mockForm">
-        <div class="mock-form-row">
-          <input class="mock-input mock-url" id="mockUrl" type="text" placeholder="URL pattern (e.g. https://api.example.com/*)" spellcheck="false" required />
-          <select class="mock-select" id="mockMethod" aria-label="HTTP method">
-            <option value="*">Any method</option>
-            <option value="GET">GET</option>
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
-            <option value="PATCH">PATCH</option>
-            <option value="DELETE">DELETE</option>
-          </select>
-          <input class="mock-input mock-status" id="mockStatus" type="number" value="200" min="100" max="599" placeholder="Status" />
-          <input class="mock-input mock-delay" id="mockDelay" type="number" value="0" min="0" max="120000" placeholder="Delay (ms)" aria-label="Delay in milliseconds before fulfilling this request, 0 to 120000" title="Delay before fulfilling this request, 0-120000ms" />
+      <form class="mock-form" id="mockForm" hidden>
+        <div class="mock-form-row mock-form-grid">
+          <label class="mock-field mock-field-method"><span class="mock-field-label">Method</span>
+            <select class="mock-select" id="mockMethod" aria-label="HTTP method">
+              <option value="*">Any method</option>
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select></label>
+          <label class="mock-field mock-field-url"><span class="mock-field-label">URL pattern</span>
+            <input class="mock-input mock-url" id="mockUrl" type="text" placeholder="URL pattern (e.g. https://api.example.com/*)" spellcheck="false" required /></label>
+          <label class="mock-field mock-field-status"><span class="mock-field-label">Status</span>
+            <input class="mock-input mock-status" id="mockStatus" type="number" value="200" min="100" max="599" placeholder="Status" /></label>
+          <label class="mock-field mock-field-delay"><span class="mock-field-label">Delay (ms)</span>
+            <input class="mock-input mock-delay" id="mockDelay" type="number" value="0" min="0" max="120000" placeholder="Delay (ms)" aria-label="Delay in milliseconds before fulfilling this request, 0 to 120000" title="Delay before fulfilling this request, 0-120000ms" /></label>
         </div>
-        <div class="mock-form-row">
-          <textarea class="mock-input mock-body" id="mockBody" rows="2" placeholder='Response body (e.g. {"error":"mocked"})'></textarea>
-        </div>
+        <label class="mock-field"><span class="mock-field-label">Response body</span>
+          <textarea class="mock-input mock-body" id="mockBody" rows="2" placeholder='Response body (e.g. {"error":"mocked"})'></textarea></label>
         <div class="mock-body-note" id="mockBodyNote" hidden>
           This call's body wasn't captured (binary content, or the response hadn't finished) — nothing to prefill here.
-        </div>
-        <div class="mock-form-row mock-cors-row">
-          <label class="mock-cors-label">
-            <input type="checkbox" id="mockCors" />
-            Add CORS headers
-          </label>
         </div>
         <div class="mock-headers-row">
           <div class="mock-headers-col">
@@ -105,17 +131,39 @@ export function initMock() {
             <div class="mock-request-headers" id="mockRequestHeadersList"></div>
           </div>
         </div>
-        <button class="mock-btn mock-add-btn" type="submit">Add rule</button>
+        <div class="mock-form-footer">
+          <label class="mock-cors-label">
+            <input type="checkbox" id="mockCors" />
+            Add CORS headers
+          </label>
+          <span class="mock-spacer"></span>
+          <button class="mock-text-btn" id="mockCancelBtn" type="button">Cancel</button>
+          <button class="mock-primary mock-add-btn" type="submit">Add rule</button>
+        </div>
       </form>
-      <div class="mock-io-row">
-        <button class="mock-btn mock-export-btn" id="mockExportBtn" type="button">Export…</button>
-        <button class="mock-btn mock-import-btn" id="mockImportBtn" type="button">Import…</button>
-        <span class="mock-io-status" id="mockIoStatus"></span>
-      </div>
-      <div class="mock-rules" id="mockRules">
-        <div class="mock-empty" id="mockEmpty">Add a rule above to intercept requests.</div>
+      <div class="mock-table" id="mockTable">
+        <div class="mock-head" id="mockHead" role="row" hidden>
+          <span></span><span>Method</span><span>Pattern</span><span class="mock-num">Status</span><span class="mock-num">Hits</span><span>Last hit</span><span></span>
+        </div>
+        <div class="mock-rules" id="mockRules">
+          <div class="mock-empty" id="mockEmpty"></div>
+        </div>
       </div>
     </div>`;
+
+  document.getElementById('mockEmpty').replaceChildren(renderEmptyState({
+    icon: 'replace', tone: 'accent', title: 'Mock responses',
+    text: 'Replace what a request returns without touching the server.',
+    actionLabel: 'New rule', onAction: () => { setMockFormOpen(true); document.getElementById('mockUrl').focus(); },
+  }));
+  document.getElementById('mockNewRuleBtn').addEventListener('click', () => {
+    setMockFormOpen(true);
+    document.getElementById('mockUrl').focus();
+  });
+  document.getElementById('mockCancelBtn').addEventListener('click', () => {
+    resetMockForm();
+    setMockFormOpen(false);
+  });
 
   document.getElementById('mockAddResponseHeader').addEventListener('click', () =>
     addKvRow(document.getElementById('mockResponseHeadersTable'), '', ''));
@@ -165,14 +213,8 @@ export function initMock() {
     if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
     await testerBrowser.mock.addRule(getActiveId(), rule);
 
-    /** @type {HTMLInputElement} */ (document.getElementById('mockUrl')).value  = '';
-    /** @type {HTMLTextAreaElement} */ (document.getElementById('mockBody')).value = '';
-    /** @type {HTMLInputElement} */ (document.getElementById('mockDelay')).value = '0';
-    document.getElementById('mockResponseHeadersTable').innerHTML = '';
-    document.getElementById('mockBodyNote').hidden = true;
-    /** @type {HTMLInputElement} */ (document.getElementById('mockCors')).checked = false;
-    capturedRequestHeaders = null;
-    renderCapturedRequestHeaders();
+    resetMockForm();
+    setMockFormOpen(false);
 
     await loadRules();
   });
@@ -208,6 +250,15 @@ function renderRules(rules, sessionId) {
   const existingRows = container.querySelectorAll('.mock-rule-row');
   existingRows.forEach(r => r.remove());
 
+  // "Replace responses for <active tab's name>" in the toolbar.
+  const sub = document.getElementById('mockSubtitle');
+  if (sub) {
+    const name = document.querySelector('.tab.active .tab-name')?.textContent;
+    sub.textContent = name ? `Replace responses for ${name}` : 'Replace responses for this session';
+  }
+  const head = document.getElementById('mockHead');
+  if (head) head.hidden = rules.length === 0;
+
   if (rules.length === 0) {
     if (empty) empty.hidden = false;
     return;
@@ -228,24 +279,23 @@ function buildMockRuleRow(rule, sessionId, index, total) {
   row.className = `mock-rule-row${rule.enabled ? '' : ' rule-row-disabled'}`;
   row.dataset.id = rule.id;
   row.innerHTML = `
-    <span class="mock-rule-position" title="Match order">${index + 1}</span>
-    <div class="mock-rule-move">
-      <button class="mock-btn mock-move-up-btn" title="Move up" aria-label="Move rule up"${index === 0 ? ' disabled' : ''}>↑</button>
-      <button class="mock-btn mock-move-down-btn" title="Move down" aria-label="Move rule down"${index === total - 1 ? ' disabled' : ''}>↓</button>
-    </div>
     <label class="mock-toggle" title="Enable/disable">
-      <input type="checkbox" class="mock-enable" ${rule.enabled ? 'checked' : ''} />
-      <span class="mock-toggle-label"></span>
+      <input type="checkbox" class="mock-enable" aria-label="Enable rule ${index + 1}" ${rule.enabled ? 'checked' : ''} />
     </label>
-    <span class="mock-rule-method mock-badge">${escHtml(rule.method)}</span>
-    <span class="mock-rule-url" title="${escHtml(rule.urlPattern)}">${escHtml(rule.urlPattern)}</span>
-    <span class="mock-badge mock-status-badge">${rule.statusCode}</span>
-    ${rule.delayMs ? `<span class="mock-badge mock-delay-badge" title="Fulfilled after a delay">${rule.delayMs}ms</span>` : ''}
-    <span class="mock-rule-body" title="${escHtml(rule.body)}">${escHtml(rule.body.slice(0, 40))}${rule.body.length > 40 ? '…' : ''}</span>
-    ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
-    <span class="mock-badge mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
-    <button class="mock-btn mock-edit-btn" title="Edit rule" aria-label="Edit rule">✎</button>
-    <button class="mock-btn mock-del-btn" title="Remove" aria-label="Remove rule">✕</button>`;
+    <span class="mock-rule-method">${escHtml(rule.method === '*' ? 'ANY' : rule.method)}</span>
+    <div class="mock-rule-main">
+      <span class="mock-rule-url" title="${escHtml(rule.urlPattern)}"><span class="mock-rule-position" title="Match order">${index + 1}</span>${escHtml(rule.urlPattern)}${rule.delayMs ? ` <span class="mock-badge mock-delay-badge" title="Fulfilled after a delay">${rule.delayMs}ms</span>` : ''}</span>
+      <span class="mock-rule-body" title="${escHtml(rule.body)}">${escHtml(rule.body.slice(0, 80))}${rule.body.length > 80 ? '…' : ''}</span>
+    </div>
+    <span class="mock-status-badge">${rule.statusCode}</span>
+    <span class="mock-hits-badge${rule.hitCount ? ' mock-hits-active' : ''}">${rule.hitCount || 0}</span>
+    <span class="mock-lasthit" title="${rule.lastHitAt ? escHtml(new Date(rule.lastHitAt).toLocaleString()) : 'Not hit yet'}">${escHtml(formatAgo(rule.lastHitAt))}</span>
+    <div class="mock-rule-actions">
+      <button class="mock-icon-btn mock-move-up-btn" title="Move up (earlier match)" aria-label="Move rule up"${index === 0 ? ' disabled' : ''}><i class="icon-arrow-up" aria-hidden="true"></i></button>
+      <button class="mock-icon-btn mock-move-down-btn" title="Move down (later match)" aria-label="Move rule down"${index === total - 1 ? ' disabled' : ''}><i class="icon-arrow-down" aria-hidden="true"></i></button>
+      <button class="mock-icon-btn mock-edit-btn" title="Edit rule" aria-label="Edit rule"><i class="icon-pencil" aria-hidden="true"></i></button>
+      <button class="mock-icon-btn mock-del-btn" title="Remove" aria-label="Remove rule"><i class="icon-trash-2" aria-hidden="true"></i></button>
+    </div>`;
 
   row.querySelector('.mock-move-up-btn').addEventListener('click', async () => {
     await testerBrowser.mock.moveRule(sessionId, rule.id, 'up');

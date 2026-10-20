@@ -361,3 +361,16 @@ export function getConsoleSource(e) {
   const label = typeof line === 'number' && line >= 0 ? `${name}:${line + 1}` : name;
   return { label, url, line: typeof line === 'number' ? line + 1 : null };
 }
+
+// #310: "Never" / "2 s ago" / "5 min ago" / "3 h ago" / "2 d ago" for a Mock
+// rule's last-hit column. `now` is injectable so it stays unit-testable.
+export function formatAgo(ts, now = Date.now()) {
+  if (!ts) return 'Never';
+  const sec = Math.max(0, Math.round((now - ts) / 1000));
+  if (sec < 60) return `${sec} s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}

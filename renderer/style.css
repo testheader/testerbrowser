@@ -2234,3 +2234,30 @@ li.a11y-node[hidden] { display: none; }
 .spoof-input:focus { border-color: var(--tb-accent); }
 select.spoof-input { font-family: var(--tb-font-ui); }
 .spoof-hint { font-size: 11px; color: var(--tb-text-3); }
+
+/* ── Mock rules table and inline form (#310) ── */
+.mock-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+.mock-sub { color: var(--tb-text-muted, var(--text-muted)); font-size: 12px; }
+.mock-spacer { flex: 1; }
+.mock-primary { background: var(--tb-accent, var(--info-surface)); color: #fff; }
+.mock-head, .mock-rule-row { display: grid; grid-template-columns: 44px 64px 1fr 70px 90px 90px 120px;
+  align-items: center; gap: 8px; }
+.mock-head { padding: 4px 12px; font-size: 11px; text-transform: uppercase; color: var(--tb-text-muted, var(--text-muted)); }
+.mock-rule-row-editing { display: flex; flex-direction: column; align-items: stretch; }
+.rule-row-disabled { opacity: 0.55; }
+.mock-form-grid { display: grid; grid-template-columns: 110px 1fr 110px 110px; gap: 8px; }
+.mock-field { display: flex; flex-direction: column; gap: 3px; }
+.mock-field-label { font-size: 11px; color: var(--tb-text-muted, var(--text-muted)); }
+.mock-form-footer { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.mock-text-btn { background: none; border: none; cursor: pointer; color: inherit; }
+.mock-rule-actions { display: flex; gap: 2px; justify-content: flex-end; }
+.mock-icon-btn { background: none; border: none; cursor: pointer; padding: 2px 4px; color: inherit; border-radius: 4px; }
+.mock-icon-btn:hover { background: var(--tb-hover, rgba(128,128,128,.2)); }
+.mock-rule-main { min-width: 0; display: flex; flex-direction: column; }
+.mock-rule-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--tb-mono, monospace); }
+.mock-enable { appearance: none; -webkit-appearance: none; width: 36px; height: 20px; border-radius: 10px;
+  background: var(--tb-border, #888); position: relative; cursor: pointer; margin: 0; }
+.mock-enable::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; transition: left .12s; }
+.mock-enable:checked { background: var(--tb-accent, #3b82f6); }
+.mock-enable:checked::after { left: 18px; }
