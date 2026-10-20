@@ -1,4 +1,4 @@
-import { timingPhases } from '../../renderer/utils.js';
+import { timingPhases, timingBars, parseCookieHeader, parseSetCookies } from '../../renderer/utils.js';
 
 describe('timingPhases (#261)', () => {
   it('computes every phase from a full CDP ResourceTiming object', () => {
@@ -47,5 +47,39 @@ describe('timingPhases (#261)', () => {
     // between the recorder's own wall clock and CDP's timing clock.
     const timing = { receiveHeadersEnd: 100 };
     expect(timingPhases(timing, 90).receive).toBe(0);
+  });
+});
+
+describe('timingBars (#301)', () => {
+  it('lists the five phases in order, with Queued as the lead-in before network activity', () => {
+    const bars = timingBars({
+      dnsStart: 5, dnsEnd: 15, connectStart: 15, connectEnd: 45, sendStart: 45, sendEnd: 46, receiveHeadersEnd: 100,
+    }, 130);
+    expect(bars.map((b) => b.label)).toEqual(['Queued', 'DNS lookup', 'Connection', 'Waiting (TTFB)', 'Download']);
+    expect(bars.map((b) => b.ms)).toEqual([5, 10, 30, 54, 30]);
+  });
+
+  it('reports null for phases a reused connection skips', () => {
+    const bars = timingBars({ dnsStart: -1, dnsEnd: -1, connectStart: -1, connectEnd: -1, sendStart: 2, sendEnd: 3, receiveHeadersEnd: 20 }, 25);
+    expect(bars.find((b) => b.key === 'dns')?.ms).toBeNull();
+    expect(bars.find((b) => b.key === 'connect')?.ms).toBeNull();
+    expect(bars.find((b) => b.key === 'queued')?.ms).toBe(2);
+  });
+});
+
+describe('cookie parsing for the Cookies tab (#301)', () => {
+  it('parses a Cookie request header', () => {
+    expect(parseCookieHeader('a=1; b=two=2; flag')).toEqual([
+      { name: 'a', value: '1' }, { name: 'b', value: 'two=2' }, { name: 'flag', value: '' },
+    ]);
+    expect(parseCookieHeader('')).toEqual([]);
+  });
+
+  it('parses newline-joined Set-Cookie headers with their attributes', () => {
+    expect(parseSetCookies('sid=abc; Path=/; HttpOnly\nx=1; Secure')).toEqual([
+      { name: 'sid', value: 'abc', attrs: ['Path=/', 'HttpOnly'] },
+      { name: 'x', value: '1', attrs: ['Secure'] },
+    ]);
+    expect(parseSetCookies(undefined)).toEqual([]);
   });
 });

@@ -290,3 +290,44 @@ export function networkSummary(events) {
   parts.push(span >= 1000 ? `${(span / 1000).toFixed(2)} s` : `${Math.round(span)} ms`);
   return parts.join(' · ');
 }
+
+// #301: the five phases the detail pane's Timing tab draws bars for. Same
+// CDP source as timingPhases(); "Queued" is the time before any network
+// activity started (the earliest dns/connect/send offset). `ms` is null for
+// a phase the browser doesn't report (e.g. DNS on a reused connection).
+export function timingBars(timing, durationMs) {
+  const p = timingPhases(timing, durationMs);
+  const starts = [timing?.dnsStart, timing?.connectStart, timing?.sendStart]
+    .filter((n) => typeof n === 'number' && n >= 0);
+  return [
+    { key: 'queued',  label: 'Queued',         ms: starts.length ? Math.max(0, Math.min(...starts)) : null },
+    { key: 'dns',     label: 'DNS lookup',     ms: p.dns },
+    { key: 'connect', label: 'Connection',     ms: p.connect },
+    { key: 'wait',    label: 'Waiting (TTFB)', ms: p.wait },
+    { key: 'receive', label: 'Download',       ms: p.receive },
+  ];
+}
+
+// #301: a request's Cookie header → [{ name, value }].
+export function parseCookieHeader(header) {
+  if (!header) return [];
+  return String(header).split(';').map((part) => part.trim()).filter(Boolean).map((part) => {
+    const eq = part.indexOf('=');
+    return eq === -1 ? { name: part, value: '' } : { name: part.slice(0, eq).trim(), value: part.slice(eq + 1).trim() };
+  });
+}
+
+// #301: a response's Set-Cookie header (CDP joins several with "\n") →
+// [{ name, value, attrs }], attrs being the remaining ";"-separated parts.
+export function parseSetCookies(header) {
+  if (!header) return [];
+  return String(header).split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+    const [pair, ...attrs] = line.split(';').map((s) => s.trim());
+    const eq = pair.indexOf('=');
+    return {
+      name: eq === -1 ? pair : pair.slice(0, eq),
+      value: eq === -1 ? '' : pair.slice(eq + 1),
+      attrs: attrs.filter(Boolean),
+    };
+  });
+}

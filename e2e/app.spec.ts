@@ -906,3 +906,32 @@ test('Network toolbar: Method menu label follows the selection, and More filters
   await window.keyboard.press('Escape');
   await expect(window.locator('#networkMinDuration')).toBeHidden();
 });
+
+// #301: request detail pane — status pill, Mock action, section tabs.
+test('selecting a request shows its status pill, section tabs, and Mock opens the Mock panel prefilled (#301)', async () => {
+  const urlPath = '/network/status-codes.html';
+  await window.click('#consoleTabNetwork');
+  await window.click('#clearNetworkBtn');
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
+
+  const row = window.locator('.evt.network-request', { hasText: urlPath }).first();
+  await expect(row).toBeVisible({ timeout: 10_000 });
+  const rowStatus = (await row.locator('.evt-status').textContent())!.trim();
+  await expect(async () => {
+    await row.click({ timeout: 2_000 });
+    await expect(window.locator('#detailPanelHeader .detail-pill')).toContainText(rowStatus, { timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+
+  await expect(window.locator('#detailPanelTabBar .detail-tab')).toHaveText([/^Headers/, /^Response/, /^Timing/, /^Cookies/]);
+  await expect(window.locator('#detailPanelTabBar .detail-tab.active')).toHaveText(/^Headers/);
+  await window.click('#detailPanelTabBar .detail-tab[data-section="cookies"]');
+  await expect(window.locator('#detailPanelTabBar .detail-tab.active')).toHaveText(/^Cookies/);
+  await window.click('#detailPanelTabBar .detail-tab[data-section="headers"]');
+
+  await window.click('#detailMockBtn');
+  await expect(window.locator('#mockPanel')).toBeVisible();
+  await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
+});

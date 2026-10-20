@@ -37,7 +37,8 @@ test('scan reports a real HTTP finding, and a row opens the detail panel', async
   await expect(page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first()).toBeVisible();
 
   await page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first().click();
-  await expect(page.locator('#detailPanelTabBar .detail-tab')).toHaveCount(1);
+  await expect(page.locator('#detailPanel')).toHaveClass(/\bopen\b/);
+  await expect(page.locator('#detailPanelTabBar .detail-tab.active')).toHaveCount(1);
 });
 
 // #260: real Set-Cookie coverage — the recorder now listens to

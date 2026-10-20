@@ -405,13 +405,16 @@ test('network/status-codes.html: the response detail panel shows a Timing sectio
   const responseRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(responseRow.first()).toBeVisible({ timeout: 10_000 });
 
+  // #301: Timing is its own section tab now (Headers is the default).
   const timingSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Timing' });
   await expect(async () => {
     await responseRow.first().click({ timeout: 2_000 });
+    await window.click('#detailPanelTabBar .detail-tab[data-section="timing"]', { timeout: 1_000 });
     await expect(timingSection).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
-  await expect(timingSection).toContainText('Wait (TTFB)');
+  await expect(timingSection).toContainText('Waiting (TTFB)');
+  await expect(timingSection.locator('.detail-timing-row')).toHaveCount(5);
 });
 
 test('network/slow.html: free-text filter also matches payload content not present in the summary line', async () => {
@@ -622,10 +625,11 @@ test('opening a detail tab, then switching to a new session, clears the detail p
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
     await requestRow.first().click({ timeout: 2_000 });
-    await expect(window.locator('#detailPanelTabBar .detail-tab')).toHaveCount(1, { timeout: 1_000 });
+    await expect(window.locator('#detailPanel')).toHaveClass(/\bopen\b/, { timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
   await window.click('#newSessionBtn');
+  await expect(window.locator('#detailPanel')).not.toHaveClass(/\bopen\b/);
   await expect(window.locator('#detailPanelTabBar .detail-tab')).toHaveCount(0);
 });
 
