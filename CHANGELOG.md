@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.134.0 — 2026-10-20
+
+### Features
+
+- Storage panel with section nav and tables (refs #304) (f578b82)
+
 ## v0.133.0 — 2026-10-20
 
 ### Features
