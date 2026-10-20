@@ -331,3 +331,33 @@ export function parseSetCookies(header) {
     };
   });
 }
+
+// #302: where a Console row came from — { label: "jquery.min.js:4", url, line }
+// — or null when the event carries no source location. CDP reports line
+// numbers 0-based; the label shows the 1-based line DevTools would. Reads the
+// first stack frame of a console call, the exception's own url/line, or a Log
+// entry's url/line, whichever the payload has.
+export function getConsoleSource(e) {
+  if (!e.payload) return null;
+  let p;
+  try { p = JSON.parse(e.payload); } catch { return null; }
+  let url, line;
+  if (e.kind === 'console') {
+    const frame = p.stackTrace?.callFrames?.[0];
+    url = frame?.url; line = frame?.lineNumber;
+  } else if (e.kind === 'exception') {
+    const d = p.exceptionDetails;
+    url = d?.url ?? d?.stackTrace?.callFrames?.[0]?.url;
+    line = d?.lineNumber ?? d?.stackTrace?.callFrames?.[0]?.lineNumber;
+  } else if (e.kind === 'log') {
+    url = p.entry?.url; line = p.entry?.lineNumber;
+  }
+  if (!url || typeof url !== 'string') return null;
+  let name = url;
+  try {
+    const u = new URL(url);
+    name = u.pathname.split('/').filter(Boolean).pop() || u.host;
+  } catch { /* not a URL: use as-is */ }
+  const label = typeof line === 'number' && line >= 0 ? `${name}:${line + 1}` : name;
+  return { label, url, line: typeof line === 'number' ? line + 1 : null };
+}

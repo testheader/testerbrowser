@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
-import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matchesFreeText, methodFilterLabel, networkSummary } from './utils.js';
+import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matchesFreeText, methodFilterLabel, networkSummary, getConsoleSource } from './utils.js';
 import { buildNetworkRow, formatDuration, responseSize } from './network-rows.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { getActiveId } from './tabs.js';
@@ -62,7 +62,6 @@ const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
 // visible" rule — nothing should silently vanish just because it doesn't
 // fit one of the named buckets.
 const KNOWN_LEVELS = new Set(['error', 'warn', 'info', 'log', 'debug']);
-const INTERESTING_LOG_SOURCES = new Set(['security', 'network', 'deprecation', 'intervention']);
 
 function getEventMethod(e) {
   if (!e.payload) return null;
@@ -73,34 +72,7 @@ function getEventMethod(e) {
   } catch { return null; }
 }
 
-// The method shown on line 1: BODY rows always show the literal "BODY",
-// never the underlying request's real method (that's what made "BODY POST"
-// read like two unrelated tokens) — everything else uses the real method,
-// falling back to "FAILED" for a failed row whose method never resolved
-// (e.g. the request row itself never made it into the buffer).
-function getEventDisplayMethod(e) {
-  if (e.kind === 'network-body') return 'BODY';
-  if (e.kind === 'network-request' || e.kind === 'network-response' || e.kind === 'network-failed') {
-    return getEventMethod(e) || (e.kind === 'network-failed' ? 'FAILED' : null);
-  }
-  return null;
-}
-
-// Req rows show the response's status once it arrives (merged from
-// responseMeta, keyed by the request's own requestId); Res rows never
-// render standalone anymore (see kindVisible below) but the branch is kept
-// for the responseMeta-population pass in fetchTimeline.
-function getEventStatus(e) {
-  if (!e.payload) return null;
-  try {
-    const p = JSON.parse(e.payload);
-    if (e.kind === 'network-response') return p.response?.status ?? null;
-    if (e.kind === 'network-request') return responseMeta.get(p.requestId)?.status ?? null;
-  } catch {}
-  return null;
-}
-
-// Same merge as getEventStatus, for the duration column.
+// The response's duration, merged onto the request's row by requestId.
 function getEventDuration(e) {
   if (!e.payload) return null;
   try {
@@ -140,57 +112,6 @@ function isErrorRequest(e) {
     return typeof status === 'number' && status >= 400;
   } catch { return false; }
 }
-
-// The URL for line 2. network-response's own CDP payload does carry
-// response.url, but network-failed's loadingFailed payload never carries a
-// url at all — it's resolved from the request row recorded earlier via
-// requestMeta instead of re-parsing the "FAILED <url>: <err>" summary text,
-// which would be ambiguous for a URL that itself contains a colon or spaces.
-function getEventUrl(e) {
-  if (!e.payload) return null;
-  try {
-    const p = JSON.parse(e.payload);
-    if (e.kind === 'network-request') return p.request?.url ?? null;
-    if (e.kind === 'network-response') return p.response?.url ?? requestMeta.get(p.requestId)?.url ?? null;
-    if (e.kind === 'network-failed') return requestMeta.get(p.requestId)?.url ?? null;
-  } catch {}
-  return null;
-}
-
-// The text rendered on line 2, below the hanging indent. Falls back to the
-// stored summary for anything that doesn't resolve cleanly from payload —
-// notably the synthetic "LOAD FAILED" row (sessions:loadFailed) which never
-// carries a payload at all.
-function getEventLine2(e) {
-  if (e.kind === 'network-body' && e.payload) {
-    try {
-      const body = JSON.parse(e.payload).body;
-      if (typeof body === 'string') return body;
-    } catch {}
-    return e.summary;
-  }
-  if (e.kind === 'network-request' || e.kind === 'network-response') {
-    return getEventUrl(e) ?? e.summary;
-  }
-  if (e.kind === 'network-failed') {
-    const url = getEventUrl(e);
-    if (url && e.payload) {
-      try {
-        const errorText = JSON.parse(e.payload).errorText;
-        if (errorText) return `${url}: ${errorText}`;
-      } catch {}
-    }
-    return e.summary;
-  }
-  if (e.kind === 'console' || e.kind === 'log') {
-    // Strips the "[level] " prefix that summary was built with — a fixed,
-    // anchored-at-start prefix, so this is safe even when the message text
-    // itself contains brackets or spaces (unlike splitting on whitespace).
-    return e.summary.replace(/^\[[^\]]*\]\s?/, '');
-  }
-  return e.summary;
-}
-
 
 export function getTimelineEvents() { return timelineEvents; }
 
@@ -249,6 +170,15 @@ export function matchesConsoleFilters(e, { activeLevels, filterText }) {
   return matchesFreeText(e.summary, filterText);
 }
 
+// #302: the Console tab's level filter is a segmented control (All / Errors /
+// Warnings / Info / Debug) — one level at a time, All = every level (including
+// plain console.log rows, which have no segment of their own).
+const ALL_LEVELS = ['error', 'warn', 'info', 'log', 'debug'];
+let consoleLevel = 'all';
+function activeConsoleLevels() {
+  return new Set(consoleLevel === 'all' ? ALL_LEVELS : [consoleLevel]);
+}
+
 export function renderTimeline() {
   const panel = document.getElementById('timelinePanel');
   const tab   = getActiveConsoleTab();
@@ -265,7 +195,7 @@ export function renderTimeline() {
   } else {
     const filters = {
       filterText:   /** @type {HTMLInputElement} */ (document.getElementById('filterText')).value,
-      activeLevels: activePillValues(document.getElementById('consoleLevelPills'), 'level'),
+      activeLevels: activeConsoleLevels(),
     };
     filtered = timelineEvents.filter(e => matchesConsoleFilters(e, filters));
   }
@@ -297,8 +227,9 @@ export function renderTimeline() {
     if (level) levelCounts[level] = (levelCounts[level] || 0) + 1;
   }
   setTabBadge('console', levelCounts.error || 0);
-  document.querySelectorAll('#consoleLevelPills .filter-pill').forEach(btn => {
-    const n    = levelCounts[btn.dataset.level] || 0;
+  const consoleTotal = timelineEvents.filter((e) => CONSOLE_KINDS.has(e.kind)).length;
+  document.querySelectorAll('#consoleLevelPills .seg-btn').forEach(btn => {
+    const n    = btn.dataset.level === 'all' ? consoleTotal : (levelCounts[btn.dataset.level] || 0);
     const span = btn.querySelector('.pill-count');
     if (span) span.textContent = n > 0 ? n : '';
   });
@@ -361,132 +292,78 @@ export function renderTimeline() {
     return;
   }
 
-  for (const e of visible) {
-    let subtypeClass = '';
-    if (e.kind === 'console' || e.kind === 'log') {
-      const level = getConsoleLevel(e);
-      if (level) subtypeClass = ' console-' + level;
-    }
+  renderConsoleRows(panel, visible);
+  if (autoScroll) panel.scrollTop = panel.scrollHeight;
+}
+
+// #302: Console rows — level icon, message (mono), clickable source, time.
+// Class names (.evt, .evt.console / .log / .exception, .console-<level>) are
+// kept; error and warn rows are tinted by CSS, an uncaught exception renders
+// as an error row with a heavier (600) message.
+const LEVEL_ICONS = {
+  error: 'icon-circle-x', warn: 'icon-triangle-alert', info: 'icon-info', log: 'icon-chevron-right', debug: 'icon-bug',
+};
+
+function renderConsoleRows(panel, events) {
+  for (const e of events) {
+    const level = getConsoleLevel(e);
     const tabId = getEventTabId(e);
     const line  = document.createElement('div');
-    line.className       = `evt ${e.kind}${subtypeClass}`;
+    // Exceptions keep their own class (no console-error); they are still
+    // counted as errors by getConsoleLevel() and styled like one.
+    line.className       = `evt ${e.kind}${level && e.kind !== 'exception' ? ' console-' + level : ''}`;
     line.dataset.kind    = e.kind;
     line.dataset.summary = e.summary;
     line.dataset.tabId   = tabId;
     if (isDetailTabActive(tabId)) line.classList.add('detail-row-active');
 
-    // Line 1: timestamp, then method, status, badges and duration — a
-    // fixed-width column so these line up down the whole list. Line 2
-    // (built below) starts at the same offset as the method, not the
-    // timestamp, giving the row its hanging indent.
-    const line1 = document.createElement('div');
-    line1.className = 'evt-line1';
+    const icon = document.createElement('i');
+    icon.className = `con-icon ${LEVEL_ICONS[level] || 'icon-chevron-right'}`;
+    icon.setAttribute('aria-hidden', 'true');
+    line.appendChild(icon);
+
+    const msg = document.createElement('span');
+    msg.className = 'con-msg';
+    // Strips the "[level] " prefix the summary was built with — a fixed,
+    // anchored-at-start prefix, so this is safe even when the message text
+    // itself contains brackets or spaces.
+    msg.textContent = e.kind === 'console' || e.kind === 'log'
+      ? e.summary.replace(/^\[[^\]]*\]\s?/, '')
+      : e.summary;
+    line.appendChild(msg);
+
+    const source = getConsoleSource(e);
+    const src = document.createElement('span');
+    src.className = 'con-src';
+    if (source) {
+      const link = document.createElement('a');
+      link.className = 'con-src-link';
+      link.textContent = source.label;
+      link.title = source.url;
+      link.href = '#';
+      link.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (/^https?:\/\//i.test(source.url)) testerBrowser.app.openExternal(source.url);
+      });
+      src.appendChild(link);
+    }
+    line.appendChild(src);
 
     const d = new Date(e.ts);
     const pad = (n) => String(n).padStart(2, '0');
-    const tsSpan = document.createElement('span');
-    tsSpan.className = 'evt-ts';
-    tsSpan.textContent = `[${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}]`;
-    tsSpan.title = d.toLocaleString();
-    line1.appendChild(tsSpan);
-
-    const rest = document.createElement('div');
-    rest.className = 'evt-line1-rest';
-
-    const method = getEventDisplayMethod(e);
-    if (method) {
-      const methodSpan = document.createElement('span');
-      methodSpan.className = 'evt-method';
-      methodSpan.textContent = method;
-      rest.appendChild(methodSpan);
-    }
-
-    const status = getEventStatus(e);
-    if (status !== null) {
-      const statusSpan = document.createElement('span');
-      statusSpan.className = 'evt-status';
-      statusSpan.textContent = String(status);
-      rest.appendChild(statusSpan);
-    }
-
-    if ((e.kind === 'network-request' || e.kind === 'network-response' || e.kind === 'network-failed') && e.payload) {
-      try {
-        const p = JSON.parse(e.payload);
-        if (p.mockRuleId) {
-          const badge = document.createElement('span');
-          badge.className = 'evt-badge evt-badge-mock';
-          badge.textContent = 'MOCK';
-          badge.title = 'Response served by a Mock rule instead of the real server';
-          rest.appendChild(badge);
-        } else if (p.resilienceRuleId) {
-          const badge = document.createElement('span');
-          badge.className = 'evt-badge evt-badge-resilience';
-          badge.textContent = 'RESILIENCE';
-          badge.title = `Altered by a Resilience rule (${p.resilienceType || 'unknown'})`;
-          rest.appendChild(badge);
-        }
-      } catch {}
-    }
-
-    if (e.kind === 'log' && e.payload) {
-      try {
-        const source = JSON.parse(e.payload).entry?.source;
-        if (INTERESTING_LOG_SOURCES.has(source)) {
-          const badge = document.createElement('span');
-          badge.className = 'evt-badge evt-badge-log-source';
-          badge.textContent = source.toUpperCase();
-          badge.title = `Log source: ${source}`;
-          rest.appendChild(badge);
-        }
-      } catch {}
-    }
-
-    // Duration is only known once the response arrives (ts - matching
-    // request's ts, computed in the recorder) — every other row kind,
-    // including network-failed, leaves this column empty. It's rendered on
-    // the request row (once its response lands) rather than a separate row.
-    {
-      const durationMs = getEventDuration(e);
-      if (typeof durationMs === 'number' && Number.isFinite(durationMs)) {
-        const durationEl = document.createElement('span');
-        durationEl.className = 'evt-duration';
-        durationEl.textContent = `${Math.round(durationMs)}ms`;
-        rest.appendChild(durationEl);
-      }
-    }
-
-    // Request rows stay single-line: method badge immediately before the URL,
-    // truncated with an ellipsis rather than wrapping — Replay used to sit
-    // here too (now in the detail panel, see detail-panel.js), leaving this
-    // row otherwise mostly empty space. Every other kind still gets the
-    // hanging-indent second line, since there's more to show (status,
-    // duration, a message, a body) than fits legibly on one line.
-    if (e.kind === 'network-request') {
-      const urlSpan = document.createElement('span');
-      urlSpan.className = 'evt-inline-url';
-      urlSpan.textContent = getEventLine2(e);
-      rest.appendChild(urlSpan);
-    }
-
-    line1.appendChild(rest);
-    line.appendChild(line1);
-
-    if (e.kind !== 'network-request') {
-      const line2 = document.createElement('div');
-      line2.className = 'evt-line2';
-      line2.textContent = getEventLine2(e);
-      line.appendChild(line2);
-    }
+    const time = document.createElement('span');
+    time.className = 'con-time';
+    time.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    time.title = d.toLocaleString();
+    line.appendChild(time);
 
     if (e.payload) {
       line.style.cursor = 'pointer';
       line.addEventListener('click', () => openDetailTab(e));
     }
-
     panel.appendChild(line);
   }
-
-  if (autoScroll) panel.scrollTop = panel.scrollHeight;
 }
 
 // #300: the Network tab's table — a sticky header plus one 30px grid row per
@@ -886,7 +763,17 @@ export function initTimeline() {
   }
   document.addEventListener('click', closePopovers);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePopovers(); });
-  wirePillGroup(document.getElementById('consoleLevelPills'), renderTimeline);
+  document.querySelectorAll('#consoleLevelPills .seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      consoleLevel = /** @type {HTMLElement} */ (btn).dataset.level;
+      document.querySelectorAll('#consoleLevelPills .seg-btn').forEach((b) => {
+        const on = /** @type {HTMLElement} */ (b).dataset.level === consoleLevel;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      renderTimeline();
+    });
+  });
 
   function clearTimeline() {
     timelineEvents.length = 0;

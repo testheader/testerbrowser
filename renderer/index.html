@@ -165,16 +165,16 @@
     <div id="consolePanelBody">
       <div id="timelinePanelWrapper">
         <div id="consoleControls">
-          <span class="filter-label">Filter</span>
-          <input id="filterText" placeholder="Filter console…" />
-          <div class="filter-pills" id="consoleLevelPills">
-            <button class="filter-pill on" data-level="error" title="Errors">Error<span class="pill-count"></span></button>
-            <button class="filter-pill on" data-level="warn"  title="Warnings">Warn<span class="pill-count"></span></button>
-            <button class="filter-pill on" data-level="info"  title="Info">Info<span class="pill-count"></span></button>
-            <button class="filter-pill on" data-level="log"   title="Log">Log<span class="pill-count"></span></button>
-            <button class="filter-pill on" data-level="debug" title="Debug">Debug<span class="pill-count"></span></button>
+          <div class="net-search"><i class="icon-search" aria-hidden="true"></i><input id="filterText" placeholder="Filter messages" aria-label="Filter messages" /></div>
+          <div class="seg" id="consoleLevelPills" role="group" aria-label="Level">
+            <button class="seg-btn on" data-level="all"   aria-pressed="true">All<span class="pill-count"></span></button>
+            <button class="seg-btn"    data-level="error" aria-pressed="false" title="Errors and uncaught exceptions">Errors<span class="pill-count"></span></button>
+            <button class="seg-btn"    data-level="warn"  aria-pressed="false">Warnings<span class="pill-count"></span></button>
+            <button class="seg-btn"    data-level="info"  aria-pressed="false">Info<span class="pill-count"></span></button>
+            <button class="seg-btn"    data-level="debug" aria-pressed="false">Debug<span class="pill-count"></span></button>
           </div>
-          <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console" aria-label="Clear console">&#10005;</button>
+          <span class="net-spacer"></span>
+          <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console" aria-label="Clear console"><i class="icon-ban" aria-hidden="true"></i></button>
         </div>
         <div id="networkControls">
           <div class="net-search"><i class="icon-search" aria-hidden="true"></i><input id="networkFilterText" placeholder="Filter URL, header or body" aria-label="Filter requests" /></div>

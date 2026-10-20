@@ -102,7 +102,7 @@ test('console/logs.html produces console events at every level', async () => {
   expect(kinds.some(c => c.includes('console-warn') && !c.includes('console-warning'))).toBe(true);
 });
 
-test('console/logs.html: level pills filter the timeline, and Log-domain rows get level color-coding', async () => {
+test('console/logs.html: the level segments filter the timeline, and Log-domain rows get level color-coding (#302)', async () => {
   await navigate('/console/logs.html');
   await window.click('#clearConsoleBtn');
   await expect(window.locator('#timelinePanel .evt')).toHaveCount(0);
@@ -121,13 +121,25 @@ test('console/logs.html: level pills filter the timeline, and Log-domain rows ge
   const errorCountBefore = await window.locator('.evt.console-error').count();
   expect(errorCountBefore).toBeGreaterThan(0);
 
-  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  // Warnings segment: only warn rows — errors and plain logs are hidden.
+  await window.locator('#consoleLevelPills .seg-btn[data-level="warn"]').click();
   await expect(window.locator('.evt.console-error')).toHaveCount(0);
-  // A non-error row (e.g. plain console.log on load) stays visible.
-  await expect(window.locator('.evt.console-log', { hasText: 'page loaded' }).first()).toBeVisible();
+  await expect(window.locator('.evt.console-log', { hasText: 'page loaded' })).toHaveCount(0);
+  await expect(window.locator('.evt.console-warn').first()).toBeVisible();
+  await expect(window.locator('#consoleLevelPills .seg-btn[data-level="warn"]')).toHaveClass(/\bon\b/);
 
-  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  // Errors segment: only error rows.
+  await window.locator('#consoleLevelPills .seg-btn[data-level="error"]').click();
   await expect(window.locator('.evt.console-error').first()).toBeVisible();
+  await expect(window.locator('.evt.console-warn')).toHaveCount(0);
+
+  // All brings back every level, including a plain console.log row, and its
+  // count covers all of them.
+  await window.locator('#consoleLevelPills .seg-btn[data-level="all"]').click();
+  await expect(window.locator('.evt.console-log', { hasText: 'page loaded' }).first()).toBeVisible();
+  await expect(window.locator('.evt.console-error').first()).toBeVisible();
+  const allCount = Number(await window.locator('#consoleLevelPills .seg-btn[data-level="all"] .pill-count').textContent());
+  expect(allCount).toBeGreaterThanOrEqual(errorCountBefore);
 });
 
 test('console/logs.html: an uncaught exception renders as a visually distinct row from console.error()', async () => {
@@ -137,10 +149,12 @@ test('console/logs.html: an uncaught exception renders as a visually distinct ro
 
   const exceptionRow = window.locator('.evt.exception', { hasText: 'uncaught exception test' });
   await expect(exceptionRow).toBeVisible();
-  // Counted as an error for filtering purposes...
-  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  // Counted as an error for filtering purposes: shown under Errors, hidden under Warnings...
+  await window.locator('#consoleLevelPills .seg-btn[data-level="error"]').click();
+  await expect(exceptionRow).toBeVisible();
+  await window.locator('#consoleLevelPills .seg-btn[data-level="warn"]').click();
   await expect(exceptionRow).toHaveCount(0);
-  await window.locator('#consoleLevelPills .filter-pill[data-level="error"]').click();
+  await window.locator('#consoleLevelPills .seg-btn[data-level="all"]').click();
   // ...but rendered with its own class, not console-error's.
   await expect(exceptionRow).not.toHaveClass(/console-error/);
 });

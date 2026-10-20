@@ -935,3 +935,24 @@ test('selecting a request shows its status pill, section tabs, and Mock opens th
   await expect(window.locator('#mockPanel')).toBeVisible();
   await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
 });
+
+// #302: Console segmented level filter + rows.
+test('Console: the level control is a segmented All/Errors/Warnings/Info/Debug, rows show a source link and a time (#302)', async () => {
+  const urlPath = '/console/logs.html';
+  await window.click('#consoleTabConsole');
+  await window.click('#clearConsoleBtn');
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, urlPath)).waitForLoadState('load');
+
+  await expect(window.locator('#consoleLevelPills .seg-btn')).toHaveText([/^All/, /^Errors/, /^Warnings/, /^Info/, /^Debug/]);
+  const errorRow = window.locator('.evt.console-error').first();
+  await expect(errorRow).toBeVisible({ timeout: 10_000 });
+  await expect(errorRow.locator('.con-time')).toHaveText(/^\d{2}:\d{2}:\d{2}$/);
+  await expect(errorRow.locator('.con-icon')).toBeVisible();
+  await expect(window.locator('#consoleLevelPills .seg-btn[data-level="error"] .pill-count')).not.toHaveText('');
+  await expect(window.locator('#consoleLevelPills .seg-btn[data-level="all"]')).toHaveAttribute('aria-pressed', 'true');
+  // At least one console row from the page's own script has a clickable source.
+  await expect(window.locator('.con-src-link').first()).toBeVisible();
+});
