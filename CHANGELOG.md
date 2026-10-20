@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.131.0 — 2026-10-20
+
+### Features
+
+- request detail pane redesign (refs #301) (d61cfc0)
+
 ## v0.130.0 — 2026-10-20
 
 ### Features
