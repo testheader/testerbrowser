@@ -47,21 +47,13 @@ async function showAllCategories() {
   }
 }
 
-test('before any comparison the panel explains what to do, and the ? popover explains what is compared', async () => {
+test('before any comparison the panel shows the shared empty state, with no help popover or step list (#303)', async () => {
   await window.click('#consoleTabDiff');
-  await expect(window.locator('.diff-empty .diff-hint')).toHaveText('Pick two sessions (tabs) to compare, then click Compare.');
-  await expect(window.locator('.diff-empty-steps li')).toHaveCount(3);
-
-  const helpBtn = window.locator('#diffHelpBtn');
-  await expect(helpBtn).toHaveAttribute('aria-expanded', 'false');
-  await helpBtn.click();
-  await expect(helpBtn).toHaveAttribute('aria-expanded', 'true');
-  await expect(window.locator('#diffHelp')).toBeVisible();
-  await expect(window.locator('#diffHelp')).toContainText('Ignored query params');
-  await window.keyboard.press('Escape');
-  await expect(window.locator('#diffHelp')).toBeHidden();
-  await expect(helpBtn).toHaveAttribute('aria-expanded', 'false');
-  await expect(helpBtn).toBeFocused();
+  await expect(window.locator('#diffBody .empty-state-title')).toHaveText('Network diff');
+  await expect(window.locator('#diffBody .empty-state-text')).toHaveText('Pick two sessions to compare their recorded requests.');
+  await expect(window.locator('#diffBody .empty-state-btn')).toHaveText('Compare');
+  await expect(window.locator('.diff-empty-steps')).toHaveCount(0);
+  await expect(window.locator('#diffHelpBtn')).toHaveCount(0);
 
   // Ignored params are visible up front as removable chips, not hidden in a text box.
   await expect(window.locator('#diffIgnoreChips button[data-param="utm_*"]')).toBeVisible();
@@ -154,7 +146,7 @@ test('Reset clears the comparison back to its initial state and disables HAR exp
 
   await window.click('#diffResetBtn');
 
-  await expect(window.locator('.diff-hint')).toHaveText('Pick two sessions (tabs) to compare, then click Compare.');
+  await expect(window.locator('#diffBody .empty-state-text')).toHaveText('Pick two sessions to compare their recorded requests.');
   await expect(window.locator('.diff-row')).toHaveCount(0);
   await expect(window.locator('.diff-meta')).toHaveCount(0);
   await expect(window.locator('#diffHarBtn')).toBeDisabled();

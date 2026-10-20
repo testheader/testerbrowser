@@ -112,7 +112,6 @@ export function initMock() {
         <button class="mock-btn mock-import-btn" id="mockImportBtn" type="button">Import…</button>
         <span class="mock-io-status" id="mockIoStatus"></span>
       </div>
-      <div class="mock-hint">Rules are checked top to bottom — the first enabled match wins.</div>
       <div class="mock-rules" id="mockRules">
         <div class="mock-empty" id="mockEmpty">Add a rule above to intercept requests.</div>
       </div>

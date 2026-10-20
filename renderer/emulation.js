@@ -1,7 +1,6 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
 import { showStatus as showStatusMsg } from './status-msg.js';
-import { wireHelpPopover } from './utils.js';
 
 const PRESETS = [
   { label: 'New York',    timezone: 'America/New_York',      locale: 'en-US', latitude:  40.7128, longitude:  -74.0060 },
@@ -114,10 +113,9 @@ export function initSpoof() {
       <div class="spoof-field spoof-field-toggle">
         <label class="spoof-label" id="spoofTouchLabel" for="spoofTouch">Touch input</label>
         <label class="toggle-switch">
-          <input type="checkbox" id="spoofTouch" aria-describedby="spoofTouchHint" />
+          <input type="checkbox" id="spoofTouch" />
           <span class="toggle-slider"></span>
         </label>
-        <span class="spoof-hint" id="spoofTouchHint">Emulates a touch screen instead of a mouse.</span>
       </div>
       <div class="spoof-field spoof-field-wide" id="spoofCustomSizeRow" hidden>
         <span class="spoof-label" id="spoofCustomSizeLabel">Custom size (px) and pixel ratio</span>
@@ -126,12 +124,10 @@ export function initSpoof() {
           <input class="spoof-input" id="spoofCustomHeight" type="number" min="1" step="1" placeholder="height" aria-label="Custom height (px)" />
           <input class="spoof-input" id="spoofCustomDpr" type="number" min="0.5" step="0.25" placeholder="DPR 1" aria-label="Device pixel ratio" />
         </div>
-        <span class="spoof-hint">Pixel ratio defaults to 1; the Touch toggle also marks the device as mobile.</span>
       </div>
       <div class="spoof-field spoof-field-wide">
         <label class="spoof-label" for="spoofUserAgent">User-Agent</label>
-        <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="Empty = browser default" spellcheck="false" aria-describedby="spoofUaHint" />
-        <span class="spoof-hint" id="spoofUaHint">Sent with every request and exposed as navigator.userAgent. Pick one under Presets or paste your own.</span>
+        <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="Empty = browser default" spellcheck="false" />
       </div>
     </div>`;
 
@@ -139,27 +135,24 @@ export function initSpoof() {
     <div class="spoof-fields">
       <div class="spoof-field">
         <label class="spoof-label" for="spoofTimezone">Timezone</label>
-        <input class="spoof-input" id="spoofTimezone" type="text" placeholder="e.g. America/New_York" spellcheck="false" aria-describedby="spoofTimezoneHint" />
-        <span class="spoof-hint" id="spoofTimezoneHint">IANA name; affects Date and Intl in the page.</span>
+        <input class="spoof-input" id="spoofTimezone" type="text" placeholder="e.g. America/New_York" spellcheck="false" />
       </div>
       <div class="spoof-field">
         <label class="spoof-label" for="spoofLocale">Locale</label>
-        <input class="spoof-input" id="spoofLocale" type="text" placeholder="e.g. en-US" spellcheck="false" aria-describedby="spoofLocaleHint" />
-        <span class="spoof-hint" id="spoofLocaleHint">Also sets navigator.language and Accept-Language.</span>
+        <input class="spoof-input" id="spoofLocale" type="text" placeholder="e.g. en-US" spellcheck="false" />
       </div>
       <div class="spoof-field">
         <label class="spoof-label" for="spoofLat">Latitude</label>
-        <input class="spoof-input" id="spoofLat" type="number" step="any" placeholder="e.g. 40.7128" aria-describedby="spoofGeoHint" />
+        <input class="spoof-input" id="spoofLat" type="number" step="any" placeholder="e.g. 40.7128" />
       </div>
       <div class="spoof-field">
         <label class="spoof-label" for="spoofLon">Longitude</label>
-        <input class="spoof-input" id="spoofLon" type="number" step="any" placeholder="e.g. -74.006" aria-describedby="spoofGeoHint" />
+        <input class="spoof-input" id="spoofLon" type="number" step="any" placeholder="e.g. -74.006" />
       </div>
-      <span class="spoof-hint spoof-field-wide" id="spoofGeoHint">What navigator.geolocation reports; set both to override the location.</span>
       <div class="spoof-field spoof-field-wide">
         <label class="spoof-label" for="spoofOffsetValue">Clock offset</label>
         <div class="spoof-offset-row">
-          <input class="spoof-input" id="spoofOffsetValue" type="number" step="any" placeholder="e.g. 7 or -1" aria-describedby="spoofOffsetHint" />
+          <input class="spoof-input" id="spoofOffsetValue" type="number" step="any" placeholder="e.g. 7 or -1" />
           <select class="spoof-input spoof-offset-unit" id="spoofOffsetUnit" aria-label="Clock offset unit">
             <option value="1000">seconds</option>
             <option value="60000">minutes</option>
@@ -167,7 +160,6 @@ export function initSpoof() {
             <option value="86400000" selected>days</option>
           </select>
         </div>
-        <span class="spoof-hint" id="spoofOffsetHint">Shifts Date.now() forward (+) or back (−); takes effect on the next page load.</span>
       </div>
       <div class="spoof-field-wide">
         <button type="button" class="spoof-btn spoof-btn-quiet" id="spoofUseCurrent" title="Fill the fields with this machine's real timezone, locale and location">Use this machine's values</button>
@@ -178,7 +170,7 @@ export function initSpoof() {
     <div class="spoof-fields">
       <div class="spoof-field">
         <label class="spoof-label" for="spoofColorScheme">prefers-color-scheme</label>
-        <select class="spoof-input" id="spoofColorScheme" aria-describedby="spoofMediaHint">
+        <select class="spoof-input" id="spoofColorScheme">
           <option value="">System</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>
@@ -186,13 +178,12 @@ export function initSpoof() {
       </div>
       <div class="spoof-field">
         <label class="spoof-label" for="spoofReducedMotion">prefers-reduced-motion</label>
-        <select class="spoof-input" id="spoofReducedMotion" aria-describedby="spoofMediaHint">
+        <select class="spoof-input" id="spoofReducedMotion">
           <option value="">System</option>
           <option value="no-preference">No preference</option>
           <option value="reduce">Reduce</option>
         </select>
       </div>
-      <span class="spoof-hint spoof-field-wide" id="spoofMediaHint">Overrides the page's CSS media queries and matchMedia() only.</span>
     </div>`;
 
   panel.innerHTML = `
@@ -200,11 +191,6 @@ export function initSpoof() {
       <div class="spoof-summary">
         <div class="spoof-current" id="spoofCurrent" role="status" aria-live="polite"></div>
         <button type="button" class="spoof-btn spoof-reset" id="spoofReset" title="Clear every override on the active tab">Reset all</button>
-        <button type="button" class="spoof-help-btn" id="spoofHelpBtn" aria-label="About spoofing" aria-expanded="false" aria-controls="spoofHelp">?</button>
-        <div class="spoof-help" id="spoofHelp" role="note" hidden>
-          <p><b>Spoofing</b> changes what web pages see about their device and environment (screen size, browser, touch, timezone, language, location, clock, colour scheme) without touching your real machine.</p>
-          <p>Overrides apply <b>per tab</b>: to the active tab and any other tab sharing its session. Other sessions are unaffected. Pick presets or edit fields, then click <b>Apply to tab</b>; reload the page so it sees every change.</p>
-        </div>
       </div>
 
       <div class="spoof-presets-block" role="group" aria-labelledby="spoofPresetsHeading">
@@ -295,8 +281,6 @@ export function initSpoof() {
     });
     document.getElementById(`spoofSecReset-${name}`).addEventListener('click', () => resetSection(name));
   }
-
-  wireHelpPopover(document.getElementById('spoofHelpBtn'), document.getElementById('spoofHelp'), panel);
 
   /** @type {HTMLButtonElement} */ (document.getElementById('spoofApply')).addEventListener('click', applySpoof);
   /** @type {HTMLButtonElement} */ (document.getElementById('spoofReset')).addEventListener('click', resetSpoof);

@@ -358,12 +358,9 @@ test('sections collapse via aria-expanded toggles, and a section Reset clears on
   await expect(advToggle).toHaveAttribute('aria-expanded', 'false');
   await expect(window.locator('#spoofSecBody-advanced')).toBeHidden();
 
-  // The ? help popover opens, and Escape closes it.
-  await window.click('#spoofHelpBtn');
-  await expect(window.locator('#spoofHelp')).toBeVisible();
-  await expect(window.locator('#spoofHelpBtn')).toHaveAttribute('aria-expanded', 'true');
-  await window.keyboard.press('Escape');
-  await expect(window.locator('#spoofHelp')).toBeHidden();
+  // #303: the in-panel ? explanation is gone.
+  await expect(window.locator('#spoofHelpBtn')).toHaveCount(0);
+  await expect(window.locator('#spoofHelp')).toHaveCount(0);
 
   await window.click('#spoofReset');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });

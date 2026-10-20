@@ -105,15 +105,6 @@ export function initResilience() {
   panel.innerHTML = `
     <div class="res-wrap">
       <div class="res-col res-col-left">
-      <div class="res-guide">
-        <p>Resilience testing lets you inject network failures into the active session to verify how your app behaves under real-world conditions. Rules only affect the current session and apply immediately.</p>
-        <ol class="res-guide-steps">
-          <li>Choose a failure type</li>
-          <li>Set a URL pattern (glob) to target specific requests</li>
-          <li>Set the probability %</li>
-          <li>Click <strong>Add rule</strong></li>
-        </ol>
-      </div>
       <form class="res-form" id="resForm">
         <div class="res-form-row">
           <div class="res-field">
@@ -142,10 +133,6 @@ export function initResilience() {
           <button class="res-btn res-add-btn" type="submit">Add rule</button>
         </div>
         <div class="res-type-desc" id="resTypeDesc">${TYPES[0].desc}</div>
-        <div class="res-field-hints">
-          <span class="res-field-hint">URL pattern &mdash; use <code>*</code> to match all requests, or e.g. <code>*/api/*</code> to target only API calls. Supports glob wildcards.</span>
-          <span class="res-field-hint">Probability &mdash; 1&ndash;100%. At 100% every matching request is affected; at 50% roughly half are.</span>
-        </div>
       </form>
       </div>
       <div class="res-col res-col-right">

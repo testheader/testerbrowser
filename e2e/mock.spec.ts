@@ -505,7 +505,8 @@ test('mock rules match top to bottom — moving a rule up changes which one wins
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabMock');
-  await expect(window.locator('.mock-hint')).toHaveText(/first enabled match wins/);
+  // #303: the inline explanation line is gone.
+  await expect(window.locator('.mock-hint')).toHaveCount(0);
 
   await window.fill('#mockUrl', '*/network/status/*');
   await window.fill('#mockStatus', '200');

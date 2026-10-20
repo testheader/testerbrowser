@@ -1,4 +1,5 @@
 /* global testerBrowser */
+import { renderEmptyState } from './empty-state.js';
 import { getActiveId } from './tabs.js';
 import { buildSessionOptions } from './session-picker.js';
 import { escHtml } from './utils.js';
@@ -545,15 +546,11 @@ function renderImages() {
 
   if (!d.baselineB64) {
     stage.classList.remove('vr-stage-images');
-    stage.innerHTML = `
-      <div class="diff-empty vr-empty">
-        <div class="diff-hint">No baseline yet</div>
-        <ol class="diff-empty-steps">
-          <li><b>Capture baseline</b> screenshots this tab as the reference — or open <b>Saved baselines</b> to reuse one.</li>
-          <li>Change the page (deploy, toggle a feature, edit CSS) — or choose another tab under <b>Current page</b>, e.g. staging vs production.</li>
-          <li><b>Compare</b> captures the current page and highlights every changed pixel, with a pass/fail against your limit.</li>
-        </ol>
-      </div>`;
+    stage.replaceChildren(renderEmptyState({
+      icon: 'scan-eye', tone: 'accent', title: 'No baseline yet',
+      text: 'Capture a baseline of this tab, then compare it with the current page.',
+      actionLabel: 'Capture baseline', onAction: () => $('vrCaptureBtn').click(),
+    }));
     return;
   }
   stage.classList.add('vr-stage-images');

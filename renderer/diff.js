@@ -1,5 +1,6 @@
 /* global testerBrowser */
-import { escHtml, wirePillGroup, activePillValues, wireHelpPopover, toCurl } from './utils.js';
+import { escHtml, wirePillGroup, activePillValues, toCurl } from './utils.js';
+import { renderEmptyState } from './empty-state.js';
 import { populateSessionPickers } from './session-picker.js';
 import { showStatus } from './status-msg.js';
 import {
@@ -80,15 +81,6 @@ export function initDiff() {
       <span class="diff-spacer"></span>
       <button type="button" class="diff-har-btn" id="diffHarBtn" disabled>Export diff (JSON)</button>
       <button type="button" class="console-icon-btn" id="diffResetBtn" title="Reset comparison" aria-label="Reset comparison">&#10005;</button>
-      <div class="diff-help-wrap">
-        <button type="button" class="panel-help-btn" id="diffHelpBtn" aria-label="About the network diff" aria-expanded="false" aria-controls="diffHelp">?</button>
-        <div class="panel-help" id="diffHelp" role="note" tabindex="0" hidden>
-          <p><b>Network diff</b> compares the requests two tabs have recorded. Every tab records its traffic automatically; the ${RECORDING_FETCH_LIMIT.toLocaleString()} most recent events per tab are compared.</p>
-          <p>Requests are matched by <b>method + URL</b> (query params sorted, #fragment dropped). <b>Path only</b> also ignores the host, e.g. staging vs production.</p>
-          <p>For each match it compares the <b>status code</b>, the <b>response headers</b> (except ${DEFAULT_IGNORED_HEADERS.map(escHtml).join(', ')}) and the <b>body</b> of the first call. <b>Changed</b>: any of those differ. <b>Added</b>: only in B. <b>Removed</b>: only in A.</p>
-          <p><b>Ignored query params</b> are removed before matching, so cache-busters and tracking params (<code>_</code>, <code>ts</code>, <code>utm_*</code>) don't split one request into two. A trailing <code>*</code> matches any param with that prefix.</p>
-        </div>
-      </div>
     </div>
     <div class="diff-toolbar diff-toolbar-row2" role="group" aria-labelledby="diffIgnoreLabel">
       <span class="diff-label" id="diffIgnoreLabel">Ignored query params</span>
@@ -127,21 +119,6 @@ export function initDiff() {
   /** @type {HTMLInputElement} */ (document.getElementById('diffFilterText')).addEventListener('input', renderBody);
   wirePillGroup(document.getElementById('diffCatPills'), renderBody);
   wirePillGroup(document.getElementById('diffStatusPills'), renderBody);
-  const helpBtn = document.getElementById('diffHelpBtn');
-  const help = document.getElementById('diffHelp');
-  wireHelpPopover(helpBtn, help, panel);
-  // #diffPanel clips its overflow and the console panel is often short, so
-  // the popover is fixed-positioned under the button and scrolls within the
-  // space left above the window's bottom edge (the page's native view sits
-  // above the console panel, so opening upwards would be hidden behind it).
-  helpBtn.addEventListener('click', () => {
-    if (help.hidden) return;
-    const r = helpBtn.getBoundingClientRect();
-    help.style.top = `${r.bottom + 4}px`;
-    help.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-    help.style.maxHeight = `${Math.max(80, window.innerHeight - r.bottom - 12)}px`;
-  });
-
   /** @type {HTMLSelectElement} */ (document.getElementById('diffMatchMode')).addEventListener('change', (e) => {
     matchMode = /** @type {HTMLInputElement} */ (e.target).value;
     if (rawEventsA.length || rawEventsB.length) recomputeFromRaw();
@@ -339,7 +316,7 @@ function computeDiffRowsAndRender() {
 function renderBody() {
   const body = document.getElementById('diffBody');
   if (!body) return;
-  if (!diffMeta) { body.innerHTML = firstRunHtml(); return; }
+  if (!diffMeta) { body.replaceChildren(firstRunState()); return; }
   if (lastDiffRows.length === 0) {
     body.innerHTML = truncationBannerHtml() + metaHtml() +
       '<div class="diff-hint">No network requests found in either session. Load a page in both tabs, then click Compare again.</div>';
@@ -348,19 +325,15 @@ function renderBody() {
   renderDiffTable(body);
 }
 
-function firstRunHtml() {
-  const oneTab = cachedSessions.length < 2
-    ? '<p class="diff-empty-note">Only one tab is open. Open a second tab (Ctrl+T) and load the same page there first.</p>'
-    : '';
-  return `<div class="diff-empty">
-    <p class="diff-hint">Pick two sessions (tabs) to compare, then click Compare.</p>
-    ${oneTab}
-    <ol class="diff-empty-steps">
-      <li>Run the same flow in two tabs, e.g. staging vs production, or before vs after a change. Every tab records its network traffic automatically.</li>
-      <li>Choose them as <b>Session A</b> and <b>Session B</b> above.</li>
-      <li>Click <b>Compare</b> to see which requests changed, were added or were removed.</li>
-    </ol>
-  </div>`;
+// #303: the pre-comparison state, built with the shared empty state.
+function firstRunState() {
+  return renderEmptyState({
+    icon: 'git-compare', tone: 'accent', title: 'Network diff',
+    text: cachedSessions.length < 2
+      ? 'Open a second tab, then compare the two tabs\' recorded requests.'
+      : 'Pick two sessions to compare their recorded requests.',
+    actionLabel: 'Compare', onAction: runDiff,
+  });
 }
 
 function metaHtml() {

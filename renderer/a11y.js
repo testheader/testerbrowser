@@ -2,6 +2,7 @@
 import { getActiveId } from './tabs.js';
 import { escHtml } from './utils.js';
 import { setTabBadge } from './tab-badges.js';
+import { renderEmptyState } from './empty-state.js';
 
 const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
@@ -15,17 +16,25 @@ let activeView = 'tree'; // 'tree' | 'violations' | 'contrast' | 'structure' | '
 // it's been manually refreshed at least once (gates reloadA11yIfLoaded the
 // same way the original single-view Tree panel did), and its loader.
 const VIEWS = {
-  tree:       { btnId: 'a11yViewTreeBtn',       emptyMsg: 'Click Refresh to load the accessibility tree for this page.',
+  tree:       { btnId: 'a11yViewTreeBtn',       title: 'Accessibility tree', emptyMsg: 'Load the accessibility tree for this page.',
                 loaded: false, load: () => loadA11yTree() },
-  violations: { btnId: 'a11yViewViolationsBtn', emptyMsg: 'Click Refresh to run an accessibility violations audit for this page.',
+  violations: { btnId: 'a11yViewViolationsBtn', title: 'Violations audit', emptyMsg: 'Run an accessibility violations audit on this page.',
                 loaded: false, load: () => loadA11yViolations() },
-  contrast:   { btnId: 'a11yViewContrastBtn',   emptyMsg: 'Click Refresh to run a color contrast check for this page.',
+  contrast:   { btnId: 'a11yViewContrastBtn',   title: 'Colour contrast', emptyMsg: 'Check this page for colour contrast failures.',
                 loaded: false, load: () => loadA11yContrast() },
-  structure:  { btnId: 'a11yViewStructureBtn',  emptyMsg: 'Click Refresh to list headings and landmarks for this page.',
+  structure:  { btnId: 'a11yViewStructureBtn',  title: 'Page structure', emptyMsg: 'List the headings and landmarks on this page.',
                 loaded: false, load: () => loadA11yStructure() },
-  altlabels:  { btnId: 'a11yViewAltLabelsBtn',  emptyMsg: 'Click Refresh to check image alt text and form labels for this page.',
+  altlabels:  { btnId: 'a11yViewAltLabelsBtn',  title: 'Alt text and labels', emptyMsg: 'Check image alt text and form labels on this page.',
                 loaded: false, load: () => loadA11yAltLabels() },
 };
+
+// #303: the pre-load state of a view, built with the shared empty state.
+function a11yEmptyState(view) {
+  return renderEmptyState({
+    icon: 'accessibility', tone: 'accent', title: VIEWS[view].title, text: VIEWS[view].emptyMsg,
+    actionLabel: 'Refresh', onAction: () => document.getElementById('a11yRefreshBtn').click(),
+  });
+}
 
 export function initA11y() {
   const panel = document.getElementById('a11yPanel');
@@ -47,9 +56,8 @@ export function initA11y() {
       <button class="a11y-btn" id="a11yFocusTrapBtn" title="Check whether Tab/Shift+Tab can reach every part of the page">Focus trap</button>
       <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
     </div>
-    <div class="a11y-content" id="a11yContent">
-      <div class="a11y-empty">${VIEWS.tree.emptyMsg}</div>
-    </div>`;
+    <div class="a11y-content" id="a11yContent"></div>`;
+  document.getElementById('a11yContent').replaceChildren(a11yEmptyState('tree'));
   document.getElementById('a11yRefreshBtn').addEventListener('click', () => {
     VIEWS[activeView].loaded = true;
     VIEWS[activeView].load();
@@ -62,7 +70,7 @@ export function initA11y() {
       disableA11yFocusOrder();
       // Restore whatever the currently active view would show on its own.
       const content = document.getElementById('a11yContent');
-      if (content) content.innerHTML = `<div class="a11y-empty">${VIEWS[activeView].emptyMsg}</div>`;
+      if (content) content.replaceChildren(a11yEmptyState(activeView));
       if (VIEWS[activeView].loaded) VIEWS[activeView].load();
     } else {
       enableA11yFocusOrder();
@@ -88,7 +96,7 @@ function switchA11yView(view) {
   // badges on the page while showing the new view's (unrelated) content.
   if (focusOverlayOn) disableA11yFocusOrder();
   const content = document.getElementById('a11yContent');
-  if (content) content.innerHTML = `<div class="a11y-empty">${VIEWS[view].emptyMsg}</div>`;
+  if (content) content.replaceChildren(a11yEmptyState(view));
 }
 
 // Called after navigation — only refresh if the active view has already been

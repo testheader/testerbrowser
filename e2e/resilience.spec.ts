@@ -599,3 +599,12 @@ for (const type of ['latency', 'stall504']) {
     await expectAppAlive();
   });
 }
+
+// #303: the green intro box and field hints are gone from the Resilience panel.
+test('the Resilience panel has no inline explanation block (#303)', async () => {
+  await window.click('#consoleTabResilience');
+  await expect(window.locator('#resForm')).toBeVisible();
+  await expect(window.locator('#resiliencePanel')).not.toContainText('Resilience testing lets you inject network failures');
+  await expect(window.locator('.res-guide')).toHaveCount(0);
+  await expect(window.locator('.res-field-hint')).toHaveCount(0);
+});

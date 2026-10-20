@@ -2,6 +2,7 @@
 import { getActiveId } from './tabs.js';
 import { openDetailTab } from './detail-panel.js';
 import { setTabBadge } from './tab-badges.js';
+import { renderEmptyState } from './empty-state.js';
 
 const SEVERITIES = ['high', 'medium', 'low'];
 
@@ -229,9 +230,8 @@ export function initSecurity() {
         <button class="filter-pill on sec-pill-low"    data-sev="low">Low<span class="pill-count"></span></button>
       </div>
     </div>
-    <div class="sec-results" id="secResults">
-      <div class="sec-hint">Click Scan to analyse headers and cookies for the current page.</div>
-    </div>`;
+    <div class="sec-results" id="secResults"></div>`;
+  document.getElementById('secResults').replaceChildren(securityEmptyState());
   /** @type {HTMLButtonElement} */ (document.getElementById('secScanBtn')).addEventListener('click', runScan);
   /** @type {HTMLButtonElement} */ (document.getElementById('secConfigBtn')).addEventListener('click', toggleConfigPanel);
   /** @type {HTMLInputElement} */ (document.getElementById('secFilterText')).addEventListener('input', renderFilteredFindings);
@@ -341,12 +341,21 @@ function renderConfigPanel(overrides, includeSubresources) {
 // Findings are page-scoped — clear them whenever the active session changes
 // or the current session navigates, so stale results are never shown as if
 // they applied to a different page.
+// #303: the pre-scan state, built with the shared empty state.
+function securityEmptyState() {
+  return renderEmptyState({
+    icon: 'shield-check', tone: 'accent', title: 'Security scan',
+    text: 'Scan this tab\'s recorded traffic for insecure headers and cookies.',
+    actionLabel: 'Scan', onAction: () => runScan(),
+  });
+}
+
 export function clearSecurityFindings() {
   lastFindings = [];
   lastSkipped = { cookieRulesRedacted: false };
   lastTruncated = false;
   const results = document.getElementById('secResults');
-  if (results) results.innerHTML = '<div class="sec-hint">Click Scan to analyse headers and cookies for the current page.</div>';
+  if (results) results.replaceChildren(securityEmptyState());
   const status = document.getElementById('secStatus');
   if (status) status.textContent = '';
   document.querySelectorAll('#secPills .pill-count').forEach((el) => { el.textContent = ''; });
