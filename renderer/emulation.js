@@ -72,29 +72,31 @@ let uaPresets = [];
 // session has one of its values applied, so an applied override is never
 // hidden behind a closed section.
 const SECTIONS = {
-  device:   { title: 'Device',          open: true,  keys: ['deviceMetrics', 'touch', 'userAgent'] },
-  location: { title: 'Location & time', open: true,  keys: ['timezone', 'locale', 'latitude', 'longitude', 'timeOffsetMs'] },
-  advanced: { title: 'Advanced',        open: false, keys: ['colorScheme', 'reducedMotion'] },
+  device:   { title: 'Device',                open: true,  keys: ['deviceMetrics', 'touch', 'userAgent'] },
+  location: { title: 'Location and time',     open: true,  keys: ['timezone', 'locale', 'latitude', 'longitude', 'timeOffsetMs'] },
+  advanced: { title: 'Advanced',              open: true,  keys: ['colorScheme', 'reducedMotion'] },
 };
 const SECTION_NAMES = Object.keys(SECTIONS);
 
+// #309: each section is a card (icon + title + Reset in its header). No
+// collapsing — all three are always visible side by side.
+const SECTION_ICONS = { device: 'smartphone', location: 'map-pin', advanced: 'sliders-horizontal' };
+
 function sectionHtml(name, bodyHtml) {
-  const { title, open } = SECTIONS[name];
+  const { title } = SECTIONS[name];
+  const safeTitle = title.replace('&', '&amp;');
   return `
-    <section class="spoof-sec" id="spoofSec-${name}" aria-labelledby="spoofSecToggle-${name}">
+    <section class="spoof-sec" id="spoofSec-${name}" aria-labelledby="spoofSecTitle-${name}">
       <div class="spoof-sec-head">
-        <button type="button" class="spoof-sec-toggle" id="spoofSecToggle-${name}"
-                aria-expanded="${open}" aria-controls="spoofSecBody-${name}">
-          <span class="spoof-sec-chev" aria-hidden="true"></span>
-          <span class="spoof-sec-title">${title.replace('&', '&amp;')}</span>
-          <span class="spoof-sec-badge" id="spoofSecBadge-${name}" hidden></span>
-          <span class="spoof-sec-edited" id="spoofSecEdited-${name}" hidden>edited</span>
-        </button>
+        <i class="icon-${SECTION_ICONS[name]} spoof-sec-icon" aria-hidden="true"></i>
+        <h3 class="spoof-sec-title" id="spoofSecTitle-${name}">${safeTitle}</h3>
+        <span class="spoof-sec-badge" id="spoofSecBadge-${name}" hidden></span>
+        <span class="spoof-sec-edited" id="spoofSecEdited-${name}" hidden>edited</span>
         <button type="button" class="spoof-sec-reset" id="spoofSecReset-${name}"
                 title="Clear this section's overrides on the active tab"
-                aria-label="Reset ${title.replace('&', '&amp;')}">Reset</button>
+                aria-label="Reset ${safeTitle}">Reset</button>
       </div>
-      <div class="spoof-sec-body" id="spoofSecBody-${name}"${open ? '' : ' hidden'}>${bodyHtml}</div>
+      <div class="spoof-sec-body" id="spoofSecBody-${name}">${bodyHtml}</div>
     </section>`;
 }
 
@@ -104,6 +106,7 @@ export function initSpoof() {
   initialized = true;
 
   const deviceBody = `
+    <div class="spoof-presets" id="spoofDeviceChips" role="group" aria-label="Device presets"></div>
     <div class="spoof-fields">
       <div class="spoof-field">
         <label class="spoof-label" for="spoofDevicePreset">Viewport</label>
@@ -129,9 +132,14 @@ export function initSpoof() {
         <label class="spoof-label" for="spoofUserAgent">User-Agent</label>
         <input class="spoof-input" id="spoofUserAgent" type="text" placeholder="Empty = browser default" spellcheck="false" />
       </div>
+      <div class="spoof-field spoof-field-wide">
+        <label class="spoof-label" for="spoofUaPresets">Browser preset</label>
+        <select class="spoof-input spoof-ua-select" id="spoofUaPresets"></select>
+      </div>
     </div>`;
 
   const locationBody = `
+    <div class="spoof-presets" id="spoofPresets" role="group" aria-label="Location presets"></div>
     <div class="spoof-fields">
       <div class="spoof-field">
         <label class="spoof-label" for="spoofTimezone">Timezone</label>
@@ -188,35 +196,17 @@ export function initSpoof() {
 
   panel.innerHTML = `
     <div class="spoof-wrap">
-      <div class="spoof-summary">
+      <div class="spoof-toolbar">
         <div class="spoof-current" id="spoofCurrent" role="status" aria-live="polite"></div>
-        <button type="button" class="spoof-btn spoof-reset" id="spoofReset" title="Clear every override on the active tab">Reset all</button>
-      </div>
-
-      <div class="spoof-presets-block" role="group" aria-labelledby="spoofPresetsHeading">
-        <h3 class="spoof-heading" id="spoofPresetsHeading">Presets</h3>
-        <div class="spoof-preset-row">
-          <span class="spoof-preset-row-label" id="spoofDeviceChipsLabel">Device</span>
-          <div class="spoof-presets" id="spoofDeviceChips" role="group" aria-labelledby="spoofDeviceChipsLabel"></div>
-        </div>
-        <div class="spoof-preset-row">
-          <span class="spoof-preset-row-label" id="spoofCityChipsLabel">Location</span>
-          <div class="spoof-presets" id="spoofPresets" role="group" aria-labelledby="spoofCityChipsLabel"></div>
-        </div>
-        <div class="spoof-preset-row">
-          <label class="spoof-preset-row-label" for="spoofUaPresets">Browser</label>
-          <select class="spoof-input spoof-ua-select" id="spoofUaPresets"></select>
-        </div>
-      </div>
-
-      ${sectionHtml('device', deviceBody)}
-      ${sectionHtml('location', locationBody)}
-      ${sectionHtml('advanced', advancedBody)}
-
-      <div class="spoof-actions">
-        <button type="button" class="spoof-btn spoof-apply" id="spoofApply">Apply to tab</button>
-        <span class="spoof-dirty" id="spoofDirty" hidden>Unsaved changes. Click Apply to use them.</span>
+        <span class="spoof-dirty" id="spoofDirty" hidden>Unsaved changes.</span>
         <span class="status-msg" id="spoofStatus" role="status" aria-live="polite"></span>
+        <button type="button" class="spoof-btn spoof-reset" id="spoofReset" title="Clear every override on the active tab">Reset all</button>
+        <button type="button" class="spoof-btn spoof-apply" id="spoofApply" title="Apply the overrides to this tab and reload the page">Apply and reload</button>
+      </div>
+      <div class="spoof-cards">
+        ${sectionHtml('device', deviceBody)}
+        ${sectionHtml('location', locationBody)}
+        ${sectionHtml('advanced', advancedBody)}
       </div>
     </div>`;
 
@@ -253,7 +243,6 @@ export function initSpoof() {
       // and the dropdown can never disagree (Touch default, custom-size row).
       devicePresetSelect.value = devicePresetSelect.value === name ? '' : name;
       devicePresetSelect.dispatchEvent(new Event('change'));
-      setSectionOpen('device', true);
     });
     deviceChipsEl.appendChild(btn);
   }
@@ -272,13 +261,9 @@ export function initSpoof() {
   uaSelect.addEventListener('change', () => {
     if (uaSelect.value === '') return; // "Custom / none" — leave the field as-is
     fillUaPreset(uaPresets[Number(uaSelect.value)]);
-    setSectionOpen('device', true);
   });
 
   for (const name of SECTION_NAMES) {
-    document.getElementById(`spoofSecToggle-${name}`).addEventListener('click', () => {
-      setSectionOpen(name, document.getElementById(`spoofSecBody-${name}`).hidden);
-    });
     document.getElementById(`spoofSecReset-${name}`).addEventListener('click', () => resetSection(name));
   }
 
@@ -329,11 +314,6 @@ export function initSpoof() {
   refreshSpoofStatus();
 }
 
-function setSectionOpen(name, open) {
-  document.getElementById(`spoofSecBody-${name}`).hidden = !open;
-  document.getElementById(`spoofSecToggle-${name}`).setAttribute('aria-expanded', String(open));
-}
-
 function describeMetrics({ width, height, deviceScaleFactor, mobile }) {
   return `${width}×${height} @${deviceScaleFactor}x${mobile ? ', mobile' : ''}`;
 }
@@ -374,7 +354,6 @@ function fillPreset(p) {
   /** @type {HTMLInputElement} */ (document.getElementById('spoofLocale')).value   = p.locale;
   /** @type {HTMLInputElement} */ (document.getElementById('spoofLat')).value      = p.latitude;
   /** @type {HTMLInputElement} */ (document.getElementById('spoofLon')).value      = p.longitude;
-  setSectionOpen('location', true);
   updateDirtyState();
 }
 
@@ -492,9 +471,6 @@ function populateFields(a, sections = SECTION_NAMES) {
     /** @type {HTMLSelectElement} */ (document.getElementById('spoofReducedMotion')).value = a?.reducedMotion ?? '';
   }
 
-  for (const name of sections) {
-    if (sectionAppliedParts(name, a).length > 0) setSectionOpen(name, true);
-  }
 }
 
 // Finds the preset name (if any) a resolved deviceMetrics object matches —
@@ -755,9 +731,14 @@ async function applySpoof() {
   const btn = /** @type {HTMLButtonElement} */ (document.getElementById('spoofApply'));
   btn.disabled = true;
   try {
-    const errors = await testerBrowser.emulation.set(getActiveId(), patch);
+    const id = getActiveId();
+    const errors = await testerBrowser.emulation.set(id, patch);
     await refreshSpoofStatus();
-    reportErrors(errors, 'Overrides applied. Reload the page for full effect.');
+    // #309: "Apply and reload" — a successful apply reloads the page itself
+    // so the tab sees every change (a rejected field leaves the page alone).
+    const ok = Object.keys(errors ?? {}).length === 0;
+    if (ok && id === getActiveId()) await testerBrowser.sessions.reload(id);
+    reportErrors(errors, 'Overrides applied. Page reloaded.');
   } catch {
     showStatus('Failed to apply overrides.', true);
   } finally {

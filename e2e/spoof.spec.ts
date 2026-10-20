@@ -315,23 +315,22 @@ async function resetToSingleTab() {
   await expect.poll(() => window.locator('.tab').count()).toBe(1);
 }
 
+// #309: the three sections are cards, all visible at once (no collapsing).
 async function openSpoofSection(name: 'device' | 'location' | 'advanced') {
-  const toggle = window.locator(`#spoofSecToggle-${name}`);
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(window.locator(`#spoofSecBody-${name}`)).toBeVisible();
 }
 
-test('sections collapse via aria-expanded toggles, and a section Reset clears only that section\'s overrides', async () => {
+test('the three section cards are always visible, and a section Reset clears only that section\'s overrides (#309)', async () => {
   await resetToSingleTab();
   await window.click('#consoleTabSpoof');
   await window.click('#spoofReset');
   await expect(window.locator('#spoofCurrent')).toContainText('Nothing spoofed', { timeout: 5_000 });
 
-  // Advanced starts collapsed; its toggle reports that and opens it.
-  const advToggle = window.locator('#spoofSecToggle-advanced');
-  await expect(advToggle).toHaveAttribute('aria-expanded', 'false');
-  await expect(window.locator('#spoofColorScheme')).toBeHidden();
+  // Device, Location and time, and Advanced are cards, all visible at once;
+  // the toolbar's primary button reads "Apply and reload".
+  await expect(window.locator('.spoof-cards .spoof-sec')).toHaveCount(3);
+  await expect(window.locator('#spoofColorScheme')).toBeVisible();
+  await expect(window.locator('#spoofApply')).toHaveText('Apply and reload');
   await openSpoofSection('advanced');
 
   // Device chip mirrors the Viewport select.
@@ -352,11 +351,6 @@ test('sections collapse via aria-expanded toggles, and a section Reset clears on
   await expect(window.locator('#spoofDevicePreset')).toHaveValue('');
   await expect(window.locator('#spoofSecBadge-device')).toBeHidden();
   await expect(window.locator('#spoofDirty')).toBeHidden();
-
-  // Collapsing hides the body and flips aria-expanded back.
-  await advToggle.click();
-  await expect(advToggle).toHaveAttribute('aria-expanded', 'false');
-  await expect(window.locator('#spoofSecBody-advanced')).toBeHidden();
 
   // #303: the in-panel ? explanation is gone.
   await expect(window.locator('#spoofHelpBtn')).toHaveCount(0);
@@ -514,6 +508,29 @@ test('Dark prefers-color-scheme takes effect on a real page\'s matchMedia() (#27
     () => tab.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches),
     { timeout: 5_000 },
   ).toBe(true);
+
+  await window.click('#spoofReset');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
+});
+
+// #309: "Apply and reload" reloads the page itself after applying.
+test('Apply and reload reloads the page after applying (#309)', async () => {
+  const urlPath = '/network/status-codes.html?t=309-reload';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+  await tab.evaluate(() => { (window as unknown as { __beforeApply?: boolean }).__beforeApply = true; });
+
+  await window.click('#consoleTabSpoof');
+  await window.fill('#spoofLocale', 'fr-FR');
+  await window.click('#spoofApply');
+  await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
+  await expect.poll(
+    () => tab.evaluate(() => (window as unknown as { __beforeApply?: boolean }).__beforeApply),
+    { timeout: 10_000 }
+  ).toBeFalsy();
 
   await window.click('#spoofReset');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
