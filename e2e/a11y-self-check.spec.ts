@@ -85,6 +85,27 @@ test('the chrome UI has no serious/critical axe-core violations (light theme)', 
   expect(violations, describeViolations(violations)).toEqual([]);
 });
 
+// #293: the new --tb-* tokens must actually follow the theme switch.
+test('toggling the theme changes the --tb-surface token (#293)', async () => {
+  const surface = () => window.evaluate(() => getComputedStyle(document.body).getPropertyValue('--tb-surface').trim());
+  const setTheme = async (value: 'light' | 'dark') => {
+    await window.click('#appName');
+    await window.click('#appMenuSettings');
+    await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
+    await window.selectOption('#themeSelect', value);
+    await window.click('#closeSettingsBtn');
+  };
+  await setTheme('light');
+  const light = await surface();
+  await setTheme('dark');
+  const dark = await surface();
+  expect(light).not.toBe('');
+  expect(dark).not.toBe('');
+  expect(light).not.toBe(dark);
+  // Later tests in this file run in the light theme.
+  await setTheme('light');
+});
+
 // The two tests above only scan whatever's visible on the default Console
 // tab — every other console-panel tab (Storage, A11y, Diff, Mock, Jira, …)
 // is `display:none` at that point, and axe skips elements that aren't
