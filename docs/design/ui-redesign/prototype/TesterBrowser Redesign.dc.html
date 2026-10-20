@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/lucide-static@0.460.0/font/lucide.css">
+<style>
+body{margin:0;background:#d9dbde;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:var(--accent)}a:hover{color:var(--text)}
+[data-theme="light"]{--chrome:#eceef1;--surface:#ffffff;--sunken:#f6f7f9;--hover:#eef0f3;--line:#e5e7eb;--line-strong:#d2d5da;--text:#15171a;--text-2:#4a4f57;--text-3:#737882;--accent:oklch(0.53 0.15 252);--accent-soft:oklch(0.95 0.025 252);--err:oklch(0.53 0.19 27);--err-soft:oklch(0.955 0.025 27);--warn:oklch(0.55 0.12 70);--warn-soft:oklch(0.96 0.04 85);--ok:oklch(0.52 0.12 150);--ok-soft:oklch(0.955 0.03 150);--shadow:0 12px 40px rgba(20,24,30,.16),0 2px 6px rgba(20,24,30,.08);--page:#ffffff;--stripe:#f1f2f4;--on-fill:#ffffff}
+[data-theme="dark"]{--chrome:#151619;--surface:#1c1d21;--sunken:#18191c;--hover:#26282d;--line:#2a2c31;--line-strong:#3a3d43;--text:#e8e9ec;--text-2:#b3b7be;--text-3:#868b94;--accent:oklch(0.74 0.12 252);--accent-soft:oklch(0.3 0.05 252);--err:oklch(0.72 0.15 27);--err-soft:oklch(0.29 0.06 27);--warn:oklch(0.81 0.12 85);--warn-soft:oklch(0.31 0.05 85);--ok:oklch(0.76 0.12 150);--ok-soft:oklch(0.29 0.045 150);--shadow:0 12px 40px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.3);--page:#202125;--stripe:#25262a;--on-fill:#101318}
+@keyframes tbpulse{0%,100%{opacity:1}50%{opacity:.3}}
+[class^="icon-"]{line-height:1}
+</style>
+</helmet>
+<div data-theme="{{ themeName }}" data-screen-label="Redesign" style="width:1440px;height:900px;display:flex;flex-direction:column;background:var(--chrome);color:var(--text);overflow:hidden;position:relative;font-size:13px">
+
+  <div style="height:40px;display:flex;align-items:center;flex-shrink:0;padding-left:10px;gap:10px">
+    <img src="renderer/app-logo.png" style="height:18px;width:auto;display:block">
+    <div style="display:flex;align-items:center;gap:2px;height:100%;padding-top:6px">
+      <sc-for list="{{ browserTabs }}" as="t" hint-placeholder-count="3">
+        <div onClick="{{ t.select }}" style="height:34px;display:flex;align-items:center;gap:8px;padding:0 10px 0 12px;width:196px;border-radius:8px 8px 0 0;background:{{ t.bg }};cursor:pointer">
+          <span style="width:8px;height:8px;border-radius:50%;background:{{ t.color }};flex-shrink:0"></span>
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:{{ t.weight }};color:{{ t.ink }}">{{ t.name }}</span>
+          <i class="icon-x" style="font-size:13px;color:var(--text-3)"></i>
+        </div>
+      </sc-for>
+      <div onClick="{{ newTab }}" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-2);cursor:pointer;margin-left:4px" style-hover="background:var(--hover)"><i class="icon-plus" style="font-size:15px"></i></div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;height:100%">
+      <div onClick="{{ toggleTheme }}" title="Toggle theme" style="width:44px;display:flex;align-items:center;justify-content:center;color:var(--text-2);cursor:pointer" style-hover="background:var(--hover)"><i class="{{ themeIcon }}" style="font-size:14px"></i></div>
+      <div style="width:44px;display:flex;align-items:center;justify-content:center;color:var(--text-2)"><i class="icon-minus" style="font-size:14px"></i></div>
+      <div style="width:44px;display:flex;align-items:center;justify-content:center;color:var(--text-2)"><i class="icon-square" style="font-size:12px"></i></div>
+      <div style="width:44px;display:flex;align-items:center;justify-content:center;color:var(--text-2)"><i class="icon-x" style="font-size:15px"></i></div>
+    </div>
+  </div>
+
+  <div style="height:46px;display:flex;align-items:center;gap:4px;padding:0 10px;background:var(--surface);border-bottom:1px solid var(--line);flex-shrink:0">
+    <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-arrow-left" style="font-size:16px"></i></div>
+    <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-3);opacity:.5"><i class="icon-arrow-right" style="font-size:16px"></i></div>
+    <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-rotate-cw" style="font-size:15px"></i></div>
+    <div style="flex:1;height:32px;margin:0 8px;display:flex;align-items:center;gap:10px;padding:0 6px 0 12px;background:var(--sunken);border:1px solid var(--line);border-radius:8px">
+      <i class="{{ url.lockIcon }}" style="font-size:13px;color:{{ url.lockColor }}"></i>
+      <div style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13.5px"><span style="color:var(--text-3)">{{ url.proto }}</span><span style="color:var(--text);font-weight:500">{{ url.host }}</span><span style="color:var(--text-2)">{{ url.path }}</span><span style="color:var(--text-3)">{{ url.placeholder }}</span></div>
+      <div style="display:flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:5px;background:var(--surface);border:1px solid var(--line);font-size:11.5px;color:var(--text-2);white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;background:{{ url.sessionColor }}"></span>{{ url.sessionLabel }}</div>
+    </div>
+    <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-star" style="font-size:15px"></i></div>
+    <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-download" style="font-size:15px"></i></div>
+    <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-bug" style="font-size:15px"></i></div>
+    <div onClick="{{ openSettings }}" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;color:var(--text-2);cursor:pointer" style-hover="background:var(--hover)"><i class="icon-ellipsis" style="font-size:16px"></i></div>
+  </div>
+
+  <div style="flex:1;min-height:0;position:relative;background:var(--page)">
+    <sc-if value="{{ isNewTab }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;padding-top:56px;gap:28px;background:var(--sunken)">
+        <div style="width:520px;height:42px;display:flex;align-items:center;gap:10px;padding:0 14px;background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;color:var(--text-3);font-size:14px"><i class="icon-search" style="font-size:15px"></i>Search Google or enter an address</div>
+        <div style="display:grid;grid-template-columns:repeat(7,104px);gap:12px">
+          <sc-for list="{{ dials }}" as="d" hint-placeholder-count="6">
+            <div style="height:96px;border-radius:10px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;cursor:pointer" style-hover="border-color:var(--line-strong)">
+              <div style="width:36px;height:36px;border-radius:9px;background:{{ d.tint }};color:{{ d.ink }};display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px">{{ d.letter }}</div>
+              <div style="font-size:12px;color:var(--text-2)">{{ d.name }}</div>
+            </div>
+          </sc-for>
+          <div style="height:96px;border-radius:10px;border:1px dashed var(--line-strong);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;color:var(--text-3);cursor:pointer"><i class="icon-plus" style="font-size:18px"></i><div style="font-size:12px">Add site</div></div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ isPage }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;background:repeating-linear-gradient(135deg,var(--page) 0 14px,var(--stripe) 14px 15px);display:flex;align-items:center;justify-content:center">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-3);background:var(--page);padding:6px 10px;border-radius:4px;border:1px solid var(--line)">page under test · {{ url.host }}{{ url.path }}</div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="height:{{ panelHeight }};flex-shrink:0;background:var(--surface);border-top:1px solid var(--line);display:flex;flex-direction:column;position:relative">
+    <div style="position:absolute;top:-3px;left:0;right:0;height:5px;cursor:ns-resize"></div>
+
+    <div style="height:38px;display:flex;align-items:stretch;padding:0 4px;border-bottom:1px solid var(--line);flex-shrink:0">
+      <sc-for list="{{ tabGroups }}" as="g" hint-placeholder-count="5">
+        <div style="display:flex;align-items:stretch;padding:0 3px;margin:0 0;border-left:{{ g.divider }}">
+          <sc-for list="{{ g.tools }}" as="r" hint-placeholder-count="3">
+            <div onClick="{{ r.select }}" style="display:flex;align-items:center;gap:6px;padding:0 8px;cursor:pointer;color:{{ r.ink }};font-weight:{{ r.weight }};border-bottom:2px solid {{ r.line }};white-space:nowrap;font-size:12.5px" style-hover="color:var(--text)"><i class="{{ r.icon }}" style="font-size:14px"></i>{{ r.label }}<sc-if value="{{ r.badge }}" hint-placeholder-val="{{ false }}"><span style="min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:{{ r.badgeBg }};color:{{ r.badgeInk }};font-size:10.5px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ r.badge }}</span></sc-if></div>
+          </sc-for>
+        </div>
+      </sc-for>
+      <div style="flex:1"></div>
+      <div onClick="{{ togglePanel }}" title="{{ panelTitle }}" style="display:flex;align-items:center;justify-content:center;width:34px;color:var(--text-2);cursor:pointer" style-hover="color:var(--text)"><i class="{{ panelIcon }}" style="font-size:16px"></i></div>
+    </div>
+
+    <sc-if value="{{ panelOpen }}" hint-placeholder-val="{{ true }}">
+      <div style="height:44px;display:flex;align-items:center;gap:8px;padding:0 12px 0 14px;border-bottom:1px solid var(--line);flex-shrink:0">
+
+        <sc-if value="{{ is.network }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="width:280px;height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--sunken);color:var(--text-3)"><i class="icon-search" style="font-size:13px"></i><input value="{{ query }}" onChange="{{ setQuery }}" placeholder="Filter URL, header or body" style="flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--text);font:inherit;font-size:12.5px"></div>
+            <sc-for list="{{ netChips }}" as="c" hint-placeholder-count="3">
+              <div onClick="{{ c.toggle }}" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:13px;font-size:12px;cursor:pointer;background:{{ c.bg }};color:{{ c.ink }};border:1px solid {{ c.border }}">{{ c.label }}<span style="font-family:'JetBrains Mono',monospace;font-size:11px;opacity:.75">{{ c.count }}</span></div>
+            </sc-for>
+            <div style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:13px;font-size:12px;color:var(--text-2);border:1px solid var(--line)">Method: Any<i class="icon-chevron-down" style="font-size:12px"></i></div>
+            <div style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:13px;font-size:12px;color:var(--text-2);border:1px solid var(--line)"><i class="icon-sliders-horizontal" style="font-size:12px"></i>More filters</div>
+            <div style="flex:1"></div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3);white-space:nowrap">{{ netSummary }}</span>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-file-down" style="font-size:13px"></i>Export HAR</div>
+            <div title="Clear" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-ban" style="font-size:14px"></i></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.console }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="width:280px;height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--sunken);color:var(--text-3);font-size:12.5px"><i class="icon-search" style="font-size:13px"></i>Filter messages</div>
+            <div style="display:flex;padding:2px;border-radius:8px;background:var(--sunken);border:1px solid var(--line)">
+              <sc-for list="{{ levels }}" as="l" hint-placeholder-count="5"><div onClick="{{ l.select }}" style="height:22px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:6px;font-size:12px;cursor:pointer;background:{{ l.bg }};color:{{ l.ink }};box-shadow:{{ l.shadow }}">{{ l.label }}<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:{{ l.countInk }}">{{ l.count }}</span></div></sc-for>
+            </div>
+            <div style="flex:1"></div>
+            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-ban" style="font-size:14px"></i></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.storage }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="width:280px;height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--sunken);color:var(--text-3);font-size:12.5px"><i class="icon-search" style="font-size:13px"></i>Filter name or value</div>
+            <div style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:13px;font-size:12px;background:var(--text);color:var(--surface)">Current domain</div>
+            <div style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:13px;font-size:12px;color:var(--text-2);border:1px solid var(--line)"><i class="icon-refresh-cw" style="font-size:12px"></i>Auto-refresh</div>
+            <div style="flex:1"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--text-2)"><i class="icon-plus" style="font-size:13px"></i>Add</div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--err)"><i class="icon-trash-2" style="font-size:13px"></i>Clear all</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.a11y }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;background:var(--text);color:var(--surface);font-size:12px;font-weight:500"><i class="icon-mouse-pointer-2" style="font-size:13px"></i>Inspect element</div>
+            <div style="width:260px;height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--sunken);color:var(--text-3);font-size:12.5px"><i class="icon-search" style="font-size:13px"></i>Find role or name</div>
+            <div style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:13px;font-size:12px;color:var(--warn);background:var(--warn-soft)"><i class="icon-triangle-alert" style="font-size:12px"></i>2 issues</div>
+            <div style="flex:1"></div>
+            <span style="font-size:12px;color:var(--text-3)">142 nodes · updated on navigation</span>
+            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-refresh-cw" style="font-size:14px"></i></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.security }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="display:flex;padding:2px;border-radius:8px;background:var(--sunken);border:1px solid var(--line)">
+              <sc-for list="{{ sevSeg }}" as="l" hint-placeholder-count="4"><div onClick="{{ l.select }}" style="height:22px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:6px;font-size:12px;cursor:pointer;background:{{ l.bg }};color:{{ l.ink }};box-shadow:{{ l.shadow }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ l.dot }}"></span>{{ l.label }}<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3)">{{ l.count }}</span></div></sc-for>
+            </div>
+            <div style="flex:1"></div>
+            <span style="font-size:12px;color:var(--text-3)">Scanned 12 requests · 21:01:18</span>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--text-2)"><i class="icon-refresh-cw" style="font-size:13px"></i>Scan again</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.netdiff }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="height:28px;display:flex;align-items:center;gap:7px;padding:0 10px;border-radius:7px;border:1px solid var(--line-strong);font-size:12px"><span style="color:var(--text-3)">A</span><span style="width:7px;height:7px;border-radius:50%;background:oklch(0.62 0.18 25)"></span>Session 1 · staging<i class="icon-chevron-down" style="font-size:12px;color:var(--text-3)"></i></div>
+            <i class="icon-arrow-left-right" style="font-size:14px;color:var(--text-3)"></i>
+            <div style="height:28px;display:flex;align-items:center;gap:7px;padding:0 10px;border-radius:7px;border:1px solid var(--line-strong);font-size:12px"><span style="color:var(--text-3)">B</span><span style="width:7px;height:7px;border-radius:50%;background:oklch(0.6 0.14 250)"></span>Session 2 · production<i class="icon-chevron-down" style="font-size:12px;color:var(--text-3)"></i></div>
+            <div style="display:flex;padding:2px;border-radius:8px;background:var(--sunken);border:1px solid var(--line);margin-left:6px">
+              <sc-for list="{{ matchSeg }}" as="l" hint-placeholder-count="2"><div onClick="{{ l.select }}" style="height:22px;display:flex;align-items:center;padding:0 10px;border-radius:6px;font-size:12px;cursor:pointer;background:{{ l.bg }};color:{{ l.ink }};box-shadow:{{ l.shadow }}">{{ l.label }}</div></sc-for>
+            </div>
+            <div style="flex:1"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--text-2)"><i class="icon-file-down" style="font-size:13px"></i>Export JSON</div>
+            <div style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:var(--accent);color:var(--on-fill);font-size:12.5px;font-weight:500">Compare</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.uidiff }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="display:flex;padding:2px;border-radius:8px;background:var(--sunken);border:1px solid var(--line)">
+              <sc-for list="{{ vrSeg }}" as="l" hint-placeholder-count="4"><div onClick="{{ l.select }}" style="height:22px;display:flex;align-items:center;padding:0 10px;border-radius:6px;font-size:12px;cursor:pointer;background:{{ l.bg }};color:{{ l.ink }};box-shadow:{{ l.shadow }}">{{ l.label }}</div></sc-for>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2);margin-left:6px"><span style="width:14px;height:14px;border-radius:4px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff"><i class="icon-check" style="font-size:10px"></i></span>Full page</div>
+            <div style="flex:1"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--text-2)"><i class="icon-camera" style="font-size:13px"></i>New baseline</div>
+            <div style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:var(--accent);color:var(--on-fill);font-size:12.5px;font-weight:500">Compare</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.spoof }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <span style="font-size:12px;color:var(--text-3);white-space:nowrap">Active on Session 1</span>
+            <sc-for list="{{ spoofApplied }}" as="a" hint-placeholder-count="3"><div style="height:24px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:12px;font-size:12px;background:var(--accent-soft);color:var(--accent);white-space:nowrap"><i class="{{ a.icon }}" style="font-size:12px"></i>{{ a.label }}</div></sc-for>
+            <div style="flex:1"></div>
+            <div style="height:28px;display:flex;align-items:center;padding:0 10px;border-radius:7px;font-size:12px;color:var(--text-2)">Reset all</div>
+            <div style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:var(--accent);color:var(--on-fill);font-size:12.5px;font-weight:500">Apply and reload</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.mock }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1">
+            <span style="font-size:12px;color:var(--text-3)">Replace responses for {{ url.sessionName }}</span>
+            <div style="flex:1"></div>
+            <div onClick="{{ toggleMockForm }}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:7px;background:var(--accent);color:var(--on-fill);font-size:12.5px;font-weight:500;cursor:pointer"><i class="icon-plus" style="font-size:13px"></i>New rule</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.resilience }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1">
+            <span style="font-size:12px;color:var(--text-3)">Inject failures into {{ url.sessionName }}</span>
+            <div style="flex:1"></div>
+            <div onClick="{{ toggleResForm }}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:7px;background:var(--accent);color:var(--on-fill);font-size:12.5px;font-weight:500;cursor:pointer"><i class="icon-plus" style="font-size:13px"></i>Add rule</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.tests }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1">
+            <sc-if value="{{ recording }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--err);font-weight:500">{{ pulseDot }}Recording · 6 steps</div></sc-if>
+            <sc-if value="{{ notRecording }}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;color:var(--text-3)">No saved tests</span></sc-if>
+            <div style="flex:1"></div>
+            <sc-if value="{{ recording }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;gap:6px">
+                <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;color:var(--text-2)"><i class="icon-badge-check" style="font-size:13px"></i>Add assertion</div>
+                <div onClick="{{ toggleRecording }}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 12px;border-radius:7px;background:var(--text);color:var(--surface);font-size:12.5px;font-weight:500;cursor:pointer"><i class="icon-square" style="font-size:11px"></i>Stop and save</div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.follow }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:10px;flex:1">
+            <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ok);font-weight:500">{{ liveDot }}Live</div>
+            <div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 10px;border-radius:13px;border:1px solid var(--line);font-size:12px"><span style="width:7px;height:7px;border-radius:50%;background:oklch(0.6 0.14 250)"></span>Session 2 leads</div>
+            <i class="icon-arrow-right" style="font-size:14px;color:var(--text-3)"></i>
+            <div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 10px;border-radius:13px;border:1px solid var(--line);font-size:12px"><span style="width:7px;height:7px;border-radius:50%;background:oklch(0.62 0.18 25)"></span>Session 1 follows</div>
+            <span style="font-size:12px;color:var(--text-3)">Mirroring navigation, clicks and input</span>
+            <div style="flex:1"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--text-2)"><i class="icon-pause" style="font-size:13px"></i>Pause</div>
+            <div style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:var(--text);color:var(--surface);font-size:12.5px;font-weight:500">Stop following</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.jira }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1">
+            <div style="width:160px;height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line-strong);border-radius:7px;background:var(--sunken);font-family:'JetBrains Mono',monospace;font-size:12px"><i class="icon-ticket" style="font-size:13px;color:var(--text-3)"></i>QA-1432</div>
+            <div style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid var(--line-strong);font-size:12.5px">Load</div>
+            <div style="flex:1"></div>
+            <span style="font-size:12px;color:var(--text-3);display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>acme.atlassian.net</span>
+            <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:var(--text-2)" style-hover="background:var(--hover)"><i class="icon-settings-2" style="font-size:14px"></i></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.debug }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+            <div style="width:240px;height:28px;display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--sunken);color:var(--text-3);font-size:12.5px"><i class="icon-search" style="font-size:13px"></i>Filter log</div>
+            <div style="display:flex;padding:2px;border-radius:8px;background:var(--sunken);border:1px solid var(--line)">
+              <sc-for list="{{ dbgLevels }}" as="l" hint-placeholder-count="4"><div onClick="{{ l.select }}" style="height:22px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:6px;font-size:12px;cursor:pointer;background:{{ l.bg }};color:{{ l.ink }};box-shadow:{{ l.shadow }}">{{ l.label }}</div></sc-for>
+            </div>
+            <sc-for list="{{ dbgSources }}" as="c" hint-placeholder-count="5"><div onClick="{{ c.toggle }}" style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:13px;font-size:12px;cursor:pointer;font-family:'JetBrains Mono',monospace;background:{{ c.bg }};color:{{ c.ink }};border:1px solid {{ c.border }}">{{ c.label }}</div></sc-for>
+            <div style="flex:1"></div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;border:1px solid var(--line);font-size:12px;color:var(--text-2)"><i class="icon-copy" style="font-size:13px"></i>Copy</div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="flex:1;min-height:0;display:flex">
+
+        <sc-if value="{{ is.network }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+            <div style="height:28px;display:grid;grid-template-columns:64px 52px minmax(0,1fr) 78px 64px 64px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--text-3);flex-shrink:0;background:var(--sunken)">
+              <span>Status</span><span>Method</span><span>Name</span><span>Type</span><span style="text-align:right">Size</span><span style="text-align:right">Time</span>
+            </div>
+            <div style="flex:1;overflow:auto">
+              <sc-for list="{{ netRows }}" as="n" hint-placeholder-count="12">
+                <div onClick="{{ n.select }}" style="height:30px;display:grid;grid-template-columns:64px 52px minmax(0,1fr) 78px 64px 64px;align-items:center;gap:12px;padding:0 14px;cursor:pointer;background:{{ n.bg }};box-shadow:{{ n.edge }};font-size:12.5px" style-hover="background:var(--hover)">
+                  <span style="display:flex;align-items:center;gap:7px;font-family:'JetBrains Mono',monospace;font-size:12px;color:{{ n.statusInk }};font-weight:{{ n.statusWeight }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ n.statusInk }}"></span>{{ n.status }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-2)">{{ n.method }}</span>
+                  <span style="display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap;overflow:hidden">
+                    <span style="color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0">{{ n.path }}</span>
+                    <span style="color:var(--text-3);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;flex-shrink:2;min-width:0">{{ n.host }}</span>
+                    <sc-if value="{{ n.tag }}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:4px;background:{{ n.tagBg }};color:{{ n.tagInk }};flex-shrink:0">{{ n.tag }}</span></sc-if>
+                  </span>
+                  <span style="color:var(--text-3);font-size:12px">{{ n.type }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-2)">{{ n.size }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:{{ n.timeInk }}">{{ n.time }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="width:480px;flex-shrink:0;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0">
+            <div style="padding:14px 16px 12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:12px;font-weight:600;padding:2px 8px;border-radius:5px;background:{{ sel.pillBg }};color:{{ sel.pillInk }}">{{ sel.status }} {{ sel.statusText }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3)">{{ sel.meta }}</span>
+              </div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12.5px;line-height:1.5;word-break:break-all"><span style="color:var(--text-3)">{{ sel.method }} </span>{{ sel.url }}</div>
+              <div style="display:flex;gap:6px">
+                <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;background:var(--text);color:var(--surface);font-size:12px;font-weight:500;cursor:pointer"><i class="icon-rotate-ccw" style="font-size:13px"></i>Replay</div>
+                <div onClick="{{ goMock }}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;border:1px solid var(--line-strong);color:var(--text);font-size:12px;cursor:pointer" style-hover="background:var(--hover)"><i class="icon-replace" style="font-size:13px"></i>Mock</div>
+                <div onClick="{{ goRes }}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;border:1px solid var(--line-strong);color:var(--text);font-size:12px;cursor:pointer" style-hover="background:var(--hover)"><i class="icon-zap-off" style="font-size:13px"></i>Resilience</div>
+                <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;border:1px solid var(--line-strong);color:var(--text-2);font-size:12px"><i class="icon-copy" style="font-size:13px"></i>Copy as cURL</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line);height:36px;flex-shrink:0">
+              <sc-for list="{{ detailTabs }}" as="d" hint-placeholder-count="4"><div onClick="{{ d.select }}" style="display:flex;align-items:center;gap:6px;padding:0 8px;font-size:12.5px;cursor:pointer;color:{{ d.ink }};font-weight:{{ d.weight }};border-bottom:2px solid {{ d.line }}">{{ d.label }}<span style="font-size:11px;color:var(--text-3)">{{ d.count }}</span></div></sc-for>
+            </div>
+            <div style="flex:1;overflow:auto;padding:12px 16px">
+              <sc-if value="{{ dIs.headers }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:16px">
+                  <sc-for list="{{ headerGroups }}" as="hg" hint-placeholder-count="2">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;margin-bottom:8px"><i class="icon-chevron-down" style="font-size:13px;color:var(--text-3)"></i>{{ hg.title }}<span style="font-weight:400;color:var(--text-3)">{{ hg.count }}</span></div>
+                      <div style="display:grid;grid-template-columns:150px minmax(0,1fr);row-gap:5px;column-gap:12px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.5;padding-left:19px">
+                        <sc-for list="{{ hg.rows }}" as="h" hint-placeholder-count="4"><span style="color:var(--text-3)">{{ h.k }}</span><span style="color:var(--text);word-break:break-all">{{ h.v }}</span></sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ dIs.response }}" hint-placeholder-val="{{ false }}"><pre style="margin:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.6;color:var(--text-2);white-space:pre-wrap">{{ bodyPre }}</pre></sc-if>
+              <sc-if value="{{ dIs.timing }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ timing }}" as="tm" hint-placeholder-count="5">
+                    <div style="display:grid;grid-template-columns:110px minmax(0,1fr) 60px;gap:12px;align-items:center;font-size:12px">
+                      <span style="color:var(--text-2)">{{ tm.label }}</span>
+                      <span style="position:relative;height:8px;background:var(--sunken);border-radius:4px"><span style="position:absolute;top:0;height:8px;border-radius:4px;left:{{ tm.left }};width:{{ tm.width }};background:{{ tm.color }}"></span></span>
+                      <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-2)">{{ tm.ms }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ dIs.cookies }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:var(--text-3);padding:24px 0;text-align:center">No cookies were sent or set by this request.</div></sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.console }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow:auto">
+            <sc-for list="{{ consoleRows }}" as="c" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:16px minmax(0,1fr) auto 64px;gap:12px;align-items:start;padding:7px 16px;border-bottom:1px solid var(--line);background:{{ c.bg }}">
+                <i class="{{ c.icon }}" style="font-size:14px;color:{{ c.ink }};margin-top:1px"></i>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:{{ c.msgInk }};word-break:break-word">{{ c.msg }}</span>
+                <span style="font-size:12px;color:var(--accent);white-space:nowrap">{{ c.src }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3);text-align:right;margin-top:1px">{{ c.ts }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.storage }}" hint-placeholder-val="{{ false }}">
+          <div style="width:200px;flex-shrink:0;border-right:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:2px;background:var(--sunken)">
+            <sc-for list="{{ storeNav }}" as="s" hint-placeholder-count="4">
+              <div onClick="{{ s.select }}" style="height:30px;display:flex;align-items:center;gap:9px;padding:0 10px;border-radius:7px;font-size:12.5px;cursor:pointer;background:{{ s.bg }};color:{{ s.ink }};font-weight:{{ s.weight }}"><i class="{{ s.icon }}" style="font-size:14px"></i><span style="flex:1">{{ s.label }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3)">{{ s.count }}</span></div>
+            </sc-for>
+          </div>
+          <div style="flex:1;min-width:0;overflow:auto">
+            <sc-if value="{{ storeIs.cookies }}" hint-placeholder-val="{{ true }}">
+              <div style="height:28px;display:grid;grid-template-columns:170px minmax(0,1fr) 190px 40px 96px 200px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--text-3);background:var(--sunken)"><span>Name</span><span>Value</span><span>Domain</span><span>Path</span><span>Expires</span><span>Flags</span></div>
+              <sc-for list="{{ cookies }}" as="c" hint-placeholder-count="5">
+                <div style="height:32px;display:grid;grid-template-columns:170px minmax(0,1fr) 190px 40px 96px 200px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);font-size:12px;opacity:{{ c.opacity }}" style-hover="background:var(--hover)">
+                  <span style="font-family:'JetBrains Mono',monospace;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.value }}</span>
+                  <span style="display:flex;align-items:center;gap:6px;min-width:0"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-2)">{{ c.domain }}</span><span style="font-size:10.5px;font-weight:600;padding:1px 5px;border-radius:4px;background:{{ c.partyBg }};color:{{ c.partyInk }};flex-shrink:0">{{ c.party }}</span></span>
+                  <span style="font-family:'JetBrains Mono',monospace;color:var(--text-3)">{{ c.path }}</span>
+                  <span style="color:var(--text-2)">{{ c.expires }}</span>
+                  <span style="display:flex;gap:4px"><sc-for list="{{ c.flags }}" as="f" hint-placeholder-count="2"><span style="font-size:10.5px;padding:1px 6px;border-radius:4px;border:1px solid var(--line-strong);color:var(--text-2)">{{ f }}</span></sc-for></span>
+                </div>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ storeIs.kv }}" hint-placeholder-val="{{ false }}">
+              <div style="height:28px;display:grid;grid-template-columns:260px minmax(0,1fr) 60px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--text-3);background:var(--sunken)"><span>Key</span><span>Value</span><span style="text-align:right">Size</span></div>
+              <sc-for list="{{ kvRows }}" as="c" hint-placeholder-count="3">
+                <div style="height:32px;display:grid;grid-template-columns:260px minmax(0,1fr) 60px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);font-size:12px;font-family:'JetBrains Mono',monospace" style-hover="background:var(--hover)">
+                  <span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.k }}</span><span style="color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.v }}</span><span style="text-align:right;color:var(--text-3);font-size:11.5px">{{ c.size }}</span>
+                </div>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ storeIs.idb }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 16px;display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+                <div style="display:flex;align-items:center;gap:8px;font-weight:600"><i class="icon-chevron-down" style="font-size:13px;color:var(--text-3)"></i><i class="icon-database" style="font-size:14px;color:var(--text-2)"></i>optimizely-cache <span style="font-weight:400;color:var(--text-3);font-size:12px">v3</span></div>
+                <div style="display:flex;align-items:center;gap:8px;padding-left:22px"><i class="icon-chevron-right" style="font-size:13px;color:var(--text-3)"></i><i class="icon-table-2" style="font-size:13px;color:var(--text-3)"></i><span style="font-family:'JetBrains Mono',monospace">events</span><span style="color:var(--text-3);font-size:12px">4 records</span></div>
+                <div style="display:flex;align-items:center;gap:8px;padding-left:22px"><i class="icon-chevron-right" style="font-size:13px;color:var(--text-3)"></i><i class="icon-table-2" style="font-size:13px;color:var(--text-3)"></i><span style="font-family:'JetBrains Mono',monospace">visitor</span><span style="color:var(--text-3);font-size:12px">1 record</span></div>
+                <div style="font-size:12px;color:var(--text-3);padding:10px 0 0 22px">IndexedDB is read-only.</div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.a11y }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-width:0;overflow:auto;padding:6px 0">
+            <sc-for list="{{ axNodes }}" as="a" hint-placeholder-count="12">
+              <div onClick="{{ a.select }}" style="height:28px;display:flex;align-items:center;gap:8px;padding-right:14px;padding-left:{{ a.indent }};cursor:pointer;background:{{ a.bg }};box-shadow:{{ a.edge }}" style-hover="background:var(--hover)">
+                <i class="{{ a.caret }}" style="font-size:12px;color:var(--text-3);width:12px"></i>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)">{{ a.role }}</span>
+                <span style="font-size:12.5px;color:var(--text)">{{ a.name }}</span>
+                <sc-if value="{{ a.issue }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;background:var(--warn-soft);color:var(--warn)"><i class="icon-triangle-alert" style="font-size:11px"></i>{{ a.issue }}</span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="width:400px;flex-shrink:0;border-left:1px solid var(--line);overflow:auto;padding:16px">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--accent)">{{ ax.role }}</span><span style="font-size:14px;font-weight:600">{{ ax.name }}</span></div>
+            <div style="display:grid;grid-template-columns:120px minmax(0,1fr);row-gap:8px;column-gap:12px;font-size:12.5px">
+              <sc-for list="{{ ax.props }}" as="p" hint-placeholder-count="5"><span style="color:var(--text-3)">{{ p.k }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:12px">{{ p.v }}</span></sc-for>
+            </div>
+            <div style="font-size:12px;font-weight:600;margin:20px 0 8px">Issues on this page</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ axIssues }}" as="i" hint-placeholder-count="2">
+                <div style="display:flex;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+                  <i class="icon-triangle-alert" style="font-size:14px;color:var(--warn);margin-top:1px"></i>
+                  <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:500">{{ i.title }}</div><div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3);margin-top:3px">{{ i.target }}</div></div>
+                  <span style="font-size:11px;color:var(--text-3)">{{ i.impact }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.security }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-width:0;overflow:auto">
+            <sc-for list="{{ findings }}" as="f" hint-placeholder-count="6">
+              <div onClick="{{ f.select }}" style="display:grid;grid-template-columns:72px minmax(0,1fr) 100px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);cursor:pointer;background:{{ f.bg }};box-shadow:{{ f.edge }}" style-hover="background:var(--hover)">
+                <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:{{ f.ink }}"><span style="width:7px;height:7px;border-radius:50%;background:{{ f.ink }}"></span>{{ f.sev }}</span>
+                <div style="min-width:0"><div style="font-size:13px;font-weight:500">{{ f.title }}</div><div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.where }}</div></div>
+                <span style="font-size:12px;color:var(--text-3);text-align:right">{{ f.cat }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="width:460px;flex-shrink:0;border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:600;padding:2px 8px;border-radius:5px;background:{{ finding.softBg }};color:{{ finding.ink }}">{{ finding.sev }}</span><span style="font-size:12px;color:var(--text-3)">{{ finding.cat }}</span></div>
+            <div style="font-size:15px;font-weight:600">{{ finding.title }}</div>
+            <div style="font-size:13px;color:var(--text-2);line-height:1.55">{{ finding.why }}</div>
+            <div><div style="font-size:12px;color:var(--text-3);margin-bottom:6px">Evidence</div><pre style="margin:0;padding:10px 12px;border-radius:8px;background:var(--sunken);border:1px solid var(--line);font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.6;white-space:pre-wrap;color:var(--text-2)">{{ finding.evidence }}</pre></div>
+            <div style="display:flex;gap:6px">
+              <div onClick="{{ goNetwork }}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;background:var(--text);color:var(--surface);font-size:12px;font-weight:500;cursor:pointer"><i class="icon-globe" style="font-size:13px"></i>Open request</div>
+              <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;border:1px solid var(--line-strong);font-size:12px"><i class="icon-ticket" style="font-size:13px"></i>Report to Jira</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.netdiff }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+            <div style="display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--line)">
+              <sc-for list="{{ diffChips }}" as="c" hint-placeholder-count="4"><div onClick="{{ c.toggle }}" style="height:26px;display:flex;align-items:center;gap:7px;padding:0 10px;border-radius:13px;font-size:12px;cursor:pointer;background:{{ c.bg }};color:{{ c.ink }};border:1px solid {{ c.border }}"><span style="width:7px;height:7px;border-radius:2px;background:{{ c.dot }}"></span>{{ c.label }}<span style="font-family:'JetBrains Mono',monospace;font-size:11px;opacity:.75">{{ c.count }}</span></div></sc-for>
+            </div>
+            <div style="height:28px;display:grid;grid-template-columns:minmax(0,1fr) 56px 64px 72px 64px 72px 72px 140px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--text-3);background:var(--sunken)"><span>Path</span><span>Method</span><span style="text-align:right">A status</span><span style="text-align:right">A time</span><span style="text-align:right">B status</span><span style="text-align:right">B time</span><span style="text-align:right">Δ time</span><span>Result</span></div>
+            <div style="flex:1;overflow:auto">
+              <sc-for list="{{ diffRows }}" as="d" hint-placeholder-count="8">
+                <div onClick="{{ d.select }}" style="height:30px;display:grid;grid-template-columns:minmax(0,1fr) 56px 64px 72px 64px 72px 72px 140px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);font-size:12px;cursor:pointer;background:{{ d.bg }};box-shadow:{{ d.edge }}" style-hover="background:var(--hover)">
+                  <span style="font-family:'JetBrains Mono',monospace;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.path }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-2)">{{ d.method }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;color:{{ d.aInk }}">{{ d.a }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text-3);font-size:11.5px">{{ d.at }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;color:{{ d.bInk }}">{{ d.b }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;color:var(--text-3);font-size:11.5px">{{ d.bt }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:{{ d.dInk }}">{{ d.delta }}</span>
+                  <span><span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;background:{{ d.resBg }};color:{{ d.resInk }}">{{ d.result }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="width:420px;flex-shrink:0;border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500">GET /api/flags</div>
+            <div style="font-size:12px;color:var(--text-3)">Response body · 2 lines differ</div>
+            <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.7">
+              <div style="padding:2px 12px;color:var(--text-2)">{</div>
+              <div style="padding:2px 12px;background:var(--err-soft);color:var(--err)">-  "newCheckout": false,</div>
+              <div style="padding:2px 12px;background:var(--ok-soft);color:var(--ok)">+  "newCheckout": true,</div>
+              <div style="padding:2px 12px;color:var(--text-2)">   "darkMode": true,</div>
+              <div style="padding:2px 12px;background:var(--err-soft);color:var(--err)">-  "promoBanner": "autumn"</div>
+              <div style="padding:2px 12px;background:var(--ok-soft);color:var(--ok)">+  "promoBanner": null</div>
+              <div style="padding:2px 12px;color:var(--text-2)">}</div>
+            </div>
+            <div style="font-size:12px;color:var(--text-3)">Headers · 1 differs</div>
+            <div style="display:grid;grid-template-columns:110px minmax(0,1fr) minmax(0,1fr);gap:8px;font-family:'JetBrains Mono',monospace;font-size:11.5px"><span style="color:var(--text-3)">Cache-Control</span><span>max-age=60</span><span>no-store</span></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.uidiff }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:14px">
+            <sc-for list="{{ vrPanes }}" as="p" hint-placeholder-count="3">
+              <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+                <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px"><span style="font-weight:600">{{ p.label }}</span><span style="color:var(--text-3)">{{ p.meta }}</span></div>
+                <div style="flex:1;border:1px solid var(--line);border-radius:8px;position:relative;overflow:hidden;background:repeating-linear-gradient(135deg,var(--page) 0 12px,var(--stripe) 12px 13px);display:flex;align-items:center;justify-content:center">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3);background:var(--page);padding:4px 8px;border-radius:4px">{{ p.hint }}</span>
+                  <sc-if value="{{ p.isDiff }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:18%;top:22%;width:42%;height:16%;border:2px solid var(--err);background:color-mix(in oklch,var(--err) 18%,transparent);border-radius:3px"></div></sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="width:260px;flex-shrink:0;border-left:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:14px">
+            <div><div style="font-size:26px;font-weight:600;color:var(--err)">2.4%</div><div style="font-size:12px;color:var(--text-3);margin-top:2px">of pixels changed · 31,204 px</div></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-2)">Threshold</span><span style="font-family:'JetBrains Mono',monospace">0.1</span></div><div style="height:4px;border-radius:2px;background:var(--line);position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:20%;background:var(--accent);border-radius:2px"></div><div style="position:absolute;left:20%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--surface);border:2px solid var(--accent)"></div></div></div>
+            <div style="font-size:12px;font-weight:600;margin-top:4px">Baselines</div>
+            <sc-for list="{{ baselines }}" as="b" hint-placeholder-count="3"><div style="display:flex;align-items:center;justify-content:space-between;font-size:12px;padding:6px 8px;border-radius:6px;background:{{ b.bg }}"><span>{{ b.label }}</span><span style="color:var(--text-3)">{{ b.time }}</span></div></sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.spoof }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:14px;overflow:auto">
+            <div style="border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><i class="icon-smartphone" style="font-size:15px;color:var(--text-2)"></i>Device<div style="flex:1"></div><span style="font-size:12px;font-weight:400;color:var(--text-3)">Reset</span></div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ devicePresets }}" as="c" hint-placeholder-count="4"><div onClick="{{ c.select }}" style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:13px;font-size:12px;cursor:pointer;background:{{ c.bg }};color:{{ c.ink }};border:1px solid {{ c.border }}">{{ c.label }}</div></sc-for></div>
+              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+                <sc-for list="{{ deviceFields }}" as="f" hint-placeholder-count="3"><label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--text-3)">{{ f.k }}<div style="height:28px;border:1px solid var(--line-strong);border-radius:6px;display:flex;align-items:center;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text)">{{ f.v }}</div></label></sc-for>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--text-3)">User agent<div style="height:28px;border:1px solid var(--line-strong);border-radius:6px;display:flex;align-items:center;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden">{{ deviceUA }}</div></label>
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px">Touch input<div style="width:30px;height:18px;border-radius:9px;background:var(--accent);position:relative"><div style="position:absolute;top:2px;left:14px;width:14px;height:14px;border-radius:50%;background:#fff"></div></div></div>
+            </div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><i class="icon-map-pin" style="font-size:15px;color:var(--text-2)"></i>Location and time<div style="flex:1"></div><span style="font-size:12px;font-weight:400;color:var(--text-3)">Reset</span></div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ cityPresets }}" as="c" hint-placeholder-count="4"><div onClick="{{ c.select }}" style="height:26px;display:flex;align-items:center;padding:0 10px;border-radius:13px;font-size:12px;cursor:pointer;background:{{ c.bg }};color:{{ c.ink }};border:1px solid {{ c.border }}">{{ c.label }}</div></sc-for></div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">
+                <sc-for list="{{ cityFields }}" as="f" hint-placeholder-count="4"><label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--text-3)">{{ f.k }}<div style="height:28px;border:1px solid var(--line-strong);border-radius:6px;display:flex;align-items:center;padding:0 8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text)">{{ f.v }}</div></label></sc-for>
+              </div>
+              <label style="display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--text-3)">Clock<div style="height:28px;border:1px solid var(--line-strong);border-radius:6px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:12px;color:var(--text)">Real time<i class="icon-chevron-down" style="font-size:12px;color:var(--text-3)"></i></div></label>
+            </div>
+            <div style="border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><i class="icon-sliders-horizontal" style="font-size:15px;color:var(--text-2)"></i>Advanced<div style="flex:1"></div><span style="font-size:12px;font-weight:400;color:var(--text-3)">Reset</span></div>
+              <sc-for list="{{ advRows }}" as="r" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;padding:4px 0">{{ r.k }}<div style="height:26px;min-width:120px;border:1px solid var(--line-strong);border-radius:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 8px;font-size:12px">{{ r.v }}<i class="icon-chevron-down" style="font-size:12px;color:var(--text-3)"></i></div></div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.mock }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px">
+            <sc-if value="{{ mockForm }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid var(--line-strong);border-radius:10px;padding:14px;display:grid;grid-template-columns:110px minmax(0,1fr) 110px;gap:12px;background:var(--sunken)">
+                <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">Method<div style="height:30px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);display:flex;align-items:center;justify-content:space-between;padding:0 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">GET<i class="icon-chevron-down" style="font-size:12px;color:var(--text-3)"></i></div></label>
+                <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">URL pattern<div style="height:30px;border:1px solid var(--accent);border-radius:7px;background:var(--surface);display:flex;align-items:center;padding:0 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">*/status_codes/500</div></label>
+                <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">Status<div style="height:30px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);display:flex;align-items:center;padding:0 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">200</div></label>
+                <label style="grid-column:1 / -1;display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">Response body<div style="height:64px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);padding:8px 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">{"ok": true}</div></label>
+                <div style="grid-column:1 / -1;display:flex;align-items:center;gap:8px">
+                  <div style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2)"><span style="width:14px;height:14px;border-radius:4px;border:1px solid var(--line-strong);background:var(--surface)"></span>Add CORS headers</div>
+                  <div style="flex:1"></div>
+                  <div onClick="{{ toggleMockForm }}" style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;font-size:12.5px;color:var(--text-2);cursor:pointer">Cancel</div>
+                  <div onClick="{{ toggleMockForm }}" style="height:28px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:var(--accent);color:var(--on-fill);font-size:12.5px;font-weight:500;cursor:pointer">Add rule</div>
+                </div>
+              </div>
+            </sc-if>
+            <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+              <div style="height:30px;display:grid;grid-template-columns:44px 64px minmax(0,1fr) 70px 90px 90px 56px;align-items:center;gap:12px;padding:0 14px;font-size:11.5px;color:var(--text-3);background:var(--sunken);border-bottom:1px solid var(--line)"><span></span><span>Method</span><span>Pattern</span><span>Status</span><span style="text-align:right">Hits</span><span>Last hit</span><span></span></div>
+              <sc-for list="{{ mockRows }}" as="m" hint-placeholder-count="2">
+                <div style="height:44px;display:grid;grid-template-columns:44px 64px minmax(0,1fr) 70px 90px 90px 56px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);opacity:{{ m.opacity }}">
+                  <div onClick="{{ m.toggle }}" style="width:30px;height:18px;border-radius:9px;background:{{ m.track }};position:relative;cursor:pointer"><div style="position:absolute;top:2px;left:{{ m.knob }};width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)"></div></div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-2)">{{ m.method }}</span>
+                  <div style="min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px">{{ m.pattern }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.body }}</span></div>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ok)">{{ m.status }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2)">{{ m.hits }}</span>
+                  <span style="font-size:12px;color:var(--text-3)">{{ m.last }}</span>
+                  <div style="display:flex;gap:2px;color:var(--text-3)"><i class="icon-pencil" style="font-size:13px;padding:4px"></i><i class="icon-trash-2" style="font-size:13px;padding:4px"></i></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.resilience }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px">
+            <sc-if value="{{ resForm }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid var(--line-strong);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--sunken)">
+                <div style="display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ resTypes }}" as="rt" hint-placeholder-count="8"><div onClick="{{ rt.select }}" style="height:28px;display:flex;align-items:center;gap:6px;padding:0 11px;border-radius:7px;font-size:12px;cursor:pointer;background:{{ rt.bg }};color:{{ rt.ink }};border:1px solid {{ rt.border }}"><i class="{{ rt.icon }}" style="font-size:13px"></i>{{ rt.label }}</div></sc-for></div>
+                <div style="font-size:12px;color:var(--text-2)">{{ resTypeDesc }}</div>
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) 110px 110px auto;gap:12px;align-items:end">
+                  <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">URL pattern<div style="height:30px;border:1px solid var(--accent);border-radius:7px;background:var(--surface);display:flex;align-items:center;padding:0 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">*/status_codes/500</div></label>
+                  <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">Probability<div style="height:30px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);display:flex;align-items:center;justify-content:space-between;padding:0 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">100<span style="color:var(--text-3)">%</span></div></label>
+                  <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">Delay<div style="height:30px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);display:flex;align-items:center;justify-content:space-between;padding:0 10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px">0<span style="color:var(--text-3)">ms</span></div></label>
+                  <div style="display:flex;gap:6px">
+                    <div onClick="{{ toggleResForm }}" style="height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;font-size:12.5px;color:var(--text-2);cursor:pointer">Cancel</div>
+                    <div onClick="{{ toggleResForm }}" style="height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;background:var(--accent);color:var(--on-fill);font-size:12.5px;font-weight:500;cursor:pointer">Add rule</div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+            <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+              <div style="height:30px;display:grid;grid-template-columns:44px 120px 56px minmax(0,1fr) 90px 80px 70px 56px;align-items:center;gap:12px;padding:0 14px;font-size:11.5px;color:var(--text-3);background:var(--sunken);border-bottom:1px solid var(--line)"><span></span><span>Failure</span><span>Method</span><span>Pattern</span><span style="text-align:right">Probability</span><span style="text-align:right">Delay</span><span style="text-align:right">Hits</span><span></span></div>
+              <sc-for list="{{ resRows }}" as="m" hint-placeholder-count="3">
+                <div style="height:42px;display:grid;grid-template-columns:44px 120px 56px minmax(0,1fr) 90px 80px 70px 56px;align-items:center;gap:12px;padding:0 14px;border-bottom:1px solid var(--line);opacity:{{ m.opacity }}">
+                  <div onClick="{{ m.toggle }}" style="width:30px;height:18px;border-radius:9px;background:{{ m.track }};position:relative;cursor:pointer"><div style="position:absolute;top:2px;left:{{ m.knob }};width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)"></div></div>
+                  <span style="font-size:12px;font-weight:500;color:var(--warn);display:flex;align-items:center;gap:6px"><i class="{{ m.icon }}" style="font-size:13px"></i>{{ m.type }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-2)">{{ m.method }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.pattern }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2)">{{ m.prob }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2)">{{ m.delay }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2)">{{ m.hits }}</span>
+                  <div style="display:flex;gap:2px;color:var(--text-3)"><i class="icon-pencil" style="font-size:13px;padding:4px"></i><i class="icon-trash-2" style="font-size:13px;padding:4px"></i></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.tests }}" hint-placeholder-val="{{ false }}">
+          <sc-if value="{{ notRecording }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center">
+              <div style="width:44px;height:44px;border-radius:12px;background:var(--err-soft);color:var(--err);display:flex;align-items:center;justify-content:center"><i class="icon-circle-dot" style="font-size:20px"></i></div>
+              <div style="font-size:15px;font-weight:600">No recorded tests yet</div>
+              <div style="font-size:13px;color:var(--text-2);max-width:360px;line-height:1.5">Clicks, typing and navigation in this tab become replayable steps.</div>
+              <div onClick="{{ toggleRecording }}" style="margin-top:4px;height:32px;display:flex;align-items:center;gap:7px;padding:0 14px;border-radius:8px;background:var(--err);color:var(--on-fill);font-size:13px;font-weight:500;cursor:pointer"><i class="icon-circle" style="font-size:11px"></i>Start recording</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ recording }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow:auto;padding:10px 16px">
+              <sc-for list="{{ steps }}" as="s" hint-placeholder-count="6">
+                <div style="display:grid;grid-template-columns:28px 28px 140px minmax(0,1fr) auto;gap:10px;align-items:center;height:40px;border-bottom:1px solid var(--line)">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3);text-align:right">{{ s.n }}</span>
+                  <span style="width:26px;height:26px;border-radius:7px;background:{{ s.tint }};color:{{ s.ink }};display:flex;align-items:center;justify-content:center"><i class="{{ s.icon }}" style="font-size:13px"></i></span>
+                  <span style="font-size:13px;font-weight:500">{{ s.action }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.target }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3)">{{ s.value }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ is.follow }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow:auto;padding:6px 0">
+            <sc-for list="{{ followRows }}" as="f" hint-placeholder-count="7">
+              <div style="display:grid;grid-template-columns:72px 28px 120px minmax(0,1fr) 150px;gap:12px;align-items:center;height:38px;padding:0 16px;border-bottom:1px solid var(--line);background:{{ f.bg }}">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-3)">{{ f.ts }}</span>
+                <i class="{{ f.icon }}" style="font-size:14px;color:var(--text-2)"></i>
+                <span style="font-size:13px;font-weight:500">{{ f.action }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.target }}</span>
+                <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:{{ f.ink }};justify-content:flex-end"><i class="{{ f.resIcon }}" style="font-size:13px"></i>{{ f.result }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.jira }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;min-width:0;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--accent)">QA-1432</span><span style="font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:5px;background:var(--warn-soft);color:var(--warn)">In testing</span><div style="flex:1"></div><span style="font-size:12px;color:var(--text-3);display:flex;align-items:center;gap:5px"><i class="icon-external-link" style="font-size:12px"></i>Open in Jira</span></div>
+            <div style="font-size:17px;font-weight:600;line-height:1.35">Show a friendly error page when the status service returns 500</div>
+            <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+              <sc-for list="{{ jiraFields }}" as="f" hint-placeholder-count="5"><div><div style="font-size:11.5px;color:var(--text-3);margin-bottom:4px">{{ f.k }}</div><div style="font-size:12.5px;font-weight:500">{{ f.v }}</div></div></sc-for>
+            </div>
+            <div style="font-size:12px;font-weight:600">Acceptance criteria</div>
+            <sc-for list="{{ criteria }}" as="c" hint-placeholder-count="3"><div style="display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--text-2);line-height:1.45"><span style="width:15px;height:15px;border-radius:4px;flex-shrink:0;margin-top:2px;border:1px solid {{ c.border }};background:{{ c.bg }};display:flex;align-items:center;justify-content:center;color:#fff"><i class="{{ c.icon }}" style="font-size:10px"></i></span>{{ c.text }}</div></sc-for>
+          </div>
+          <div style="width:420px;flex-shrink:0;border-left:1px solid var(--line);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--sunken)">
+            <div style="font-size:13px;font-weight:600">Report a bug on QA-1432</div>
+            <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">Summary<div style="height:30px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);display:flex;align-items:center;padding:0 10px;color:var(--text);font-size:12.5px">Raw 500 page shown instead of error page</div></label>
+            <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2)">Steps<div style="height:68px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);padding:8px 10px;color:var(--text);font-size:12.5px;line-height:1.5">1. Open /status_codes/500<br>2. Page shows the default server response</div></label>
+            <div style="font-size:12px;color:var(--text-2)">Attach</div>
+            <sc-for list="{{ attachments }}" as="a" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:9px;font-size:12.5px"><span style="width:15px;height:15px;border-radius:4px;border:1px solid {{ a.border }};background:{{ a.bg }};display:flex;align-items:center;justify-content:center;color:#fff"><i class="{{ a.icon }}" style="font-size:10px"></i></span><span style="flex:1">{{ a.label }}</span><span style="font-size:12px;color:var(--text-3)">{{ a.meta }}</span></div></sc-for>
+            <div style="height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:var(--accent);color:var(--on-fill);font-size:13px;font-weight:500;margin-top:4px">Create bug</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ is.debug }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1;overflow:auto;padding:6px 0;font-family:'JetBrains Mono',monospace;font-size:12px">
+            <sc-for list="{{ dbgRows }}" as="d" hint-placeholder-count="10">
+              <div style="display:grid;grid-template-columns:100px 56px 84px minmax(0,1fr);gap:12px;padding:4px 16px;line-height:1.5;background:{{ d.bg }}" style-hover="background:var(--hover)">
+                <span style="color:var(--text-3)">{{ d.ts }}</span><span style="color:{{ d.ink }};font-weight:{{ d.weight }}">{{ d.level }}</span><span style="color:var(--accent)">{{ d.src }}</span><span style="color:{{ d.msgInk }};word-break:break-word">{{ d.msg }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeSettings }}" style="position:absolute;inset:0;background:rgba(10,12,16,.38);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div onClick="{{ stop }}" style="width:780px;height:560px;background:var(--surface);border-radius:14px;box-shadow:var(--shadow);display:flex;overflow:hidden;border:1px solid var(--line)">
+        <div style="width:200px;background:var(--sunken);border-right:1px solid var(--line);padding:18px 10px;display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:15px;font-weight:600;padding:0 10px 14px">Settings</div>
+          <sc-for list="{{ settingsNav }}" as="s" hint-placeholder-count="4"><div onClick="{{ s.select }}" style="height:32px;display:flex;align-items:center;gap:9px;padding:0 10px;border-radius:7px;font-size:13px;cursor:pointer;background:{{ s.bg }};color:{{ s.ink }};font-weight:{{ s.weight }}"><i class="{{ s.icon }}" style="font-size:14px"></i>{{ s.label }}</div></sc-for>
+        </div>
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="height:56px;display:flex;align-items:center;padding:0 16px 0 24px;border-bottom:1px solid var(--line)">
+            <div style="font-size:15px;font-weight:600;flex:1">{{ settingsTitle }}</div>
+            <div onClick="{{ closeSettings }}" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:var(--text-2);cursor:pointer" style-hover="background:var(--hover)"><i class="icon-x" style="font-size:16px"></i></div>
+          </div>
+          <div style="flex:1;overflow:auto;padding:8px 24px 24px">
+            <sc-if value="{{ sp.general }}" hint-placeholder-val="{{ true }}">
+              <sc-for list="{{ generalSections }}" as="sec" hint-placeholder-count="2">
+                <div style="font-size:11.5px;font-weight:600;color:var(--text-3);padding:18px 0 4px">{{ sec.title }}</div>
+                <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:20px;padding:12px 0;border-bottom:1px solid var(--line)">
+                    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">{{ r.label }}</div><div style="font-size:12px;color:var(--text-3);margin-top:3px;line-height:1.45">{{ r.desc }}</div></div>
+                    <sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ true }}"><div onClick="{{ r.toggle }}" style="width:34px;height:20px;border-radius:10px;background:{{ r.track }};position:relative;cursor:pointer;flex-shrink:0"><div style="position:absolute;top:3px;left:{{ r.knob }};width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25)"></div></div></sc-if>
+                    <sc-if value="{{ r.isSeg }}" hint-placeholder-val="{{ false }}"><div style="display:flex;padding:2px;border-radius:8px;background:var(--sunken);border:1px solid var(--line)"><sc-for list="{{ r.options }}" as="o" hint-placeholder-count="2"><div onClick="{{ o.select }}" style="height:24px;display:flex;align-items:center;padding:0 11px;border-radius:6px;font-size:12px;cursor:pointer;background:{{ o.bg }};color:{{ o.ink }};box-shadow:{{ o.shadow }}">{{ o.label }}</div></sc-for></div></sc-if>
+                    <sc-if value="{{ r.isValue }}" hint-placeholder-val="{{ false }}"><div style="height:28px;min-width:96px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 10px;border:1px solid var(--line-strong);border-radius:7px;font-size:12.5px">{{ r.value }}<i class="{{ r.valueIcon }}" style="font-size:12px;color:var(--text-3)"></i></div></sc-if>
+                  </div>
+                </sc-for>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ sp.tools }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12px;color:var(--text-3);padding:14px 0 6px">Choose which tools appear in the panel.</div>
+              <sc-for list="{{ toolSettings }}" as="r" hint-placeholder-count="8">
+                <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)">
+                  <i class="{{ r.icon }}" style="font-size:15px;color:var(--text-2);width:18px"></i>
+                  <div style="flex:1;font-size:13px">{{ r.label }}<span style="color:var(--text-3);font-size:12px;margin-left:8px">{{ r.group }}</span></div>
+                  <div style="width:34px;height:20px;border-radius:10px;background:var(--accent);position:relative;opacity:{{ r.lockedOpacity }}"><div style="position:absolute;top:3px;left:17px;width:14px;height:14px;border-radius:50%;background:#fff"></div></div>
+                </div>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ sp.shortcuts }}" hint-placeholder-val="{{ false }}">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:28px;padding-top:8px">
+                <sc-for list="{{ shortcuts }}" as="k" hint-placeholder-count="10"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;gap:10px"><span style="color:var(--text-2)">{{ k.label }}</span><span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:2px 7px;border-radius:5px;border:1px solid var(--line-strong);background:var(--sunken);white-space:nowrap">{{ k.keys }}</span></div></sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ sp.about }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:16px;padding:24px 0;border-bottom:1px solid var(--line)">
+                <img src="renderer/app-logo.png" style="height:40px;width:auto">
+                <div style="flex:1"><div style="font-size:15px;font-weight:600">TesterBrowser 0.77.1</div><div style="font-size:12.5px;color:var(--ok);margin-top:4px;display:flex;align-items:center;gap:6px"><i class="icon-circle-check" style="font-size:13px"></i>Up to date</div></div>
+                <div style="height:30px;display:flex;align-items:center;padding:0 12px;border-radius:7px;border:1px solid var(--line-strong);font-size:12.5px">Check for updates</div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'light'|'dark'&quot;}}">
+class Component extends DCLogic {
+  state = { tab: 1, tool: 'network', sel: 1, dtab: 'headers', settings: false, spane: 'general', theme: null,
+    recording: false, mockForm: false, resForm: false, resType: '500', chips: {}, level: 'all', panelOpen: true, query: '',
+    toggles: { redact: true, downloads: false, popups: false, debug: true, autoinstall: true },
+    mockOn: { 1: true, 2: false }, resOn: { 1: true, 2: false, 3: false },
+    store: 'cookies', ax: 5, sev: 'all', finding: 0, match: 'path', diffSel: 2, diffChips: {}, vr: 'side',
+    device: 'iPhone 15', city: 'London', dbgLevel: 'all', dbgSrc: {} };
+
+  set = (p) => this.setState(p);
+
+  seg(defs, current, key, extra) {
+    return defs.map(d => { const [id, label, count] = Array.isArray(d) ? d : [d, d]; const on = current === id;
+      return { label, count: count ?? '', bg: on ? 'var(--surface)' : 'transparent', ink: on ? 'var(--text)' : 'var(--text-2)', shadow: on ? '0 1px 2px rgba(0,0,0,.12)' : 'none', select: () => this.set({ [key]: id }), ...(extra ? extra(id) : {}) }; });
+  }
+  chip(on) { return { bg: on ? 'var(--text)' : 'transparent', ink: on ? 'var(--surface)' : 'var(--text-2)', border: on ? 'var(--text)' : 'var(--line)' }; }
+  check(on) { return { bg: on ? 'var(--accent)' : 'var(--surface)', border: on ? 'var(--accent)' : 'var(--line-strong)', icon: on ? 'icon-check' : '' }; }
+
+  renderVals() {
+    const s = this.state, P = this.props;
+    const theme = s.theme || P.theme || 'light';
+    const SC = { red: 'oklch(0.62 0.18 25)', blue: 'oklch(0.6 0.14 250)', none: 'var(--line-strong)' };
+
+    const tabsData = [
+      { id: 1, name: 'Session 1', color: SC.red, proto: 'http://', host: 'the-internet.herokuapp.com', path: '/status_codes/500', secure: false, kind: 'Persistent' },
+      { id: 2, name: 'Session 2', color: SC.blue, proto: 'https://', host: 'demoqa.com', path: '/login', secure: true, kind: 'In-memory' },
+      { id: 3, name: 'New tab', color: SC.none, proto: '', host: '', path: '', secure: null, kind: 'In-memory' },
+    ];
+    const cur = tabsData.find(t => t.id === s.tab) || tabsData[0];
+    const browserTabs = tabsData.map(t => ({ ...t, bg: t.id === s.tab ? 'var(--surface)' : 'transparent', weight: t.id === s.tab ? 600 : 400, ink: t.id === s.tab ? 'var(--text)' : 'var(--text-2)', select: () => this.set({ tab: t.id }) }));
+    const url = { proto: cur.proto, host: cur.host, path: cur.path, placeholder: cur.id === 3 ? 'Search or enter address' : '',
+      lockIcon: cur.secure === null ? 'icon-search' : cur.secure ? 'icon-lock' : 'icon-lock-open',
+      lockColor: cur.secure === null ? 'var(--text-3)' : cur.secure ? 'var(--ok)' : 'var(--err)',
+      sessionColor: cur.color, sessionLabel: cur.name + ' · ' + cur.kind, sessionName: cur.name };
+
+    const groups = [
+      ['Inspect', [['network', 'Network', 'icon-globe'], ['console', 'Console', 'icon-terminal', 2, 'err'], ['storage', 'Storage', 'icon-database'], ['a11y', 'A11y', 'icon-accessibility', 2, 'warn'], ['security', 'Security', 'icon-shield-check', 6, 'warn']]],
+      ['Compare', [['netdiff', 'Network diff', 'icon-git-compare'], ['uidiff', 'UI diff', 'icon-scan-eye']]],
+      ['Simulate', [['mock', 'Mock', 'icon-replace'], ['resilience', 'Resilience', 'icon-zap-off'], ['spoof', 'Spoof', 'icon-map-pin']]],
+      ['Automate', [['tests', 'Record', 'icon-circle-dot'], ['follow', 'Follow', 'icon-users']]],
+      ['Connect', [['jira', 'Jira', 'icon-ticket'], ['debug', 'Debug log', 'icon-scroll-text']]],
+    ];
+    const mk = (g, [id, label, icon, badge, tone]) => { const on = s.tool === id;
+      return { id, label, icon, group: g, badge: badge || 0, badgeBg: tone === 'err' ? 'var(--err-soft)' : 'var(--warn-soft)', badgeInk: tone === 'err' ? 'var(--err)' : 'var(--warn)',
+        ink: on ? 'var(--text)' : 'var(--text-2)', weight: on ? 600 : 400, line: on && s.panelOpen ? 'var(--accent)' : 'transparent',
+        select: () => this.set({ tool: id, panelOpen: true }) }; };
+    const tabGroups = groups.map(([g, tools], i) => ({ divider: i ? '1px solid var(--line)' : 'none', tools: tools.map(t => mk(g, t)) }));
+    const allTools = tabGroups.flatMap(g => g.tools);
+    const is = Object.fromEntries(allTools.map(t => [t.id, s.tool === t.id]));
+    const ms = (v) => v >= 1000 ? (v / 1000).toFixed(2) + ' s' : v + ' ms';
+
+    // Network
+    const H = 'the-internet.herokuapp.com';
+    const raw = [
+      [1, 500, 'GET', '/status_codes/500', H, 'document', '1.7 kB', 315], [2, 200, 'GET', '/js/vendor/298279967.js', H, 'script', '84.2 kB', 120],
+      [3, 200, 'GET', '/css/app.css', H, 'stylesheet', '12.1 kB', 64], [4, 200, 'GET', '/css/font-awesome.css', H, 'stylesheet', '26.7 kB', 71],
+      [5, 200, 'GET', '/js/vendor/jquery-1.11.3.min.js', H, 'script', '95.9 kB', 98], [6, 200, 'GET', '/js/vendor/jquery-ui-1.11.4/jquery-ui.js', H, 'script', '470 kB', 212],
+      [7, 200, 'GET', '/js/foundation/foundation.js', H, 'script', '38.4 kB', 88], [8, 200, 'GET', '/js/foundation/foundation.alerts.js', H, 'script', '2.1 kB', 41],
+      [9, 200, 'GET', '/img/forkme_right_green_007200.png', H, 'image', '7.8 kB', 56], [10, 204, 'POST', '/event', '298279967.log.optimizely.com', 'ping', '0 B', 143],
+      [11, 503, 'GET', '/api/flags', H, 'fetch', '0.2 kB', 2004, 'Resilience'], [12, 200, 'GET', '/api/user', H, 'fetch', '0.4 kB', 2, 'Mocked'],
+    ];
+    const counts = { errors: raw.filter(r => r[1] >= 400).length, mocked: raw.filter(r => r[8] === 'Mocked').length, resilience: raw.filter(r => r[8] === 'Resilience').length };
+    const q = s.query.toLowerCase();
+    const filtered = raw.filter(r => (!q || (r[4] + r[3]).toLowerCase().includes(q)) && (!s.chips.errors || r[1] >= 400) && (!s.chips.mocked || r[8] === 'Mocked') && (!s.chips.resilience || r[8] === 'Resilience'));
+    const stInk = (c) => c >= 400 ? 'var(--err)' : c >= 300 ? 'var(--warn)' : 'var(--ok)';
+    const netRows = filtered.map(r => { const on = r[0] === s.sel;
+      return { status: r[1], method: r[2], path: r[3], host: r[4], type: r[5], size: r[6], time: ms(r[7]),
+        statusInk: stInk(r[1]), statusWeight: r[1] >= 400 ? 600 : 400, timeInk: r[7] > 1000 ? 'var(--warn)' : 'var(--text-2)',
+        tag: r[8] || '', tagBg: r[8] === 'Mocked' ? 'var(--accent-soft)' : 'var(--warn-soft)', tagInk: r[8] === 'Mocked' ? 'var(--accent)' : 'var(--warn)',
+        bg: on ? 'var(--accent-soft)' : 'transparent', edge: on ? 'inset 2px 0 0 var(--accent)' : 'none', select: () => this.set({ sel: r[0] }) }; });
+    const netChips = [['errors', 'Errors'], ['mocked', 'Mocked'], ['resilience', 'Resilience']].map(([k, label]) => ({ label, count: counts[k], ...this.chip(!!s.chips[k]), toggle: () => this.set({ chips: { ...s.chips, [k]: !s.chips[k] } }) }));
+    const selRaw = raw.find(r => r[0] === s.sel) || raw[0];
+    const stText = { 200: 'OK', 204: 'No Content', 500: 'Internal Server Error', 503: 'Service Unavailable' };
+    const sel = { status: selRaw[1], statusText: stText[selRaw[1]] || '', method: selRaw[2], url: 'http://' + selRaw[4] + selRaw[3], meta: ms(selRaw[7]) + ' · ' + selRaw[6] + ' · ' + selRaw[5],
+      pillBg: selRaw[1] >= 400 ? 'var(--err-soft)' : 'var(--ok-soft)', pillInk: selRaw[1] >= 400 ? 'var(--err)' : 'var(--ok)' };
+    const resH = [['Content-Length', '1738'], ['Content-Type', 'text/html;charset=utf-8'], ['Date', 'Tue, 15 Sep 2026 19:01:15 GMT'], ['Server', 'Heroku'], ['Via', '1.1 heroku-router'], ['X-Content-Type-Options', 'nosniff'], ['X-Frame-Options', 'SAMEORIGIN'], ['X-Xss-Protection', '1; mode=block'], ['Nel', '{"report_to":"heroku-nel","max_age":3600}']];
+    const reqH = [['Upgrade-Insecure-Requests', '1'], ['User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) TesterBrowser/0.77.1 Chrome/150.0.7871.224']];
+    const headerGroups = [{ title: 'Response headers', count: resH.length, rows: resH.map(([k, v]) => ({ k, v })) }, { title: 'Request headers', count: reqH.length, rows: reqH.map(([k, v]) => ({ k, v })) }];
+    const dts = [['headers', 'Headers', resH.length + reqH.length], ['response', 'Response', ''], ['timing', 'Timing', ''], ['cookies', 'Cookies', 0]];
+    const detailTabs = dts.map(([id, label, count]) => ({ label, count, ink: s.dtab === id ? 'var(--text)' : 'var(--text-2)', weight: s.dtab === id ? 600 : 400, line: s.dtab === id ? 'var(--accent)' : 'transparent', select: () => this.set({ dtab: id }) }));
+    const dIs = Object.fromEntries(dts.map(([id]) => [id, s.dtab === id]));
+    const S = '\u003cscr' + 'ipt';
+    const bodyPre = '<!DOCTYPE html>\n<html class="no-js" lang="en">\n  <head>\n    ' + S + ' src="/js/vendor/298279967.js"></scr' + 'ipt>\n    <meta charset="utf-8" />\n    <title>The Internet</title>\n    <link href="/css/app.css" rel="stylesheet">\n  </head>\n  <body>\n    <div id="content" class="large-12 columns">\n      <div class="example">\n        <h3>Status Codes</h3>\n        <p>This page returned a 500 status code.</p>\n      </div>\n    </div>\n  </body>\n</html>';
+    const timing = [['Queued', 0, 4], ['DNS lookup', 4, 18], ['Connection', 22, 46], ['Waiting (TTFB)', 68, 231], ['Download', 299, 16]].map(([label, st, d]) => ({ label, ms: d + ' ms', left: (st / 315 * 100) + '%', width: Math.max(d / 315 * 100, 1) + '%', color: label.startsWith('Waiting') ? 'var(--accent)' : 'var(--text-3)' }));
+
+    // Console
+    const cl = [
+      ['error', 'Failed to load resource: the server responded with a status of 500 (Internal Server Error)', 'status_codes/500', '21:01:15'],
+      ['warn', 'jQuery.fn.load() is deprecated', 'jquery-1.11.3.min.js:4', '21:01:15'], ['log', 'Optimizely snippet loaded', '298279967.js:1', '21:01:15'],
+      ['info', '[foundation] alerts plugin initialised', 'foundation.alerts.js:12', '21:01:15'], ['warn', 'Resilience rule */api/flags* returned 503 after 2000 ms', 'TesterBrowser', '21:01:16'],
+      ['error', "Uncaught TypeError: Cannot read properties of undefined (reading 'flags')", 'app.js:88', '21:01:16'], ['debug', '[optimizely] event queued: pageview', '298279967.js:1', '21:01:17'],
+    ];
+    const lv = { error: ['icon-circle-x', 'var(--err)', 'var(--err-soft)'], warn: ['icon-triangle-alert', 'var(--warn)', 'var(--warn-soft)'], info: ['icon-info', 'var(--accent)', 'transparent'], log: ['icon-chevron-right', 'var(--text-3)', 'transparent'], debug: ['icon-bug', 'var(--text-3)', 'transparent'] };
+    const levelMatch = (l) => s.level === 'all' || s.level === l || (s.level === 'info' && l === 'log');
+    const consoleRows = cl.filter(c => levelMatch(c[0])).map(([l, msg, src, ts]) => ({ msg, src, ts, icon: lv[l][0], ink: lv[l][1], bg: lv[l][2], msgInk: l === 'error' ? 'var(--err)' : l === 'debug' ? 'var(--text-3)' : 'var(--text)' }));
+    const levels = this.seg([['all', 'All', 7], ['error', 'Errors', 2], ['warn', 'Warnings', 2], ['info', 'Info', 2], ['debug', 'Debug', 1]], s.level, 'level', id => ({ countInk: id === 'error' ? 'var(--err)' : 'var(--text-3)' }));
+
+    // Storage
+    const sn = [['cookies', 'Cookies', 'icon-cookie', 5], ['local', 'Local storage', 'icon-hard-drive', 3], ['session', 'Session storage', 'icon-timer', 2], ['idb', 'IndexedDB', 'icon-database', 1]];
+    const storeNav = sn.map(([id, label, icon, count]) => { const on = s.store === id; return { label, icon, count, bg: on ? 'var(--surface)' : 'transparent', ink: on ? 'var(--text)' : 'var(--text-2)', weight: on ? 600 : 400, select: () => this.set({ store: id }) }; });
+    const storeIs = { cookies: s.store === 'cookies', kv: s.store === 'local' || s.store === 'session', idb: s.store === 'idb' };
+    const cookies = [
+      ['rack.session', 'BAh7CEkiD3Nlc3Npb25faWQGOgZFVEkiRWI4ZjE3YmM1…', 'the-internet.herokuapp.com', '/', 'Session', ['HttpOnly', 'Lax'], '1st'],
+      ['optimizelyEndUserId', 'oeu1789498875a0.6182', '.herokuapp.com', '/', '14 Mar 2027', ['Lax'], '1st'],
+      ['optimizelySegments', '%7B%22223%22%3A%22direct%22%7D', '.herokuapp.com', '/', 'Session', ['Lax'], '1st'],
+      ['optimizelyBuckets', '%7B%7D', '.herokuapp.com', '/', '14 Mar 2027', ['Lax'], '1st'],
+      ['_ga', 'GA1.1.1045822319.1789498875', '.optimizely.com', '/', '20 Oct 2027', ['Secure', 'None'], '3rd'],
+    ].map(([name, value, domain, path, expires, flags, party]) => ({ name, value, domain, path, expires, flags, party, opacity: party === '3rd' ? 0.6 : 1, partyBg: party === '1st' ? 'var(--accent-soft)' : 'var(--sunken)', partyInk: party === '1st' ? 'var(--accent)' : 'var(--text-3)' }));
+    const kvRows = (s.store === 'session' ? [['tabId', '"s1-7f3a"', '12 B'], ['lastScroll', '0', '1 B']] : [['optimizely_data$$pending_events', '{}', '2 B'], ['flags', '{"newCheckout":false,"darkMode":true}', '38 B'], ['lastVisit', '"2026-09-15T19:01:15Z"', '22 B']]).map(([k, v, size]) => ({ k, v, size }));
+
+    // A11y
+    const axRaw = [[0, 'WebArea', 'The Internet', 1], [1, 'banner', '', 1], [2, 'link', 'Fork me on GitHub', 1], [3, 'img', '', 0, 'No name'], [1, 'main', '', 1], [2, 'heading', 'Status Codes', 0, 'Level skips'], [2, 'paragraph', '', 1], [3, 'StaticText', 'This page returned a 500 status code.', 0], [2, 'paragraph', '', 1], [3, 'link', 'here', 0], [1, 'contentinfo', '', 1], [2, 'link', 'Elemental Selenium', 0]];
+    const axNodes = axRaw.map(([d, role, name, kids, issue], i) => { const on = s.ax === i; return { role, name: name ? '"' + name + '"' : '', issue: issue || '', indent: (14 + d * 18) + 'px', caret: kids ? 'icon-chevron-down' : '', bg: on ? 'var(--accent-soft)' : 'transparent', edge: on ? 'inset 2px 0 0 var(--accent)' : 'none', select: () => this.set({ ax: i }) }; });
+    const axSel = axRaw[s.ax] || axRaw[5];
+    const ax = { role: axSel[1], name: axSel[2] || '(no name)', props: [['Name from', axSel[2] ? 'contents' : '—'], ['Level', axSel[1] === 'heading' ? '3' : '—'], ['Focusable', axSel[1] === 'link' ? 'true' : 'false'], ['Hidden', 'false'], ['Selector', axSel[1] === 'heading' ? 'div.example > h3' : axSel[1] === 'img' ? 'a > img' : axSel[1]]].map(([k, v]) => ({ k, v })) };
+    const axIssues = [{ title: 'Image has no accessible name', target: 'a[href*="github"] > img', impact: 'Critical' }, { title: 'Heading level jumps to h3 with no h1 or h2', target: 'div.example > h3', impact: 'Moderate' }];
+
+    // Security
+    const fr = [
+      ['High', 'Page loaded over plain HTTP', 'Transport', 'http://the-internet.herokuapp.com/status_codes/500', 'Traffic can be read or changed by anyone on the network, including cookies and form input.', 'GET http://the-internet.herokuapp.com/status_codes/500\nScheme: http'],
+      ['Medium', 'Missing Content-Security-Policy', 'Headers', '/status_codes/500 · document', 'Without a CSP, injected scripts run with full access to the page.', 'Response headers checked:\n  Content-Security-Policy   (absent)\n  X-Frame-Options           SAMEORIGIN'],
+      ['Medium', 'Session cookie sent without Secure', 'Cookies', 'rack.session', 'The session cookie is sent over unencrypted connections and can be captured.', 'Set-Cookie: rack.session=BAh7…; path=/; HttpOnly'],
+      ['Low', 'Missing Referrer-Policy', 'Headers', '/status_codes/500 · document', 'Full URLs, including query strings, may leak to third-party sites.', 'Referrer-Policy   (absent)'],
+      ['Low', 'Cookie readable by JavaScript', 'Cookies', 'optimizelyEndUserId', 'Scripts on the page can read this cookie. Fine for analytics, not for anything sensitive.', 'Set-Cookie: optimizelyEndUserId=oeu…; path=/; domain=.herokuapp.com'],
+      ['Low', 'Third-party request over HTTP', 'Transport', 'http://298279967.log.optimizely.com/event', 'Analytics events, including the page URL, are sent unencrypted.', 'POST http://298279967.log.optimizely.com/event → 204'],
+    ];
+    const sevC = { High: ['var(--err)', 'var(--err-soft)'], Medium: ['var(--warn)', 'var(--warn-soft)'], Low: ['var(--text-3)', 'var(--sunken)'] };
+    const sevSeg = this.seg([['all', 'All', 6], ['High', 'High', 1], ['Medium', 'Medium', 2], ['Low', 'Low', 3]], s.sev, 'sev', id => ({ dot: id === 'all' ? 'var(--text-3)' : sevC[id][0] }));
+    const findings = fr.map((f, i) => ({ f, i })).filter(({ f }) => s.sev === 'all' || f[0] === s.sev).map(({ f, i }) => { const on = s.finding === i; return { sev: f[0], title: f[1], cat: f[2], where: f[3], ink: sevC[f[0]][0], bg: on ? 'var(--accent-soft)' : 'transparent', edge: on ? 'inset 2px 0 0 var(--accent)' : 'none', select: () => this.set({ finding: i }) }; });
+    const fs = fr[s.finding] || fr[0];
+    const finding = { sev: fs[0], title: fs[1], cat: fs[2], why: fs[4], evidence: fs[5], ink: sevC[fs[0]][0], softBg: sevC[fs[0]][1] };
+
+    // Network diff
+    const matchSeg = this.seg([['url', 'Match full URL'], ['path', 'Match path']], s.match, 'match');
+    const dr = [
+      ['/', 'GET', 200, 182, 200, 164, 'same'], ['/api/user', 'GET', 200, 96, 200, 88, 'same'], ['/api/flags', 'GET', 200, 140, 200, 131, 'body'],
+      ['/api/orders', 'POST', 201, 412, 500, 1290, 'status'], ['/css/app.css', 'GET', 200, 40, 200, 38, 'same'], ['/js/app.js', 'GET', 200, 122, 304, 21, 'status'],
+      ['/api/promo', 'GET', 200, 74, null, null, 'onlyA'], ['/api/v2/recommendations', 'GET', null, null, 200, 233, 'onlyB'], ['/img/logo.svg', 'GET', 200, 18, 200, 17, 'same'],
+    ];
+    const resultMap = { same: ['Same', 'var(--sunken)', 'var(--text-3)'], body: ['Same · ≠ body', 'var(--accent-soft)', 'var(--accent)'], status: ['Different status', 'var(--warn-soft)', 'var(--warn)'], onlyA: ['Only in A', 'var(--err-soft)', 'var(--err)'], onlyB: ['Only in B', 'var(--ok-soft)', 'var(--ok)'] };
+    const dc = { same: 4, different: 3, onlyA: 1, onlyB: 1 };
+    const diffChips = [['different', 'Different', 'var(--warn)'], ['onlyA', 'Only in A', 'var(--err)'], ['onlyB', 'Only in B', 'var(--ok)'], ['same', 'Same', 'var(--text-3)']].map(([k, label, dot]) => ({ label, dot, count: dc[k], ...this.chip(!!s.diffChips[k]), toggle: () => this.set({ diffChips: { ...s.diffChips, [k]: !s.diffChips[k] } }) }));
+    const anyDiff = Object.values(s.diffChips).some(Boolean);
+    const cat = (r) => r === 'same' ? 'same' : (r === 'body' || r === 'status') ? 'different' : r;
+    const diffRows = dr.map((r, i) => ({ r, i })).filter(({ r }) => !anyDiff || s.diffChips[cat(r[6])]).map(({ r, i }) => { const on = s.diffSel === i; const d = r[3] != null && r[5] != null ? r[5] - r[3] : null; const rm = resultMap[r[6]];
+      return { path: r[0], method: r[1], a: r[2] ?? '—', at: r[3] != null ? r[3] + ' ms' : '', b: r[4] ?? '—', bt: r[5] != null ? r[5] + ' ms' : '', aInk: r[2] ? stInk(r[2]) : 'var(--text-3)', bInk: r[4] ? stInk(r[4]) : 'var(--text-3)',
+        delta: d == null ? '' : (d > 0 ? '+' : '') + d + ' ms', dInk: d > 200 ? 'var(--warn)' : 'var(--text-3)', result: rm[0], resBg: rm[1], resInk: rm[2], bg: on ? 'var(--accent-soft)' : 'transparent', edge: on ? 'inset 2px 0 0 var(--accent)' : 'none', select: () => this.set({ diffSel: i }) }; });
+
+    // UI diff
+    const vrSeg = this.seg([['base', 'Baseline'], ['cur', 'Current'], ['diff', 'Diff'], ['side', 'Side by side']], s.vr, 'vr');
+    const allPanes = [{ id: 'base', label: 'Baseline', meta: '14:02 · 1440×2210', hint: 'baseline screenshot' }, { id: 'cur', label: 'Current', meta: '21:01 · 1440×2210', hint: 'current screenshot' }, { id: 'diff', label: 'Diff', meta: 'changed pixels highlighted', hint: 'diff overlay', isDiff: true }];
+    const vrPanes = (s.vr === 'side' ? allPanes : allPanes.filter(p => p.id === s.vr)).map(p => ({ ...p, isDiff: !!p.isDiff }));
+    const baselines = [['Status page · full', '14:02', true], ['Login · viewport', 'Yesterday', false], ['Status page · viewport', '12 Oct', false]].map(([label, time, on]) => ({ label, time, bg: on ? 'var(--accent-soft)' : 'transparent' }));
+
+    // Spoof
+    const devs = { 'Desktop': ['1440', '900', '1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/150.0'], 'iPhone 15': ['393', '852', '3', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148'], 'Pixel 8': ['412', '915', '2.6', 'Mozilla/5.0 (Linux; Android 15; Pixel 8) Chrome/150.0 Mobile'], 'iPad Air': ['820', '1180', '2', 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) Mobile/15E148'] };
+    const cities = { 'London': ['Europe/London', 'en-GB', '51.5072', '-0.1276'], 'New York': ['America/New_York', 'en-US', '40.7128', '-74.0060'], 'Tokyo': ['Asia/Tokyo', 'ja-JP', '35.6762', '139.6503'], 'São Paulo': ['America/Sao_Paulo', 'pt-BR', '-23.5505', '-46.6333'] };
+    const pick = (on) => ({ bg: on ? 'var(--accent-soft)' : 'transparent', ink: on ? 'var(--accent)' : 'var(--text-2)', border: on ? 'var(--accent)' : 'var(--line)' });
+    const devicePresets = Object.keys(devs).map(label => ({ label, ...pick(s.device === label), select: () => this.set({ device: label }) }));
+    const cityPresets = Object.keys(cities).map(label => ({ label, ...pick(s.city === label), select: () => this.set({ city: label }) }));
+    const dv = devs[s.device], ct = cities[s.city];
+    const deviceFields = [['Width', dv[0]], ['Height', dv[1]], ['Pixel ratio', dv[2]]].map(([k, v]) => ({ k, v }));
+    const cityFields = [['Timezone', ct[0]], ['Locale', ct[1]], ['Latitude', ct[2]], ['Longitude', ct[3]]].map(([k, v]) => ({ k, v }));
+    const advRows = [['Color scheme', 'Dark'], ['Reduced motion', 'Off'], ['Network', 'Fast 3G'], ['CPU', '4× slower']].map(([k, v]) => ({ k, v }));
+    const spoofApplied = [['icon-smartphone', s.device + ' · ' + dv[0] + '×' + dv[1]], ['icon-map-pin', s.city + ' · ' + ct[0]], ['icon-wifi', 'Fast 3G']].map(([icon, label]) => ({ icon, label }));
+
+    // Follow along
+    const fl = [
+      ['21:04:02', 'icon-navigation', 'Navigate', 'https://demoqa.com/login', 'Mirrored', 'ok'], ['21:04:05', 'icon-mouse-pointer-click', 'Click', 'input#userName', 'Mirrored', 'ok'],
+      ['21:04:07', 'icon-keyboard', 'Type', 'input#userName · "testuser"', 'Mirrored', 'ok'], ['21:04:09', 'icon-keyboard', 'Type', 'input#password · ••••••••', 'Mirrored', 'ok'],
+      ['21:04:10', 'icon-mouse-pointer-click', 'Click', 'button#login', 'Mirrored', 'ok'], ['21:04:12', 'icon-navigation', 'Navigate', 'https://demoqa.com/profile', 'Mirrored', 'ok'],
+      ['21:04:15', 'icon-mouse-pointer-click', 'Click', 'button#gotoStore', 'Element not found', 'warn'],
+    ];
+    const followRows = fl.map(([ts, icon, action, target, result, k]) => ({ ts, icon, action, target, result, ink: k === 'ok' ? 'var(--text-3)' : 'var(--warn)', resIcon: k === 'ok' ? 'icon-check' : 'icon-triangle-alert', bg: k === 'ok' ? 'transparent' : 'var(--warn-soft)' }));
+    const liveDot = React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: 'var(--ok)', animation: 'tbpulse 1.6s ease-in-out infinite', display: 'inline-block' } });
+
+    // Jira
+    const jiraFields = [['Assignee', 'Priya Shah'], ['Reporter', 'Tom Becker'], ['Priority', 'High'], ['Sprint', 'Sprint 42'], ['Fix version', '3.8.0']].map(([k, v]) => ({ k, v }));
+    const criteria = [['A 500 from the status service shows the branded error page', false], ['The error page offers a retry button', false], ['Other status codes are unaffected', true]].map(([text, done]) => ({ text, ...this.check(done) }));
+    const attachments = [['Network log (HAR)', '12 requests', true], ['Console log', '7 messages', true], ['Screenshot', 'Current tab', true], ['Session snapshot', 'Cookies and storage', false]].map(([label, meta, on]) => ({ label, meta, ...this.check(on) }));
+
+    // Debug log
+    const dl = [
+      ['19:01:12.004', 'info', 'main', 'App ready in 812 ms (v0.77.1)'], ['19:01:12.130', 'debug', 'ipc', 'sessions:create {partition:"persist:s1"}'],
+      ['19:01:12.410', 'info', 'recorder', 'Attached to tab 1 (Session 1)'], ['19:01:15.001', 'debug', 'recorder', 'Network.requestWillBeSent ×12'],
+      ['19:01:15.318', 'warn', 'recorder', 'Skipped body capture for image/png (forkme_right_green_007200.png)'], ['19:01:16.020', 'info', 'resilience', 'Rule 1 matched GET /api/flags → timeout 2000 ms'],
+      ['19:01:16.402', 'info', 'mock', 'Rule 1 served GET /api/user → 200'], ['19:01:20.002', 'info', 'updater', 'Checking for updates'],
+      ['19:01:20.881', 'info', 'updater', 'Up to date (0.77.1)'], ['19:02:03.551', 'error', 'ipc', 'jira:load failed: 401 Unauthorized (token expired)'],
+    ];
+    const dbgLevels = this.seg([['all', 'All'], ['error', 'Errors'], ['warn', 'Warnings'], ['debug', 'Debug']], s.dbgLevel, 'dbgLevel');
+    const srcs = ['main', 'ipc', 'recorder', 'mock', 'updater'];
+    const dbgSources = srcs.map(k => ({ label: k, ...this.chip(!!s.dbgSrc[k]), toggle: () => this.set({ dbgSrc: { ...s.dbgSrc, [k]: !s.dbgSrc[k] } }) }));
+    const anySrc = Object.values(s.dbgSrc).some(Boolean);
+    const lvInk = { info: 'var(--text-2)', debug: 'var(--text-3)', warn: 'var(--warn)', error: 'var(--err)' };
+    const dbgRows = dl.filter(d => (s.dbgLevel === 'all' || d[1] === s.dbgLevel) && (!anySrc || s.dbgSrc[d[2]])).map(([ts, level, src, msg]) => ({ ts, level, src, msg, ink: lvInk[level], weight: level === 'error' || level === 'warn' ? 600 : 400, msgInk: level === 'error' ? 'var(--err)' : level === 'debug' ? 'var(--text-3)' : 'var(--text)', bg: level === 'error' ? 'var(--err-soft)' : 'transparent' }));
+
+    // Mock / Resilience / Tests
+    const sw = (on) => ({ track: on ? 'var(--accent)' : 'var(--line-strong)', knob: on ? '14px' : '2px', opacity: on ? 1 : 0.55 });
+    const mockRows = [[1, 'GET', '*/api/user*', 200, '{"id": 42, "name": "Test User", "role": "admin"}', 3, '2 s ago'], [2, 'POST', '*/api/orders', 201, '{"orderId": "A-1001"}', 0, 'Never']]
+      .map(([id, method, pattern, status, body, hits, last]) => ({ method, pattern, status, body, hits, last, ...sw(s.mockOn[id]), toggle: () => this.set({ mockOn: { ...s.mockOn, [id]: !s.mockOn[id] } }) }));
+    const resRows = [[1, 'Timeout', 'icon-hourglass', 'GET', '*/api/flags*', '50%', '2000 ms', 3], [2, '500 error', 'icon-server-crash', 'Any', '*ad*', '100%', '—', 12], [3, '500 error', 'icon-server-crash', 'GET', 'https://demoqa.com/assets/Toolsqa-DZdwt2ul.jpg', '100%', '—', 5]]
+      .map(([id, type, icon, method, pattern, prob, delay, hits]) => ({ type, icon, method, pattern, prob, delay, hits, ...sw(s.resOn[id]), toggle: () => this.set({ resOn: { ...s.resOn, [id]: !s.resOn[id] } }) }));
+    const rtDefs = [['500', '500 error', 'icon-server-crash', 'Returns HTTP 500 Internal Server Error.'], ['504', 'Gateway timeout', 'icon-hourglass', 'Returns 504 immediately or after the delay.'], ['hang', 'Hang', 'icon-pause', 'Never responds, or releases after the delay.'], ['offline', 'Offline', 'icon-wifi-off', 'Fails the request as if the network were down.'], ['404', '404', 'icon-file-x', 'Returns HTTP 404 Not Found.'], ['corrupt', 'Corrupt body', 'icon-file-warning', 'Returns the real response with a scrambled body.'], ['latency', 'Latency', 'icon-timer', 'Adds the delay before the real response.'], ['random', 'Random 500', 'icon-dices', 'Returns 500 at the chosen probability.']];
+    const resTypes = rtDefs.map(([id, label, icon]) => ({ label, icon, ...pick(s.resType === id), select: () => this.set({ resType: id }) }));
+    const resTypeDesc = (rtDefs.find(r => r[0] === s.resType) || rtDefs[0])[3];
+    const steps = [['icon-navigation', 'Navigate', 'https://the-internet.herokuapp.com/login', ''], ['icon-mouse-pointer-click', 'Click', 'input#username', ''], ['icon-keyboard', 'Fill', 'input#username', '"tomsmith"'], ['icon-keyboard', 'Fill', 'input#password', '••••••••'], ['icon-mouse-pointer-click', 'Click', 'button[type="submit"]', ''], ['icon-badge-check', 'Assert URL', 'contains /secure', '']]
+      .map(([icon, action, target, value], i) => ({ n: i + 1, icon, action, target, value, tint: action.startsWith('Assert') ? 'var(--ok-soft)' : 'var(--sunken)', ink: action.startsWith('Assert') ? 'var(--ok)' : 'var(--text-2)' }));
+    const pulseDot = React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: 'var(--err)', animation: 'tbpulse 1.2s ease-in-out infinite', display: 'inline-block' } });
+
+    // Settings
+    const snv = [['general', 'General', 'icon-sliders-horizontal'], ['tools', 'Tools', 'icon-layout-grid'], ['shortcuts', 'Shortcuts', 'icon-keyboard'], ['about', 'About', 'icon-info']];
+    const settingsNav = snv.map(([id, label, icon]) => { const on = s.spane === id; return { label, icon, bg: on ? 'var(--surface)' : 'transparent', ink: on ? 'var(--text)' : 'var(--text-2)', weight: on ? 600 : 400, select: () => this.set({ spane: id }) }; });
+    const sp = Object.fromEntries(snv.map(([id]) => [id, s.spane === id]));
+    const tg = (key, label, desc) => { const on = s.toggles[key]; return { label, desc, isToggle: true, isSeg: false, isValue: false, track: on ? 'var(--accent)' : 'var(--line-strong)', knob: on ? '17px' : '3px', toggle: () => this.set({ toggles: { ...s.toggles, [key]: !on } }) }; };
+    const val = (label, desc, value, icon) => ({ label, desc, value, valueIcon: icon || 'icon-chevron-down', isToggle: false, isSeg: false, isValue: true });
+    const themeSeg = { label: 'Theme', desc: '', isToggle: false, isSeg: true, isValue: false, options: this.seg([['light', 'Light'], ['dark', 'Dark']], theme, 'theme') };
+    const generalSections = [
+      { title: 'Browser', rows: [themeSeg, val('Search engine', 'Used when you type a search into the address bar.', 'Google'), tg('popups', 'Allow real popups', 'Keeps window.opener for OAuth and payment flows. Popup traffic is not recorded.'), tg('downloads', 'Open downloads panel automatically', '')] },
+      { title: 'Recording', rows: [tg('redact', 'Redact sensitive headers', 'Hides Authorization, Cookie and Set-Cookie values.'), val('Events kept per tab', '', '50,000', 'icon-chevrons-up-down'), val('Keep recordings for', 'Applies to closed tabs.', '14 days'), tg('debug', 'Debug mode', "Collects TesterBrowser's own logs.")] },
+      { title: 'Updates', rows: [tg('autoinstall', 'Install updates when idle', 'Never while recording, playing back or downloading.')] },
+    ];
+    const toolSettings = allTools.map(t => ({ label: t.label, icon: t.icon, group: t.group, lockedOpacity: t.id === 'network' || t.id === 'console' ? 0.5 : 1 }));
+    const shortcuts = [['New tab', 'Ctrl+T'], ['Close tab', 'Ctrl+W'], ['Reopen closed tab', 'Ctrl+Shift+T'], ['Last-used tab', 'Ctrl+Tab'], ['Tab by position', 'Ctrl+1–9'], ['Focus address bar', 'Ctrl+L'], ['Find in page', 'Ctrl+F'], ['Bookmark page', 'Ctrl+D'], ['Bookmarks bar', 'Ctrl+Shift+B'], ['Zoom in / out', 'Ctrl + / −'], ['Reset zoom', 'Ctrl+0'], ['Reload', 'F5'], ['DevTools', 'F12'], ['Report bug', 'Ctrl+Shift+R'], ['Back / forward', 'Alt+← / →'], ['Close tab', 'Middle-click']].map(([label, keys]) => ({ label, keys }));
+    const dials = [['Staging', 'S', 250], ['Production', 'P', 150], ['the-internet', 'T', 25], ['DemoQA', 'D', 70], ['Jira', 'J', 280], ['Mailtrap', 'M', 330]].map(([name, letter, h]) => ({ name, letter, tint: theme === 'dark' ? `oklch(0.32 0.06 ${h})` : `oklch(0.94 0.04 ${h})`, ink: theme === 'dark' ? `oklch(0.85 0.1 ${h})` : `oklch(0.45 0.13 ${h})` }));
+
+    return {
+      themeName: theme, themeIcon: theme === 'dark' ? 'icon-sun' : 'icon-moon', toggleTheme: () => this.set({ theme: theme === 'dark' ? 'light' : 'dark' }),
+      browserTabs, newTab: () => this.set({ tab: 3 }), url, isNewTab: cur.id === 3, isPage: cur.id !== 3, tabGroups, is,
+      panelOpen: s.panelOpen, panelHeight: s.panelOpen ? '470px' : '39px', panelIcon: s.panelOpen ? 'icon-chevron-down' : 'icon-chevron-up', panelTitle: s.panelOpen ? 'Collapse panel' : 'Expand panel', togglePanel: () => this.set({ panelOpen: !s.panelOpen }),
+      query: s.query, setQuery: (e) => this.set({ query: e.target.value }), netChips, netRows, netSummary: filtered.length + ' requests · 739 kB · 2.71 s', sel,
+      goMock: () => this.set({ tool: 'mock', mockForm: true }), goRes: () => this.set({ tool: 'resilience', resForm: true }), goNetwork: () => this.set({ tool: 'network', sel: 1 }),
+      detailTabs, dIs, headerGroups, bodyPre, timing, levels, consoleRows,
+      storeNav, storeIs, cookies, kvRows, axNodes, ax, axIssues, sevSeg, findings, finding,
+      matchSeg, diffChips, diffRows, vrSeg, vrPanes, baselines,
+      devicePresets, cityPresets, deviceFields, deviceUA: dv[3], cityFields, advRows, spoofApplied,
+      followRows, liveDot, jiraFields, criteria, attachments, dbgLevels, dbgSources, dbgRows,
+      mockForm: s.mockForm, toggleMockForm: () => this.set({ mockForm: !s.mockForm }), mockRows,
+      resForm: s.resForm, toggleResForm: () => this.set({ resForm: !s.resForm }), resRows, resTypes, resTypeDesc,
+      recording: s.recording, notRecording: !s.recording, toggleRecording: () => this.set({ recording: !s.recording }), steps, pulseDot,
+      settingsOpen: s.settings, openSettings: () => this.set({ settings: true }), closeSettings: () => this.set({ settings: false }), stop: (e) => e.stopPropagation(),
+      settingsNav, sp, settingsTitle: (snv.find(x => x[0] === s.spane) || snv[0])[1], generalSections, toolSettings, shortcuts, dials,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+/* TesterBrowser redesign — theme tokens.
+   Drop-in replacement for the :root / body.light-mode blocks at the top of
+   renderer/style.css. Existing variable names are kept and re-pointed at the
+   new palette, so every panel picks up the new look before it is restyled.
+   New tokens (prefixed --tb-) are what restyled components should use.
+   oklch() is supported by the bundled Chromium. */
+
+:root {
+  /* new palette — dark (default) */
+  --tb-chrome:       #151619;  /* title bar, tab strip background */
+  --tb-surface:      #1c1d21;  /* toolbar, panel, cards, active browser tab */
+  --tb-sunken:       #18191c;  /* inputs, table headers, side navs, segmented track */
+  --tb-hover:        #26282d;
+  --tb-line:         #2a2c31;  /* all 1px dividers */
+  --tb-line-strong:  #3a3d43;  /* input borders, outline buttons, off-toggle track */
+  --tb-text:         #e8e9ec;
+  --tb-text-2:       #b3b7be;
+  --tb-text-3:       #868b94;
+  --tb-accent:       oklch(0.74 0.12 252);
+  --tb-accent-soft:  oklch(0.30 0.05 252);
+  --tb-err:          oklch(0.72 0.15 27);
+  --tb-err-soft:     oklch(0.29 0.06 27);
+  --tb-warn:         oklch(0.81 0.12 85);
+  --tb-warn-soft:    oklch(0.31 0.05 85);
+  --tb-ok:           oklch(0.76 0.12 150);
+  --tb-ok-soft:      oklch(0.29 0.045 150);
+  --tb-page:         #202125;  /* placeholder behind the web view */
+  --tb-shadow-pop:   0 12px 40px rgba(0,0,0,.5), 0 2px 6px rgba(0,0,0,.3);
+  --tb-on-accent:    #101318;  /* text on accent/err fills (dark theme: dark ink for contrast) */
+
+  /* session colours (tab dot + URL-bar chip) */
+  --tb-session-red:  oklch(0.62 0.18 25);
+  --tb-session-blue: oklch(0.60 0.14 250);
+
+  /* type */
+  --tb-font-ui:   "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --tb-font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+
+  /* radii */
+  --tb-r-xs: 4px;   /* tags, small badges */
+  --tb-r-sm: 6px;   /* icon buttons, small inputs */
+  --tb-r:    7px;   /* buttons, inputs */
+  --tb-r-md: 8px;   /* URL bar, cards in lists, segmented track */
+  --tb-r-lg: 10px;  /* cards, rule tables, forms */
+  --tb-r-xl: 14px;  /* modal */
+  --tb-r-pill: 999px;
+
+  /* legacy names re-pointed (keep until every panel is restyled) */
+  --bg-deep: var(--tb-sunken);       --bg-primary: var(--tb-surface);
+  --bg-secondary: var(--tb-chrome);  --bg-hover: var(--tb-hover);
+  --bg-tertiary: var(--tb-line);     --bg-raised: var(--tb-line-strong);
+  --text-strong: var(--tb-text);     --text-primary: var(--tb-text);
+  --text-secondary: var(--tb-text-2);--text-muted: var(--tb-text-3);
+  --text-faint: var(--tb-text-3);
+  --border-subtle: var(--tb-line);   --border-color: var(--tb-line);
+  --border-strong: var(--tb-line-strong);
+  --accent: var(--tb-accent);        --accent-soft: var(--tb-accent);
+  --accent-text: var(--tb-accent);
+  --info-surface: var(--tb-accent-soft);  --info-border: var(--tb-accent);  --info-strong: var(--tb-accent);
+  --success-surface: var(--tb-ok-soft);   --success-border: var(--tb-ok);   --success-strong: var(--tb-ok);
+  --warn-surface: var(--tb-warn-soft);    --warn-border: var(--tb-warn);    --warn-strong: var(--tb-warn);
+  --error-surface: var(--tb-err-soft);    --error-border: var(--tb-err);    --error-strong: var(--tb-err);
+  --accent2-surface: var(--tb-accent-soft);
+  --on-fill: var(--tb-on-accent);
+  --tab-selected: var(--tb-text-2);
+}
+
+body.light-mode {
+  --tb-chrome:       #eceef1;
+  --tb-surface:      #ffffff;
+  --tb-sunken:       #f6f7f9;
+  --tb-hover:        #eef0f3;
+  --tb-line:         #e5e7eb;
+  --tb-line-strong:  #d2d5da;
+  --tb-text:         #15171a;
+  --tb-text-2:       #4a4f57;
+  --tb-text-3:       #737882;
+  --tb-accent:       oklch(0.53 0.15 252);
+  --tb-accent-soft:  oklch(0.95 0.025 252);
+  --tb-err:          oklch(0.53 0.19 27);
+  --tb-err-soft:     oklch(0.955 0.025 27);
+  --tb-warn:         oklch(0.55 0.12 70);
+  --tb-warn-soft:    oklch(0.96 0.04 85);
+  --tb-ok:           oklch(0.52 0.12 150);
+  --tb-ok-soft:      oklch(0.955 0.03 150);
+  --tb-page:         #ffffff;
+  --tb-shadow-pop:   0 12px 40px rgba(20,24,30,.16), 0 2px 6px rgba(20,24,30,.08);
+  --tb-on-accent:    #ffffff;
+}

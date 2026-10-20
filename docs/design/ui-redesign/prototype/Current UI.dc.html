@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0;background:#f7f7f7;font-family:-apple-system,"Segoe UI",sans-serif;color:#1a1a1a}*{box-sizing:border-box}a{color:#0a6ca0}a:hover{color:#0369a1}</style>
+</helmet>
+<div data-screen-label="Current — Network" style="width:1400px;height:892px;display:flex;flex-direction:column;background:#f7f7f7;overflow:hidden;position:relative">
+  <div style="display:flex;align-items:center;height:40px;flex-shrink:0;background:#ededed;border-bottom:1px solid #cccccc">
+    <div style="padding-left:8px"><div style="color:#5c5c5c;padding:4px 8px;border-radius:4px;display:flex;align-items:center;gap:5px"><img src="renderer/app-logo.png" style="height:20px;width:auto;display:block"><span style="font-size:8px">▾</span></div></div>
+    <div style="display:flex;align-items:center;height:100%;padding:0 8px;gap:4px">
+      <div style="display:flex;align-items:center;gap:4px;padding:5px 8px;background:#f7f7f7;border-radius:4px 4px 0 0;font-size:13px;font-weight:600;border:2px solid #444444;border-bottom:3px solid #d9534f;max-width:180px"><span>Session 1</span><span style="width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-size:13px;color:#686868;font-weight:400">×</span></div>
+      <span style="color:#686868;font-size:13px;padding:0 3px">+</span>
+      <span style="color:#0a6ca0;font-size:18px;padding:2px 8px;line-height:1.4">+</span>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:stretch">
+      <div style="width:46px;height:40px;display:flex;align-items:center;justify-content:center;color:#5c5c5c;font-size:14px;position:relative">☽<span style="position:absolute;bottom:6px;right:12px;width:4px;height:4px;border-radius:50%;background:#0a6ca0"></span></div>
+      <div style="width:46px;height:40px;display:flex;align-items:center;justify-content:center;color:#5c5c5c;font-size:14px">–</div>
+      <div style="width:46px;height:40px;display:flex;align-items:center;justify-content:center;color:#5c5c5c"><div style="width:9px;height:9px;border:1px solid currentColor"></div></div>
+      <div style="width:46px;height:40px;display:flex;align-items:center;justify-content:center;color:#5c5c5c;font-size:14px">✕</div>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;background:#ededed;border-bottom:1px solid #cccccc">
+    <div style="height:46px;display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:2px solid #d9534f">
+      <span style="color:#333;font-size:16px;padding:4px 6px">←</span>
+      <span style="color:#686868;font-size:16px;padding:4px 6px">→</span>
+      <span style="color:#333;font-size:16px;padding:4px 6px">↻</span>
+      <div style="flex:1;position:relative;display:flex;align-items:center">
+        <div style="width:100%;height:30px;border-radius:4px;border:1px solid #aaaaaa;background:#f7f7f7;display:flex;align-items:center;padding-left:28px;font-size:14px"><span style="color:#686868">http://</span><span>the-internet.herokuapp.com/status_codes/500</span></div>
+        <span style="position:absolute;left:8px;font-size:13px;color:#b52020">🔓</span>
+      </div>
+      <span style="font-size:11px;color:#5c5c5c;min-width:36px;text-align:center">100%</span>
+      <span style="color:#686868;font-size:17px;padding:3px 5px">☆</span>
+      <span style="color:#333;font-size:15px;padding:4px 6px">↓</span>
+      <span style="color:#333;font-size:16px;padding:4px 6px">⚙</span>
+      <span style="color:#333;font-size:16px;padding:4px 6px">View ▾</span>
+    </div>
+    <div style="height:3px"></div>
+  </div>
+  <div style="flex:1;background:#ffffff"></div>
+  <div style="height:640px;background:#f7f7f7;display:flex;flex-direction:column">
+    <div style="height:6px;border-top:1px solid #cccccc"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 0;border-bottom:1px solid #e0e0e0;height:36px">
+      <div style="display:flex;height:100%">
+        <sc-for list="{{ consoleTabs }}" as="t" hint-placeholder-count="13">
+          <div style="display:flex;align-items:center;height:100%;padding:0 14px;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:{{ t.color }};border-bottom:2px solid {{ t.border }}"><span style="font-size:13px;margin-right:5px;text-transform:none">{{ t.icon }}</span>{{ t.label }}</div>
+        </sc-for>
+      </div>
+      <div style="display:flex;gap:6px;color:#686868;font-size:13px"><span style="padding:3px 6px">?</span><span style="padding:3px 6px">⌄</span></div>
+    </div>
+    <div style="display:flex;flex:1;min-height:0">
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-bottom:1px solid #e0e0e0">
+          <span style="font-size:11px;color:#5c5c5c;text-transform:uppercase;letter-spacing:0.03em">Filter</span>
+          <div style="width:148px;padding:3px 8px;border-radius:3px;border:1px solid #cccccc;background:#fff;font-size:12px">status_code</div>
+          <div style="display:flex;gap:3px">
+            <span style="padding:2px 7px;border-radius:10px;border:1px solid #8fbde0;color:#0b6ea8;background:rgba(127,200,255,0.07);font-size:11px">Req <span style="font-size:10px">12</span></span>
+            <span style="padding:2px 7px;border-radius:10px;border:1px solid #9dc79d;color:#256b25;background:rgba(143,220,143,0.07);font-size:11px">Res <span style="font-size:10px">12</span></span>
+            <span style="padding:2px 7px;border-radius:10px;border:1px solid #e0e0e0;color:#686868;font-size:11px">Err <span style="font-size:10px">2</span></span>
+          </div>
+          <span style="color:#686868;font-size:13px;padding:3px 6px">✕</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;min-height:28px;padding:2px 4px;border-bottom:1px solid #e0e0e0">
+          <div style="display:flex;gap:3px">
+            <sc-for list="{{ methods }}" as="m" hint-placeholder-count="6"><span style="padding:2px 7px;border-radius:10px;border:1px solid #aaaaaa;color:#1a1a1a;background:#f7f7f7;font-size:11px">{{ m }}</span></sc-for>
+          </div>
+          <span style="font-size:11px;color:#5c5c5c;text-transform:uppercase">Min ms</span>
+          <div style="width:52px;padding:3px 6px;border-radius:3px;border:1px solid #cccccc;background:#fff;font-size:12px">0</div>
+          <span style="font-size:11px;color:#5c5c5c;text-transform:uppercase">From</span>
+          <div style="width:140px;padding:2px 6px;border:1px solid #cccccc;background:#fff;font-size:12px;color:#686868">dd/mm/yyyy --:--:--</div>
+          <span style="font-size:11px;color:#5c5c5c;text-transform:uppercase">To</span>
+          <div style="width:140px;padding:2px 6px;border:1px solid #cccccc;background:#fff;font-size:12px;color:#686868">dd/mm/yyyy --:--:--</div>
+        </div>
+        <div style="flex:1;overflow:hidden;font-family:monospace;font-size:12px;padding:4px 0">
+          <sc-for list="{{ events }}" as="e" hint-placeholder-count="14">
+            <div style="padding:3px 10px;background:{{ e.bg }}">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="flex:0 0 10ch;color:#686868">[{{ e.ts }}]</span>
+                <span style="display:inline-block;width:50px;text-align:center;font-size:9px;font-weight:700;letter-spacing:.04em;border-radius:2px;padding:1px 5px;background:#dcdcdc;color:#333">{{ e.badge }}</span>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333">{{ e.url }}</span>
+                <span style="font-weight:600">{{ e.status }}</span>
+                <span style="color:#686868;font-size:11px">{{ e.dur }}</span>
+              </div>
+              <div style="margin-left:calc(10ch + 8px);color:{{ e.l2color }};font-style:{{ e.l2style }};word-break:break-word">{{ e.line2 }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="width:4px;background:#e4e4e4"></div>
+      <div style="width:556px;display:flex;flex-direction:column;border-left:1px solid #cccccc;background:#ffffff">
+        <div style="display:flex;background:#f7f7f7;border-bottom:1px solid #cccccc;min-height:32px">
+          <sc-for list="{{ detailTabs }}" as="d" hint-placeholder-count="3">
+            <div style="font-size:11px;padding:0 8px 0 10px;height:32px;max-width:160px;display:inline-flex;align-items:center;gap:4px;color:{{ d.color }};border-bottom:2px solid {{ d.border }}"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">500 http://the-internet.herokuapp.com/status_codes/500</span><span style="font-size:13px;color:#686868">×</span></div>
+          </sc-for>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:10px 12px;font-size:12px;font-family:monospace">
+          <div style="margin-bottom:14px"><span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;font-weight:700;margin-right:6px;background:#e0f3e0;color:#256b25">GET</span>http://the-internet.herokuapp.com/status_codes/500</div>
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <span style="border:1px solid #aaaaaa;color:#5c5c5c;border-radius:3px;font-size:11px;padding:2px 8px;font-family:-apple-system,'Segoe UI',sans-serif">↺ Replay</span>
+            <span style="border:1px solid #aaaaaa;color:#5c5c5c;border-radius:3px;font-size:11px;padding:2px 8px;font-family:-apple-system,'Segoe UI',sans-serif">⇒ Mock</span>
+            <span style="border:1px solid #aaaaaa;color:#5c5c5c;border-radius:3px;font-size:11px;padding:2px 8px;font-family:-apple-system,'Segoe UI',sans-serif">⇒ Resilience</span>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:10px;color:#0a6ca0;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;font-weight:600">Request headers</div>
+            <sc-for list="{{ reqHeaders }}" as="h" hint-placeholder-count="2"><div style="display:flex;font-size:11px;padding:2px 0"><span style="color:#0b6ea8;min-width:142px;padding-right:12px">{{ h.k }}</span><span style="word-break:break-all">{{ h.v }}</span></div></sc-for>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:10px;color:#0a6ca0;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;font-weight:600">Response</div>
+            <span style="color:#b52020;font-weight:600">500</span> Internal Server Error <span style="color:#5c5c5c;font-size:11px">315 ms</span>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:10px;color:#0a6ca0;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;font-weight:600">Response headers</div>
+            <sc-for list="{{ resHeaders }}" as="h" hint-placeholder-count="10"><div style="display:flex;font-size:11px;padding:2px 0"><span style="color:#0b6ea8;min-width:128px;padding-right:12px">{{ h.k }}</span><span style="word-break:break-all">{{ h.v }}</span></div></sc-for>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#0a6ca0;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px;font-weight:600">Response body</div>
+            <pre style="background:#fff;border:1px solid #cccccc;border-radius:3px;padding:8px;font-size:11px;margin:0;white-space:pre">{{ bodyPre }}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:892}}">
+class Component extends DCLogic {
+  renderVals() {
+    const S = '\u003cscr' + 'ipt';
+    const tabs = [['⚡','Console'],['🌐','Network'],['📦','Storage'],['♿','A11y'],['⟷','Network diff'],['👁','UI diff'],['🌍','Spoof'],['🔒','Security'],['🎭','Mock'],['⚠','Resilience'],['🎫','Jira'],['▶','Record Playback'],['👣','Follow Along']];
+    const consoleTabs = tabs.map(([icon,label]) => ({ icon, label, color: label==='Network' ? '#1a1a1a' : '#686868', border: label==='Network' ? '#0a6ca0' : 'transparent' }));
+    const methods = ['GET','POST','PUT','DELETE','PATCH','Other'];
+    const H = 'http://the-internet.herokuapp.com';
+    const req = (url) => ({ ts:'21:01:15', badge:'GET', url, status:'', dur:'', line2:'', bg:'transparent', l2color:'#0b6ea8', l2style:'normal' });
+    const events = [
+      { ...req(H+'/status_codes/500'), bg:'#ddeeff' },
+      { ts:'21:01:15', badge:'GET', url:'', status:'500', dur:'315ms', line2:H+'/status_codes/500', bg:'#ddeeff', l2color:'#256b25', l2style:'normal' },
+      req(H+'/js/vendor/298279967.js'), req(H+'/css/app.css'), req(H+'/css/font-awesome.css'),
+      req(H+'/js/vendor/jquery-1.11.3.min.js'), req(H+'/js/vendor/jquery-ui-1.11.4/jquery-ui.js'),
+      req(H+'/js/foundation/foundation.js'), req(H+'/js/foundation/foundation.alerts.js'), req(H+'/img/forkme_right_green_007200.png'),
+      { ts:'21:01:15', badge:'BODY', url:'', status:'', dur:'', bg:'#ddeeff', l2color:'#686868', l2style:'italic', line2:'<!DOCTYPE html> <!--[if IE 8]> <html class="no-js lt-ie9" lang="en" > <![endif]--> <!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]--> <html> <head> '+S+' src="/js/vendor/298279967.js"></scr'+'ipt> <meta charset="utf-8" /> <meta name="viewport" content="width=device-width" /> <title>The Internet</title> <link href="/css/app.css" rel="stylesheet"> <link href="/css/font-awesome.css" rel="stylesheet"> '+S+' src="/js/vendor/jquery-1.11.3.min.js"></scr'+'ipt> '+S+' src="/js/foundation/foundation.js"></scr'+'ipt> </head> <body> <div class="row"> <div id="flash-messages" class="large-12 columns"> </div> </div> <div id="content" class="large-12 columns"> <div class="example"> <h3>Status Codes</h3> <p> This page returned a 500 status code.</p> <p> For a definition and common list of HTTP status codes, go <a href="/status_codes">here</a> </p> </div> </div> <div id="page-footer" class="row"> <div class="large-4 large-centered columns"> <hr> <div style="text-align: center;">Powered by <a target="_blank" href="http://elementalselenium.com/">Elemental Selenium</a></div> </div> </div> </body> </html>' },
+      req('http://298279967.log.optimizely.com/event?a=298279967&d=298279967&y=false&n=http%3A%2F%2Fthe-internet.herokuapp.com%2Fsta…'),
+      { ts:'21:01:17', badge:'', url:'', status:'500', dur:'', line2:H+'/status_codes/500', bg:'transparent', l2color:'#256b25', l2style:'normal' },
+    ];
+    const detailTabs = [0,1,2].map(i => ({ color: i===2?'#1a1a1a':'#686868', border: i===2?'#0a6ca0':'transparent' }));
+    const reqHeaders = [{k:'Upgrade-Insecure-Requests',v:'1'},{k:'User-Agent',v:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) TesterBrowser/0.77.1 Chrome/150.0.7871.224 Electron/43.4.1 Safari/537.36'}];
+    const resHeaders = [{k:'Content-Length',v:'1738'},{k:'Content-Type',v:'text/html;charset=utf-8'},{k:'Date',v:'Tue, 15 Sep 2026 19:01:15 GMT'},{k:'Nel',v:'{"report_to":"heroku-nel","response_headers":["Via"],"max_age":3600,"success_fraction":0.01,"failure_fraction":0.1}'},{k:'Report-To',v:'{"group":"heroku-nel","endpoints":[{"url":"https://nel.heroku.com/reports?s=a5L5CPgRydQTX9AzFihWSblEbjOQbGmPDXGUKLA1%2B3g%3D…"}],"max_age":3600}'},{k:'Server',v:'Heroku'},{k:'Via',v:'1.1 heroku-router'},{k:'X-Content-Type-Options',v:'nosniff'},{k:'X-Frame-Options',v:'SAMEORIGIN'},{k:'X-Xss-Protection',v:'1; mode=block'}];
+    const bodyPre = '<!DOCTYPE html>\n<!--[if IE 8]>        <html class="no-js lt-ie9" lang="en" > <![endif]-->\n<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->\n\n<html>\n  <head>\n    '+S+' src="/js/vendor/298279967.js"></scr'+'ipt>\n    <meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width" />\n    <title>The Internet</title>';
+    return { consoleTabs, methods, events, detailTabs, reqHeaders, resHeaders, bodyPre };
+  }
+}
+</script>
+</body>
+</html>
