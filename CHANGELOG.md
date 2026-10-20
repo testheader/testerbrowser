@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.139.0 — 2026-10-20
+
+### Features
+
+- Spoof panel as three section cards (refs #309) (994b4ac)
+
 ## v0.138.0 — 2026-10-20
 
 ### Features
