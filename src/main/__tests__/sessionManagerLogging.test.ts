@@ -31,6 +31,9 @@ jest.mock('electron', () => {
       this.debugger = new EventEmitter();
       this.debugger.sendCommand = jest.fn().mockResolvedValue({});
     }
+    destroyed = false;
+    isDestroyed() { return this.destroyed; }
+    destroy() { this.destroyed = true; }
     getUserAgent() { return 'fake-ua'; }
     setUserAgent() {}
     setWindowOpenHandler() {}
@@ -154,5 +157,31 @@ describe('SessionManager logging (#227)', () => {
     expect(resilienceInfo[0].ctx).toEqual({
       sessionId: session.id, ruleId: 'r1', method: 'GET', url: 'https://example.com/api',
     });
+  });
+
+  it('a delayed Resilience response never reaches a tab destroyed while it was pending (#286)', () => {
+    jest.useFakeTimers();
+    try {
+      const sm = makeManager(makeLogger());
+      const session = sm.createSession('Test');
+      sm.addResilienceRule(session.id, {
+        id: 'r1', type: 'latency', urlPattern: '*', method: '*', probability: 1,
+        latencyMs: 2000, enabled: true, hitCount: 0, lastHitAt: null,
+      });
+      const dbg = (session.view as unknown as { webContents: { debugger: import('events').EventEmitter & { sendCommand: jest.Mock } } })
+        .webContents.debugger;
+      dbg.emit('message', {}, 'Fetch.requestPaused', {
+        requestId: 'req1',
+        request: { url: 'https://example.com/api', method: 'GET' },
+      });
+      dbg.sendCommand.mockClear();
+      // Real Electron throws synchronously from sendCommand on a destroyed webContents.
+      dbg.sendCommand.mockImplementation(() => { throw new Error('Object has been destroyed'); });
+      sm.destroySession(session.id);
+      expect(() => jest.advanceTimersByTime(5000)).not.toThrow();
+      expect(dbg.sendCommand).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

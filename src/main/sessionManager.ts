@@ -215,6 +215,10 @@ export class SessionManager {
   // (timers included) in destroySession() since a hung request's tab going
   // away makes both the requestId and the point of releasing it moot.
   private hungRequests = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
+  // #286: delayed Resilience responses (latency / stall504) and delayed Mock
+  // fulfilments, per tab — cleared in destroySession() so a timer never fires
+  // against a webContents that has already been destroyed.
+  private pendingDelayed = new Map<string, Set<ReturnType<typeof setTimeout>>>();
   // Mock/Resilience rules are a property of the session *partition* (cookies,
   // storage, cache — the thing "isolated sessions" actually means), not of
   // any one TestSession/tab object representing it — both managers key their
@@ -458,6 +462,26 @@ export class SessionManager {
         networkId?: string;
       };
       const dbg = view.webContents.debugger;
+      // #286: the paused request belongs to a tab that is already gone —
+      // nothing left to answer, and touching the destroyed webContents'
+      // debugger (or the closed recorder DB) throws synchronously, which
+      // `.catch()` on the returned promise cannot intercept.
+      if (view.webContents.isDestroyed() || !this.sessions.has(id)) return;
+      // #286: every Fetch.* resolution below goes through here. sendCommand
+      // throws synchronously (not a rejected promise) when the webContents
+      // was destroyed between scheduling and sending, so a bare
+      // `.catch(() => {})` is not enough for the deferred cases.
+      const resolvePaused = (command: string, cmdParams: Record<string, unknown>) => {
+        if (view.webContents.isDestroyed()) return;
+        dbg.sendCommand(command, cmdParams).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
+      };
+      const defer = (fn: () => void, ms: number): ReturnType<typeof setTimeout> => {
+        const set = this.pendingDelayed.get(id) ?? new Set<ReturnType<typeof setTimeout>>();
+        this.pendingDelayed.set(id, set);
+        const t = setTimeout(() => { set.delete(t); fn(); }, ms);
+        set.add(t);
+        return t;
+      };
       // Safety cap (#210): a rule pattern that's broad in effect (e.g. '*ad*'
       // matching any URL containing "ad") can flood this handler with paused
       // requests the same way a literal '*' pattern used to, pre-#199, just
@@ -495,10 +519,9 @@ export class SessionManager {
         this.mockManager.recordHit(rule);
         testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
         const fulfill = () =>
-          dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule, { headers: request.headers }) })
-            .catch(() => {}); // silent: the tab may have navigated/closed by the time a delayed fulfillment fires — the request is simply gone
+          resolvePaused('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule, { headers: request.headers }) });
         if (rule.delayMs && rule.delayMs > 0) {
-          setTimeout(fulfill, rule.delayMs);
+          defer(fulfill, rule.delayMs);
         } else {
           fulfill();
         }
@@ -521,32 +544,29 @@ export class SessionManager {
         // Every command below is silent: Fetch.requestPaused fires per
         // request, too high-frequency to log per failure (each case still
         // gets its own marker so the empty-catch triage grep is satisfied).
+        const body = (text: string) => Buffer.from(text).toString('base64');
         switch (res.type) {
           case 'error500':
           case 'random500':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 500, body: Buffer.from('Internal Server Error').toString('base64') }).catch(() => {}); // silent: see comment above switch
+            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 500, body: body('Internal Server Error') });
             break;
           case 'timeout':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 504, body: Buffer.from('Gateway Timeout').toString('base64') }).catch(() => {}); // silent: see comment above switch
+            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 504, body: body('Gateway Timeout') });
             break;
           case 'stall504':
-            setTimeout(() => {
-              dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 504, body: Buffer.from('Gateway Timeout').toString('base64') }).catch(() => {}); // silent: see comment above switch
-            }, res.latencyMs || 30_000);
+            defer(() => resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 504, body: body('Gateway Timeout') }), res.latencyMs || 30_000);
             break;
           case 'offline':
-            dbg.sendCommand('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' }).catch(() => {}); // silent: see comment above switch
+            resolvePaused('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' });
             break;
           case 'missing':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 404, body: Buffer.from('Not Found').toString('base64') }).catch(() => {}); // silent: see comment above switch
+            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 404, body: body('Not Found') });
             break;
           case 'corrupt':
-            dbg.sendCommand('Fetch.fulfillRequest', { requestId, responseCode: 200, body: Buffer.from('\x00\x01\x02\xff\xfe' + 'x'.repeat(20)).toString('base64') }).catch(() => {}); // silent: see comment above switch
+            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 200, body: body('\x00\x01\x02\xff\xfe' + 'x'.repeat(20)) });
             break;
           case 'latency':
-            setTimeout(() => {
-              dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {}); // silent: see comment above switch
-            }, res.latencyMs || 2000);
+            defer(() => resolvePaused('Fetch.continueRequest', { requestId }), res.latencyMs || 2000);
             break;
           case 'hang': {
             // Deliberately no Fetch response at all — the paused request
@@ -558,14 +578,14 @@ export class SessionManager {
             const releaseTimer = res.releaseAfterMs
               ? setTimeout(() => {
                   hungForSession.delete(requestId);
-                  dbg.sendCommand('Fetch.failRequest', { requestId, errorReason: 'TimedOut' }).catch(() => {}); // silent: see comment above switch
+                  resolvePaused('Fetch.failRequest', { requestId, errorReason: 'TimedOut' });
                 }, res.releaseAfterMs)
               : null;
             hungForSession.set(requestId, releaseTimer);
             break;
           }
           default:
-            dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {}); // silent: see comment above switch
+            resolvePaused('Fetch.continueRequest', { requestId });
         }
         return;
       }
@@ -2046,6 +2066,11 @@ export class SessionManager {
     // using the same partition.
     if (!s.persistent && !Array.from(this.sessions.values()).some((o) => o.partition === s.partition)) {
       this.permissionManager.clearPartition(s.partition);
+    }
+    const delayed = this.pendingDelayed.get(id);
+    if (delayed) {
+      for (const t of delayed) clearTimeout(t);
+      this.pendingDelayed.delete(id);
     }
     const hung = this.hungRequests.get(id);
     if (hung) {

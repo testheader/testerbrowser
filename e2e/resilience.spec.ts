@@ -539,3 +539,63 @@ test('editing the URL after a "⇒ Resilience" prefill resets the method scope t
   await expect(newRow).toBeVisible();
   await expect(newRow.locator('.res-method-badge')).toHaveCount(0);
 });
+
+// ── #286: a matching Resilience rule must never take the app down ───────
+
+type ResApi = {
+  sessions: {
+    create(name: string, opts?: { startUrl?: string }): Promise<{ id: string }>;
+    destroy(id: string): Promise<unknown>;
+    list(): Promise<unknown[]>;
+  };
+  resilience: { addRule(id: string, rule: Record<string, unknown>): Promise<unknown> };
+};
+
+async function addRuleViaIpc(sid: string, type: string, extra: Record<string, unknown> = {}): Promise<void> {
+  await window.evaluate(([id, t, e]) => (window as unknown as { testerBrowser: ResApi }).testerBrowser.resilience.addRule(id as string, {
+    id: `r-${t}`, type: t, urlPattern: '*/api/crash-target*', method: '*', probability: 1,
+    latencyMs: 0, enabled: true, ...(e as object),
+  }), [sid, type, extra] as const);
+}
+
+async function expectAppAlive(): Promise<void> {
+  const count = await window.evaluate(() => (window as unknown as { testerBrowser: ResApi }).testerBrowser.sessions.list().then((s) => s.length));
+  expect(count).toBeGreaterThan(0);
+  await expect(window.locator('#appName')).toBeVisible();
+}
+
+for (const type of ['error500', 'timeout', 'latency', 'offline', 'missing', 'random500', 'corrupt', 'hang', 'stall504']) {
+  test(`a matching "${type}" rule leaves the app running and the tab navigable (#286)`, async () => {
+    test.setTimeout(30_000);
+    const path = `/network/api.html?t=286-${type}`;
+    const created = await window.evaluate(([u]) => (window as unknown as { testerBrowser: ResApi }).testerBrowser.sessions.create('crash', { startUrl: u }), [fixtures.url(path)] as const);
+    const tab = await getTabPage(app, path);
+    await addRuleViaIpc(created.id, type, { latencyMs: 500, releaseAfterMs: type === 'hang' ? 500 : 0 });
+
+    await tab.fill('#apiPath', '/api/crash-target');
+    await tab.click('#apiFetchBtn');
+    await tab.waitForTimeout(1_500);
+
+    await expectAppAlive();
+    await tab.goto(fixtures.url(`/network/api.html?t=286-${type}-after`));
+    await expect(tab.locator('#apiFetchBtn')).toBeVisible();
+  });
+}
+
+for (const type of ['latency', 'stall504']) {
+  test(`closing the tab while a "${type}" response is pending does not crash the app (#286)`, async () => {
+    test.setTimeout(30_000);
+    const path = `/network/api.html?t=286-close-${type}`;
+    const created = await window.evaluate(([u]) => (window as unknown as { testerBrowser: ResApi }).testerBrowser.sessions.create('crash', { startUrl: u }), [fixtures.url(path)] as const);
+    const tab = await getTabPage(app, path);
+    await addRuleViaIpc(created.id, type, { latencyMs: 2000 });
+
+    await tab.fill('#apiPath', '/api/crash-target');
+    await tab.click('#apiFetchBtn');
+    await window.evaluate((id) => (window as unknown as { testerBrowser: ResApi }).testerBrowser.sessions.destroy(id), created.id);
+    // Outlast the 2 s delay so the (now cleared) timer would have fired.
+    await window.waitForTimeout(2_800);
+
+    await expectAppAlive();
+  });
+}
