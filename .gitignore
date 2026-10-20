@@ -10,3 +10,4 @@ playwright-report/
 *.png
 *.jpg
 .claude/worktrees/
+!docs/design/ui-redesign/screenshots/*.png
