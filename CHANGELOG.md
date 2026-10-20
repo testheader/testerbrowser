@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.122.2 — 2026-10-20
+
+### Other
+
+- add UI redesign handoff (b1c930d)
+
 ## v0.122.1 — 2026-10-19
 
 ### Fixes
