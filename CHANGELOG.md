@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.132.0 — 2026-10-20
+
+### Features
+
+- Console rows and level filter (refs #302) (6f5a86c)
+
 ## v0.131.0 — 2026-10-20
 
 ### Features
