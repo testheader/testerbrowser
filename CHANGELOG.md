@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.127.0 — 2026-10-20
+
+### Features
+
+- tool panel collapses to just the tab strip (refs #297) (28ea258)
+
 ## v0.126.0 — 2026-10-20
 
 ### Features
