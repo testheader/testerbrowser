@@ -1,6 +1,6 @@
 /* global testerBrowser */
 import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
-import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matchesFreeText } from './utils.js';
+import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matchesFreeText, methodFilterLabel, networkSummary } from './utils.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
@@ -275,6 +275,8 @@ export function renderTimeline() {
     const span = btn.querySelector('.pill-count');
     if (span) span.textContent = n > 0 ? n : '';
   });
+
+  document.getElementById('networkSummary').textContent = networkSummary(timelineEvents);
 
   const levelCounts = {};
   for (const e of timelineEvents) {
@@ -704,7 +706,32 @@ export function initTimeline() {
   /** @type {HTMLInputElement} */ (document.getElementById('networkMinDuration')).addEventListener('input', renderTimeline);
 
   wirePillGroup(document.getElementById('networkPills'), renderTimeline);
-  wirePillGroup(document.getElementById('networkMethodPills'), renderTimeline);
+  const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'Other'];
+  const updateMethodLabel = () => {
+    document.getElementById('networkMethodLabel').textContent =
+      methodFilterLabel(METHODS, activePillValues(document.getElementById('networkMethodPills'), 'method'));
+  };
+  wirePillGroup(document.getElementById('networkMethodPills'), () => { updateMethodLabel(); renderTimeline(); });
+
+  // #299: the Method and More-filters popovers (one open at a time; click
+  // outside or Escape closes).
+  const popovers = [
+    { btn: document.getElementById('networkMethodBtn'), menu: document.getElementById('networkMethodMenu') },
+    { btn: document.getElementById('networkMoreBtn'),   menu: document.getElementById('networkMoreMenu') },
+  ];
+  const closePopovers = () => popovers.forEach(({ btn, menu }) => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); });
+  for (const { btn, menu } of popovers) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = menu.hidden;
+      closePopovers();
+      menu.hidden = !open;
+      btn.setAttribute('aria-expanded', String(open));
+    });
+    menu.addEventListener('click', (e) => e.stopPropagation());
+  }
+  document.addEventListener('click', closePopovers);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePopovers(); });
   wirePillGroup(document.getElementById('consoleLevelPills'), renderTimeline);
 
   function clearTimeline() {

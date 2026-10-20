@@ -175,32 +175,41 @@
             <button class="filter-pill on" data-level="debug" title="Debug">Debug<span class="pill-count"></span></button>
           </div>
           <button class="console-icon-btn" id="clearConsoleBtn" title="Clear console" aria-label="Clear console">&#10005;</button>
-          <button class="diff-har-btn" id="harExportBtn" title="Export everything recorded for this tab as a HAR 1.2 file">HAR</button>
-          <span id="harExportStatus" class="har-export-status"></span>
         </div>
         <div id="networkControls">
-          <span class="filter-label">Filter</span>
-          <input id="networkFilterText" placeholder="Filter requests…" />
+          <div class="net-search"><i class="icon-search" aria-hidden="true"></i><input id="networkFilterText" placeholder="Filter URL, header or body" aria-label="Filter requests" /></div>
           <div class="filter-pills" id="networkPills">
             <button class="filter-pill on" data-type="network-request"  title="Network requests">Req<span class="pill-count"></span></button>
             <button class="filter-pill"    data-type="network-response" title="Response bodies">Res<span class="pill-count"></span></button>
-            <button class="filter-pill"    data-type="network-failed"   title="Failed requests">Err<span class="pill-count"></span></button>
-            <button class="filter-pill"    data-type="mock"             title="Requests served by a Mock rule">Mock<span class="pill-count"></span></button>
+            <button class="filter-pill"    data-type="network-failed"   title="Failed requests">Errors<span class="pill-count"></span></button>
+            <button class="filter-pill"    data-type="mock"             title="Requests served by a Mock rule">Mocked<span class="pill-count"></span></button>
             <button class="filter-pill"    data-type="resilience"       title="Requests altered by a Resilience rule">Resilience<span class="pill-count"></span></button>
           </div>
-          <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log" aria-label="Clear network log">&#10005;</button>
-        </div>
-        <div id="networkControlsRow2">
-          <div class="filter-pills" id="networkMethodPills">
-            <button class="filter-pill on" data-method="GET"    title="GET requests">GET</button>
-            <button class="filter-pill on" data-method="POST"   title="POST requests">POST</button>
-            <button class="filter-pill on" data-method="PUT"    title="PUT requests">PUT</button>
-            <button class="filter-pill on" data-method="DELETE" title="DELETE requests">DELETE</button>
-            <button class="filter-pill on" data-method="PATCH"  title="PATCH requests">PATCH</button>
-            <button class="filter-pill on" data-method="Other"  title="Any other method">Other</button>
+          <div class="net-popover-wrap">
+            <button class="net-chip" id="networkMethodBtn" aria-haspopup="true" aria-expanded="false"><span id="networkMethodLabel">Method: Any</span><i class="icon-chevron-down" aria-hidden="true"></i></button>
+            <div class="net-popover" id="networkMethodMenu" hidden>
+              <div class="filter-pills" id="networkMethodPills">
+                <button class="filter-pill on" data-method="GET"    title="GET requests">GET</button>
+                <button class="filter-pill on" data-method="POST"   title="POST requests">POST</button>
+                <button class="filter-pill on" data-method="PUT"    title="PUT requests">PUT</button>
+                <button class="filter-pill on" data-method="DELETE" title="DELETE requests">DELETE</button>
+                <button class="filter-pill on" data-method="PATCH"  title="PATCH requests">PATCH</button>
+                <button class="filter-pill on" data-method="Other"  title="Any other method">Other</button>
+              </div>
+            </div>
           </div>
-          <span class="filter-label">Min ms</span>
-          <input id="networkMinDuration" type="number" min="0" placeholder="0" />
+          <div class="net-popover-wrap">
+            <button class="net-chip" id="networkMoreBtn" aria-haspopup="true" aria-expanded="false"><i class="icon-sliders-horizontal" aria-hidden="true"></i><span>More filters</span></button>
+            <div class="net-popover" id="networkMoreMenu" hidden>
+              <label class="net-field"><span class="filter-label">Min duration (ms)</span>
+                <input id="networkMinDuration" type="number" min="0" placeholder="0" /></label>
+            </div>
+          </div>
+          <span class="net-spacer"></span>
+          <span id="networkSummary" class="net-summary"></span>
+          <span id="harExportStatus" class="har-export-status"></span>
+          <button class="net-chip" id="harExportBtn" title="Export everything recorded for this tab as a HAR 1.2 file"><i class="icon-file-down" aria-hidden="true"></i><span>Export HAR</span></button>
+          <button class="console-icon-btn" id="clearNetworkBtn" title="Clear network log" aria-label="Clear network log"><i class="icon-ban" aria-hidden="true"></i></button>
         </div>
         <div id="timelinePanel" tabindex="0"></div>
         <button id="scrollToBottomBtn" title="Scroll to bottom">&#8595; Latest</button>

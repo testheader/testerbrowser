@@ -880,3 +880,29 @@ test('storage tab: sessionStorage section shows page-set entries', async () => {
   const ssRow = window.locator('#storagePanel .storage-table tbody tr').filter({ hasText: 'e2e_ss_key' });
   await expect(ssRow).toContainText('e2e_ss_val');
 });
+
+// #299: single-row Network toolbar — Method menu and More filters popover.
+test('Network toolbar: Method menu label follows the selection, and More filters holds Min duration (#299)', async () => {
+  await window.click('#consoleTabNetwork');
+  await expect(window.locator('#networkControlsRow2')).toHaveCount(0);
+  const rowH = await window.evaluate(() => Math.round((document.getElementById('networkControls') as HTMLElement).getBoundingClientRect().height));
+  expect(rowH).toBe(44);
+
+  await expect(window.locator('#networkMethodLabel')).toHaveText('Method: Any');
+  await window.click('#networkMethodBtn');
+  await expect(window.locator('#networkMethodMenu')).toBeVisible();
+  for (const m of ['PUT', 'DELETE', 'PATCH', 'Other']) {
+    await window.click(`#networkMethodPills .filter-pill[data-method="${m}"]`);
+  }
+  await expect(window.locator('#networkMethodLabel')).toHaveText('Method: GET, POST');
+  for (const m of ['PUT', 'DELETE', 'PATCH', 'Other']) {
+    await window.click(`#networkMethodPills .filter-pill[data-method="${m}"]`);
+  }
+  await expect(window.locator('#networkMethodLabel')).toHaveText('Method: Any');
+
+  await window.click('#networkMoreBtn');
+  await expect(window.locator('#networkMethodMenu')).toBeHidden();
+  await expect(window.locator('#networkMinDuration')).toBeVisible();
+  await window.keyboard.press('Escape');
+  await expect(window.locator('#networkMinDuration')).toBeHidden();
+});

@@ -245,3 +245,45 @@ export function toFetch(req) {
   if (postData) opts.body = postData;
   return redactedNotice(headers, '//') + `fetch(${JSON.stringify(url)}, ${JSON.stringify(opts, null, 2)});`;
 }
+
+// #299: label for the Network toolbar's Method menu button — "Method: Any"
+// when every method is on, otherwise the selected ones in the menu's order.
+export function methodFilterLabel(allMethods, active) {
+  const on = allMethods.filter((m) => active.has(m));
+  if (on.length === allMethods.length) return 'Method: Any';
+  return on.length ? `Method: ${on.join(', ')}` : 'Method: None';
+}
+
+function formatBytes(n) {
+  if (n < 1000) return `${n} B`;
+  if (n < 1e6) return `${Math.round(n / 1000)} kB`;
+  return `${(n / 1e6).toFixed(1)} MB`;
+}
+
+// #299: "12 requests · 739 kB · 2.71 s" — request count, summed
+// Content-Length of recorded responses (omitted when none reported one) and
+// the time from the first request to the last event. `events` are timeline
+// rows ({ kind, ts, payload }).
+export function networkSummary(events) {
+  let count = 0, bytes = 0, first = null, last = null;
+  for (const e of events) {
+    if (e.kind !== 'network-request' && e.kind !== 'network-response' && e.kind !== 'network-failed') continue;
+    if (first === null || e.ts < first) first = e.ts;
+    if (last === null || e.ts > last) last = e.ts;
+    if (e.kind === 'network-request') count++;
+    if (e.kind === 'network-response' && e.payload) {
+      try {
+        const headers = JSON.parse(e.payload).response?.headers || {};
+        const key = Object.keys(headers).find((k) => k.toLowerCase() === 'content-length');
+        const n = key ? Number(headers[key]) : NaN;
+        if (Number.isFinite(n) && n >= 0) bytes += n;
+      } catch { /* malformed payload: skip its size */ }
+    }
+  }
+  if (count === 0) return '';
+  const parts = [`${count} request${count === 1 ? '' : 's'}`];
+  if (bytes > 0) parts.push(formatBytes(bytes));
+  const span = last - first;
+  parts.push(span >= 1000 ? `${(span / 1000).toFixed(2)} s` : `${Math.round(span)} ms`);
+  return parts.join(' · ');
+}

@@ -320,12 +320,9 @@ test('network/status-codes.html: HAR button exports a valid HAR 1.2 file with a 
   await window.click('#consoleTabNetwork');
   await expect(window.locator('.evt.network-request', { hasText: 'status-codes.html' }).first()).toBeVisible();
 
-  // #harExportBtn lives in the Console sub-tab's own toolbar (#consoleControls,
-  // next to Clear), not the Network sub-tab's — recording:exportHar reads
-  // every stored row straight from the recorder regardless of which sub-tab
-  // is showing. An earlier test in this file leaves Network active, so
-  // switch back explicitly rather than assuming Console's own default.
-  await window.click('#consoleTabConsole');
+  // #299: #harExportBtn lives in the Network sub-tab's toolbar. (The export
+  // itself reads every stored row straight from the recorder.)
+  await window.click('#consoleTabNetwork');
   await expect(window.locator('#harExportBtn')).toBeVisible();
   await window.click('#harExportBtn');
   await expect(window.locator('#harExportStatus')).toHaveText(/Saved/, { timeout: 10_000 });
@@ -492,12 +489,14 @@ test('network/slow.html: min-duration filter hides fast requests but keeps slow 
 
   // Duration now lives on the request row itself, merged in once its
   // response arrives (#189) — filtering by it hides the whole row.
+  await window.click('#networkMoreBtn'); // Min duration lives in the More filters popover (#299)
   await window.fill('#networkMinDuration', '1000');
   await expect(row500).toHaveCount(0);
   await expect(row2000).toBeVisible();
 
   await window.fill('#networkMinDuration', '');
   await expect(row500).toBeVisible();
+  await window.keyboard.press('Escape');
 });
 
 test('network/slow.html: request rows show a duration column once the response lands, staying visible without scrolling', async () => {
@@ -529,11 +528,13 @@ test('network/slow.html: method filter hides the request row for that method', a
   await expect(reqRow).toBeVisible();
 
   const getPill = window.locator('#networkMethodPills .filter-pill[data-method="GET"]');
+  await window.click('#networkMethodBtn'); // the method pills live in this menu (#299)
   await getPill.click(); // turn GET off — the fixture only issues GET requests
   await expect(reqRow).toHaveCount(0);
 
   await getPill.click(); // back on
   await expect(reqRow).toBeVisible();
+  await window.keyboard.press('Escape');
 });
 
 test('performance/network-flood.html: burst of 50 requests all get recorded', async () => {
