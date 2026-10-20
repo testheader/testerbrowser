@@ -89,10 +89,14 @@ const png = (b64) => `data:image/png;base64,${b64}`;
 
 // The baseline on its own isn't a button any more: it's what the viewer shows
 // before a compare, and while ignore regions are being edited.
+// #308: Baseline / Current / Diff / Side by side (+ the existing Overlay).
+// Baseline is available as soon as there is one; the rest need a comparison.
 const VIEW_BUTTONS = [
-  ['side', 'Side by side', 'Baseline and current screenshot next to each other'],
-  ['overlay', 'Overlay', 'Current screenshot laid over the baseline, with a slider to reveal either'],
+  ['baseline', 'Baseline', 'The baseline screenshot on its own'],
+  ['current', 'Current', 'The current screenshot on its own'],
   ['diff', 'Diff', 'Only the changed pixels, highlighted in red; ignored areas in grey'],
+  ['side', 'Side by side', 'Baseline, current and diff next to each other'],
+  ['overlay', 'Overlay', 'Current screenshot laid over the baseline, with a slider to reveal either'],
 ];
 
 export function initVR() {
@@ -111,8 +115,11 @@ export function initVR() {
   // after one it holds the result controls. The settings cog is always there.
   panel.innerHTML = `
     <div class="vr-bar">
+      <div class="seg vr-views" id="vrViews" role="group" aria-label="View">${viewButtons}</div>
+      <label class="vr-toggle" title="Capture the whole scrollable page instead of just the viewport (baseline and current)">
+        <input type="checkbox" id="vrFullPage" /> Full page
+      </label>
       <div class="vr-setup" id="vrSetup">
-        <button type="button" class="vr-btn" id="vrCaptureBtn" title="Screenshot the active tab as the reference to compare against">Capture baseline</button>
         <button type="button" class="vr-btn" id="vrBaselinesToggle" aria-expanded="false" aria-controls="vrBaselines"
           title="Pick, rename, export or delete a saved baseline">Saved baselines<span class="vr-count" id="vrBaselineCount"></span></button>
         <button type="button" class="vr-btn" id="vrImportBaselineBtn" title="Import a baseline (PNG + sidecar JSON) exported from this or another machine">Import…</button>
@@ -121,11 +128,6 @@ export function initVR() {
         <label class="diff-label" title="Tab to capture the 'current' screenshot from when comparing">from
           <select class="diff-pick" id="vrComparePick"></select>
         </label>
-        <label class="vr-toggle" title="Capture the whole scrollable page instead of just the viewport (baseline and current)">
-          <input type="checkbox" id="vrFullPage" /> Full page
-        </label>
-        <button type="button" class="vr-btn vr-primary" id="vrCompareBtn" disabled
-          title="Capture the current page and compare it with the baseline">Compare</button>
       </div>
       <div class="vr-result" id="vrResultBar" hidden>
         <span class="vr-verdict" id="vrVerdict" hidden></span>
@@ -134,7 +136,6 @@ export function initVR() {
           <span class="vr-region-pos" id="vrRegionPos" aria-live="polite"></span>
           <button type="button" class="vr-btn" id="vrNextRegion" aria-keyshortcuts="N" title="Next changed region (N)" disabled>Next ›</button>
         </div>
-        <div class="vr-views" id="vrViews" role="group" aria-label="View">${viewButtons}</div>
         <div class="vr-zoom" role="group" aria-label="Zoom">
           <button type="button" class="vr-btn vr-icon-btn" id="vrZoomOut" aria-label="Zoom out" aria-keyshortcuts="-" title="Zoom out (−)">−</button>
           <select class="diff-pick" id="vrZoom" aria-label="Zoom level">
@@ -147,6 +148,11 @@ export function initVR() {
         </div>
         <button type="button" class="vr-btn" id="vrSaveDiffBtn" title="Save the diff image as a PNG, e.g. to attach to a bug report">Save diff…</button>
         <button type="button" class="vr-btn" id="vrResetBtn" title="Clear this comparison and pick a page to compare again. The baseline stays.">Reset</button>
+      </div>
+      <div class="vr-actions">
+        <button type="button" class="vr-btn vr-new-baseline" id="vrCaptureBtn" title="Screenshot the active tab as the reference to compare against"><i class="icon-camera" aria-hidden="true"></i>New baseline</button>
+        <button type="button" class="vr-btn vr-primary" id="vrCompareBtn" disabled
+          title="Capture the current page and compare it with the baseline">Compare</button>
       </div>
       <button type="button" class="vr-btn vr-icon-btn vr-cog" id="vrCogBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="vrSettings"
         title="Comparison settings" aria-label="Comparison settings">⚙</button>
@@ -206,7 +212,10 @@ export function initVR() {
       <span class="vr-edit-hint">Drag on the baseline to add an ignore region · click one to remove it</span>
       <button type="button" class="vr-btn" id="vrRegionsDoneBtn">Done</button>
     </div>
-    <div class="vr-images" id="vrImages" role="region" aria-label="Screenshots" tabindex="0"></div>`;
+    <div class="vr-main">
+      <div class="vr-images" id="vrImages" role="region" aria-label="Screenshots" tabindex="0"></div>
+      <aside class="vr-side" id="vrSide" aria-label="Comparison stats" hidden></aside>
+    </div>`;
 
   /** @type {HTMLButtonElement} */ ($('vrCaptureBtn')).addEventListener('click', captureBaseline);
   /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).addEventListener('click', runCompare);
@@ -539,16 +548,18 @@ function renderImages() {
     const on = b.dataset.view === view;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
-    // Only Baseline is available until a comparison has produced the others.
-    b.disabled = b.dataset.view !== 'baseline' && !d.result;
+    // Baseline needs a baseline; the other views only exist once a comparison
+    // has produced them.
+    b.disabled = b.dataset.view === 'baseline' ? !d.baselineB64 : !d.result;
   });
   renderRegionNav();
+  renderSide();
 
   if (!d.baselineB64) {
     stage.classList.remove('vr-stage-images');
     stage.replaceChildren(renderEmptyState({
-      icon: 'scan-eye', tone: 'accent', title: 'No baseline yet',
-      text: 'Capture a baseline of this tab, then compare it with the current page.',
+      icon: 'scan-eye', tone: 'accent', title: 'Visual comparison',
+      text: 'No baseline yet: capture this tab, then compare it with the current page.',
       actionLabel: 'Capture baseline', onAction: () => $('vrCaptureBtn').click(),
     }));
     return;
@@ -558,15 +569,24 @@ function renderImages() {
   const r = d.result;
   const imgTag = (id, src, w, h, alt) =>
     `<img class="vr-img" ${id ? `id="${id}"` : ''} src="${src}" data-w="${w}" data-h="${h}" alt="${escHtml(alt)}" draggable="false" />`;
-  const col = (label, inner, extra = '') => `<figure class="vr-col${extra}"><figcaption class="vr-col-label">${label}</figcaption>${inner}</figure>`;
+  const col = (label, inner, extra = '', meta = '') =>
+    `<figure class="vr-col${extra}"><figcaption class="vr-col-label"><span class="vr-col-title">${label}</span>${meta ? `<span class="vr-col-meta">${escHtml(meta)}</span>` : ''}</figcaption>${inner}</figure>`;
   const bw = d.baselineInfo.w;
   const bh = d.baselineInfo.h;
 
   if (view === 'side' && r) {
-    stage.innerHTML = '<div class="vr-cols">' +
-      col('Baseline', `<div class="vr-img-wrap" data-cw="${r.w}" data-ch="${r.h}">${imgTag('', png(d.baselineB64), bw, bh, 'Baseline screenshot')}<canvas class="vr-ov" aria-hidden="true"></canvas></div>`) +
-      col('Current', `<div class="vr-img-wrap" data-cw="${r.w}" data-ch="${r.h}">${imgTag('', png(d.currentB64), r.curW, r.curH, 'Current screenshot')}<canvas class="vr-ov" aria-hidden="true"></canvas></div>`) +
+    const time = (ts) => ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const meta = (ts, w, h) => [time(ts), `${w}×${h}`].filter(Boolean).join(' · ');
+    const wrapOf = (inner) => `<div class="vr-img-wrap" data-cw="${r.w}" data-ch="${r.h}">${inner}<canvas class="vr-ov" aria-hidden="true"></canvas></div>`;
+    stage.innerHTML = '<div class="vr-cols vr-cols-3">' +
+      col('Baseline', wrapOf(imgTag('', png(d.baselineB64), bw, bh, 'Baseline screenshot')), '', meta(d.baselineInfo.capturedAt, bw, bh)) +
+      col('Current', wrapOf(imgTag('', png(d.currentB64), r.curW, r.curH, 'Current screenshot')), '', meta(r.comparedAt, r.curW, r.curH)) +
+      col('Diff', wrapOf(imgTag('', d.diffDataUrl, r.w, r.h, 'Difference image')), '', 'changed pixels highlighted') +
       '</div>';
+  } else if (view === 'current' && r) {
+    stage.innerHTML = col('Current',
+      `<div class="vr-img-wrap" data-cw="${r.w}" data-ch="${r.h}">${imgTag('', png(d.currentB64), r.curW, r.curH, 'Current screenshot')}<canvas class="vr-ov" aria-hidden="true"></canvas></div>`,
+      ' vr-col-single');
   } else if (view === 'overlay' && r) {
     stage.innerHTML = col(
       'Overlay — baseline on the left of the line, current on the right',
@@ -600,6 +620,71 @@ function renderImages() {
   applyLayout();
 }
 
+// #308: the stats column beside the viewer — % changed (large), pixel count,
+// the colour tolerance, and the saved baselines (click one to use it).
+function renderSide() {
+  const side = $('vrSide');
+  if (!side) return;
+  const d = activeData();
+  const r = d.result;
+  side.hidden = !d.baselineB64;
+  if (!d.baselineB64) { side.replaceChildren(); return; }
+
+  side.replaceChildren();
+  if (r) {
+    const v = compareVerdict(r, maxDiffPct);
+    const big = document.createElement('div');
+    big.className = `vr-side-pct ${v.pass ? 'pass' : 'fail'}`;
+    big.textContent = `${formatPct(r.diffCount, r.total)}%`;
+    const sub = document.createElement('div');
+    sub.className = 'vr-side-sub';
+    sub.textContent = `of pixels changed · ${r.diffCount.toLocaleString()} px`;
+    side.append(big, sub);
+  }
+
+  const th = document.createElement('div');
+  th.className = 'vr-side-row';
+  const thLabel = document.createElement('span');
+  thLabel.textContent = 'Threshold';
+  const thVal = document.createElement('span');
+  thVal.className = 'vr-side-val';
+  thVal.id = 'vrSideThreshold';
+  thVal.textContent = String(d.threshold);
+  th.append(thLabel, thVal);
+  side.appendChild(th);
+
+  const head = document.createElement('div');
+  head.className = 'vr-side-head';
+  head.textContent = 'Baselines';
+  side.appendChild(head);
+  const list = document.createElement('ul');
+  list.className = 'vr-side-list';
+  if (!savedBaselines.length) {
+    const none = document.createElement('li');
+    none.className = 'vr-side-none';
+    none.textContent = 'No saved baselines';
+    list.appendChild(none);
+  }
+  for (const b of savedBaselines) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'vr-side-item' + (b.id === d.baselineId ? ' active' : '');
+    btn.dataset.id = b.id;
+    const name = document.createElement('span');
+    name.className = 'vr-side-name';
+    name.textContent = b.name;
+    const when = document.createElement('span');
+    when.className = 'vr-side-when';
+    when.textContent = new Date(b.capturedAt).toLocaleDateString([], { day: 'numeric', month: 'short' });
+    btn.append(name, when);
+    btn.addEventListener('click', () => loadBaseline(b.id));
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+  side.appendChild(list);
+}
+
 // Sizes every image and overlay canvas explicitly from one scale factor
 // (display px per image px) so the baseline, current and diff line up pixel
 // for pixel, and the ignore/changed-region overlays land where they belong.
@@ -609,7 +694,7 @@ function applyLayout() {
   if (!wraps.length) { updateZoomUi(); return; }
   const cw = Number(wraps[0].dataset.cw) || 1;
   const ch = Number(wraps[0].dataset.ch) || 1;
-  const cols = stage.querySelector('.vr-cols') ? 2 : 1;
+  const cols = stage.querySelectorAll('.vr-cols > .vr-col').length || 1;
   const style = getComputedStyle(stage);
   const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
   const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
@@ -975,7 +1060,7 @@ async function captureBaseline() {
   let dims = null;
   if (b64) dims = await loadImage(b64).then((img) => ({ w: img.width, h: img.height })).catch(() => null);
   captureBtn.disabled = false;
-  captureBtn.textContent = 'Capture baseline';
+  captureBtn.innerHTML = '<i class="icon-camera" aria-hidden="true"></i>New baseline';
   clearProgress(sessionId, progress);
 
   // The user may have switched sessions while the screenshot was in flight.
@@ -1170,6 +1255,7 @@ async function refreshBaselinesList() {
   if (!$('vrBaselineList')) return;
   savedBaselines = await testerBrowser.visualRegression.listBaselines();
   $('vrBaselineCount').textContent = savedBaselines.length ? ` (${savedBaselines.length})` : '';
+  renderSide();
   if (baselinesOpen) renderBaselineList();
 }
 

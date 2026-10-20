@@ -5,8 +5,8 @@
 
 // 'baseline' shows the baseline alone (and is where ignore regions are
 // drawn); the other three only exist once a comparison has run.
-export const VIEW_MODES = ['baseline', 'side', 'overlay', 'diff'];
-export const COMPARE_VIEW_MODES = ['side', 'overlay', 'diff'];
+export const VIEW_MODES = ['baseline', 'current', 'diff', 'side', 'overlay'];
+export const COMPARE_VIEW_MODES = ['current', 'diff', 'side', 'overlay'];
 
 // A remembered compare view (localStorage, so untrusted) back to a known
 // one, or `fallback`.

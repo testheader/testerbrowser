@@ -73,10 +73,14 @@ test('first run: the setup row is on one line, rules and baseline saving sit beh
   await expect(window.locator('#vrSetup')).toBeVisible();
   await expect(window.locator('#vrResultBar')).toBeHidden();
 
-  // Capture, the saved list and the page picker come before Compare, in that order.
-  const setupIds = await window.locator('#vrSetup button, #vrSetup select').evaluateAll(els => els.map(el => el.id));
-  expect(setupIds.indexOf('vrCaptureBtn')).toBeLessThan(setupIds.indexOf('vrComparePick'));
-  expect(setupIds.indexOf('vrComparePick')).toBeLessThan(setupIds.indexOf('vrCompareBtn'));
+  // #308: the view segments, then (setup) the saved list and the page picker,
+  // and New baseline / Compare at the right edge, always visible.
+  await expect(window.locator('#vrViews .vr-view-btn')).toHaveText(['Baseline', 'Current', 'Diff', 'Side by side', 'Overlay']);
+  await expect(window.locator('.vr-actions #vrCaptureBtn')).toHaveText('New baseline');
+  await expect(window.locator('.vr-actions #vrCompareBtn')).toBeVisible();
+  const barIds = await window.locator('.vr-bar #vrViews, .vr-bar #vrFullPage, .vr-bar #vrBaselinesToggle, .vr-bar #vrComparePick, .vr-bar #vrCaptureBtn, .vr-bar #vrCompareBtn')
+    .evaluateAll(els => els.map(el => el.id));
+  expect(barIds).toEqual(['vrViews', 'vrFullPage', 'vrBaselinesToggle', 'vrComparePick', 'vrCaptureBtn', 'vrCompareBtn']);
   await expect(window.locator('#vrCompareBtn')).toBeDisabled();
 
   // Closed by default; opened from the cog.
@@ -88,6 +92,7 @@ test('first run: the setup row is on one line, rules and baseline saving sit beh
   await expect(window.locator('#vrSaveBaselineBtn')).toBeDisabled();
   await expect(window.locator('#vrSetup #vrImportBaselineBtn')).toBeVisible();
 
+  await expect(window.locator('#vrImages .empty-state-title')).toHaveText('Visual comparison');
   await expect(window.locator('#vrImages')).toContainText('No baseline yet');
   await expect(window.locator('#vrStats')).toContainText('Capture a baseline of this page');
 
@@ -551,7 +556,19 @@ test('side-by-side, overlay (slider, keyboard-operable) and diff views, with the
 
   await window.click('.vr-view-btn[data-view="side"]');
   await expect(window.locator('.vr-view-btn[data-view="side"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(window.locator('#vrImages .vr-img')).toHaveCount(2);
+  // #308: three equal panes — baseline, current and diff — each with a header.
+  await expect(window.locator('#vrImages .vr-img')).toHaveCount(3);
+  await expect(window.locator('#vrImages .vr-col-title')).toHaveText(['Baseline', 'Current', 'Diff']);
+  await expect(window.locator('#vrSide .vr-side-pct')).toContainText('%');
+  await expect(window.locator('#vrSide #vrSideThreshold')).toBeVisible();
+
+  // Baseline and Current are views of their own.
+  await window.click('.vr-view-btn[data-view="current"]');
+  await expect(window.locator('#vrImages .vr-img')).toHaveCount(1);
+  await expect(window.locator('#vrImages .vr-col-title')).toHaveText('Current');
+  await window.click('.vr-view-btn[data-view="baseline"]');
+  await expect(window.locator('#vrImages .vr-col-title')).toHaveText('Baseline');
+  await window.click('.vr-view-btn[data-view="side"]');
 
   await window.click('.vr-view-btn[data-view="overlay"]');
   await expect(window.locator('.vr-view-btn[data-view="overlay"]')).toHaveAttribute('aria-pressed', 'true');

@@ -9,6 +9,7 @@ describe('view mode + zoom preferences', () => {
   it('only restores a known compare view, else the fallback', () => {
     expect(normalizeViewMode('overlay')).toBe('overlay');
     expect(normalizeViewMode('side')).toBe('side');
+    expect(normalizeViewMode('current')).toBe('current');
     expect(normalizeViewMode('baseline')).toBe('diff');
     expect(normalizeViewMode(null)).toBe('diff');
     expect(normalizeViewMode('<script>', 'side')).toBe('side');
