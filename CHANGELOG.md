@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.138.0 — 2026-10-20
+
+### Features
+
+- UI diff (visual regression) layout (refs #308) (88d8fde)
+
 ## v0.137.0 — 2026-10-20
 
 ### Features
