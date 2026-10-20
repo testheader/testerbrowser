@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.136.0 — 2026-10-20
+
+### Features
+
+- Security findings list and detail pane (refs #306) (b701857)
+
 ## v0.135.0 — 2026-10-20
 
 ### Features
