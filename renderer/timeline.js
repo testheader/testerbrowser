@@ -4,6 +4,7 @@ import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matche
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
+import { setTabBadge } from './tab-badges.js';
 
 // timeline.js owns the recording ring buffer (timelineEvents), the polling
 // cursor (lastId) and the console panel's auto-scroll flag — nothing else
@@ -280,6 +281,7 @@ export function renderTimeline() {
     const level = getConsoleLevel(e);
     if (level) levelCounts[level] = (levelCounts[level] || 0) + 1;
   }
+  setTabBadge('console', levelCounts.error || 0);
   document.querySelectorAll('#consoleLevelPills .filter-pill').forEach(btn => {
     const n    = levelCounts[btn.dataset.level] || 0;
     const span = btn.querySelector('.pill-count');
@@ -678,6 +680,7 @@ export function resetTimelineForNewSession() {
   requestMeta.clear();
   responseMeta.clear();
   tagMeta.clear();
+  setTabBadge('console', 0);
   document.getElementById('timelinePanel').innerHTML = '';
 }
 

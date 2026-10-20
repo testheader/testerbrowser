@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
 import { openDetailTab } from './detail-panel.js';
+import { setTabBadge } from './tab-badges.js';
 
 const SEVERITIES = ['high', 'medium', 'low'];
 
@@ -349,6 +350,7 @@ export function clearSecurityFindings() {
   const status = document.getElementById('secStatus');
   if (status) status.textContent = '';
   document.querySelectorAll('#secPills .pill-count').forEach((el) => { el.textContent = ''; });
+  setTabBadge('security', 0);
 }
 
 async function runScan() {
@@ -368,6 +370,7 @@ async function runScan() {
   lastSkipped = result.skipped;
   lastTruncated = events.length >= 5000;
   renderFilteredFindings();
+  setTabBadge('security', lastFindings.length);
   status.textContent = `${lastFindings.length} issue${lastFindings.length !== 1 ? 's' : ''} found`;
   btn.disabled = false;
 }

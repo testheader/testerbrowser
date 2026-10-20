@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
 import { escHtml } from './utils.js';
+import { setTabBadge } from './tab-badges.js';
 
 const expandedIds = new Set();
 const nodeRowMap = new Map(); // axNodeId → .a11y-row DOM element
@@ -397,6 +398,7 @@ async function loadA11yViolations() {
 }
 
 function renderA11yViolations(panel, violations) {
+  setTabBadge('a11y', violations ? violations.length : 0);
   if (!violations || violations.length === 0) {
     panel.innerHTML = '<div class="a11y-empty">No violations found.</div>';
     return;

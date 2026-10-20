@@ -13,6 +13,7 @@ import { clearSecurityFindings } from './security.js';
 import { refreshTimelineNow, resetTimelineForNewSession } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 import { clearDetailTabs } from './detail-panel.js';
+import { setTabBadge } from './tab-badges.js';
 
 // tabs.js owns every piece of per-tab bookkeeping: which tab is active, MRU
 // order, drag/drop order, favicons, titles, loading state, and the closed-tab
@@ -87,6 +88,9 @@ export async function switchToSession(id) {
   if (activeConsoleTab === 'security') clearSecurityFindings();
   if (activeConsoleTab === 'console' || activeConsoleTab === 'network') refreshTimelineNow();
   recordVisit(id);
+  // Scan results are per page/session: don't carry them to the new tab.
+  setTabBadge('a11y', 0);
+  setTabBadge('security', 0);
   await testerBrowser.sessions.switchTo(id);
   updateNavButtons();
   updateReloadBtn();

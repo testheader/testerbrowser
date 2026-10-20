@@ -433,6 +433,10 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
                font-size: 12.5px; font-weight: 400; cursor: pointer; padding: 0 8px; font-family: inherit; height: 100%; }
 .console-tab[hidden] { display: none; }
 .console-tab i { font-size: 14px; }
+.tab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px;
+             padding: 0 5px; border-radius: var(--tb-r-pill); font-size: 10.5px; font-weight: 600; line-height: 1; }
+.tab-badge-err  { background: var(--tb-err-soft);  color: var(--tb-err); }
+.tab-badge-warn { background: var(--tb-warn-soft); color: var(--tb-warn); }
 .console-tab:hover:not(.active) { color: var(--tb-text); }
 .console-tab.active { color: var(--tb-text); font-weight: 600; border-bottom-color: var(--tb-accent); }
 /* Per-tab filter/search sub-header, docked to the top of that tab's own panel
