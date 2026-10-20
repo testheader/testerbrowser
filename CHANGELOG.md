@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.122.4 — 2026-10-20
+
+### Other
+
+- vendor Lucide icons and JetBrains Mono, allow local fonts in CSP (refs #292) (a0f88ed)
+
 ## v0.122.3 — 2026-10-20
 
 ### Fixes
