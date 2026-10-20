@@ -127,14 +127,14 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 
 /* ── Custom Titlebar (merged with the tab strip) ── */
 #titlebar { display: flex; align-items: center; height: 40px; flex-shrink: 0;
-            background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+            background: var(--tb-chrome);
             -webkit-app-region: drag; user-select: none; }
-#appMenuWrapper { position: relative; flex-shrink: 0; padding-left: 8px; -webkit-app-region: no-drag; }
-#appName { color: var(--text-muted); background: none; border: none; cursor: pointer;
-           font-family: inherit; padding: 4px 8px; border-radius: 4px; display: flex;
+#appMenuWrapper { position: relative; flex-shrink: 0; padding-left: 10px; margin-right: 10px; -webkit-app-region: no-drag; }
+#appName { color: var(--tb-text-3); background: none; border: none; cursor: pointer;
+           font-family: inherit; padding: 4px 6px; border-radius: var(--tb-r-sm); display: flex;
            align-items: center; gap: 5px; transition: background 0.1s, color 0.1s; }
-#appName:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-.app-logo { flex-shrink: 0; height: 20px; width: auto; display: block; }
+#appName:hover { background: var(--tb-hover); color: var(--tb-text); }
+.app-logo { flex-shrink: 0; height: 18px; width: auto; display: block; }
 #appMenuCaret { font-size: 8px; letter-spacing: 0; }
 #appMenuDropdown { position: absolute; top: calc(100% + 4px); left: 0; background: var(--bg-secondary);
                    border: 1px solid var(--border-strong); border-radius: 6px; min-width: 200px;
@@ -144,8 +144,8 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 #titlebarControls { display: flex; align-items: stretch; flex-shrink: 0; -webkit-app-region: no-drag; }
 #themeToggleBtn, #winMinBtn, #winMaxBtn, #winCloseBtn {
   background: none; border: none; color: var(--text-muted); cursor: pointer;
-  width: 46px; height: 40px; display: flex; align-items: center; justify-content: center;
-  font-size: 14px; transition: background 0.1s, color 0.1s; -webkit-app-region: no-drag;
+  width: 44px; height: 40px; display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: background 0.1s, color 0.1s; -webkit-app-region: no-drag;
   padding: 0; position: relative;
 }
 /* Small dot marks "follow system" so the toggle can represent all three
@@ -154,7 +154,7 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
   content: ''; position: absolute; bottom: 6px; right: 12px;
   width: 4px; height: 4px; border-radius: 50%; background: var(--accent);
 }
-#themeToggleBtn:hover, #winMinBtn:hover, #winMaxBtn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+#themeToggleBtn:hover, #winMinBtn:hover, #winMaxBtn:hover { background: var(--tb-hover); color: var(--tb-text); }
 #winCloseBtn:hover { background: var(--error-strong); color: var(--text-strong); }
 .win-icon { display: block; width: 10px; height: 10px; }
 .win-icon[hidden] { display: none; }
@@ -175,45 +175,43 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 #topbar { display: flex; flex-direction: column; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
 
 /* Tabs (now inside #titlebar, sharing the row with window controls) */
-#tabs { display: flex; align-items: center; flex-shrink: 1; min-width: 0; height: 100%; padding: 0 8px; gap: 4px; overflow-x: auto; -webkit-app-region: no-drag; }
+#tabs { display: flex; align-items: flex-end; flex-shrink: 1; min-width: 0; height: 100%; padding: 0 4px; gap: 2px; overflow-x: auto; -webkit-app-region: no-drag; }
 #tabs::-webkit-scrollbar { height: 3px; }
 #tabs::-webkit-scrollbar-thumb { background: var(--bg-raised); }
-.tab { display: flex; align-items: center; gap: 4px; padding: 5px 8px; background: var(--bg-hover);
-       border-radius: 4px 4px 0 0; cursor: pointer; font-size: 13px; white-space: nowrap;
-       min-width: 0; max-width: 180px; user-select: none;
-       border: 2px solid transparent;
-       border-bottom: 3px solid var(--tab-color, var(--border-strong));
-       position: relative; transition: background 100ms ease, border-color 100ms ease, font-weight 100ms ease; }
-/* Two independent channels, so neither is mistaken for the other: the bottom
-   edge always carries session color, while a full border on the remaining
-   three sides marks the active tab; drag insertion uses the accent shadow. */
-.tab.active { background: var(--bg-primary); font-weight: 600;
-              border-top-color: var(--tab-selected);
-              border-left-color: var(--tab-selected);
-              border-right-color: var(--tab-selected); }
+/* #294: 196x34, aligned to the bottom of the bar. The active tab takes the
+   toolbar's surface colour so it merges into it; session colour is only the
+   8px dot — no coloured bottom border or active outline. */
+.tab { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 34px;
+       flex: 0 1 196px; width: 196px; min-width: 0;
+       background: transparent; color: var(--tb-text-2);
+       border-radius: var(--tb-r-md) var(--tb-r-md) 0 0; cursor: pointer; font-size: 13px; white-space: nowrap;
+       user-select: none; position: relative; transition: background 100ms ease; }
+.tab:hover { background: var(--tb-hover); }
+.tab.active { background: var(--tb-surface); color: var(--tb-text); font-weight: 600; }
 .tab.dragging { opacity: 0.35; box-shadow: 0 6px 14px rgba(0,0,0,0.45); }
 .tab.drag-left  { box-shadow: -2px 0 0 0 var(--accent); }
 .tab.drag-right { box-shadow:  2px 0 0 0 var(--accent); }
 .tab-favicon { width: 14px; height: 14px; flex-shrink: 0; border-radius: 2px; }
-.tab-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.tab-dot.persistent { background: var(--accent); }
-.tab-dot.ephemeral  { background: var(--bg-raised); }
+.tab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--tab-color, var(--tb-text-3)); }
+/* In-memory sessions read slightly quieter than persistent ones. */
+.tab-dot.ephemeral { opacity: 0.55; }
 .tab-pin { font-size: 10px; color: var(--warn-strong); flex-shrink: 0; }
 /* #265: a throttled tab (network and/or CPU conditions active) gets a small
    fixed icon before its name — content, not a DOM node, since the tab's own
    `title` attribute already carries the full "Throttled: …" description. */
 .tab.throttled::before { content: "🐢"; font-size: 10px; flex-shrink: 0; }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; flex: 1; min-width: 0; }
-.tab-close { flex-shrink: 0; width: 16px; height: 16px; display: flex; align-items: center;
-             justify-content: center; border-radius: 3px; font-size: 13px; color: var(--text-faint); }
-.tab-close:hover { background: var(--bg-raised); color: var(--text-strong); }
+.tab-close { flex-shrink: 0; width: 18px; height: 18px; display: flex; align-items: center;
+             justify-content: center; border-radius: var(--tb-r-xs); font-size: 13px; color: var(--tb-text-3); }
+.tab-close:hover { background: var(--tb-line); color: var(--tb-text); }
 .tab-rename-input { background: var(--bg-deep); color: var(--text-primary); border: 1px solid var(--accent); border-radius: 2px;
                     font-size: 13px; padding: 1px 4px; width: 100px; outline: none; font-family: inherit; }
-#newSessionBtn { flex-shrink: 0; cursor: pointer; color: var(--accent); font-size: 18px; padding: 2px 8px;
-                 user-select: none; background: none; border: none; border-radius: 4px;
-                 line-height: 1.4; font-family: inherit; transition: background 0.1s, color 0.1s; }
-#newSessionBtn:hover { background: var(--bg-hover); color: var(--accent-soft); }
-#newSessionBtn:active { background: var(--bg-tertiary); color: var(--accent); }
+#newSessionBtn { flex-shrink: 0; cursor: pointer; color: var(--tb-text-2); font-size: 16px; width: 28px; height: 28px;
+                 margin: 0 0 3px 4px; padding: 0; display: flex; align-items: center; justify-content: center;
+                 user-select: none; background: none; border: none; border-radius: var(--tb-r-sm);
+                 font-family: inherit; transition: background 0.1s, color 0.1s; }
+#newSessionBtn:hover { background: var(--tb-hover); color: var(--tb-text); }
+#newSessionBtn:active { background: var(--tb-line); color: var(--tb-text); }
 .tab-group-add { flex-shrink: 0; cursor: pointer; color: var(--text-faint); font-size: 13px; padding: 0 3px; user-select: none;
                  border-radius: 3px; line-height: 1; margin-right: 4px; }
 .tab-group-add:hover { color: var(--accent); background: var(--bg-hover); }

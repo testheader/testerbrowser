@@ -34,7 +34,10 @@ export function applyTheme(scheme) {
     btn.setAttribute('aria-label', btn.title);
     // Icon shows the resolved theme; a dot marks "system" so the toggle can
     // represent all three states instead of forcing a concrete choice.
-    btn.textContent = light ? '☽' : '☀';
+    const icon = document.createElement('i');
+    icon.className = light ? 'icon-moon' : 'icon-sun';
+    icon.setAttribute('aria-hidden', 'true');
+    btn.replaceChildren(icon);
     btn.classList.toggle('theme-system', scheme === 'system');
   }
 

@@ -127,6 +127,12 @@ function createTabElement(s) {
   tab.className  = 'tab';
   tab.dataset.id = s.id;
 
+  // #294: the session colour lives only in this dot (coloured via --tab-color,
+  // set in updateTabElement); the spinner/favicon indicator sits after it.
+  const dot = document.createElement('span');
+  dot.className = 'tab-dot';
+  tab.appendChild(dot);
+
   const name = document.createElement('span');
   name.className = 'tab-name';
   name.onclick = () => switchToSession(s.id);
@@ -173,23 +179,29 @@ function createTabElement(s) {
   return tab;
 }
 
-function buildIndicator(s) {
-  if (tabLoading[s.id]) {
-    const spinner = document.createElement('span');
-    spinner.className = 'tab-spinner';
-    return spinner;
-  }
-  if (tabFavicons[s.id]) {
+// Brings a tab's optional spinner/favicon indicator (the node after the
+// session-colour dot) in line with its loading/favicon state — adding,
+// swapping or removing it only when it actually differs, so a plain re-render
+// leaves a matching node untouched.
+function syncIndicator(tab, id) {
+  const indicator = tab.querySelector('.tab-spinner, .tab-favicon');
+  const dot = tab.querySelector('.tab-dot');
+  let next = null;
+  if (tabLoading[id]) {
+    if (indicator?.classList.contains('tab-spinner')) return;
+    next = document.createElement('span');
+    next.className = 'tab-spinner';
+  } else if (tabFavicons[id]) {
+    if (indicator?.tagName === 'IMG' && /** @type {HTMLImageElement} */ (indicator).src === tabFavicons[id]) return;
     const img = document.createElement('img');
     img.className = 'tab-favicon';
-    img.src = tabFavicons[s.id];
+    img.alt = '';
+    img.src = tabFavicons[id];
     img.onerror = () => img.remove();
-    return img;
+    next = img;
   }
-  const dot = document.createElement('span');
-  dot.className = 'tab-dot ' + (s.persistent ? 'persistent' : 'ephemeral');
-  dot.title     = s.persistent ? 'Persistent session' : 'In-memory session';
-  return dot;
+  if (!next) { indicator?.remove(); return; }
+  if (indicator) indicator.replaceWith(next); else dot.after(next);
 }
 
 // Applies everything about a tab that CAN change between renders (active
@@ -214,17 +226,13 @@ function updateTabElement(tab, s) {
   if (s.throttleLabel) tab.title = s.throttleLabel;
   else tab.removeAttribute('title');
 
-  const indicator = tab.querySelector('.tab-spinner, .tab-favicon, .tab-dot');
-  const currentSrc = indicator?.tagName === 'IMG' ? indicator.src : null;
-  const needsSwap =
-    !indicator ||
-    (tabLoading[s.id]  && !indicator.classList.contains('tab-spinner')) ||
-    (!tabLoading[s.id] && tabFavicons[s.id] && currentSrc !== tabFavicons[s.id]) ||
-    (!tabLoading[s.id] && !tabFavicons[s.id] && !indicator.classList.contains('tab-dot'));
-  if (needsSwap) {
-    const next = buildIndicator(s);
-    if (indicator) indicator.replaceWith(next); else tab.insertBefore(next, tab.firstChild);
+  const dot = tab.querySelector('.tab-dot');
+  if (dot) {
+    dot.classList.toggle('persistent', !!s.persistent);
+    dot.classList.toggle('ephemeral', !s.persistent);
+    /** @type {HTMLElement} */ (dot).title = s.persistent ? 'Persistent session' : 'In-memory session';
   }
+  syncIndicator(tab, s.id);
 
   const name = tab.querySelector('.tab-name');
   if (!name) {
@@ -256,7 +264,10 @@ function updateTabElement(tab, s) {
   if (!s.pinned && !closeBtn) {
     closeBtn = document.createElement('span');
     closeBtn.className = 'tab-close';
-    closeBtn.textContent = '×';
+    const x = document.createElement('i');
+    x.className = 'icon-x';
+    x.setAttribute('aria-hidden', 'true');
+    closeBtn.appendChild(x);
     closeBtn.title = 'Close (Ctrl+W)';
     closeBtn.setAttribute('role', 'button');
     closeBtn.setAttribute('aria-label', 'Close tab');
@@ -432,27 +443,7 @@ export async function reopenTab() {
 }
 
 export function updateTabLoadingVisual(tab, id) {
-  const existing = tab.querySelector('.tab-spinner, .tab-favicon, .tab-dot');
-  if (!existing) return;
-  if (tabLoading[id]) {
-    if (!tab.querySelector('.tab-spinner')) {
-      const spinner = document.createElement('span');
-      spinner.className = 'tab-spinner';
-      existing.replaceWith(spinner);
-    }
-  } else {
-    if (tab.querySelector('.tab-spinner')) {
-      if (tabFavicons[id]) {
-        const img = document.createElement('img');
-        img.className = 'tab-favicon';
-        img.src = tabFavicons[id];
-        img.onerror = () => img.remove();
-        tab.querySelector('.tab-spinner').replaceWith(img);
-      } else {
-        refreshTabs();
-      }
-    }
-  }
+  syncIndicator(tab, id);
 }
 
 export async function newSession({ persistent = true } = {}) {

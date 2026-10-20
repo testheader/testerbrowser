@@ -90,6 +90,33 @@ test('new tab button creates a second tab', async () => {
   await expect(window.locator('.tab')).toHaveCount(before + 1);
 });
 
+// #294: session colour is only the 8px dot — no coloured bottom border on
+// the tab. (Runs before the "closing the last tab" test, which replaces tabs.)
+test('the active tab has no coloured bottom border and its dot carries the session colour (#294)', async () => {
+  const info = await window.evaluate(() => {
+    const tab = document.querySelector('.tab.active') as HTMLElement;
+    const dot = tab.querySelector('.tab-dot') as HTMLElement;
+    const probe = document.createElement('span');
+    probe.style.color = tab.style.getPropertyValue('--tab-color');
+    document.body.appendChild(probe);
+    const expected = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      borderBottomWidth: getComputedStyle(tab).borderBottomWidth,
+      dotBackground: getComputedStyle(dot).backgroundColor,
+      dotWidth: getComputedStyle(dot).width,
+      expected,
+      tabWidth: Math.round(tab.getBoundingClientRect().width),
+      tabHeight: Math.round(tab.getBoundingClientRect().height),
+    };
+  });
+  expect(info.borderBottomWidth).toBe('0px');
+  expect(info.dotBackground).toBe(info.expected);
+  expect(info.dotWidth).toBe('8px');
+  expect(info.tabHeight).toBe(34);
+  expect(info.tabWidth).toBeLessThanOrEqual(196);
+});
+
 test('tab strip opts out of the titlebar drag region', async () => {
   // A real click can't be proven headlessly (Playwright's synthetic clicks bypass
   // -webkit-app-region: drag), so assert the CSS contract instead: no ancestor
