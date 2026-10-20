@@ -55,25 +55,26 @@
   </div>
   <div id="topbar">
     <div id="toolbar">
-      <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"    aria-label="Back"    disabled>&#8592;</button>
-      <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)"  aria-label="Forward"  disabled>&#8594;</button>
-      <button class="nav-btn" id="reloadBtn" title="Reload (F5)" aria-label="Reload">&#8635;</button>
+      <button class="nav-btn" id="backBtn"   title="Back (Alt+←)"    aria-label="Back"    disabled><i class="icon-arrow-left" aria-hidden="true"></i></button>
+      <button class="nav-btn" id="fwdBtn"    title="Forward (Alt+→)"  aria-label="Forward"  disabled><i class="icon-arrow-right" aria-hidden="true"></i></button>
+      <button class="nav-btn" id="reloadBtn" title="Reload (F5)" aria-label="Reload"><i class="icon-rotate-cw" aria-hidden="true"></i></button>
       <div id="urlbarWrap">
         <input id="urlbar" placeholder="Enter URL and press Enter  (Ctrl+L)" list="urlHistoryList" autocomplete="off" />
         <div id="urlbarDisplay"></div>
         <span id="urlbarLock" class="neutral" title="Connection security" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false"></span>
+        <span id="sessionChip" hidden><span id="sessionChipDot"></span><span id="sessionChipText"></span></span>
         <div id="securityPopover" role="dialog" aria-label="Connection security details"></div>
       </div>
       <datalist id="urlHistoryList"></datalist>
-      <span id="zoomIndicator" title="Click to reset zoom (Ctrl+0)">100%</span>
-      <button id="bookmarkBtn" title="Bookmark this page (Ctrl+D)" aria-label="Bookmark this page" aria-pressed="false">&#9734;</button>
+      <span id="zoomIndicator" title="Click to reset zoom (Ctrl+0)" hidden>100%</span>
+      <button id="bookmarkBtn" title="Bookmark this page (Ctrl+D)" aria-label="Bookmark this page" aria-pressed="false"><i class="icon-star" aria-hidden="true"></i></button>
       <div id="downloadsWrapper">
-        <button id="downloadsBtn" title="Downloads" aria-label="Downloads">&#8595;</button>
+        <button id="downloadsBtn" title="Downloads" aria-label="Downloads"><i class="icon-download" aria-hidden="true"></i></button>
         <span id="downloadsBadge"></span>
       </div>
-      <button class="nav-btn" id="devtoolsBtn" title="DevTools (F12)" aria-label="DevTools">&#9881;</button>
+      <button class="nav-btn" id="bugReportBtn" title="Report bug (Ctrl+Shift+R)" aria-label="Report bug"><i class="icon-bug" aria-hidden="true"></i></button>
       <div id="viewWrapper">
-        <button class="nav-btn" id="viewBtn" title="View panels" aria-haspopup="true" aria-expanded="false">View &#9662;</button>
+        <button class="nav-btn" id="viewBtn" title="More" aria-label="More" aria-haspopup="true" aria-expanded="false"><i class="icon-ellipsis" aria-hidden="true"></i></button>
         <div id="viewDropdown" role="menu">
           <div class="view-item" id="viewToggleConsole" role="menuitemcheckbox" tabindex="0" aria-checked="true">
             <span class="view-check" id="viewConsoleCheck">&#10003;</span>
@@ -83,6 +84,15 @@
             <span class="view-check" id="viewBookmarksCheck"></span>
             <span>Bookmarks bar</span>
             <span class="view-shortcut">Ctrl+Shift+B</span>
+          </div>
+          <div class="view-item" id="viewMenuDevtools" role="menuitem" tabindex="0">
+            <span class="view-check"></span>
+            <span>DevTools</span>
+            <span class="view-shortcut">F12</span>
+          </div>
+          <div class="view-item" id="viewMenuSettings" role="menuitem" tabindex="0">
+            <span class="view-check"></span>
+            <span>Settings</span>
           </div>
         </div>
       </div>

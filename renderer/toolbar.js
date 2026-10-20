@@ -2,6 +2,7 @@
 import { getActiveId, isTabLoading } from './tabs.js';
 import { looksLikeUrl, buildSearchUrl } from './utils.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
+import { openBugReport } from './bugreport.js';
 
 // navState (per-tab back/forward availability) and urlHistory (the URL bar's
 // autocomplete list) are both toolbar-only concerns — nothing outside this
@@ -20,12 +21,12 @@ export function updateReloadBtn() {
   const btn = document.getElementById('reloadBtn');
   const activeId = getActiveId();
   if (isTabLoading(activeId)) {
-    btn.innerHTML = '&#10005;';
+    btn.innerHTML = '<i class="icon-x" aria-hidden="true"></i>';
     btn.title     = 'Stop loading (Esc)';
     btn.setAttribute('aria-label', 'Stop loading');
     btn.onclick   = () => activeId && testerBrowser.sessions.stop(activeId);
   } else {
-    btn.innerHTML = '&#8635;';
+    btn.innerHTML = '<i class="icon-rotate-cw" aria-hidden="true"></i>';
     btn.title     = 'Reload (F5)';
     btn.setAttribute('aria-label', 'Reload');
     btn.onclick   = () => activeId && testerBrowser.sessions.reload(activeId);
@@ -40,7 +41,22 @@ export function updateNavButtons() {
 
 export function updateZoomDisplay(zoom) {
   const el = document.getElementById('zoomIndicator');
-  el.textContent = Math.round(zoom * 100) + '%';
+  const pct = Math.round(zoom * 100);
+  el.textContent = pct + '%';
+  // Only worth showing once the page is actually zoomed.
+  el.hidden = pct === 100;
+}
+
+// #295: "Session N · Persistent|In-memory" chip at the right of the URL bar.
+// `session` is the active tab's list entry (name/color/persistent), or
+// undefined when there is no active tab.
+export function updateSessionChip(session) {
+  const chip = document.getElementById('sessionChip');
+  if (!session) { chip.hidden = true; return; }
+  chip.hidden = false;
+  document.getElementById('sessionChipDot').style.background = session.color || '';
+  document.getElementById('sessionChipText').textContent =
+    `${session.name} · ${session.persistent ? 'Persistent' : 'In-memory'}`;
 }
 
 export function initToolbar() {
@@ -49,7 +65,7 @@ export function initToolbar() {
 
   /** @type {HTMLButtonElement} */ (document.getElementById('backBtn')).onclick     = () => getActiveId() && testerBrowser.sessions.back(getActiveId());
   /** @type {HTMLButtonElement} */ (document.getElementById('fwdBtn')).onclick      = () => getActiveId() && testerBrowser.sessions.forward(getActiveId());
-  document.getElementById('devtoolsBtn').onclick = () => getActiveId() && testerBrowser.sessions.devtools(getActiveId());
+  document.getElementById('bugReportBtn').onclick = () => openBugReport();
 
   document.getElementById('urlbar').addEventListener('keydown', async (e) => {
     if (e.key === 'Enter' && getActiveId()) {

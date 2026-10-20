@@ -234,7 +234,6 @@ export function updateBookmarkStar() {
   const currentUrl   = /** @type {HTMLInputElement} */ (document.getElementById('urlbar')).value;
   const bookmarkable = isBookmarkableUrl(currentUrl);
   const isBookmarked = bookmarkable && bookmarks.some(b => b.url === currentUrl);
-  starBtn.innerHTML  = isBookmarked ? '&#9733;' : '&#9734;';
   starBtn.title      = bookmarkable
     ? (isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this page (Ctrl+D)')
     : 'Nothing to bookmark yet';

@@ -172,7 +172,7 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 #updateReadyPopover .modal-actions { margin-top: 0; }
 
 /* ── Top bar ── */
-#topbar { display: flex; flex-direction: column; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+#topbar { display: flex; flex-direction: column; background: var(--tb-surface); }
 
 /* Tabs (now inside #titlebar, sharing the row with window controls) */
 #tabs { display: flex; align-items: flex-end; flex-shrink: 1; min-width: 0; height: 100%; padding: 0 4px; gap: 2px; overflow-x: auto; -webkit-app-region: no-drag; }
@@ -223,18 +223,23 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 @keyframes tab-spin { to { transform: rotate(360deg); } }
 
 /* Toolbar */
-#toolbar { height: 46px; display: flex; align-items: center; padding: 0 8px; gap: 6px;
-           border-bottom: 2px solid var(--active-tab-color, var(--accent)); }
-.nav-btn { background: none; border: none; color: var(--text-secondary); font-size: 16px; cursor: pointer;
-           padding: 4px 6px; border-radius: 4px; line-height: 1; flex-shrink: 0; }
-.nav-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-strong); }
-.nav-btn:disabled { color: var(--text-faint); cursor: default; }
-#urlbarWrap { flex: 1; position: relative; display: flex; align-items: center; min-width: 0; }
-#urlbar { width: 100%; padding: 6px 10px 6px 28px; border-radius: 4px; border: 1px solid var(--border-strong);
-          background: var(--bg-primary); color: transparent; caret-color: var(--text-primary);
-          font-size: 14px; }
-#urlbar:focus { outline: none; border-color: var(--active-tab-color, var(--accent)); color: var(--text-primary); }
-#urlbar::placeholder { color: var(--text-faint); }
+/* #295: 46px on the surface colour with a 1px line; session colour no longer
+   draws a border here (it lives in the tab dot and the URL-bar chip). */
+#toolbar { height: 46px; display: flex; align-items: center; padding: 0 10px; gap: 4px;
+           background: var(--tb-surface); border-bottom: 1px solid var(--tb-line); }
+.nav-btn { background: none; border: none; color: var(--tb-text-2); font-size: 16px; cursor: pointer;
+           width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center;
+           border-radius: var(--tb-r-sm); line-height: 1; flex-shrink: 0; }
+.nav-btn:hover:not(:disabled) { background: var(--tb-hover); color: var(--tb-text); }
+.nav-btn:disabled { opacity: 0.5; cursor: default; }
+#urlbarWrap { flex: 1; position: relative; display: flex; align-items: center; min-width: 0; margin: 0 8px; }
+/* The right padding leaves room for the session chip (absolutely positioned
+   over it); #urlbarDisplay's left/right below are this padding + 1px border. */
+#urlbar { width: 100%; height: 32px; padding: 0 190px 0 34px; border-radius: var(--tb-r-md);
+          border: 1px solid var(--tb-line); background: var(--tb-sunken); color: transparent;
+          caret-color: var(--tb-text); font-family: inherit; font-size: 13.5px; }
+#urlbar:focus { outline: none; border-color: var(--tb-accent); color: var(--tb-text); }
+#urlbar::placeholder { color: var(--tb-text-3); }
 #urlbar:focus + #urlbarDisplay { display: none; }
 /* #266: general-sibling (not :focus-within), so this only fires when the
    urlbar INPUT itself is focused — #urlbarLock is now keyboard-focusable
@@ -245,33 +250,47 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
    the lock itself). Requires #urlbarLock to come after #urlbar in the DOM
    (see index.html) — general-sibling only selects forward, never back. */
 #urlbar:focus ~ #urlbarLock { visibility: hidden; }
-#urlbarLock { position: absolute; left: 8px; font-size: 13px; z-index: 2; line-height: 1; cursor: pointer;
-              border-radius: 3px; padding: 1px; }
-#urlbarLock.secure  { color: var(--success-strong); }
-#urlbarLock.insecure{ color: var(--error-strong); }
-#urlbarLock.neutral { color: var(--text-faint); cursor: default; }
+#urlbarLock { position: absolute; left: 12px; font-size: 13px; z-index: 2; line-height: 1; cursor: pointer;
+              border-radius: 3px; padding: 1px; display: flex; }
+#urlbarLock.secure  { color: var(--tb-ok); }
+#urlbarLock.insecure{ color: var(--tb-err); }
+#urlbarLock.neutral { color: var(--tb-text-3); cursor: default; }
 #urlbarLock:empty { display: none; }
 #urlbarLock:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* left/right match #urlbar's padding *plus* its 1px border, so this layer's
    text starts at the exact same pixel as the input's own text would — the
    two must always agree since which one is visible can flip on any
    focus/blur transition. */
-#urlbarDisplay { position: absolute; left: 29px; right: 11px; top: 0; bottom: 0; display: flex;
-                 align-items: center; pointer-events: none; font-size: 14px; color: var(--text-primary);
+#urlbarDisplay { position: absolute; left: 35px; right: 191px; top: 0; bottom: 0; display: block;
+                 line-height: 32px; pointer-events: none; font-size: 13.5px; color: var(--tb-text-2);
                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#urlbarDisplay .url-proto { color: var(--text-faint); }
-#zoomIndicator { font-size: 11px; color: var(--text-muted); min-width: 36px; text-align: center;
-                 cursor: pointer; padding: 2px 4px; border-radius: 3px;
+#urlbarDisplay .url-proto { color: var(--tb-text-3); }
+#urlbarDisplay .url-host { color: var(--tb-text); font-weight: 500; }
+#urlbarDisplay .url-path { color: var(--tb-text-2); }
+/* #295: session chip inside the URL bar, right-aligned. */
+#sessionChip { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); z-index: 2;
+               display: flex; align-items: center; gap: 7px; height: 22px; padding: 0 8px; max-width: 180px;
+               background: var(--tb-surface); border: 1px solid var(--tb-line); border-radius: 5px;
+               font-size: 11.5px; color: var(--tb-text-2); pointer-events: none; white-space: nowrap; }
+#sessionChip[hidden] { display: none; }
+#sessionChipDot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--tb-text-3); }
+#sessionChipText { overflow: hidden; text-overflow: ellipsis; }
+#zoomIndicator { font-size: 11px; color: var(--tb-text-3); min-width: 36px; text-align: center;
+                 cursor: pointer; padding: 2px 4px; border-radius: var(--tb-r-xs);
                  flex-shrink: 0; }
-#zoomIndicator:hover { background: var(--bg-hover); color: var(--text-primary); }
-#bookmarkBtn { background: none; border: none; color: var(--text-faint); font-size: 17px; cursor: pointer;
-               padding: 3px 5px; border-radius: 4px; line-height: 1; flex-shrink: 0; }
-#bookmarkBtn:hover { color: var(--text-strong); background: var(--bg-hover); }
-#bookmarkBtn.bookmarked { color: var(--warn-strong); }
+#zoomIndicator[hidden] { display: none; }
+#zoomIndicator:hover { background: var(--tb-hover); color: var(--tb-text); }
+#bookmarkBtn { background: none; border: none; color: var(--tb-text-2); font-size: 16px; cursor: pointer;
+               width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center;
+               border-radius: var(--tb-r-sm); line-height: 1; flex-shrink: 0; }
+#bookmarkBtn:hover:not(:disabled) { color: var(--tb-text); background: var(--tb-hover); }
+#bookmarkBtn:disabled { opacity: 0.5; cursor: default; }
+#bookmarkBtn.bookmarked { color: var(--tb-warn); }
 #downloadsWrapper { position: relative; flex-shrink: 0; }
-#downloadsBtn { background: none; border: none; color: var(--text-secondary); font-size: 15px; cursor: pointer;
-                padding: 4px 6px; border-radius: 4px; line-height: 1; }
-#downloadsBtn:hover { background: var(--bg-hover); color: var(--text-strong); }
+#downloadsBtn { background: none; border: none; color: var(--tb-text-2); font-size: 16px; cursor: pointer;
+                width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center;
+                border-radius: var(--tb-r-sm); line-height: 1; }
+#downloadsBtn:hover { background: var(--tb-hover); color: var(--tb-text); }
 #downloadsBadge { position: absolute; top: -2px; right: -2px; background: var(--error-strong);
                   color: var(--text-strong); font-size: 9px; border-radius: 50%; width: 14px; height: 14px;
                   display: none; align-items: center; justify-content: center; font-weight: bold; }
@@ -350,7 +369,7 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 .perm-block:hover { background: var(--bg-raised); }
 
 /* ── Downloads panel ── */
-#downloadsPanel { position: fixed; top: 88px; right: 0; width: 320px; background: var(--bg-secondary);
+#downloadsPanel { position: fixed; top: 87px; right: 0; width: 320px; background: var(--bg-secondary);
                   border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); z-index: 50;
                   transform: translateX(100%); transition: transform 0.2s ease;
                   display: flex; flex-direction: column; max-height: 420px; }

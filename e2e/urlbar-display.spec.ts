@@ -211,3 +211,43 @@ test('#urlbar and #urlbarDisplay agree on exactly where their text starts', asyn
   });
   expect(boxes.textStartD).toBeCloseTo(boxes.textStartU, 0);
 });
+
+// ── #295: session chip, zoom indicator, toolbar border ───────────────────
+
+test('the session chip shows the active tab\'s name and persistence, and follows tab switches (#295)', async () => {
+  const chip = window.locator('#sessionChipText');
+  await expect(window.locator('#sessionChip')).toBeVisible();
+  await expect(chip).toHaveText(/^.+ · Persistent$/);
+
+  await window.click('#newSessionBtn', { modifiers: ['Shift'] });
+  await expect(chip).toHaveText(/^Temp \d+ · In-memory$/);
+
+  // Switching back to the first tab restores its own chip text.
+  await window.locator('.tab').first().locator('.tab-name').click();
+  await expect(chip).toHaveText(/^.+ · Persistent$/);
+});
+
+test('the zoom indicator is hidden at 100% and shown (click-to-reset) when zoomed (#295)', async () => {
+  const zoom = window.locator('#zoomIndicator');
+  await expect(zoom).toBeHidden();
+
+  await window.evaluate(async () => {
+    const tb = (window as unknown as { testerBrowser: { sessions: { list(): Promise<{ id: string }[]>; setZoom(id: string, d: number): Promise<unknown> } } }).testerBrowser;
+    const active = document.querySelector('.tab.active') as HTMLElement;
+    await tb.sessions.setZoom(active.dataset.id as string, 0.1);
+  });
+  await expect(zoom).toBeVisible({ timeout: 5_000 });
+  await expect(zoom).toHaveText('110%');
+
+  await zoom.click();
+  await expect(zoom).toBeHidden({ timeout: 5_000 });
+});
+
+test('the toolbar has no session-colour bottom border (#295)', async () => {
+  const border = await window.evaluate(() => {
+    const cs = getComputedStyle(document.getElementById('toolbar') as HTMLElement);
+    return { width: cs.borderBottomWidth, height: (document.getElementById('toolbar') as HTMLElement).getBoundingClientRect().height };
+  });
+  expect(border.width).toBe('1px');
+  expect(Math.round(border.height)).toBe(46);
+});

@@ -1,6 +1,9 @@
+/* global testerBrowser */
 import { toggleBookmarksBar } from './bookmarks.js';
 import { isConsoleVisible, toggleConsoleVisible, isBookmarksBarVisible, beginPageOverlay, endPageOverlay } from './layout.js';
 import { closeAppMenu } from './app-menu.js';
+import { getActiveId } from './tabs.js';
+import { openSettings } from './settings.js';
 
 function updateViewDropdown() {
   const consoleOn   = isConsoleVisible();
@@ -63,10 +66,23 @@ export function initViewDropdown() {
     closeViewDropdown();
   });
 
+  // #295: the visible DevTools gear is gone; F12 and this entry remain.
+  document.getElementById('viewMenuDevtools').addEventListener('click', () => {
+    closeViewDropdown();
+    const id = getActiveId();
+    if (id) testerBrowser.sessions.devtools(id);
+  });
+
+  document.getElementById('viewMenuSettings').addEventListener('click', () => {
+    closeViewDropdown();
+    openSettings();
+  });
+
   // The two toggles are role="menuitemcheckbox" divs (not real <button>s, to
   // keep the existing checkmark layout) — give them the keyboard activation
   // a real button/checkbox gets for free.
-  [document.getElementById('viewToggleConsole'), document.getElementById('viewToggleBookmarks')].forEach((el) => {
+  [document.getElementById('viewToggleConsole'), document.getElementById('viewToggleBookmarks'),
+    document.getElementById('viewMenuDevtools'), document.getElementById('viewMenuSettings')].forEach((el) => {
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();

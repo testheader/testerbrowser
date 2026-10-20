@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { setLoadingBar, updateReloadBtn, updateNavButtons, updateZoomDisplay, clearNavState } from './toolbar.js';
+import { setLoadingBar, updateReloadBtn, updateNavButtons, updateZoomDisplay, updateSessionChip, clearNavState } from './toolbar.js';
 import { updateBookmarkStar } from './bookmarks.js';
 import { loadStoragePanel } from './storage.js';
 import { refreshDiffPickers } from './diff.js';
@@ -347,6 +347,7 @@ export async function refreshTabs() {
     updateUrlbarSecurity(active.url || '');
     updateBookmarkStar();
   }
+  updateSessionChip(active);
   document.body.style.setProperty('--active-tab-color', (active && active.color) || '#4fc3f7');
 
   updateNavButtons();

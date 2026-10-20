@@ -3,14 +3,16 @@ import { escHtml } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { beginPageOverlay, endPageOverlay } from './layout.js';
 
+// `icon` is a Lucide class name: lock / lock-open for real connections, and
+// search for the new-tab page (or no URL yet), per the redesign spec.
 function classify(url) {
-  if (!url) return { cls: 'neutral', icon: '🔒', proto: '', rest: '' };
+  if (!url || /newtab\.html/i.test(url)) return { cls: 'neutral', icon: 'icon-search', proto: '', rest: url || '' };
   let proto;
-  try { proto = new URL(url).protocol; } catch { return { cls: 'neutral', icon: '🔒', proto: '', rest: url }; }
-  if (proto === 'https:') return { cls: 'secure',   icon: '🔒', proto: 'https://', rest: url.slice('https://'.length) };
-  if (proto === 'http:')  return { cls: 'insecure', icon: '🔓', proto: 'http://',  rest: url.slice('http://'.length) };
+  try { proto = new URL(url).protocol; } catch { return { cls: 'neutral', icon: 'icon-lock', proto: '', rest: url }; }
+  if (proto === 'https:') return { cls: 'secure',   icon: 'icon-lock',      proto: 'https://', rest: url.slice('https://'.length) };
+  if (proto === 'http:')  return { cls: 'insecure', icon: 'icon-lock-open', proto: 'http://',  rest: url.slice('http://'.length) };
   // Internal schemes (file:, chrome-error:, devtools:, about:, data:, …) get a neutral lock.
-  return { cls: 'neutral', icon: '🔒', proto: '', rest: url };
+  return { cls: 'neutral', icon: 'icon-lock', proto: '', rest: url };
 }
 
 // Tracks the URL the lock icon currently reflects, so the click handler
@@ -24,7 +26,10 @@ export function updateUrlbarSecurity(url) {
   const { cls, icon, proto, rest } = classify(url);
 
   lock.className = cls;
-  lock.textContent = icon;
+  const glyph = document.createElement('i');
+  glyph.className = icon;
+  glyph.setAttribute('aria-hidden', 'true');
+  lock.replaceChildren(glyph);
 
   display.innerHTML = '';
   if (proto) {
@@ -32,8 +37,23 @@ export function updateUrlbarSecurity(url) {
     protoSpan.className = 'url-proto';
     protoSpan.textContent = proto;
     display.appendChild(protoSpan);
+    // scheme text-3, host text 500, path/query text-2 (the CSS carries the colours).
+    const hostEnd = rest.search(/[/?#]/);
+    const host = hostEnd === -1 ? rest : rest.slice(0, hostEnd);
+    const path = hostEnd === -1 ? '' : rest.slice(hostEnd);
+    const hostSpan = document.createElement('span');
+    hostSpan.className = 'url-host';
+    hostSpan.textContent = host;
+    display.appendChild(hostSpan);
+    if (path) {
+      const pathSpan = document.createElement('span');
+      pathSpan.className = 'url-path';
+      pathSpan.textContent = path;
+      display.appendChild(pathSpan);
+    }
+  } else {
+    display.appendChild(document.createTextNode(rest));
   }
-  display.appendChild(document.createTextNode(rest));
 }
 
 // #266: 'ok' at 30+ days out, 'soon' (warning style) under 30 days including
