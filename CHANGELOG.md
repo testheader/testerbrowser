@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.129.0 — 2026-10-20
+
+### Features
+
+- Network toolbar in a single row (refs #299) (a2b264f)
+
 ## v0.128.0 — 2026-10-20
 
 ### Features
