@@ -146,7 +146,7 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   // clicking ⇒ Mock until the detail panel has rendered with the body event and
   // the mock panel's body field is populated.
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(detailMockBtn).toBeVisible({ timeout: 1_000 });
     await detailMockBtn.click();
     await expect(window.locator('#mockBody')).not.toHaveValue('', { timeout: 2_000 });
@@ -210,7 +210,7 @@ test('a network request\'s detail panel offers Replay, Mock and Resilience, in t
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(window.locator('#detailReplayBtn')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
@@ -381,7 +381,7 @@ test('"⇒ Mock" from a gzip-encoded response leaves out encoding headers, and a
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   const detailMockBtn = window.locator('#detailMockBtn');
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(detailMockBtn).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
   await detailMockBtn.click();

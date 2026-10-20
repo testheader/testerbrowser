@@ -20,19 +20,13 @@ test.afterAll(async () => {
 });
 
 test.describe('logger.spec', () => {
-  test('Network tab pills are visible, with only Req on by default', async () => {
+  test('Network tab chips are visible and all off by default (#300)', async () => {
     await window.locator('#consoleTabNetwork').click();
-    const reqPill = window.locator('#networkPills .filter-pill[data-type="network-request"]');
-    await expect(reqPill).toBeVisible();
-    await expect(reqPill).toHaveClass(/\bon\b/);
-
-    const resPill = window.locator('#networkPills .filter-pill[data-type="network-response"]');
-    await expect(resPill).toBeVisible();
-    await expect(resPill).not.toHaveClass(/\bon\b/);
-
-    const errPill = window.locator('#networkPills .filter-pill[data-type="network-failed"]');
-    await expect(errPill).toBeVisible();
-    await expect(errPill).not.toHaveClass(/\bon\b/);
+    for (const type of ['network-failed', 'mock', 'resilience']) {
+      const chip = window.locator(`#networkPills .filter-pill[data-type="${type}"]`);
+      await expect(chip).toBeVisible();
+      await expect(chip).not.toHaveClass(/\bon\b/);
+    }
   });
 
   test('detail panel tab bar exists', async () => {

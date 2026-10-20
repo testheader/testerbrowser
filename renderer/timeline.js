@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { TIMELINE_MAX, TIMELINE_DOM_MAX } from './state.js';
 import { getEventTabId, wirePillGroup, activePillValues, getConsoleLevel, matchesFreeText, methodFilterLabel, networkSummary } from './utils.js';
+import { buildNetworkRow, formatDuration, responseSize } from './network-rows.js';
 import { openDetailTab, isDetailTabActive } from './detail-panel.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
@@ -48,6 +49,11 @@ export const responseMeta = new Map(); // requestId -> { status, durationMs }
 // Mock/Resilience pills need this for kinds like network-body whose own
 // payload never carries mockRuleId/resilienceRuleId directly.
 export const tagMeta = new Map(); // requestId -> 'mock' | 'resilience'
+// #300: loadingFailed's errorText per requestId, so a failed request's row
+// can show the error instead of a status.
+export const failMeta = new Map(); // requestId -> errorText
+// The request row currently selected in the Network table (↑/↓/Enter).
+let selectedRequestId = null;
 const KNOWN_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
 
 // Rows whose level falls outside these five pills (e.g. CDP Log's 'verbose',
@@ -123,6 +129,18 @@ function getEventTag(e) {
   return null;
 }
 
+// True for a request that failed outright or came back 4xx/5xx — what the
+// Errors chip filters to and counts.
+function isErrorRequest(e) {
+  if (!e.payload) return false;
+  try {
+    const p = JSON.parse(e.payload);
+    if (failMeta.has(p.requestId)) return true;
+    const status = responseMeta.get(p.requestId)?.status;
+    return typeof status === 'number' && status >= 400;
+  } catch { return false; }
+}
+
 // The URL for line 2. network-response's own CDP payload does carry
 // response.url, but network-failed's loadingFailed payload never carries a
 // url at all — it's resolved from the request row recorded earlier via
@@ -184,16 +202,12 @@ const CONSOLE_KINDS = new Set(['console', 'log', 'exception']);
 // getEventTag/getEventDuration close over the requestMeta/responseMeta/
 // tagMeta maps above (module state, not DOM), same as the rest of this file.
 export function matchesNetworkFilters(e, { activeTypes, activeMethods, minDuration, filterText }) {
-  // network-response's own status/timing is merged into its request row
-  // (getEventStatus/getEventDuration) instead of rendering as a second,
-  // near-duplicate row — so it's never shown standalone. The Res pill
-  // now solely governs the response body row.
-  const kindVisible = e.kind === 'network-response'
-    ? false
-    : e.kind === 'network-body'
-      ? activeTypes.has('network-response')
-      : activeTypes.has(e.kind);
-  if (!kindVisible) return false;
+  // #300: one row per request. The response's status/timing/size, a failure
+  // and the body are all merged into (or shown from) the request row, so only
+  // network-request events are ever rows of their own. The Errors chip
+  // (data-type "network-failed") narrows to failed / 4xx / 5xx requests.
+  if (e.kind !== 'network-request') return false;
+  if (activeTypes.has('network-failed') && !isErrorRequest(e)) return false;
 
   const method = getEventMethod(e);
   const methodVisible = !method || activeMethods.has(KNOWN_METHODS.has(method) ? method : 'Other');
@@ -258,15 +272,14 @@ export function renderTimeline() {
 
   const kindCounts = {};
   for (const e of timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
-  // The Res pill's count reflects what it actually filters now (body rows),
-  // not the network-response events merged into the Req row.
-  kindCounts['network-response'] = kindCounts['network-body'] || 0;
   // Mock/Resilience counts are per call (one request each), not per event
   // kind, so they're tallied off the network-request rows only.
   kindCounts['mock'] = 0;
   kindCounts['resilience'] = 0;
+  kindCounts['network-failed'] = 0;
   for (const e of timelineEvents) {
     if (e.kind !== 'network-request') continue;
+    if (isErrorRequest(e)) kindCounts['network-failed']++;
     const tag = getEventTag(e);
     if (tag === 'mock' || tag === 'resilience') kindCounts[tag]++;
   }
@@ -340,6 +353,12 @@ export function renderTimeline() {
     msg.className   = 'evt-overflow-msg';
     msg.textContent = `▲ ${filtered.length - TIMELINE_DOM_MAX} older events not shown — clear filter or console to see them`;
     panel.appendChild(msg);
+  }
+
+  if (tab === 'network') {
+    renderNetworkTable(panel, visible);
+    if (autoScroll) panel.scrollTop = panel.scrollHeight;
+    return;
   }
 
   for (const e of visible) {
@@ -470,6 +489,134 @@ export function renderTimeline() {
   if (autoScroll) panel.scrollTop = panel.scrollHeight;
 }
 
+// #300: the Network tab's table — a sticky header plus one 30px grid row per
+// request: Status · Method · Name (path, host, tag) · Type · Size · Time.
+// Class names (.evt.network-request, .evt-line1 .evt-method/.evt-status,
+// .evt-inline-url, .evt-duration, .evt-badge-*) are kept; .evt-line1 and
+// .evt-line1-rest are display:contents so their children are the grid cells.
+function renderNetworkTable(panel, events) {
+  const head = document.createElement('div');
+  head.className = 'net-head';
+  head.setAttribute('role', 'row');
+  for (const [label, cls] of [['Status', ''], ['Method', ''], ['Name', ''], ['Type', ''], ['Size', 'right'], ['Time', 'right']]) {
+    const cell = document.createElement('span');
+    cell.textContent = label;
+    if (cls) cell.className = cls;
+    head.appendChild(cell);
+  }
+  panel.appendChild(head);
+
+  for (const e of events) {
+    let p;
+    try { p = JSON.parse(e.payload); } catch { continue; }
+    const row = buildNetworkRow(p, responseMeta.get(p.requestId), failMeta.get(p.requestId), getEventTag(e));
+    const tabId = getEventTabId(e);
+
+    const line = document.createElement('div');
+    line.className       = 'evt network-request';
+    line.dataset.kind    = e.kind;
+    line.dataset.summary = e.summary;
+    line.dataset.tabId   = tabId;
+    line.setAttribute('role', 'row');
+    if (isDetailTabActive(tabId)) line.classList.add('detail-row-active');
+    if (row.requestId && row.requestId === selectedRequestId) line.classList.add('selected');
+    line.title = row.url;
+
+    const line1 = document.createElement('div');
+    line1.className = 'evt-line1';
+
+    const statusSpan = document.createElement('span');
+    statusSpan.className = 'evt-status ' + (row.status === null ? (row.failed ? 'net-st-err' : 'net-st-pending')
+      : row.status >= 400 ? 'net-st-err' : 'net-st-ok');
+    statusSpan.textContent = row.status === null ? '—' : String(row.status);
+    line1.appendChild(statusSpan);
+
+    const rest = document.createElement('div');
+    rest.className = 'evt-line1-rest';
+
+    const methodSpan = document.createElement('span');
+    methodSpan.className = 'evt-method';
+    methodSpan.textContent = row.method;
+    rest.appendChild(methodSpan);
+
+    const nameCell = document.createElement('div');
+    nameCell.className = 'net-name';
+    const pathSpan = document.createElement('span');
+    pathSpan.className = 'evt-inline-url';
+    pathSpan.textContent = row.name || row.url;
+    nameCell.appendChild(pathSpan);
+    if (row.failed) {
+      const err = document.createElement('span');
+      err.className = 'net-host net-fail-text';
+      err.textContent = row.errorText;
+      nameCell.appendChild(err);
+    } else if (row.host) {
+      const host = document.createElement('span');
+      host.className = 'net-host';
+      host.textContent = row.host;
+      nameCell.appendChild(host);
+    }
+    if (row.tag) {
+      const badge = document.createElement('span');
+      badge.className = `evt-badge evt-badge-${row.tag}`;
+      badge.textContent = row.tag === 'mock' ? 'Mocked' : 'Resilience';
+      badge.title = row.tag === 'mock'
+        ? 'Response served by a Mock rule instead of the real server'
+        : `Altered by a Resilience rule (${p.resilienceType || 'unknown'})`;
+      nameCell.appendChild(badge);
+    }
+    rest.appendChild(nameCell);
+
+    const typeSpan = document.createElement('span');
+    typeSpan.className = 'net-type';
+    typeSpan.textContent = row.type;
+    rest.appendChild(typeSpan);
+
+    const sizeSpan = document.createElement('span');
+    sizeSpan.className = 'net-size';
+    sizeSpan.textContent = row.sizeLabel;
+    rest.appendChild(sizeSpan);
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'evt-duration' + (row.durationMs !== null && row.durationMs > 1000 ? ' slow' : '');
+    timeSpan.textContent = row.durationMs === null ? '' : formatDuration(row.durationMs);
+    rest.appendChild(timeSpan);
+
+    line1.appendChild(rest);
+    line.appendChild(line1);
+
+    line.style.cursor = 'pointer';
+    line.addEventListener('click', () => {
+      selectedRequestId = row.requestId ?? null;
+      openDetailTab(e);
+      renderTimeline();
+    });
+    panel.appendChild(line);
+  }
+}
+
+// ↑/↓ move the Network table's selection, Enter opens the selected row's
+// detail (same as a click). Selection is tracked by requestId so it survives
+// the panel re-rendering on every poll.
+function onNetworkKeydown(ev) {
+  if (getActiveConsoleTab() !== 'network') return;
+  if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp' && ev.key !== 'Enter') return;
+  const panel = document.getElementById('timelinePanel');
+  const rows = /** @type {HTMLElement[]} */ ([...panel.querySelectorAll('.evt.network-request')]);
+  if (rows.length === 0) return;
+  ev.preventDefault();
+  const idx = rows.findIndex((r) => r.classList.contains('selected'));
+  if (ev.key === 'Enter') {
+    if (idx >= 0) rows[idx].click();
+    return;
+  }
+  const next = ev.key === 'ArrowDown' ? Math.min(rows.length - 1, idx + 1) : Math.max(0, idx === -1 ? rows.length - 1 : idx - 1);
+  rows[idx]?.classList.remove('selected');
+  rows[next].classList.add('selected');
+  rows[next].scrollIntoView({ block: 'nearest' });
+  selectedRequestId = rows[next].dataset.tabId || null;
+}
+
 const TIMELINE_PAGE = 200;
 
 // Single-flight: a refresh while a poll is running reuses its promise, so the
@@ -519,7 +666,10 @@ function populateMetaFromEvents(events) {
       try {
         const p = JSON.parse(e.payload);
         if (p.requestId) {
-          responseMeta.set(p.requestId, { status: p.response?.status ?? null, durationMs: p.durationMs });
+          responseMeta.set(p.requestId, {
+            status: p.response?.status ?? null, durationMs: p.durationMs,
+            size: responseSize(p.response?.headers), mimeType: p.response?.mimeType,
+          });
           if (p.mockRuleId) tagMeta.set(p.requestId, 'mock');
           else if (p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
         }
@@ -529,6 +679,7 @@ function populateMetaFromEvents(events) {
         const p = JSON.parse(e.payload);
         if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
         else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
+        if (p.requestId) failMeta.set(p.requestId, p.errorText || 'Failed');
       } catch {}
     }
   }
@@ -682,6 +833,8 @@ export function resetTimelineForNewSession() {
   requestMeta.clear();
   responseMeta.clear();
   tagMeta.clear();
+  failMeta.clear();
+  selectedRequestId = null;
   setTabBadge('console', 0);
   document.getElementById('timelinePanel').innerHTML = '';
 }
@@ -690,6 +843,7 @@ export function initTimeline() {
   const timelinePanel     = document.getElementById('timelinePanel');
   const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
 
+  timelinePanel.addEventListener('keydown', onNetworkKeydown);
   timelinePanel.addEventListener('scroll', () => {
     autoScroll = timelinePanel.scrollTop + timelinePanel.clientHeight >= timelinePanel.scrollHeight - 30;
     scrollToBottomBtn.classList.toggle('visible', !autoScroll);
@@ -743,12 +897,15 @@ export function initTimeline() {
     requestMeta.clear();
     responseMeta.clear();
     tagMeta.clear();
+    failMeta.clear();
+    selectedRequestId = null;
     // #262: no loaded rows left to anchor "Load older events" against —
     // it'll recompute against the new head next time events are ingested.
     hasOlderEvents = false;
     checkedOldestId = null;
     loadingOlder = false;
     timelinePanel.innerHTML = '';
+    document.getElementById('networkSummary').textContent = '';
     document.querySelectorAll('#networkPills .filter-pill .pill-count').forEach(s => { s.textContent = ''; });
     autoScroll = true;
     scrollToBottomBtn.classList.remove('visible');

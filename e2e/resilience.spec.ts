@@ -285,7 +285,7 @@ test('sending a captured POST request to Resilience scopes the rule to that meth
   const requestRow = window.locator('.evt.network-request', { hasText: '/api/resilience-method-check' });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(window.locator('#detailResilienceBtn')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
@@ -525,7 +525,7 @@ test('editing the URL after a "⇒ Resilience" prefill resets the method scope t
   const requestRow = window.locator('.evt.network-request', { hasText: '/api/resilience-reset-check' });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(window.locator('#detailResilienceBtn')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
   await window.locator('#detailResilienceBtn').click();

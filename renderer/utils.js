@@ -254,8 +254,11 @@ export function methodFilterLabel(allMethods, active) {
   return on.length ? `Method: ${on.join(', ')}` : 'Method: None';
 }
 
-function formatBytes(n) {
-  if (n < 1000) return `${n} B`;
+// "0 B", "0.2 kB", "84.2 kB", "470 kB", "1.3 MB" — one decimal below 100 kB,
+// whole kilobytes above it.
+export function formatSize(n) {
+  if (n <= 0) return '0 B';
+  if (n < 100000) return `${(n / 1000).toFixed(1)} kB`;
   if (n < 1e6) return `${Math.round(n / 1000)} kB`;
   return `${(n / 1e6).toFixed(1)} MB`;
 }
@@ -282,7 +285,7 @@ export function networkSummary(events) {
   }
   if (count === 0) return '';
   const parts = [`${count} request${count === 1 ? '' : 's'}`];
-  if (bytes > 0) parts.push(formatBytes(bytes));
+  if (bytes > 0) parts.push(formatSize(bytes));
   const span = last - first;
   parts.push(span >= 1000 ? `${(span / 1000).toFixed(2)} s` : `${Math.round(span)} ms`);
   return parts.join(' · ');

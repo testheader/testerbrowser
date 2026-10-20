@@ -18,7 +18,7 @@ describe('Network toolbar helpers (#299)', () => {
       res(3710, '1000'),
       { kind: 'console', ts: 9999, payload: '{}' },
     ];
-    expect(networkSummary(events)).toBe('2 requests · 3 kB · 2.71 s');
+    expect(networkSummary(events)).toBe('2 requests · 3.0 kB · 2.71 s');
   });
 
   it('networkSummary is empty without requests, omits unknown sizes, and uses ms for short spans', () => {

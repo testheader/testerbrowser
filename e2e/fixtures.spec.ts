@@ -40,15 +40,6 @@ async function navigate(urlPath: string): Promise<Page> {
   return getTabPage(app, urlPath);
 }
 
-// Res defaults off (#176) — tests that specifically exercise response-row
-// rendering need to turn it on themselves rather than relying on the old
-// on-by-default behaviour.
-async function ensureResPillOn() {
-  const pill = window.locator('#networkPills .filter-pill[data-type="network-response"]');
-  const classes = await pill.getAttribute('class');
-  if (!classes?.includes('on')) await pill.click();
-}
-
 // A response body is a separate, later-arriving async step — the recorder
 // fetches it via its own Network.getResponseBody CDP round-trip after the
 // response lands, so a resPill/network-request signal alone doesn't prove
@@ -198,7 +189,7 @@ test('a request with a very long URL neither wraps nor scrolls horizontally — 
     scrollWidth: el.scrollWidth,
     clientWidth: el.clientWidth,
   }));
-  expect(box.height).toBeLessThan(30);
+  expect(box.height).toBeLessThanOrEqual(30);
   expect(box.scrollWidth).toBeLessThanOrEqual(box.clientWidth + 1);
   await expect(row.locator('.evt-inline-url')).toHaveCSS('text-overflow', 'ellipsis');
 });
@@ -209,8 +200,10 @@ test('network/status-codes.html: a 404 shows up as a network event', async () =>
   await window.click('#consoleTabNetwork');
   await tab.click('button:text-is("404")');
 
-  const resPill = window.locator('#networkPills .filter-pill[data-type="network-response"] .pill-count');
-  await expect(resPill).not.toHaveText('');
+  // One row per request: the 404 row carries its status and path together (#300).
+  const row = window.locator('.evt.network-request', { hasText: '/network/status/404' });
+  await expect(row).toHaveCount(1, { timeout: 10_000 });
+  await expect(row.locator('.evt-status')).toHaveText('404');
   // Wait for the body fetches this test triggered (the page-load document,
   // any subresources, and the 404 response) to fully settle before ending —
   // otherwise a later test's own navigate()/Clear/assertions can race
@@ -219,58 +212,30 @@ test('network/status-codes.html: a 404 shows up as a network event', async () =>
   await waitForBodyEventsToSettle(bodyBaseline);
 });
 
-test('network/status-codes.html: Res and Err pills default off, hiding those rows until toggled on', async () => {
-  const resPillBtn = window.locator('#networkPills .filter-pill[data-type="network-response"]');
-  const errPillBtn = window.locator('#networkPills .filter-pill[data-type="network-failed"]');
-  await expect(resPillBtn).not.toHaveClass(/\bon\b/);
-  await expect(errPillBtn).not.toHaveClass(/\bon\b/);
+test('network/status-codes.html: the Errors chip is off by default and narrows the table to failed / 4xx / 5xx requests (#300)', async () => {
+  const errChip = window.locator('#networkPills .filter-pill[data-type="network-failed"]');
+  await expect(errChip).not.toHaveClass(/\bon\b/);
 
   const bodyBaseline = await bodyEventCount();
   const tab = await navigate('/network/status-codes.html');
-  // Wait for the page-load document's own body fetch to settle before
-  // clicking Clear below — otherwise it can still be in flight, land after
-  // Clear, and leak a stray row into whatever test runs next.
   await waitForBodyEventsToSettle(bodyBaseline);
   await window.click('#consoleTabNetwork');
   await window.click('#clearNetworkBtn');
   await tab.click('button:text-is("404")');
+  await tab.click('button:text-is("200")');
 
-  // Captured (the pill count reflects everything in the buffer)...
-  const resPillCount = resPillBtn.locator('.pill-count');
-  await expect(resPillCount).not.toHaveText('');
-  // ...but not rendered while the pill is off — Res now governs the response
-  // body row, not a separate response-metadata row (#189).
-  await expect(window.locator('.evt.network-body')).toHaveCount(0);
-  // Wait for the 404's own body fetch to settle too, so the row below is
-  // guaranteed to exist once the pill is toggled on (and so this test's own
-  // 404 body isn't still in flight when the next test starts).
+  const row404 = window.locator('.evt.network-request', { hasText: '/network/status/404' });
+  const row200 = window.locator('.evt.network-request', { hasText: '/network/status/200' });
+  await expect(row404).toBeVisible({ timeout: 10_000 });
+  await expect(row200).toBeVisible({ timeout: 10_000 });
   await waitForBodyEventsToSettle(bodyBaseline);
 
-  // Toggling it on shows the rows already in the buffer — nothing was dropped.
-  await resPillBtn.click();
-  await expect(window.locator('.evt.network-body', { hasText: '"status":404' })).toBeVisible();
+  await errChip.click();
+  await expect(row200).toHaveCount(0);
+  await expect(row404).toBeVisible();
 
-  // Toggling back off round-trips cleanly.
-  await resPillBtn.click();
-  await expect(window.locator('.evt.network-body')).toHaveCount(0);
-});
-
-test('network/status-codes.html: timeline rows show a time-only, date-free timestamp', async () => {
-  const bodyBaseline = await bodyEventCount();
-  const tab = await navigate('/network/status-codes.html');
-  await window.click('#consoleTabNetwork');
-  await ensureResPillOn();
-  await tab.click('button:text-is("404")');
-
-  const bodyRow = window.locator('.evt.network-body', { hasText: '"status":404' }).first();
-  await expect(bodyRow).toBeVisible();
-  await expect(bodyRow.locator('.evt-ts')).toHaveText(/^\[\d{2}:\d{2}:\d{2}\]$/);
-  await expect(bodyRow.locator('.evt-ts-date')).toHaveCount(0);
-
-  // Also settle the page-load document's own body fetch (the DOM check
-  // above only proves the 404's own body landed) — otherwise it can leak
-  // into whatever test runs next.
-  await waitForBodyEventsToSettle(bodyBaseline);
+  await errChip.click();
+  await expect(row200).toBeVisible();
 });
 
 test('network/status-codes.html: Clear button empties the log and it stays empty on the next poll', async () => {
@@ -279,8 +244,8 @@ test('network/status-codes.html: Clear button empties the log and it stays empty
   await window.click('#consoleTabNetwork');
   await tab.click('button:text-is("404")');
 
-  const resPill = window.locator('#networkPills .filter-pill[data-type="network-response"] .pill-count');
-  await expect(resPill).not.toHaveText('');
+  const summary = window.locator('#networkSummary');
+  await expect(summary).not.toHaveText('');
 
   // Wait for this navigation's requests to fully settle (page-load doc,
   // subresources, and the 404 fetch) before clicking Clear — otherwise a
@@ -290,8 +255,8 @@ test('network/status-codes.html: Clear button empties the log and it stays empty
   await waitForBodyEventsToSettle(bodyBaseline);
 
   await window.click('#clearNetworkBtn');
-  await expect(window.locator('.evt.network-request, .evt.network-body')).toHaveCount(0);
-  await expect(resPill).toHaveText('');
+  await expect(window.locator('.evt.network-request')).toHaveCount(0);
+  await expect(summary).toHaveText('');
 
   // pollTimeline runs every 1s — the bug re-fetched everything from the
   // backend ring buffer on the next tick because Clear reset the polling
@@ -299,8 +264,8 @@ test('network/status-codes.html: Clear button empties the log and it stays empty
   // negative wait (proving rows do NOT reappear after a poll cycle) — out
   // of scope for #249 (negative-wait sleeps are #253's job); kept as-is.
   await window.waitForTimeout(1_500);
-  await expect(window.locator('.evt.network-request, .evt.network-body')).toHaveCount(0);
-  await expect(resPill).toHaveText('');
+  await expect(window.locator('.evt.network-request')).toHaveCount(0);
+  await expect(summary).toHaveText('');
 });
 
 test('network/status-codes.html: HAR button exports a valid HAR 1.2 file with a 200 entry for the page load (#232)', async () => {
@@ -349,7 +314,7 @@ test('network/status-codes.html: Copy as cURL copies a curl command for the sele
 
   const curlBtn = window.locator('#detailCurlBtn');
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(curlBtn).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
   await curlBtn.click();
@@ -366,7 +331,6 @@ test('storage/set-cookie: the response detail panel shows set-cookie in the head
   const urlPath = '/storage/set-cookie?name=detail_cookie&value=1&flags=';
   await window.click('#consoleTabNetwork');
   await window.click('#clearNetworkBtn');
-  await ensureResPillOn();
   await navigate(urlPath);
 
   const responseRow = window.locator('.evt.network-request', { hasText: urlPath });
@@ -374,7 +338,7 @@ test('storage/set-cookie: the response detail panel shows set-cookie in the head
 
   const headersTable = window.locator('#detailPanelContent .headers-table').filter({ hasText: 'set-cookie' });
   await expect(async () => {
-    await responseRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await responseRow.first().click({ timeout: 2_000 });
     await expect(headersTable).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
   await expect(headersTable).toContainText('detail_cookie=1');
@@ -386,7 +350,6 @@ test('storage/set-cookie: the response detail panel shows set-cookie in the head
 test('network/redirect: the detail panel shows a Redirect Chain section with a 302 then a 200 (#261)', async () => {
   await window.click('#consoleTabNetwork');
   await window.click('#clearNetworkBtn');
-  await ensureResPillOn();
 
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url('/network/redirect?hops=1'));
@@ -401,7 +364,7 @@ test('network/redirect: the detail panel shows a Redirect Chain section with a 3
 
   const redirectSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Redirect Chain' }).first();
   await expect(async () => {
-    await finalResponseRow.locator('.evt-ts').click({ timeout: 2_000 });
+    await finalResponseRow.click({ timeout: 2_000 });
     await expect(redirectSection).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
@@ -423,7 +386,7 @@ test('network/post-body.html: the detail panel fetches a large POST body via Net
 
   const bodySection = window.locator('#detailPanelContent .detail-section', { hasText: 'Request Body' });
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(bodySection).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
@@ -437,7 +400,6 @@ test('network/status-codes.html: the response detail panel shows a Timing sectio
   const urlPath = '/network/status-codes.html';
   await window.click('#consoleTabNetwork');
   await window.click('#clearNetworkBtn');
-  await ensureResPillOn();
   await navigate(urlPath);
 
   const responseRow = window.locator('.evt.network-request', { hasText: urlPath });
@@ -445,7 +407,7 @@ test('network/status-codes.html: the response detail panel shows a Timing sectio
 
   const timingSection = window.locator('#detailPanelContent .detail-section', { hasText: 'Timing' });
   await expect(async () => {
-    await responseRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await responseRow.first().click({ timeout: 2_000 });
     await expect(timingSection).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
@@ -484,8 +446,8 @@ test('network/slow.html: min-duration filter hides fast requests but keeps slow 
   // The duration filter needs an actual duration value, which is only
   // populated once each response lands (~500ms/~2000ms respectively) — wait
   // for that, not just the request rows themselves.
-  await expect(row500.locator('.evt-duration')).toHaveText(/^\d+ms$/, { timeout: 10_000 });
-  await expect(row2000.locator('.evt-duration')).toHaveText(/^\d+ms$/, { timeout: 10_000 });
+  await expect(row500.locator('.evt-duration')).toHaveText(/^(\d+ ms|\d+\.\d{2} s)$/, { timeout: 10_000 });
+  await expect(row2000.locator('.evt-duration')).toHaveText(/^(\d+ ms|\d+\.\d{2} s)$/, { timeout: 10_000 });
 
   // Duration now lives on the request row itself, merged in once its
   // response arrives (#189) — filtering by it hides the whole row.
@@ -507,7 +469,7 @@ test('network/slow.html: request rows show a duration column once the response l
 
   const reqRow = window.locator('.evt.network-request', { hasText: 'ms=500' });
   await expect(reqRow).toBeVisible();
-  await expect(reqRow.locator('.evt-duration')).toHaveText(/^\d+ms$/);
+  await expect(reqRow.locator('.evt-duration')).toHaveText(/^(\d+ ms|\d+\.\d{2} s)$/);
 
   // The duration cell sits outside the row's scrollable text region, so its
   // right edge stays within the panel's own visible width — no scrolling
@@ -542,8 +504,8 @@ test('performance/network-flood.html: burst of 50 requests all get recorded', as
   await window.click('#consoleTabNetwork');
   await tab.click('button:text("50 concurrent requests")');
 
-  const reqPillCount = window.locator('#networkPills .filter-pill[data-type="network-request"] .pill-count');
-  await expect.poll(async () => Number(await reqPillCount.textContent()), { timeout: 15_000 })
+  const summary = window.locator('#networkSummary');
+  await expect.poll(async () => Number(((await summary.textContent()) ?? '').match(/^(\d+) request/)?.[1] ?? 0), { timeout: 15_000 })
     .toBeGreaterThanOrEqual(50);
 });
 
@@ -659,7 +621,7 @@ test('opening a detail tab, then switching to a new session, clears the detail p
   const requestRow = window.locator('.evt.network-request', { hasText: urlPath });
   await expect(requestRow.first()).toBeVisible({ timeout: 10_000 });
   await expect(async () => {
-    await requestRow.first().locator('.evt-ts').click({ timeout: 2_000 });
+    await requestRow.first().click({ timeout: 2_000 });
     await expect(window.locator('#detailPanelTabBar .detail-tab')).toHaveCount(1, { timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 

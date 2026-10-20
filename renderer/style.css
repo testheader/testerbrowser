@@ -1872,3 +1872,35 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                       font-family: var(--tb-font-mono); font-size: 12px; }
 .net-spacer { flex: 1; }
 .net-summary { font-family: var(--tb-font-mono); font-size: 11.5px; color: var(--tb-text-3); white-space: nowrap; }
+
+/* ── #300: Network table ── */
+#timelinePanel .net-head, #timelinePanel .evt.network-request {
+  display: grid; grid-template-columns: 64px 52px minmax(0, 1fr) 78px 64px 64px; column-gap: 12px;
+  align-items: center; padding: 0 14px; }
+#timelinePanel .net-head { position: sticky; top: 0; z-index: 1; height: 28px; background: var(--tb-sunken);
+                           border-bottom: 1px solid var(--tb-line); font-size: 11.5px; color: var(--tb-text-3); }
+.net-head .right { text-align: right; }
+#timelinePanel .evt.network-request { height: 30px; font-family: var(--tb-font-ui); font-size: 12.5px;
+                                      border-bottom: 1px solid var(--tb-line); border-left: 0; }
+#timelinePanel .evt.network-request:hover { background: var(--tb-hover); }
+#timelinePanel .evt.network-request.selected, #timelinePanel .evt.network-request.detail-row-active {
+  background: var(--tb-accent-soft); box-shadow: inset 2px 0 0 var(--tb-accent); }
+.evt.network-request .evt-line1, .evt.network-request .evt-line1-rest { display: contents; }
+.evt.network-request .evt-status { font-family: var(--tb-font-mono); font-weight: 600; font-size: 12px; white-space: nowrap; }
+.evt.network-request .evt-status::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 7px;
+                                           border-radius: 50%; background: currentColor; vertical-align: middle; }
+.net-st-ok { color: var(--tb-ok); }
+.net-st-err { color: var(--tb-err); }
+.net-st-pending { color: var(--tb-text-3); }
+.evt.network-request .evt-method { width: auto; text-align: left; font-family: var(--tb-font-mono); font-size: 11.5px;
+                                   color: var(--tb-text-2); background: none; padding: 0; }
+.net-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; overflow: hidden; }
+.net-name .evt-inline-url { flex: 0 1 auto; font-weight: 500; color: var(--tb-text); }
+.net-host { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-size: 11.5px; color: var(--tb-text-3); }
+.net-host.net-fail-text { color: var(--tb-err); }
+.net-name .evt-badge { flex-shrink: 0; }
+.net-type { font-size: 12px; color: var(--tb-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.net-size, .evt.network-request .evt-duration { text-align: right; font-family: var(--tb-font-mono); font-size: 11.5px;
+                                                color: var(--tb-text-2); white-space: nowrap; }
+.evt.network-request .evt-duration.slow { color: var(--tb-warn); }
