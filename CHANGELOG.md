@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.133.0 — 2026-10-20
+
+### Features
+
+- shared empty-state component; remove in-panel explanations (refs #303) (d017b79)
+
 ## v0.132.0 — 2026-10-20
 
 ### Features
