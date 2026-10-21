@@ -644,9 +644,9 @@ export class SessionManager {
     // A load superseded by another navigation (e.g. a clone navigating straight
     // to the source URL) rejects with ERR_ABORTED — expected, not an error.
     if (opts.startUrl) {
-      view.webContents.loadURL(opts.startUrl).catch(() => {});
+      Promise.resolve(view.webContents.loadURL(opts.startUrl)).catch(() => {});
     } else {
-      view.webContents.loadFile(NEWTAB_FILE).catch(() => {});
+      Promise.resolve(view.webContents.loadFile(NEWTAB_FILE)).catch(() => {});
     }
 
     view.webContents.on('did-navigate', (_e, url) => {
