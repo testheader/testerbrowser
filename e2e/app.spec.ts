@@ -993,7 +993,7 @@ test('Storage nav switches sections, shows counts, and the toolbar Add/Clear fol
   await expect(window.locator('#storageClearBtn')).toBeHidden();
 
   await showStorageSection(window, 'idb');
-  await expect(window.locator('#storagePanelContent')).toContainText('IndexedDB is read-only.');
+  await expect(window.locator('#storagePanelContent')).toContainText('No IndexedDB databases for this page');
 
   await showStorageSection(window, 'cookies');
 });

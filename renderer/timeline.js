@@ -398,7 +398,6 @@ function renderConsoleRows(panel, events) {
 function renderNetworkTable(panel, events) {
   const head = document.createElement('div');
   head.className = 'net-head';
-  head.setAttribute('role', 'row');
   for (const [label, cls] of [['Status', ''], ['Method', ''], ['Name', ''], ['Type', ''], ['Size', 'right'], ['Time', 'right']]) {
     const cell = document.createElement('span');
     cell.textContent = label;
@@ -418,7 +417,6 @@ function renderNetworkTable(panel, events) {
     line.dataset.kind    = e.kind;
     line.dataset.summary = e.summary;
     line.dataset.tabId   = tabId;
-    line.setAttribute('role', 'row');
     if (isDetailTabActive(tabId)) line.classList.add('detail-row-active');
     if (row.requestId && row.requestId === selectedRequestId) line.classList.add('selected');
     line.title = row.url;

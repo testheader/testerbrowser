@@ -50,7 +50,7 @@ async function showAllCategories() {
 test('before any comparison the panel shows the shared empty state, with no help popover or step list (#303)', async () => {
   await window.click('#consoleTabDiff');
   await expect(window.locator('#diffBody .empty-state-title')).toHaveText('Network diff');
-  await expect(window.locator('#diffBody .empty-state-text')).toHaveText('Pick two sessions to compare their recorded requests.');
+  await expect(window.locator('#diffBody .empty-state-text')).toHaveText(/^(Pick two sessions to compare their recorded requests\.|Open a second tab, then compare the two tabs' recorded requests\.)$/);
   await expect(window.locator('#diffBody .empty-state-btn')).toHaveText('Compare');
   await expect(window.locator('.diff-empty-steps')).toHaveCount(0);
   await expect(window.locator('#diffHelpBtn')).toHaveCount(0);
@@ -464,9 +464,30 @@ test('status-class pills filter rows, and a row can be copied as cURL', async ()
 
 // #307: the result chips carry counts and filter the table; a row's tag names the result.
 test('result chips show counts, and a row\'s Result tag matches its bucket (#307)', async () => {
+  await resetToSingleTab();
+  const sessionAId = await activeTabId();
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/network/status/404'));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, '/network/status/404')).waitForLoadState('load');
+
+  await window.click('#newSessionBtn');
+  await expect.poll(() => window.locator('.tab').count()).toBe(2);
+  const sessionBId = await activeTabId();
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url('/network/status/200'));
+  await window.press('#urlbar', 'Enter');
+  await (await getTabPage(app, '/network/status/200')).waitForLoadState('load');
+
   await window.click('#consoleTabDiff');
+  await window.selectOption('#diffPickA', sessionAId);
+  await window.selectOption('#diffPickB', sessionBId);
+  await window.click('#diffRunBtn');
+  await expect(window.locator('.diff-row').first()).toBeVisible();
   await expect(window.locator('#diffCatPills .filter-pill')).toHaveText([/^Different/, /^Only in A/, /^Only in B/, /^Same/]);
   await expect(window.locator('.diff-table thead th')).toHaveText(['Path', 'Method', 'A status', 'A time', 'B status', 'B time', 'Δ time', 'Result']);
   const onlyA = window.locator('.diff-row.only-a').first();
   if (await onlyA.count()) await expect(onlyA.locator('.diff-res .diff-badge')).toHaveText('Only in A');
+
+  await window.click('#diffResetBtn');
 });

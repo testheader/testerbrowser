@@ -109,18 +109,41 @@ body.light-mode {
   --tb-line-strong:  #d2d5da;
   --tb-text:         #15171a;
   --tb-text-2:       #4a4f57;
-  --tb-text-3:       #737882;
+  --tb-text-3:       #5f646e;
   --tb-accent:       oklch(0.53 0.15 252);
   --tb-accent-soft:  oklch(0.95 0.025 252);
   --tb-err:          oklch(0.53 0.19 27);
   --tb-err-soft:     oklch(0.955 0.025 27);
-  --tb-warn:         oklch(0.55 0.12 70);
+  --tb-warn:         oklch(0.48 0.11 70);
   --tb-warn-soft:    oklch(0.96 0.04 85);
-  --tb-ok:           oklch(0.52 0.12 150);
+  --tb-ok:           oklch(0.46 0.12 150);
   --tb-ok-soft:      oklch(0.955 0.03 150);
   --tb-page:         #ffffff;
   --tb-shadow-pop:   0 12px 40px rgba(20,24,30,.16), 0 2px 6px rgba(20,24,30,.08);
   --tb-on-accent:    #ffffff;
+}
+
+/* var() aliases resolve where they are declared, so the legacy names are
+   re-declared on body.light-mode to pick up the light token values. */
+body.light-mode {
+  /* legacy names re-pointed (keep until every panel is restyled) */
+  --bg-deep: var(--tb-sunken);       --bg-primary: var(--tb-surface);
+  --bg-secondary: var(--tb-chrome);  --bg-hover: var(--tb-hover);
+  --bg-tertiary: var(--tb-line);     --bg-raised: var(--tb-line-strong);
+  --text-strong: var(--tb-text);     --text-primary: var(--tb-text);
+  --text-secondary: var(--tb-text-2);--text-muted: var(--tb-text-3);
+  --text-faint: var(--tb-text-3);
+  --border-subtle: var(--tb-line);   --border-color: var(--tb-line);
+  --border-strong: var(--tb-line-strong);
+  --accent: var(--tb-accent);        --accent-soft: var(--tb-accent);
+  --accent-text: var(--tb-accent);
+  --info-surface: var(--tb-accent-soft);  --info-border: var(--tb-accent);  --info-strong: var(--tb-accent);
+  --success-surface: var(--tb-ok-soft);   --success-border: var(--tb-ok);   --success-strong: var(--tb-ok);
+  --warn-surface: var(--tb-warn-soft);    --warn-border: var(--tb-warn);    --warn-strong: var(--tb-warn);
+  --error-surface: var(--tb-err-soft);    --error-border: var(--tb-err);    --error-strong: var(--tb-err);
+  --accent2-surface: var(--tb-accent-soft);
+  --on-fill: var(--tb-on-accent);
+  --tab-selected: var(--tb-text-2);
 }
 
 body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary); color: var(--text-primary); }

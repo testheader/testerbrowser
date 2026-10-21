@@ -7,6 +7,17 @@ let app: ElectronApplication;
 let window: Page;
 let fixtures: FixtureServer;
 
+// Apply and reload (#309) navigates the tab, so a page.evaluate() racing it
+// throws "Execution context was destroyed" — treat that as "not ready yet" so
+// the surrounding expect.poll() simply tries again.
+async function safeEval<R, A = undefined>(page: Page, fn: (arg: A) => R | Promise<R>, arg?: A): Promise<R | undefined> {
+  try { return await page.evaluate(fn, arg as A); } catch { return undefined; }
+}
+
+async function reloadSafe(page: Page): Promise<void> {
+  try { await page.reload(); } catch { /* an Apply-triggered reload swapped the page under us */ }
+}
+
 test.beforeAll(async () => {
   fixtures = await startFixtureServer();
   app = await launchApp(MAIN_PATH);
@@ -179,9 +190,9 @@ test('a signed clock offset advances or rewinds Date.now() in the page, and Rese
   // tab.reload(), so its execution on the freshly-created document isn't
   // ordered against reload()'s own resolution — poll for the marker instead
   // of asserting immediately, to avoid a race with script injection timing.
-  await tab.reload();
+  await reloadSafe(tab);
   await expect.poll(
-    () => tab.evaluate(() => (window as unknown as { __tbDateOverridden?: boolean }).__tbDateOverridden),
+    () => safeEval(tab, () => (window as unknown as { __tbDateOverridden?: boolean }).__tbDateOverridden),
     { timeout: 10_000 }
   ).toBe(true);
   const forwardNow = await tab.evaluate(() => Date.now());
@@ -193,9 +204,9 @@ test('a signed clock offset advances or rewinds Date.now() in the page, and Rese
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
   await expect(window.locator('#spoofCurrent')).toContainText('clock -2h', { timeout: 5_000 });
 
-  await tab.reload();
+  await reloadSafe(tab);
   await expect.poll(
-    () => tab.evaluate(() => (window as unknown as { __tbDateOverridden?: boolean }).__tbDateOverridden),
+    () => safeEval(tab, () => (window as unknown as { __tbDateOverridden?: boolean }).__tbDateOverridden),
     { timeout: 10_000 }
   ).toBe(true);
   const backwardNow = await tab.evaluate(() => Date.now());
@@ -203,9 +214,9 @@ test('a signed clock offset advances or rewinds Date.now() in the page, and Rese
 
   await window.click('#spoofReset');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
-  await tab.reload();
+  await reloadSafe(tab);
   await expect.poll(
-    () => tab.evaluate(() => (window as unknown as { __tbDateOverridden?: boolean }).__tbDateOverridden),
+    () => safeEval(tab, () => (window as unknown as { __tbDateOverridden?: boolean }).__tbDateOverridden),
     { timeout: 10_000 }
   ).toBeFalsy();
   const realNow = await tab.evaluate(() => Date.now());
@@ -238,7 +249,7 @@ test('a user-agent preset overrides navigator.userAgent and the request header, 
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
   await expect(window.locator('#spoofCurrent')).toContainText('UA', { timeout: 5_000 });
 
-  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(androidUa);
+  await expect.poll(() => safeEval(tab, () => navigator.userAgent), { timeout: 10_000 }).toBe(androidUa);
 
   const echoUrl = fixtures.url('/echo/user-agent');
   const body = await tab.evaluate((url) => fetch(url).then((r) => r.json()), echoUrl);
@@ -259,17 +270,17 @@ test('a user-agent preset overrides navigator.userAgent and the request header, 
   await window.fill('#spoofUserAgent', '');
   await window.click('#spoofApply');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
-  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
+  await expect.poll(() => safeEval(tab, () => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
 
   // Reset overrides also restores the default UA.
   await window.selectOption('#spoofUaPresets', { label: 'Googlebot' });
   await window.click('#spoofApply');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
-  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toContain('Googlebot');
+  await expect.poll(() => safeEval(tab, () => navigator.userAgent), { timeout: 10_000 }).toContain('Googlebot');
 
   await window.click('#spoofReset');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides cleared', { timeout: 5_000 });
-  await expect.poll(() => tab.evaluate(() => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
+  await expect.poll(() => safeEval(tab, () => navigator.userAgent), { timeout: 10_000 }).toBe(realUa);
 });
 
 test('the user-agent presets are a dropdown grouped by optgroup, including this browser\'s own UA, and hand-editing falls back to Custom (#184)', async () => {
@@ -441,8 +452,8 @@ test('Accept-Language reaches the real request header when locale is applied, ev
 
   const echoUrl = fixtures.url('/echo/headers');
   await expect.poll(async () => {
-    const body = await tab.evaluate((url) => fetch(url).then((r) => r.json()), echoUrl) as Record<string, string>;
-    return body['accept-language'];
+    const body = await safeEval(tab, (url) => fetch(url).then((r) => r.json()), echoUrl) as Record<string, string> | undefined;
+    return body?.['accept-language'];
   }, { timeout: 10_000 }).toBe('fr-FR,fr;q=0.9');
 
   await window.click('#spoofReset');
@@ -475,7 +486,7 @@ test('iPhone 14 device preset changes the page\'s viewport without resizing the 
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
   await expect(window.locator('#spoofCurrent')).toContainText('viewport iPhone 14');
 
-  await expect.poll(() => tab.evaluate(() => window.innerWidth), { timeout: 5_000 }).toBe(390);
+  await expect.poll(() => safeEval(tab, () => window.innerWidth), { timeout: 5_000 }).toBe(390);
   expect(await tab.evaluate(() => window.innerHeight)).toBe(844);
 
   // The real native view is untouched by the viewport override — only the
@@ -505,7 +516,7 @@ test('Dark prefers-color-scheme takes effect on a real page\'s matchMedia() (#27
   await expect(window.locator('#spoofCurrent')).toContainText('prefers-color-scheme: dark');
 
   await expect.poll(
-    () => tab.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches),
+    () => safeEval(tab, () => matchMedia('(prefers-color-scheme: dark)').matches),
     { timeout: 5_000 },
   ).toBe(true);
 
@@ -528,7 +539,7 @@ test('Apply and reload reloads the page after applying (#309)', async () => {
   await window.click('#spoofApply');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
   await expect.poll(
-    () => tab.evaluate(() => (window as unknown as { __beforeApply?: boolean }).__beforeApply),
+    () => safeEval(tab, () => (window as unknown as { __beforeApply?: boolean }).__beforeApply),
     { timeout: 10_000 }
   ).toBeFalsy();
 

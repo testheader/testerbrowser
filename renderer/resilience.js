@@ -202,7 +202,7 @@ export function initResilience() {
         </div>
       </div>
       <div class="res-table" id="resTable">
-        <div class="res-head" id="resHead" role="row" hidden>
+        <div class="res-head" id="resHead" hidden>
           <span></span><span>Failure</span><span>Method</span><span>Pattern</span><span>Probability</span><span>Delay</span><span>Hits</span><span></span>
         </div>
         <div class="res-rules" id="resRules">

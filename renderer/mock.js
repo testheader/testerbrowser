@@ -142,7 +142,7 @@ export function initMock() {
         </div>
       </form>
       <div class="mock-table" id="mockTable">
-        <div class="mock-head" id="mockHead" role="row" hidden>
+        <div class="mock-head" id="mockHead" hidden>
           <span></span><span>Method</span><span>Pattern</span><span class="mock-num">Status</span><span class="mock-num">Hits</span><span>Last hit</span><span></span>
         </div>
         <div class="mock-rules" id="mockRules">
