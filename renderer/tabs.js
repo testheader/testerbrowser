@@ -176,6 +176,10 @@ function createTabElement(s) {
 
   // Pinned state can change without a full re-render happening in between,
   // so this reads state.dataset.pinned live rather than closing over s.pinned.
+  // On Windows a middle-button press over a scrollable container (the tab strip,
+  // once its tabs overflow) starts autoscroll and swallows the click — cancel
+  // the default so middle-click-to-close still reaches auxclick.
+  tab.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
   tab.addEventListener('auxclick', (e) => {
     if (e.button === 1 && tab.dataset.pinned !== '1') { e.preventDefault(); e.stopPropagation(); closeTab(s.id); }
   });

@@ -2181,14 +2181,14 @@ li.a11y-node[hidden] { display: none; }
 .diff-pane .diff-hdr-table { width: 100%; table-layout: auto; }
 
 /* ── #308: UI diff layout ── */
-.vr-bar { height: auto; min-height: 44px; gap: 8px; padding: 0 12px 0 14px; flex-wrap: nowrap; overflow-x: auto; }
+.vr-bar { height: auto; min-height: 44px; gap: 6px 8px; padding: 6px 12px 6px 14px; flex-wrap: wrap; }
 .vr-bar .vr-views.seg { padding: 2px; gap: 2px; }
 .vr-views .vr-btn { height: 24px; padding: 0 10px; border: none; border-radius: var(--tb-r-sm); background: none; color: var(--tb-text-2);
                     font-family: inherit; font-size: 12px; white-space: nowrap; }
 .vr-views .vr-btn:hover:not([disabled]) { background: none; color: var(--tb-text); }
 .vr-views .vr-btn.active, .vr-views .vr-btn[aria-pressed="true"] { background: var(--tb-surface); color: var(--tb-text); font-weight: 600; }
 .vr-views .vr-btn[disabled] { opacity: 0.45; }
-.vr-setup, .vr-result { flex: 1; flex-wrap: nowrap; }
+.vr-setup, .vr-result { flex: 1 1 auto; flex-wrap: wrap; }
 .vr-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
 .vr-actions .vr-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; border-radius: var(--tb-r); font-family: inherit; font-size: 12.5px; white-space: nowrap; }
 .vr-actions .vr-new-baseline { background: none; border-color: var(--tb-line-strong); color: var(--tb-text); }
