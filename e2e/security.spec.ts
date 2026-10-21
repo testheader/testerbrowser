@@ -177,7 +177,7 @@ test('"Configure checks" is a cog that toggles open and closed indefinitely, and
   const configEl  = page.locator('#secConfig');
 
   await expect(configBtn).toHaveAttribute('title', 'Configure checks');
-  await expect(configBtn).toHaveText('⚙');
+  await expect(configBtn.locator('i.icon-settings-2')).toHaveCount(1);
   await expect(configEl).toBeHidden();
   await expect(configBtn).not.toHaveClass(/active/);
 
@@ -262,9 +262,9 @@ test('header-presence findings name a Document response, not an Image response o
   await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
 
   await expect(
-    page.locator('.sec-row', { hasText: docUrl }).filter({ hasText: 'Missing x-frame-options' })
+    page.locator('.sec-row').filter({ has: page.locator(`.sec-url[title="${docUrl}"]`) }).filter({ hasText: 'Missing x-frame-options' })
   ).toBeVisible();
-  await expect(page.locator('.sec-row', { hasText: imgUrl })).toHaveCount(0);
+  await expect(page.locator(`.sec-row:has(.sec-url[title="${imgUrl}"])`)).toHaveCount(0);
 
   // The "Include subresources" toggle restores the old, type-blind behaviour.
   await page.click('#secConfigBtn');
@@ -282,7 +282,7 @@ test('header-presence findings name a Document response, not an Image response o
   await page.click('#secScanBtn');
   await expect(page.locator('#secStatus')).not.toHaveText('Scanning…', { timeout: 5_000 });
   await expect(
-    page.locator('.sec-row', { hasText: imgUrl }).filter({ hasText: 'Missing x-frame-options' })
+    page.locator('.sec-row').filter({ has: page.locator(`.sec-url[title="${imgUrl}"]`) }).filter({ hasText: 'Missing x-frame-options' })
   ).toBeVisible();
 
   // Reset for later tests in this file.
@@ -375,7 +375,8 @@ test('a finding\'s "Open request" selects its request in the Network tab, and "R
   await expect(page.locator('#secStatus')).toContainText('Scanned', { timeout: 5_000 });
   await expect(page.locator('#secScanLabel')).toHaveText('Scan again');
 
-  const row = page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).first();
+  // Earlier tests in this file left their own HTTP findings in the session.
+  const row = page.locator('.sec-row', { hasText: 'HTTP (unencrypted)' }).filter({ hasText: 'name=sec_open' }).first();
   await row.click();
   await page.click('#secOpenRequestBtn');
   await expect(page.locator('#consoleTabNetwork')).toHaveClass(/\bactive\b/);

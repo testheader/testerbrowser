@@ -305,8 +305,8 @@ test('sending a captured POST request to Resilience scopes the rule to that meth
   await window.click('.res-add-btn');
   const newRow = window.locator('.res-rule-row', { hasText: '/api/resilience-method-check' });
   await expect(newRow).toBeVisible();
-  // The rule row shows the method it's scoped to (only when it isn't '*').
-  await expect(newRow.locator('.res-method-badge')).toHaveText('POST');
+  // The rule row shows the method it's scoped to ("ANY" when it isn't).
+  await expect(newRow.locator('.res-rule-method')).toHaveText('POST');
 
   // Method scoping in effect: the same POST is degraded...
   const postStatus = await tab.evaluate(
@@ -543,14 +543,15 @@ test('editing the URL after a "⇒ Resilience" prefill resets the method scope t
   await window.click('.res-add-btn');
   const newRow = window.locator('.res-rule-row', { hasText: 'reset-elsewhere' });
   await expect(newRow).toBeVisible();
-  await expect(newRow.locator('.res-method-badge')).toHaveCount(0);
+  await expect(newRow.locator('.res-rule-method')).toHaveText('ANY');
 });
 
 // ── #286: a matching Resilience rule must never take the app down ───────
 
 type ResApi = {
   sessions: {
-    create(name: string, opts?: { startUrl?: string }): Promise<{ id: string }>;
+    create(name: string, opts?: { startUrl?: string }): Promise<string>;
+    switchTo(id: string): Promise<unknown>;
     destroy(id: string): Promise<unknown>;
     list(): Promise<unknown[]>;
   };
@@ -564,6 +565,17 @@ async function addRuleViaIpc(sid: string, type: string, extra: Record<string, un
   }), [sid, type, extra] as const);
 }
 
+// sessions.create() resolves to the new id and leaves the previously active
+// tab on screen — switch to it so its page is visible and clickable.
+async function createCrashSession(url: string): Promise<string> {
+  return window.evaluate(async ([u]) => {
+    const api = (window as unknown as { testerBrowser: ResApi }).testerBrowser;
+    const id = await api.sessions.create('crash', { startUrl: u });
+    await api.sessions.switchTo(id);
+    return id;
+  }, [url] as const);
+}
+
 async function expectAppAlive(): Promise<void> {
   const count = await window.evaluate(() => (window as unknown as { testerBrowser: ResApi }).testerBrowser.sessions.list().then((s) => s.length));
   expect(count).toBeGreaterThan(0);
@@ -574,7 +586,7 @@ for (const type of ['error500', 'timeout', 'latency', 'offline', 'missing', 'ran
   test(`a matching "${type}" rule leaves the app running and the tab navigable (#286)`, async () => {
     test.setTimeout(30_000);
     const path = `/network/api.html?t=286-${type}`;
-    const created = await window.evaluate(([u]) => (window as unknown as { testerBrowser: ResApi }).testerBrowser.sessions.create('crash', { startUrl: u }), [fixtures.url(path)] as const);
+    const created = { id: await createCrashSession(fixtures.url(path)) };
     const tab = await getTabPage(app, path);
     await addRuleViaIpc(created.id, type, { latencyMs: 500, releaseAfterMs: type === 'hang' ? 500 : 0 });
 
@@ -592,7 +604,7 @@ for (const type of ['latency', 'stall504']) {
   test(`closing the tab while a "${type}" response is pending does not crash the app (#286)`, async () => {
     test.setTimeout(30_000);
     const path = `/network/api.html?t=286-close-${type}`;
-    const created = await window.evaluate(([u]) => (window as unknown as { testerBrowser: ResApi }).testerBrowser.sessions.create('crash', { startUrl: u }), [fixtures.url(path)] as const);
+    const created = { id: await createCrashSession(fixtures.url(path)) };
     const tab = await getTabPage(app, path);
     await addRuleViaIpc(created.id, type, { latencyMs: 2000 });
 

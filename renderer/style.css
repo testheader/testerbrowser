@@ -2296,3 +2296,5 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .res-toggle .res-enable::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left .12s; }
 .res-toggle .res-enable:checked { background: var(--tb-accent, #3b82f6); }
 .res-toggle .res-enable:checked::after { left: 18px; }
+.mock-rule-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.mock-rule-line .mock-rule-url { min-width: 0; }

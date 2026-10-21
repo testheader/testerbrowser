@@ -113,6 +113,8 @@ function isErrorRequest(e) {
   } catch { return false; }
 }
 
+let pendingFocusRequestId = null;
+
 export function getTimelineEvents() { return timelineEvents; }
 
 // #306: "Open request" from a Security finding — selects the request's row in
@@ -120,7 +122,14 @@ export function getTimelineEvents() { return timelineEvents; }
 // isn't in the loaded window (evicted or older than what's been fetched).
 export function focusNetworkRequest(requestId) {
   const reqEvt = [...timelineEvents].reverse().find((e) => e.kind === 'network-request' && getEventTabId(e) === requestId);
-  if (!reqEvt) return false;
+  if (!reqEvt) {
+    // The Network tab may not have fetched anything yet (its events are only
+    // loaded while a timeline tab is showing) — retry once the next batch lands.
+    pendingFocusRequestId = requestId;
+    fetchTimeline();
+    return false;
+  }
+  pendingFocusRequestId = null;
   selectedRequestId = requestId;
   autoScroll = false;
   openDetailTab(reqEvt);
@@ -586,6 +595,7 @@ function ingestEvents(events) {
   for (const e of events) if (e.id > lastId) lastId = e.id;
   renderTimeline();
   refreshOlderEventsState();
+  if (pendingFocusRequestId) focusNetworkRequest(pendingFocusRequestId);
 }
 
 // #262: only re-checks the backend when the oldest *loaded* row has actually

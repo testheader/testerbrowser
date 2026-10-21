@@ -284,7 +284,7 @@ function buildMockRuleRow(rule, sessionId, index, total) {
     </label>
     <span class="mock-rule-method">${escHtml(rule.method === '*' ? 'ANY' : rule.method)}</span>
     <div class="mock-rule-main">
-      <span class="mock-rule-url" title="${escHtml(rule.urlPattern)}"><span class="mock-rule-position" title="Match order">${index + 1}</span>${escHtml(rule.urlPattern)}${rule.delayMs ? ` <span class="mock-badge mock-delay-badge" title="Fulfilled after a delay">${rule.delayMs}ms</span>` : ''}</span>
+      <span class="mock-rule-line"><span class="mock-rule-position" title="Match order">${index + 1}</span><span class="mock-rule-url" title="${escHtml(rule.urlPattern)}">${escHtml(rule.urlPattern)}</span>${rule.delayMs ? ` <span class="mock-badge mock-delay-badge" title="Fulfilled after a delay">${rule.delayMs}ms</span>` : ''}</span>
       <span class="mock-rule-body" title="${escHtml(rule.body)}">${escHtml(rule.body.slice(0, 80))}${rule.body.length > 80 ? '…' : ''}</span>
     </div>
     <span class="mock-status-badge">${rule.statusCode}</span>
