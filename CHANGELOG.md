@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.0 — 2026-10-21
+
+### Features
+
+- Settings modal redesign (refs #316) (d306696)
+
 ## v0.145.0 — 2026-10-21
 
 ### Features
