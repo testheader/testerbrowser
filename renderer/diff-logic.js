@@ -190,8 +190,8 @@ function computeDetail(a, b, ignoreHeaders) {
     headerDiff,
     headersDiffer,
     bodiesMatch: bodiesEqual(ca.body, cb.body),
-    bodySizeA: ca.body ? ca.body.body.length : null,
-    bodySizeB: cb.body ? cb.body.body.length : null,
+    bodySizeA: typeof ca.body?.body === 'string' ? ca.body.body.length : null,
+    bodySizeB: typeof cb.body?.body === 'string' ? cb.body.body.length : null,
     // Kept by reference (already held in the request map) so the renderer
     // can build an inline line diff lazily, only for rows that get expanded.
     bodyA: ca.body,
