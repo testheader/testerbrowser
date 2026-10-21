@@ -702,11 +702,11 @@ test('the populated UI diff panel has no serious/critical axe-core violations (d
   await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
   await window.selectOption('#themeSelect', 'light');
   await expect(window.locator('body')).toHaveClass(/light-mode/);
-  await window.click('#closeSettingsBtn');
+  await window.click('#settingsCloseXBtn');
   expect(await scan()).toEqual([]);
 
   await window.click('#appName');
   await window.click('#appMenuSettings');
   await window.selectOption('#themeSelect', 'dark');
-  await window.click('#closeSettingsBtn');
+  await window.click('#settingsCloseXBtn');
 });

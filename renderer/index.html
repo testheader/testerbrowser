@@ -256,299 +256,199 @@
   <!-- Settings -->
   <div id="settingsOverlay">
     <div id="settingsModal">
-      <button class="modal-close-btn" id="settingsCloseXBtn" title="Close" aria-label="Close settings">&#10005;</button>
-      <h2>Settings</h2>
-      <div id="settingsModalResizeHandle" title="Drag to resize"></div>
-      <div class="settings-body">
-        <div class="settings-sidebar" id="settingsSidebar">
-          <button class="settings-nav-btn active" data-pane="general">General</button>
-          <button class="settings-nav-btn" data-pane="shortcuts">Keyboard Shortcuts</button>
-          <button class="settings-nav-btn" data-pane="features">Features</button>
-          <button class="settings-nav-btn" data-pane="about">About / Version</button>
+      <div class="settings-sidebar" id="settingsSidebar">
+        <div class="settings-nav-title">Settings</div>
+        <button class="settings-nav-btn active" data-pane="general" data-title="General"><i class="icon-sliders-horizontal" aria-hidden="true"></i>General</button>
+        <button class="settings-nav-btn" data-pane="features" data-title="Tools"><i class="icon-layout-grid" aria-hidden="true"></i>Tools</button>
+        <button class="settings-nav-btn" data-pane="shortcuts" data-title="Shortcuts"><i class="icon-keyboard" aria-hidden="true"></i>Shortcuts</button>
+        <button class="settings-nav-btn" data-pane="about" data-title="About"><i class="icon-info" aria-hidden="true"></i>About</button>
+      </div>
+      <div class="settings-main">
+        <div class="settings-header">
+          <h2 id="settingsPaneTitle">General</h2>
+          <button class="modal-close-btn" id="settingsCloseXBtn" title="Close" aria-label="Close settings">&#10005;</button>
         </div>
         <div class="settings-content">
 
           <div class="settings-pane active" data-pane="general">
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Theme</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Appearance of the browser chrome.</div>
-              </div>
-              <select id="themeSelect" style="margin-left:auto;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;">
+            <div class="set-section">Browser</div>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Theme</div></div>
+              <select id="themeSelect" class="set-input">
                 <option value="system">System default</option>
                 <option value="dark">Dark</option>
                 <option value="light">Light</option>
               </select>
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Default search engine</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Used when the URL bar is given a plain search term instead of a URL.</div>
-              </div>
-              <select id="searchEngineSelect" style="margin-left:auto;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;">
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Search engine</div></div>
+              <select id="searchEngineSelect" class="set-input">
                 <option value="google">Google</option>
                 <option value="duckduckgo">DuckDuckGo</option>
               </select>
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Redact sensitive headers</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Replaces Authorization, Cookie, Set-Cookie, and similar values with [REDACTED] in the timeline. Takes effect immediately, in every open tab.</div>
-              </div>
-              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
-                <input type="checkbox" id="redactHeadersToggle" />
-                <span class="toggle-slider"></span>
-              </label>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Allow real popups</div><div class="set-desc">Keeps window.opener for OAuth and payment flows. Popup traffic is not recorded.</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="allowRealPopupsToggle" /><span class="toggle-slider"></span></label>
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Debug mode</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Shows TesterBrowser's own internal logs (main process, IPC, recorder) — not this page's console, which is on the Console tab.</div>
-              </div>
-              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
-                <input type="checkbox" id="debugModeToggle" />
-                <span class="toggle-slider"></span>
-              </label>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Open downloads panel automatically</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="autoOpenDownloadsPanelToggle" /><span class="toggle-slider"></span></label>
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Auto-open downloads panel</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Open the downloads panel automatically when a download starts. Off by default, so a download triggered incidentally by a page under test doesn't narrow the active page mid-test.</div>
-              </div>
-              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
-                <input type="checkbox" id="autoOpenDownloadsPanelToggle" />
-                <span class="toggle-slider"></span>
-              </label>
+            <div class="set-section">Recording</div>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Redact sensitive headers</div><div class="set-desc">Hides Authorization, Cookie and Set-Cookie values.</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="redactHeadersToggle" /><span class="toggle-slider"></span></label>
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Allow real popups (keeps window.opener — for OAuth/payment flows)</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Off by default: popups open as a new, isolated, fully-tracked tab, which breaks window.opener/postMessage back to the opener. On: a popup opens as a real, separate native window sharing the opener's session, so OAuth/payment flows that message the opener when done work correctly — but that window isn't a tracked tab, doesn't appear in the tab strip, and its traffic isn't recorded.</div>
-              </div>
-              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
-                <input type="checkbox" id="allowRealPopupsToggle" />
-                <span class="toggle-slider"></span>
-              </label>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Events kept per tab</div></div>
+              <input type="number" id="recorderMaxEventsInput" class="set-input" min="1000" max="200000" step="1000" />
             </div>
-
-            <h3 class="feature-group-title">Recording</h3>
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Max events per tab</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Network/console events kept per tab before the oldest are evicted (1,000&ndash;200,000). Applies to tabs opened after the change.</div>
-              </div>
-              <input type="number" id="recorderMaxEventsInput" min="1000" max="200000" step="1000"
-                     style="margin-left:auto;width:90px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;" />
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Keep recordings for</div><div class="set-desc">Applies to closed tabs. Days, 1&ndash;365.</div></div>
+              <input type="number" id="recordingRetentionDaysInput" class="set-input" min="1" max="365" step="1" />
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Recording retention (days)</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">How long a closed tab's recording is kept on disk before automatic cleanup (1&ndash;365).</div>
-              </div>
-              <input type="number" id="recordingRetentionDaysInput" min="1" max="365" step="1"
-                     style="margin-left:auto;width:90px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;" />
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Debug mode</div><div class="set-desc">Collects TesterBrowser's own logs.</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="debugModeToggle" /><span class="toggle-slider"></span></label>
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">GitHub (bug reporter)</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Sign in with GitHub to file bug reports directly from TesterBrowser. Token stored encrypted via your OS keychain.</div>
-              </div>
-              <div style="margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-                <span id="githubTokenStatus" style="font-size:11px;color:var(--text-muted)"></span>
-                <button class="btn btn-secondary" id="githubSignInBtn" style="padding:2px 10px;font-size:11px" hidden>Sign in with GitHub</button>
-                <div id="githubOAuthPending" hidden style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-                  <div style="font-size:11px;color:var(--text-primary)">Enter this code at <b>github.com/login/device</b>:</div>
-                  <div id="githubUserCode" style="font-size:15px;font-weight:bold;letter-spacing:3px;color:var(--text-primary);font-family:var(--tb-font-mono)"></div>
-                  <div style="font-size:11px;color:#888">Waiting for authorisation&hellip;</div>
+            <div class="set-section">Updates</div>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Install updates when idle</div><div class="set-desc">Never while recording, playing back or downloading.</div></div>
+              <label class="toggle-switch"><input type="checkbox" id="autoInstallWhenIdleToggle" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">Idle minutes before install</div><div class="set-desc">Minutes the system must be idle, 1&ndash;180.</div></div>
+              <input type="number" id="idleInstallMinutesInput" class="set-input" min="1" max="180" step="1" />
+            </div>
+            <div class="set-section">GitHub</div>
+            <div class="set-row">
+              <div class="set-text"><div class="set-label">GitHub (bug reporter)</div><div class="set-desc">Sign in to file bug reports from TesterBrowser.</div></div>
+              <div class="set-github">
+                <span id="githubTokenStatus" class="set-desc"></span>
+                <button class="btn btn-secondary" id="githubSignInBtn" hidden>Sign in with GitHub</button>
+                <div id="githubOAuthPending" hidden class="set-github-pending">
+                  <div class="set-desc">Enter this code at <b>github.com/login/device</b>:</div>
+                  <div id="githubUserCode"></div>
+                  <div class="set-desc">Waiting for authorisation&hellip;</div>
                 </div>
-                <button class="btn btn-secondary" id="githubSignOutBtn" style="padding:2px 10px;font-size:11px" hidden>Sign out</button>
+                <button class="btn btn-secondary" id="githubSignOutBtn" hidden>Sign out</button>
               </div>
+            </div>
+          </div>
+
+          <div class="settings-pane" data-pane="features">
+            <div class="set-intro">Choose which tools appear in the panel.</div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-globe" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Network</div></div>
+              <span class="set-group">Inspect</span>
+              <label class="toggle-switch set-locked" title="Always shown"><input type="checkbox" checked disabled aria-label="Network (always shown)" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-terminal" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Console</div></div>
+              <span class="set-group">Inspect</span>
+              <label class="toggle-switch set-locked" title="Always shown"><input type="checkbox" checked disabled aria-label="Console (always shown)" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-database" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Storage</div></div>
+              <span class="set-group">Inspect</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-storage" checked data-tab-toggle="storage" aria-label="Show Storage" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-accessibility" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">A11y</div></div>
+              <span class="set-group">Inspect</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-a11y" checked data-tab-toggle="a11y" aria-label="Show A11y" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-shield-check" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Security</div></div>
+              <span class="set-group">Inspect</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-security" checked data-tab-toggle="security" aria-label="Show Security" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-git-compare" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Network diff</div></div>
+              <span class="set-group">Compare</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-diff" checked data-tab-toggle="diff" aria-label="Show Network diff" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-scan-eye" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">UI diff</div></div>
+              <span class="set-group">Compare</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-vr" checked data-tab-toggle="vr" aria-label="Show UI diff" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-replace" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Mock</div></div>
+              <span class="set-group">Simulate</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-mock" checked data-tab-toggle="mock" aria-label="Show Mock" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-zap-off" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Resilience</div></div>
+              <span class="set-group">Simulate</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-resilience" checked data-tab-toggle="resilience" aria-label="Show Resilience" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-map-pin" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Spoof</div></div>
+              <span class="set-group">Simulate</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-spoof" checked data-tab-toggle="spoof" aria-label="Show Spoof" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-circle-dot" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Record</div></div>
+              <span class="set-group">Automate</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-tests" checked data-tab-toggle="tests" aria-label="Show Record" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-users" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Follow</div></div>
+              <span class="set-group">Automate</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-follow" checked data-tab-toggle="follow" aria-label="Show Follow" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-ticket" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Jira</div></div>
+              <span class="set-group">Connect</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-jira" checked data-tab-toggle="jira" aria-label="Show Jira" /><span class="toggle-slider"></span></label>
+            </div>
+            <div class="set-row set-tool-row">
+              <span class="set-tool-icon"><i class="icon-scroll-text" aria-hidden="true"></i></span>
+              <div class="set-text"><div class="set-label">Debug log</div></div>
+              <span class="set-group">Connect</span>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-debuglog" checked data-tab-toggle="debuglog" aria-label="Show Debug log" /><span class="toggle-slider"></span></label>
             </div>
           </div>
 
           <div class="settings-pane" data-pane="shortcuts">
-            <div class="shortcut-row"><kbd>Ctrl+T</kbd><span>New tab</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+W</kbd><span>Close tab</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+Shift+T</kbd><span>Reopen closed tab</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+Tab</kbd><span>Cycle to last-used tab</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+1–9</kbd><span>Switch to tab by number</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+L</kbd><span>Focus URL bar</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+F</kbd><span>Find in page</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+D</kbd><span>Bookmark page</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+Shift+B</kbd><span>Toggle bookmarks bar</span></div>
-            <div class="shortcut-row"><kbd>Ctrl++ / Ctrl+-</kbd><span>Zoom in / out</span></div>
-            <div class="shortcut-row"><kbd>Ctrl+0</kbd><span>Reset zoom</span></div>
-            <div class="shortcut-row"><kbd>F5 / Ctrl+R</kbd><span>Reload</span></div>
-            <div class="shortcut-row"><kbd>F12</kbd><span>DevTools</span></div>
-            <div class="shortcut-row"><kbd>Alt+← / →</kbd><span>Back / Forward</span></div>
-            <div class="shortcut-row"><kbd>Middle-click tab</kbd><span>Close tab</span></div>
-            <div class="shortcut-row"><kbd>Middle-click link</kbd><span>Open in new tab (same session)</span></div>
-            <div class="shortcut-row"><kbd>Right-click tab</kbd><span>Rename, pin, clone, notes…</span></div>
-          </div>
-
-          <div class="settings-pane" data-pane="features">
-
-            <h3 class="feature-group-title">Session &amp; tab management</h3>
-
-            <div class="feature-item">
-              <div class="feature-name">Isolated sessions</div>
-              <p>Every tab is its own Electron session partition, with its own cookies, cache and localStorage. New tabs default to an in-memory partition that's discarded on close; marking a tab persistent (or restoring a closed one) keeps its partition on disk so its data survives a restart. Right-click a tab → <b>New tab in this session</b> opens another tab sharing the same partition — handy for testing multiple pages under one logged-in identity.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name">Session snapshot</div>
-              <p>Right-click a tab → <b>Export snapshot…</b> to save that session's cookies, localStorage, sessionStorage and current URL to a JSON file via a save dialog. <b>Import snapshot…</b> restores a previously exported file back into a tab — useful for capturing a specific logged-in/test state and handing it to someone else, or reproducing it later. This is separate from <b>Clone</b> (same menu), which duplicates a tab into a brand-new session and copies its cookies live, without going through a file.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name">Test data</div>
-              <p>Right-click any editable form field for a <b>Fill with test data</b> submenu with one-click generators — first/last/full name, email, UUID, today's date, phone, address. <b>Custom template…</b> opens a small input where you can type your own template string to generate more specific values, then inject it straight into the focused field.</p>
-            </div>
-
-            <h3 class="feature-group-title">Console panel tabs</h3>
-
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Console tab</div>
-                <span class="feature-toggle feature-toggle-locked">Always shown</span>
-              </div>
-              <p>Shows the live console/log portion of the session's always-on recorded timeline — page <code>console.*</code> calls and browser log entries, color-coded by level (error/warn/info/log). Type in the filter box to substring-match log text; click a line with extra payload data to open it in the detail panel. <b>Clear</b> empties the visible buffer.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Storage tab</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-storage" checked data-tab-toggle="storage"> Show in bottom bar</label>
-              </div>
-              <p>Live tables of the active session's cookies, localStorage, sessionStorage and IndexedDB. Cookies show domain/name/value/path/SameSite/expiry/Secure/HttpOnly with a badge distinguishing first- vs third-party, and a domain filter can narrow the list to cookies relevant to the page currently loaded. Double-click a cookie or localStorage row to edit it inline (a failed cookie edit never loses the original value), click to copy a value, use <b>+ Add</b> to create new entries (the cookie form includes SameSite/expiry/Secure/HttpOnly), and <b>×</b> / <b>Clear All</b> to delete. sessionStorage and IndexedDB (expandable by database → object store) are read-only. The filter box matches everything already loaded with no extra round-trips per keystroke; <b>Auto-refresh</b> polls everything every 2s while this tab is visible.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Security tab</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-security" checked data-tab-toggle="security"> Show in bottom bar</label>
-              </div>
-              <p>Click <b>Scan session</b> to run a heuristic pass over everything recorded so far: plain-HTTP requests, missing security headers (CSP, X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy) on HTTPS responses, cookies set without Secure/HttpOnly, and 401/403 auth failures. Findings are grouped High/Medium/Low with a filter and severity toggles; clicking one opens the underlying request/response in the detail panel.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Mock tab</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-mock" checked data-tab-toggle="mock"> Show in bottom bar</label>
-              </div>
-              <p>Define request-interception rules — a URL glob pattern, an HTTP method (or Any), a fake status code and a response body — then <b>Add rule</b> to apply it immediately to the active session's traffic. A response without an explicit Content-Type gets one inferred from the body; <b>Add CORS headers</b> adds access-control-allow-* headers to the response (echoing the request's Origin) and answers a matching preflight. Rules track live hit counts and last-hit time, can be toggled on/off, and matched requests show a MOCK badge in the timeline.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Resilience tab</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-resilience" checked data-tab-toggle="resilience"> Show in bottom bar</label>
-              </div>
-              <p>Injects network failure conditions into the active session so you can see how the app under test copes: 500 errors, an immediate or stalled 504, a genuine hang (no response at all, optionally released after N seconds), offline, 404s, corrupted responses, added latency, or a random-500 chance. Pick a failure type, a URL pattern and a probability %, then <b>Add rule</b> — matched responses get a RESILIENCE badge in the timeline, and each rule tracks how many times it's fired. When multiple rules match the same request, they're tried in order and the first whose probability roll succeeds wins. "⇒ Resilience" from a captured call scopes the rule to that call's method; editing the URL pattern by hand clears that scoping back to Any.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">A11y tab</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-a11y" checked data-tab-toggle="a11y"> Show in bottom bar</label>
-              </div>
-              <p>Click <b>Refresh</b> to pull the full accessibility tree (role, accessible name, description, states) for the current page into an expandable tree view. <b>Inspect element</b> turns on a live hover/click mode over the page itself — hovering highlights the matching node in the tree, so you can quickly check what role and name a specific element actually exposes.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">VR tab (visual regression)</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-vr" checked data-tab-toggle="vr"> Show in bottom bar</label>
-              </div>
-              <p>Click <b>Capture baseline</b> to screenshot the current page (the visible viewport, or the whole scrollable page with "Full page" checked). After making a change, click <b>Compare</b> to take a new screenshot and generate a pixel-level diff — differing pixels highlighted, the rest dimmed — plus the percentage of the page that changed. View toggles switch between Baseline / Current / Diff / side-by-side.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Diff tab (network diff)</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-diff" checked data-tab-toggle="diff"> Show in bottom bar</label>
-              </div>
-              <p>Pick two open sessions (Session A / Session B) and click <b>Compare</b> to diff their recorded requests — same, different status, or only present in one side — in a color-coded table. <b>Match by</b> switches between comparing full URLs or just the path (so staging and production on different hosts still line up); query params in the editable ignore list (saved locally) are dropped before matching. Click a row present on both sides to expand response-header and body differences and the duration delta; a row whose status matches but headers or body differ still counts as "same" but gets a "&ne; headers/body" marker. A banner warns if either session had more than 5,000 recorded events, since only the most recent 5,000 are compared. Once a comparison has run, <b>Export diff (JSON)</b> downloads it as a JSON file.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Spoof tab</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-spoof" checked data-tab-toggle="spoof"> Show in bottom bar</label>
-              </div>
-              <p>Changes what the page sees about its device and environment for the active tab (and other tabs in the same session): viewport/device, User-Agent, touch, timezone, locale, geolocation, clock offset and CSS media preferences. The strip at the top shows what is currently applied. One-click presets (device, city, browser) fill the fields below, grouped into collapsible <b>Device</b>, <b>Location &amp; time</b> and <b>Advanced</b> sections; nothing takes effect until you click <b>Apply to tab</b>. Each section has its own <b>Reset</b>, and <b>Reset all</b> clears every override. Reload the page afterwards so it picks up the new values.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Jira tab</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-jira" checked data-tab-toggle="jira"> Show in bottom bar</label>
-              </div>
-              <p>Configure your Jira URL, email, API token and default project once via the gear icon. Type a ticket key and click <b>Load</b> to see its summary, status, assignee and priority right next to the page under test. <b>+ Add Bug</b> opens a form pre-filled from the current tab's URL/title, and <b>Submit Bug</b> files it as a real Jira issue.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name-row">
-                <div class="feature-name">Tests tab (record &amp; playback)</div>
-                <label class="feature-toggle"><input type="checkbox" id="consoleTabToggle-tests" checked data-tab-toggle="tests"> Show in bottom bar</label>
-              </div>
-              <p>Click <b>Start</b> to record real clicks, fills and navigations on the page as a step list — right-click a step to insert assertions (visible, text, URL, wait-for) — then <b>Stop</b> and <b>Save</b> to name the test. Saved tests can be run once, or repeated many times in a row to flag flaky steps, with a pass/fail breakdown per run and an auto-captured screenshot on failure. No AI involved — it's a literal record/replay of the actions you performed.</p>
-            </div>
-
-            <h3 class="feature-group-title">Productivity tools</h3>
-
-            <div class="feature-item">
-              <div class="feature-name">HAR export</div>
-              <p>The <b>HAR</b> button (Console tab toolbar) exports everything recorded for the active tab's session as a standard HAR 1.2 file — for handing off to an external HAR viewer, attaching to a bug report, or archiving a run. A request's detail tab also has <b>Copy as cURL</b> / <b>Copy as fetch</b> to take a single request out of the app.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name">Speed Dial</div>
-              <p>The new-tab page shows a grid of site tiles with favicons; <b>+ Add site</b> adds one by URL and title, and each tile has a <b>×</b> to remove it. Tiles are shared across every session (not tied to one tab's isolated storage), so your frequently-tested environments are always one click away from a fresh tab.</p>
-            </div>
-            <div class="feature-item">
-              <div class="feature-name">Request replay</div>
-              <p>Click <b>↺ Replay</b> on any recorded network request to open it in an editable form — method, URL, headers, cookies and body all pre-filled from the original call. Edit whatever you need to probe (add/remove a header, reformat the body, pull cookies from a different open session), then <b>Send</b> to actually issue the request and see the live response, without going back through the app's UI.</p>
-            </div>
-
+            <div class="shortcut-grid" id="shortcutList"></div>
           </div>
 
           <div class="settings-pane" data-pane="about">
-            <div class="setting-row">
-              <span class="setting-label">Current version</span>
-              <span class="setting-value" id="currentVersion">—</span>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">Latest version</span>
-              <span class="setting-value" id="latestVersion">—</span>
-            </div>
-            <div id="updateStatusText" class="info">Checking for updates…</div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
+            <div class="about-head">
+              <img class="about-logo" src="app-logo.png" alt="" width="40" height="40" />
               <div>
-                <div class="setting-label">Install updates automatically when idle</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Once a downloaded update is ready, install and restart by itself after the system has been idle long enough (below) — but never while a recording, Follow Along pairing, playback run or download is active.</div>
+                <div class="about-name">TesterBrowser <span id="currentVersion">&mdash;</span></div>
+                <div id="updateStatusText" class="info">Checking for updates&hellip;</div>
               </div>
-              <label class="toggle-switch" style="margin-top:2px;margin-left:16px">
-                <input type="checkbox" id="autoInstallWhenIdleToggle" />
-                <span class="toggle-slider"></span>
-              </label>
             </div>
-
-            <div class="setting-row" style="align-items:flex-start;padding:12px 0">
-              <div>
-                <div class="setting-label">Idle minutes before auto-install</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:3px">How long the system must be idle before the automatic install above can run (1&ndash;180 minutes). To skip the wait entirely, use "Restart to install" above once an update has downloaded.</div>
-              </div>
-              <input type="number" id="idleInstallMinutesInput" min="1" max="180" step="1"
-                     style="margin-left:auto;width:90px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:12px;" />
+            <div class="set-row"><div class="set-text"><div class="set-label">Latest version</div></div><span class="setting-value" id="latestVersion">&mdash;</span></div>
+            <div class="about-actions">
+              <button class="btn btn-danger"    id="restartBtn"          style="display:none">Restart to install</button>
+              <button class="btn btn-secondary" id="openReleasePageBtn"  style="display:none">Open release page</button>
+              <button class="btn btn-secondary" id="copyUpdateLogBtn"    style="display:none" title="Copy update error log to clipboard for sharing with support">Copy error log</button>
+              <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>
             </div>
           </div>
 
         </div>
       </div>
-
-      <div class="modal-actions">
-        <button class="btn btn-danger"    id="restartBtn"          style="display:none">Restart to install</button>
-        <button class="btn btn-secondary" id="openReleasePageBtn"  style="display:none">Open release page</button>
-        <button class="btn btn-secondary" id="copyUpdateLogBtn"    style="display:none" title="Copy update error log to clipboard for sharing with support">Copy error log</button>
-        <button class="btn btn-secondary" id="checkUpdatesBtn">Check for updates</button>
-        <button class="btn btn-primary"   id="closeSettingsBtn">Close</button>
-      </div>
+      <div id="settingsModalResizeHandle" title="Drag to resize"></div>
     </div>
   </div>
 

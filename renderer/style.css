@@ -2445,3 +2445,58 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .debuglog-session { color: var(--tb-text-3); width: auto; }
 .debuglog-ctx { margin-left: 12px; }
 #debugLogList .empty-state { min-height: 240px; }
+
+/* ── Settings modal redesign (#316) ── */
+.toggle-switch { width: 34px; height: 20px; }
+.toggle-slider { background: var(--tb-line-strong); border-radius: 10px; }
+.toggle-slider:before { width: 14px; height: 14px; left: 3px; bottom: 3px; background: #fff; }
+input:checked + .toggle-slider { background: var(--tb-accent); }
+input:checked + .toggle-slider:before { transform: translateX(14px); }
+input:focus-visible + .toggle-slider { outline: 2px solid var(--tb-accent); outline-offset: 1px; }
+.set-locked { opacity: 0.5; }
+.set-locked .toggle-slider { cursor: default; }
+
+#settingsOverlay { background: rgba(10, 12, 16, .38); }
+#settingsModal { flex-direction: row; padding: 0; width: 780px; height: 560px; background: var(--tb-surface);
+  border: 1px solid var(--tb-line); border-radius: var(--tb-r-xl); box-shadow: var(--tb-shadow-pop); overflow: hidden; }
+#settingsModalResizeHandle { border-bottom-right-radius: var(--tb-r-xl); }
+.settings-sidebar { width: 200px; flex: 0 0 200px; padding: 18px 10px; box-sizing: border-box; gap: 2px; background: var(--tb-sunken);
+  border-right: 1px solid var(--tb-line); }
+.settings-nav-title { font-size: 15px; font-weight: 600; color: var(--tb-text); padding: 0 10px 14px; }
+.settings-nav-btn { display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 10px; border-radius: 7px; font-size: 13px; color: var(--tb-text-2); }
+.settings-nav-btn:hover { background: var(--tb-hover); color: var(--tb-text); }
+.settings-nav-btn.active { background: var(--tb-surface); color: var(--tb-text); font-weight: 600; }
+.settings-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.settings-header { display: flex; align-items: center; height: 56px; flex: 0 0 56px; padding: 0 20px 0 24px; border-bottom: 1px solid var(--tb-line); position: relative; }
+.settings-header h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--tb-text); }
+.settings-header .modal-close-btn { position: static; margin-left: auto; }
+.settings-content { padding: 8px 24px 24px; }
+.set-section { font-size: 11.5px; font-weight: 600; color: var(--tb-text-3); padding: 18px 0 4px; }
+.set-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--tb-line); }
+.set-text { flex: 1; min-width: 0; }
+.set-label { font-size: 13px; font-weight: 500; color: var(--tb-text); }
+.set-desc { font-size: 12px; color: var(--tb-text-3); margin-top: 2px; }
+.set-input { background: var(--tb-sunken); color: var(--tb-text); border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r);
+  padding: 4px 8px; font-size: 12.5px; font-family: inherit; }
+input.set-input[type="number"] { width: 90px; }
+.set-github { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.set-github-pending { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.set-github .btn { padding: 2px 10px; font-size: 11px; }
+#githubUserCode { font-size: 15px; font-weight: 700; letter-spacing: 3px; color: var(--tb-text); font-family: var(--tb-font-mono); }
+.set-intro { font-size: 12.5px; color: var(--tb-text-2); padding: 14px 0 6px; }
+.set-tool-row { min-height: 32px; padding: 6px 0; }
+.set-tool-icon { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: var(--tb-r-sm);
+  background: var(--tb-sunken); color: var(--tb-text-2); }
+.set-group { font-size: 12px; color: var(--tb-text-3); min-width: 70px; }
+.shortcut-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; padding-top: 12px; }
+.shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--tb-line); font-size: 12.5px; }
+.shortcut-row > span:first-child { color: var(--tb-text-2); }
+.shortcut-keys { color: var(--tb-text-3); white-space: nowrap; }
+.shortcut-row kbd { font-family: var(--tb-font-mono); font-size: 11.5px; padding: 1px 6px; border: 1px solid var(--tb-line-strong);
+  background: var(--tb-sunken); border-radius: 5px; color: var(--tb-text); }
+.about-head { display: flex; align-items: center; gap: 14px; padding: 18px 0 8px; }
+.about-logo { width: 40px; height: 40px; border-radius: 9px; }
+.about-name { font-size: 15px; font-weight: 600; color: var(--tb-text); }
+#updateStatusText { margin: 2px 0 0; padding: 0; background: none; font-size: 12.5px; }
+#updateStatusText.ok::before { content: '\2713\00a0'; }
+.about-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 16px; }

@@ -79,7 +79,7 @@ test('the chrome UI has no serious/critical axe-core violations (light theme)', 
   await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
   await window.selectOption('#themeSelect', 'light');
   await expect(window.locator('body')).toHaveClass(/light-mode/);
-  await window.click('#closeSettingsBtn');
+  await window.click('#settingsCloseXBtn');
 
   const violations = seriousOrCritical(await scanForViolations(window));
   expect(violations, describeViolations(violations)).toEqual([]);
@@ -93,7 +93,7 @@ test('toggling the theme changes the --tb-surface token (#293)', async () => {
     await window.click('#appMenuSettings');
     await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
     await window.selectOption('#themeSelect', value);
-    await window.click('#closeSettingsBtn');
+    await window.click('#settingsCloseXBtn');
   };
   await setTheme('light');
   const light = await surface();
@@ -127,7 +127,7 @@ test('every console panel tab has no serious/critical axe-core violations (light
   await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
   await window.selectOption('#themeSelect', 'light');
   await expect(window.locator('body')).toHaveClass(/light-mode/);
-  await window.click('#closeSettingsBtn');
+  await window.click('#settingsCloseXBtn');
 
   const allViolations: AxeViolation[] = [];
   for (const tabId of CONSOLE_TABS) {

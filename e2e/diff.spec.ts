@@ -397,7 +397,7 @@ test('expanding a matched row shows a changed response header, once its query pa
     await window.click('#appName');
     await window.click('#appMenuSettings');
     await window.selectOption('#themeSelect', theme);
-    await window.click('#closeSettingsBtn');
+    await window.click('#settingsCloseXBtn');
     const violations = (await scanDiffPanel()).filter(v => v.impact === 'serious' || v.impact === 'critical');
     expect(violations.map(v => `${theme}: ${v.id} ${v.nodes.map(n => n.target.join(' ')).join(', ')}`)).toEqual([]);
   }

@@ -2,6 +2,7 @@
 import { applyTheme, getStoredScheme } from './theme.js';
 import { initModal, openModal, closeModal } from './modal.js';
 import { applyConsoleTabVisibility } from './console-tabs.js';
+import { buildShortcutRows } from './shortcut-list.js';
 
 const STATUS_CONFIG = {
   checking:          { cls: 'info', text: 'Checking for updates…' },
@@ -13,7 +14,7 @@ const STATUS_CONFIG = {
   'available-manual': { cls: 'warn', text: (v) => `Update ${v} available — download it from GitHub` },
   downloading:       { cls: 'info', text: 'Downloading update…' },
   downloaded:        { cls: 'warn', text: (v) => `Update ${v} downloaded — restart to install` },
-  'not-available':   { cls: 'ok',   text: 'You\'re up to date' },
+  'not-available':   { cls: 'ok',   text: 'Up to date' },
   error:             { cls: 'err',  text: (msg) => `Update error: ${msg || 'unknown'}` },
 };
 
@@ -128,10 +129,36 @@ async function refreshGithubAuthStatus() {
   }
 }
 
+// Fills the Shortcuts pane from the shortcut table (see shortcut-list.js).
+function renderShortcutList() {
+  const list = document.getElementById('shortcutList');
+  if (!list || list.childElementCount) return;
+  for (const { label, keys } of buildShortcutRows()) {
+    const row = document.createElement('div');
+    row.className = 'shortcut-row';
+    const name = document.createElement('span');
+    name.textContent = label;
+    row.appendChild(name);
+    const caps = document.createElement('span');
+    caps.className = 'shortcut-keys';
+    keys.forEach((k, i) => {
+      if (i) caps.append(' / ');
+      const kbd = document.createElement('kbd');
+      kbd.textContent = k;
+      caps.appendChild(kbd);
+    });
+    row.appendChild(caps);
+    list.appendChild(row);
+  }
+}
+
 function switchSettingsTab(pane) {
-  document.querySelectorAll('.settings-nav-btn').forEach((btn) =>
-    btn.classList.toggle('active', btn.dataset.pane === pane)
-  );
+  const title = document.getElementById('settingsPaneTitle');
+  document.querySelectorAll('.settings-nav-btn').forEach((btn) => {
+    const on = btn.dataset.pane === pane;
+    btn.classList.toggle('active', on);
+    if (on && title) title.textContent = btn.dataset.title || btn.textContent;
+  });
   document.querySelectorAll('.settings-pane').forEach((el) =>
     el.classList.toggle('active', el.dataset.pane === pane)
   );
@@ -148,7 +175,7 @@ export function initSettings() {
     btn.addEventListener('click', () => switchSettingsTab(btn.dataset.pane))
   );
 
-  document.getElementById('closeSettingsBtn').onclick  = closeSettings;
+  renderShortcutList();
   document.getElementById('settingsCloseXBtn').onclick = closeSettings;
   document.getElementById('checkUpdatesBtn').onclick   = async () => {
     document.getElementById('updateStatusText').className   = 'info';

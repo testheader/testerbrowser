@@ -551,7 +551,7 @@ test('the "install updates automatically when idle" toggle exists in Settings an
   await window.click('#appName');
   await window.click('#appMenuSettings');
   await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
-  await window.click('[data-pane="about"]');
+  await window.click('.settings-nav-btn[data-pane="general"]');
 
   const toggle = window.locator('#autoInstallWhenIdleToggle');
   await expect(toggle).not.toBeChecked();
@@ -566,9 +566,33 @@ test('the "install updates automatically when idle" toggle exists in Settings an
       .then((s: { autoInstallWhenIdle: boolean }) => s.autoInstallWhenIdle))
   ).toBe(true);
 
-  await window.click('#closeSettingsBtn');
+  await window.click('#settingsCloseXBtn');
   // Reset so this doesn't leak into later tests in this shared-app file.
   await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ autoInstallWhenIdle: false }));
+});
+
+test('Settings modal has General / Tools / Shortcuts / About, with locked Network and Console tool toggles and a generated shortcut list (#316)', async () => {
+  await window.click('#appName');
+  await window.click('#appMenuSettings');
+  await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
+  await expect(window.locator('.settings-nav-btn')).toHaveText(['General', 'Tools', 'Shortcuts', 'About']);
+  // offsetWidth ignores the open animation's scale transform, unlike boundingBox().
+  expect(await window.locator('#settingsModal').evaluate((el) => (el as HTMLElement).offsetWidth)).toBe(780);
+
+  await window.click('.settings-nav-btn[data-pane="features"]');
+  await expect(window.locator('#settingsPaneTitle')).toHaveText('Tools');
+  await expect(window.locator('.set-tool-row')).toHaveCount(14);
+  await expect(window.locator('.set-locked input')).toHaveCount(2);
+  await expect(window.locator('.set-locked input').first()).toBeDisabled();
+  await expect(window.locator('#consoleTabToggle-mock')).toBeAttached();
+
+  await window.click('.settings-nav-btn[data-pane="shortcuts"]');
+  await expect(window.locator('#shortcutList .shortcut-row').filter({ has: window.getByText('New tab', { exact: true }) }).locator('kbd')).toHaveText('Ctrl+T');
+  await expect(window.locator('#shortcutList .shortcut-row').filter({ has: window.getByText('Reload', { exact: true }) }).locator('kbd')).toHaveText(['Ctrl+R', 'F5']);
+
+  await window.click('.settings-nav-btn[data-pane="about"]');
+  await expect(window.locator('#checkUpdatesBtn')).toBeVisible();
+  await window.click('#settingsCloseXBtn');
 });
 
 test('replay times out after the configured number of seconds (#233)', async () => {
