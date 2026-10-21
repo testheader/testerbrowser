@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.142.0 — 2026-10-21
+
+### Features
+
+- Record & playback empty state and recording view (refs #312) (5c81b73)
+
 ## v0.141.1 — 2026-10-21
 
 ### Fixes
