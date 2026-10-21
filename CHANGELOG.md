@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.143.0 — 2026-10-21
+
+### Features
+
+- Follow along live view (refs #313) (8cd59e4)
+
 ## v0.142.0 — 2026-10-21
 
 ### Features
