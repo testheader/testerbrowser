@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.141.1 — 2026-10-21
+
+### Fixes
+
+- light-theme legacy colour aliases, contrast and ARIA row roles; adapt e2e specs to the redesign (refs #311) (d966021)
+
+### Other
+
+- fix resilience, security and mock e2e specs for the redesign; load network rows before focusing a finding's request (refs #311) (60127bc)
+
 ## v0.141.0 — 2026-10-21
 
 ### Features
