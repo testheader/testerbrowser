@@ -2,6 +2,8 @@
 import { escHtml } from './utils.js';
 import { getActiveId, getTabTitle } from './tabs.js';
 import { switchConsoleTab } from './console-tabs.js';
+import { renderEmptyState } from './empty-state.js';
+import { adfText, extractAcceptanceCriteria, jiraHost } from './jira-logic.js';
 
 let initialized = false;
 let currentHasToken = false;
@@ -15,9 +17,14 @@ export function initJira() {
 
   panel.innerHTML = `
     <div class="jira-wrap">
-      <div class="jira-settings-bar">
-        <span class="jira-title">Jira</span>
-        <button class="jira-icon-btn" id="jiraSettingsBtn" title="Configure Jira" aria-label="Configure Jira">&#9881;</button>
+      <div class="jira-toolbar" id="jiraToolbar">
+        <label class="jira-key-field"><i class="icon-ticket" aria-hidden="true"></i>
+          <input class="jira-ticket-input" id="jiraTicketKey" type="text" placeholder="PROJ-123" aria-label="Ticket key" spellcheck="false" />
+        </label>
+        <button class="net-chip" id="jiraFetchBtn" type="button">Load</button>
+        <span class="jira-spacer"></span>
+        <span class="jira-conn" id="jiraConn" hidden><span class="jira-conn-dot" aria-hidden="true"></span><span id="jiraConnHost"></span></span>
+        <button class="jira-icon-btn" id="jiraSettingsBtn" title="Configure Jira" aria-label="Configure Jira"><i class="icon-settings-2" aria-hidden="true"></i></button>
       </div>
 
       <div id="jiraSetupView" hidden>
@@ -55,42 +62,41 @@ export function initJira() {
       </div>
 
       <div id="jiraMainView">
-        <div class="jira-ticket-bar">
-          <input class="jira-input jira-ticket-input" id="jiraTicketKey" type="text" placeholder="Ticket key (e.g. PROJ-123)" />
-          <button class="jira-btn jira-btn-primary" id="jiraFetchBtn">Load</button>
-        </div>
-        <div id="jiraTicketDisplay" class="jira-ticket-display" hidden></div>
-        <div class="jira-actions-bar" hidden id="jiraActionsBar">
-          <button class="jira-btn jira-btn-bug" id="jiraAddBugBtn">&#43; Add Bug</button>
-        </div>
-        <div id="jiraBugForm" class="jira-bug-form" hidden>
-          <div class="jira-field">
-            <label class="jira-label">Summary</label>
-            <input class="jira-input" id="jiraBugSummary" type="text" placeholder="Bug summary" />
+        <div class="jira-split">
+          <div class="jira-left">
+            <div id="jiraTicketDisplay" class="jira-ticket-display" hidden></div>
+            <div class="jira-actions-bar" hidden id="jiraActionsBar">
+              <button class="jira-btn jira-btn-bug" id="jiraAddBugBtn">&#43; Add Bug</button>
+            </div>
+            <div id="jiraNotConfigured" class="jira-not-configured" hidden></div>
           </div>
-          <div class="jira-field">
-            <label class="jira-label">Description</label>
-            <textarea class="jira-input jira-textarea" id="jiraBugDesc" rows="4" placeholder="Steps to reproduce, expected vs actual…"></textarea>
+          <div id="jiraBugForm" class="jira-bug-form" hidden>
+            <div class="jira-pane-title" id="jiraBugTitle">Report a bug</div>
+            <div class="jira-field">
+              <label class="jira-label" for="jiraBugSummary">Summary</label>
+              <input class="jira-input" id="jiraBugSummary" type="text" placeholder="Bug summary" />
+            </div>
+            <div class="jira-field">
+              <label class="jira-label" for="jiraBugDesc">Steps</label>
+              <textarea class="jira-input jira-textarea" id="jiraBugDesc" rows="5" placeholder="Steps to reproduce, expected vs actual…"></textarea>
+            </div>
+            <div class="jira-field jira-attach-group">
+              <span class="jira-label">Attach</span>
+              <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachScreenshot" /> <span class="jira-attach-name">Screenshot</span><span class="jira-count" id="jiraCountShot">1</span></label>
+              <label class="jira-checkbox-row">
+                <input type="checkbox" id="jiraAttachHar" /> <span class="jira-attach-name">Network log (HAR), last
+                <input type="number" id="jiraAttachHarMinutes" class="jira-input jira-minutes-input" min="1" max="120" value="15" /> min</span><span class="jira-count" id="jiraCountHar"></span>
+              </label>
+              <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachConsole" /> <span class="jira-attach-name">Console errors</span><span class="jira-count" id="jiraCountConsole"></span></label>
+              <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachSteps" /> <span class="jira-attach-name">Recorded steps</span><span class="jira-count" id="jiraCountSteps"></span></label>
+              <div class="jira-attach-warning" id="jiraAttachHarWarning" hidden>HAR may contain cookies and tokens — enable header redaction in Settings to strip them.</div>
+            </div>
+            <div class="jira-setup-actions">
+              <button class="jira-btn jira-btn-primary jira-create" id="jiraSubmitBugBtn">Create bug</button>
+              <button class="jira-btn" id="jiraCancelBugBtn">Cancel</button>
+              <span class="jira-msg" id="jiraBugMsg"></span>
+            </div>
           </div>
-          <div class="jira-field jira-attach-group">
-            <label class="jira-label">Attach</label>
-            <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachScreenshot" /> Screenshot of the page</label>
-            <label class="jira-checkbox-row">
-              <input type="checkbox" id="jiraAttachHar" /> Network (HAR), last
-              <input type="number" id="jiraAttachHarMinutes" class="jira-input jira-minutes-input" min="1" max="120" value="15" /> minutes
-            </label>
-            <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachConsole" /> Console errors</label>
-            <label class="jira-checkbox-row"><input type="checkbox" id="jiraAttachSteps" /> Recorded steps</label>
-            <div class="jira-attach-warning" id="jiraAttachHarWarning" hidden>HAR may contain cookies and tokens — enable header redaction in Settings to strip them.</div>
-          </div>
-          <div class="jira-setup-actions">
-            <button class="jira-btn jira-btn-primary" id="jiraSubmitBugBtn">Submit Bug</button>
-            <button class="jira-btn" id="jiraCancelBugBtn">Cancel</button>
-            <span class="jira-msg" id="jiraBugMsg"></span>
-          </div>
-        </div>
-        <div id="jiraNotConfigured" class="jira-not-configured" hidden>
-          <span>Configure your Jira workspace in settings above.</span>
         </div>
       </div>
     </div>`;
@@ -170,6 +176,22 @@ async function updateStepsAvailability() {
   if (!hasSteps) checkbox.checked = false;
 }
 
+// Right-aligned counts next to each attachment: how much evidence is on hand.
+async function refreshAttachCounts() {
+  let events = [];
+  try { events = (await testerBrowser.recording.timeline(getActiveId(), { limit: 5000 })) || []; } catch { /* leave counts blank */ }
+  let net = 0, errs = 0;
+  for (const e of events) {
+    if (e.kind === 'network-request') net++;
+    else if (e.kind === 'exception' || (e.kind === 'console' && /error/i.test(e.summary || ''))) errs++;
+  }
+  document.getElementById('jiraCountHar').textContent = String(net);
+  document.getElementById('jiraCountConsole').textContent = String(errs);
+  let steps = [];
+  try { steps = await testerBrowser.tests.getEvidenceSteps(getActiveId()); } catch { /* none */ }
+  document.getElementById('jiraCountSteps').textContent = String(Array.isArray(steps) ? steps.length : 0);
+}
+
 async function updateHarRedactionWarning() {
   let settings = {};
   try { settings = await testerBrowser.settings.get(); } catch { /* show the warning by default */ }
@@ -195,6 +217,17 @@ async function loadSettings() {
   currentHasToken = !!s.hasToken;
   const configured = s.baseUrl && s.email && currentHasToken;
   document.getElementById('jiraNotConfigured').hidden = !!configured;
+  document.getElementById('jiraToolbar').classList.toggle('jira-unconfigured', !configured);
+  const conn = document.getElementById('jiraConn');
+  conn.hidden = !configured;
+  document.getElementById('jiraConnHost').textContent = jiraHost(s.baseUrl || '');
+  if (!configured) {
+    document.getElementById('jiraNotConfigured').replaceChildren(renderEmptyState({
+      icon: 'ticket', tone: 'accent', title: 'Connect Jira',
+      text: 'Load tickets and file bugs with your session evidence attached.',
+      actionLabel: 'Connect Jira', onAction: openSettings,
+    }));
+  }
   /** @type {HTMLInputElement} */ (document.getElementById('jiraBaseUrl')).value = s.baseUrl || '';
   /** @type {HTMLInputElement} */ (document.getElementById('jiraEmail')).value = s.email || '';
   /** @type {HTMLInputElement} */ (document.getElementById('jiraProjectKey')).value = s.projectKey || '';
@@ -246,7 +279,6 @@ async function saveSettings() {
   }
   msg.textContent = 'Saved.';
   msg.className = 'jira-msg jira-msg-ok';
-  document.getElementById('jiraNotConfigured').hidden = true;
   await loadSettings();
   setTimeout(closeSettings, 800);
 }
@@ -269,23 +301,36 @@ async function fetchTicket() {
 
   const f = result.data.fields;
   const summary = f.summary ?? '(no summary)';
-  const status = f.status?.name ?? '—';
-  const assignee = f.assignee?.displayName ?? 'Unassigned';
-  const priority = f.priority?.name ?? '—';
+  const status = f.status?.name ?? '\u2014';
+  const cells = [
+    ['Type', f.issuetype?.name ?? '\u2014'],
+    ['Priority', f.priority?.name ?? '\u2014'],
+    ['Assignee', f.assignee?.displayName ?? 'Unassigned'],
+    ['Reporter', f.reporter?.displayName ?? '\u2014'],
+    ['Updated', f.updated ? new Date(f.updated).toLocaleDateString() : '\u2014'],
+  ];
   const rawDesc = extractText(f.description);
-  const desc = rawDesc ? rawDesc.slice(0, 400) + (rawDesc.length > 400 ? '…' : '') : '(no description)';
+  const desc = rawDesc ? rawDesc.slice(0, 400) + (rawDesc.length > 400 ? '\u2026' : '') : '(no description)';
+  const criteria = extractAcceptanceCriteria(f.description);
+  const base = (cachedSettings?.baseUrl ?? '').replace(/\/$/, '');
 
   display.innerHTML = `
     <div class="jira-ticket-card">
-      <div class="jira-ticket-key">${escHtml(key)}</div>
-      <div class="jira-ticket-summary">${escHtml(summary)}</div>
-      <div class="jira-ticket-meta">
+      <div class="jira-ticket-head">
+        <span class="jira-ticket-key">${escHtml(key)}</span>
         <span class="jira-badge">${escHtml(status)}</span>
-        <span class="jira-meta-item">&#128100; ${escHtml(assignee)}</span>
-        <span class="jira-meta-item">&#9650; ${escHtml(priority)}</span>
+        ${base ? `<a href="#" class="jira-open" data-url="${escHtml(base + '/browse/' + key)}">Open in Jira</a>` : ''}
       </div>
+      <div class="jira-ticket-summary">${escHtml(summary)}</div>
+      <div class="jira-fields">${cells.map(([k, v]) => `<div class="jira-fcell"><div class="jira-flabel">${escHtml(k)}</div><div class="jira-fvalue">${escHtml(String(v))}</div></div>`).join('')}</div>
       <div class="jira-ticket-desc">${escHtml(desc)}</div>
+      ${criteria.length ? `<div class="jira-ac"><div class="jira-flabel">Acceptance criteria</div>${criteria.map((c, i) =>
+        `<label class="jira-ac-row"><input type="checkbox" id="jiraAc${i}" /> <span>${escHtml(c)}</span></label>`).join('')}</div>` : ''}
     </div>`;
+  display.querySelector('.jira-open')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    testerBrowser.app.openExternal(/** @type {HTMLElement} */ (e.currentTarget).dataset.url);
+  });
 
   lastFetchedKey = key;
   document.getElementById('jiraActionsBar').hidden = false;
@@ -300,6 +345,8 @@ function openBugForm() {
   /** @type {HTMLTextAreaElement} */ (document.getElementById('jiraBugDesc')).value =
     `URL: ${currentUrl}\n\nSteps to reproduce:\n1. \n\nExpected:\n\nActual:\n`;
   document.getElementById('jiraBugMsg').textContent = '';
+  document.getElementById('jiraBugTitle').textContent = lastFetchedKey ? `Report a bug on ${lastFetchedKey}` : 'Report a bug';
+  refreshAttachCounts();
   applyAttachPrefs();
   updateStepsAvailability();
   updateHarRedactionWarning();
@@ -357,9 +404,5 @@ async function submitBug() {
 }
 
 function extractText(node) {
-  if (!node) return '';
-  if (typeof node === 'string') return node;
-  if (node.type === 'text') return node.text ?? '';
-  if (Array.isArray(node.content)) return node.content.map(extractText).join(' ');
-  return '';
+  return adfText(node);
 }

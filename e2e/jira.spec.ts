@@ -36,6 +36,15 @@ async function getJiraSettings() {
   }).testerBrowser.jira.getSettings());
 }
 
+// #314: not configured → shared empty state whose button opens the settings form.
+test('before Jira is configured the tab shows a Connect Jira empty state that opens settings (#314)', async () => {
+  await expect(window.locator('#jiraNotConfigured .empty-state-title')).toHaveText('Connect Jira');
+  await window.click('#jiraNotConfigured .empty-state-btn');
+  await expect(window.locator('#jiraSetupView')).toBeVisible();
+  await window.click('#jiraCancelSettingsBtn');
+  await expect(window.locator('#jiraSetupView')).toBeHidden();
+});
+
 // #267: saving a token must never leave plaintext on disk, and getSettings()
 // must never hand the token (or its ciphertext) back to the renderer.
 test('saving settings with a token encrypts it at rest and never returns it to the renderer', async () => {
