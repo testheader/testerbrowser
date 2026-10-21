@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.146.1 — 2026-10-21
+
+### Features
+
+- Speed Dial new-tab page restyle (refs #317) (c46177a)
+
+### Fixes
+
+- type-check exemption and CSP test update for the new-tab restyle (refs #317) (31f3ce2)
+
 ## v0.146.0 — 2026-10-21
 
 ### Features
