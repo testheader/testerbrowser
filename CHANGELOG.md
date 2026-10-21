@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.4 — 2026-10-21
+
+### Fixes
+
+- Network diff no longer throws when a captured response body has no text (refs #307) (7f65e9e)
+
 ## v0.146.3 — 2026-10-21
 
 ### Fixes
