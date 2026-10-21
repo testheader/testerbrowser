@@ -79,7 +79,8 @@ test('Debug Log tab shows the disabled empty state when debug mode is off', asyn
   await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));
   await page.click('#consoleTabDebugLog');
   await expect(page.locator('#debugLogPanel')).toBeVisible();
-  await expect(page.locator('#debugLogList')).toContainText('Debug mode is off');
+  await expect(page.locator('#debugLogList')).toContainText('Turn on Debug mode');
+  await expect(page.locator('#debugLogList .empty-state-btn')).toHaveText('Open settings');
 });
 
 test('Debug Log tab lists a reported error when debug mode is on', async () => {
@@ -107,12 +108,14 @@ test('Debug Log level pills filter entries by level', async () => {
   await page.click('#consoleTabDebugLog');
   await expect(page.locator('#debugLogList')).toContainText('pill-filter-test-marker', { timeout: 5_000 });
 
-  // Turning off the Error pill hides an error-level entry.
-  await page.click('#debugLogLevelPills [data-level="error"]');
+  // The Debug segment hides an error-level entry.
+  await page.click('#debugLogLevelPills [data-level="debug"]');
   await expect(page.locator('#debugLogList')).not.toContainText('pill-filter-test-marker');
 
-  // Turning it back on shows it again.
+  // The Errors segment shows it; All shows it too.
   await page.click('#debugLogLevelPills [data-level="error"]');
+  await expect(page.locator('#debugLogList')).toContainText('pill-filter-test-marker');
+  await page.click('#debugLogLevelPills [data-level="all"]');
   await expect(page.locator('#debugLogList')).toContainText('pill-filter-test-marker');
 
   // The free-text filter also applies.
@@ -189,11 +192,11 @@ test.describe('Debug Log panel structure and incremental polling (#228)', () => 
     await expect(page.locator('#debugLogList')).toContainText('source-filter-app-marker', { timeout: 5_000 });
     await expect(page.locator('#debugLogList')).toContainText('Session created', { timeout: 5_000 });
 
-    await page.selectOption('#debugLogSourceFilter', 'sessions');
+    await page.click('#debugLogSources [data-source="sessions"]');
     await expect(page.locator('#debugLogList')).toContainText('Session created');
     await expect(page.locator('#debugLogList')).not.toContainText('source-filter-app-marker');
 
-    await page.selectOption('#debugLogSourceFilter', '');
+    await page.click('#debugLogSources [data-source="sessions"]'); // clicking the active chip clears it
     await expect(page.locator('#debugLogList')).toContainText('source-filter-app-marker');
 
     await page.evaluate(() => (window as any).testerBrowser.settings.set({ debugMode: false }));

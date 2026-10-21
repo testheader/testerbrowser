@@ -2422,3 +2422,26 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .jira-create { width: 100%; background: var(--tb-accent); border-color: var(--tb-accent); color: var(--tb-on-accent); }
 .jira-setup-actions { flex-wrap: wrap; }
 #jiraSetupView { padding: 12px 16px; max-width: 640px; }
+
+/* ── Debug log filters and rows (#315) ── */
+#debugLogControls { padding: 8px 12px; border-bottom: 1px solid var(--tb-line); gap: 8px; flex-wrap: wrap; }
+.debuglog-sources { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.debuglog-source-chip { background: none; border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r-pill); color: var(--tb-text-2);
+  font-family: var(--tb-font-mono); font-size: 11.5px; padding: 2px 9px; cursor: pointer; }
+.debuglog-source-chip:hover { background: var(--tb-hover); }
+.debuglog-source-chip.on { border-color: var(--tb-accent); color: var(--tb-accent); background: var(--tb-accent-soft); }
+.debuglog-wrap { padding: 0; }
+.debuglog-entry { border-bottom: 1px solid var(--tb-line); }
+.debuglog-entry-error { background: var(--tb-err-soft); }
+.debuglog-row { display: grid; grid-template-columns: 100px 56px 84px 1fr; gap: 8px; padding: 3px 12px; align-items: baseline;
+  font-family: var(--tb-font-mono); font-size: 12px; line-height: 1.5; }
+.debuglog-ts { color: var(--tb-text-3); }
+.debuglog-level { width: auto; font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.debuglog-level-error { color: var(--tb-err); font-weight: 600; }
+.debuglog-level-warn  { color: var(--tb-warn); font-weight: 600; }
+.debuglog-level-info  { color: var(--tb-text-2); }
+.debuglog-level-debug { color: var(--tb-text-3); }
+.debuglog-source { color: var(--tb-accent); width: auto; }
+.debuglog-session { color: var(--tb-text-3); width: auto; }
+.debuglog-ctx { margin-left: 12px; }
+#debugLogList .empty-state { min-height: 240px; }

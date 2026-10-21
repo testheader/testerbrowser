@@ -1,7 +1,9 @@
 /* global testerBrowser */
-import { escHtml, wirePillGroup, activePillValues, matchesFreeText } from './utils.js';
+import { escHtml, matchesFreeText } from './utils.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 import { pollWhileVisible } from './poll.js';
+import { renderEmptyState } from './empty-state.js';
+import { openSettings } from './settings.js';
 
 let initialized = false;
 // The full set of entries fetched so far this "session" of the panel being
@@ -12,31 +14,61 @@ let initialized = false;
 let lastEntries = [];
 let lastSeenId = 0;
 
-const EMPTY_STATE_OFF =
-  'Debug mode is off — enable it in Settings → General to see TesterBrowser\'s own internal logs';
+// #315: debug mode off → the shared empty state with an Open settings action.
+function showDebugOffState(list) {
+  list.replaceChildren(renderEmptyState({
+    icon: 'bug', tone: 'neutral', title: 'Debug log',
+    text: "TesterBrowser's own internal logs. Turn on Debug mode to collect them.",
+    actionLabel: 'Open settings', onAction: () => { openSettings(); },
+  }));
+}
+
+// Level filter: a single-choice segmented control. "All" shows every level,
+// including info, which has no segment of its own.
+let levelFilter = 'all';
+let sourceFilter = '';
 
 export async function initDebugLog() {
   if (!initialized) {
     initialized = true;
     document.getElementById('debugLogPanel').innerHTML = `
       <div id="debugLogControls">
-        <span class="filter-label">Filter</span>
-        <input id="debugLogFilterText" placeholder="Filter debug log…" />
-        <div class="filter-pills" id="debugLogLevelPills">
-          <button class="filter-pill on" data-level="error" title="Errors">Error<span class="pill-count"></span></button>
-          <button class="filter-pill on" data-level="warn"  title="Warnings">Warn<span class="pill-count"></span></button>
-          <button class="filter-pill on" data-level="info"  title="Info">Info<span class="pill-count"></span></button>
-          <button class="filter-pill on" data-level="debug" title="Debug">Debug<span class="pill-count"></span></button>
+        <label class="net-search"><i class="icon-search" aria-hidden="true"></i>
+          <input id="debugLogFilterText" placeholder="Filter log" aria-label="Filter log" /></label>
+        <div class="seg" id="debugLogLevelPills" role="group" aria-label="Level">
+          <button class="seg-btn on" data-level="all" aria-pressed="true">All<span class="pill-count"></span></button>
+          <button class="seg-btn" data-level="error" aria-pressed="false">Errors<span class="pill-count"></span></button>
+          <button class="seg-btn" data-level="warn" aria-pressed="false">Warnings<span class="pill-count"></span></button>
+          <button class="seg-btn" data-level="debug" aria-pressed="false">Debug<span class="pill-count"></span></button>
         </div>
-        <select id="debugLogSourceFilter" title="Filter by source"><option value="">All sources</option></select>
+        <div class="debuglog-sources" id="debugLogSources" role="group" aria-label="Source"></div>
+        <span class="net-spacer"></span>
         <select id="debugLogSessionFilter" title="Filter by session"><option value="">All sessions</option></select>
-        <button class="console-icon-btn" id="copyDebugLogBtn" title="Copy debug log to clipboard" aria-label="Copy debug log to clipboard">&#128203;</button>
+        <button class="net-chip" id="copyDebugLogBtn" type="button" title="Copy debug log to clipboard"><i class="icon-copy" aria-hidden="true"></i>Copy</button>
       </div>
       <div class="debuglog-wrap"><div id="debugLogList" class="debuglog-list"></div></div>`;
 
-    wirePillGroup(document.getElementById('debugLogLevelPills'), renderDebugLog);
+    document.querySelectorAll('#debugLogLevelPills .seg-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        levelFilter = /** @type {HTMLElement} */ (btn).dataset.level;
+        document.querySelectorAll('#debugLogLevelPills .seg-btn').forEach((b) => {
+          const on = /** @type {HTMLElement} */ (b).dataset.level === levelFilter;
+          b.classList.toggle('on', on);
+          b.setAttribute('aria-pressed', String(on));
+        });
+        renderDebugLog();
+      });
+    });
+    // Source chips are added as new sources appear (see syncFilterOptions);
+    // clicking the active one clears the filter.
+    document.getElementById('debugLogSources').addEventListener('click', (e) => {
+      const chip = /** @type {HTMLElement} */ (e.target).closest('.debuglog-source-chip');
+      if (!chip) return;
+      sourceFilter = sourceFilter === chip.dataset.source ? '' : chip.dataset.source;
+      syncSourceChips();
+      renderDebugLog();
+    });
     /** @type {HTMLInputElement} */ (document.getElementById('debugLogFilterText')).addEventListener('input', renderDebugLog);
-    /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSourceFilter')).addEventListener('change', renderDebugLog);
     /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSessionFilter')).addEventListener('change', renderDebugLog);
     document.getElementById('copyDebugLogBtn').addEventListener('click', copyDebugLog);
     // Delegated so newly-appended rows (poll ticks never touch existing
@@ -63,11 +95,13 @@ async function pollDebugLog() {
     controls.style.display = 'none';
     lastEntries = [];
     lastSeenId = 0;
-    list.innerHTML = `<div class="debuglog-empty">${escHtml(EMPTY_STATE_OFF)}</div>`;
+    showDebugOffState(list);
     return;
   }
 
   controls.style.display = 'flex';
+  // Switching debug mode back on replaces the empty state with the list.
+  if (list.querySelector('.empty-state')) list.innerHTML = '';
   const fresh = await testerBrowser.app.getDebugLog(lastSeenId || undefined);
   if (!fresh.length) {
     // Nothing new — but on the very first poll (nothing loaded yet at all)
@@ -88,18 +122,21 @@ async function pollDebugLog() {
 // touching the user's current selection (a poll tick that introduces a new
 // source must not reset what they're already filtering on).
 function syncFilterOptions() {
-  const sourceSelect = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSourceFilter'));
+  const sourceBox = document.getElementById('debugLogSources');
   const sessionSelect = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSessionFilter'));
-  const knownSources = new Set([...sourceSelect.options].map((o) => o.value).filter(Boolean));
+  const knownSources = new Set([...sourceBox.querySelectorAll('.debuglog-source-chip')].map((c) => /** @type {HTMLElement} */ (c).dataset.source));
   const knownSessions = new Set([...sessionSelect.options].map((o) => o.value).filter(Boolean));
 
   for (const e of lastEntries) {
     if (e.source && !knownSources.has(e.source)) {
       knownSources.add(e.source);
-      const opt = document.createElement('option');
-      opt.value = e.source;
-      opt.textContent = e.source;
-      sourceSelect.appendChild(opt);
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'debuglog-source-chip';
+      chip.dataset.source = e.source;
+      chip.textContent = e.source;
+      chip.setAttribute('aria-pressed', 'false');
+      sourceBox.appendChild(chip);
     }
     if (e.sessionId && !knownSessions.has(e.sessionId)) {
       knownSessions.add(e.sessionId);
@@ -111,6 +148,14 @@ function syncFilterOptions() {
   }
 }
 
+function syncSourceChips() {
+  document.querySelectorAll('#debugLogSources .debuglog-source-chip').forEach((c) => {
+    const on = /** @type {HTMLElement} */ (c).dataset.source === sourceFilter;
+    c.classList.toggle('on', on);
+    c.setAttribute('aria-pressed', String(on));
+  });
+}
+
 function getSessionLabel(sessionId) {
   if (!sessionId) return '';
   let nameEl = null;
@@ -120,15 +165,13 @@ function getSessionLabel(sessionId) {
 }
 
 function currentFilters() {
-  const activeLevels = activePillValues(document.getElementById('debugLogLevelPills'), 'level');
-  const source = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSourceFilter')).value;
   const sessionId = /** @type {HTMLSelectElement} */ (document.getElementById('debugLogSessionFilter')).value;
   const filterText = /** @type {HTMLInputElement} */ (document.getElementById('debugLogFilterText')).value;
-  return { activeLevels, source, sessionId, filterText };
+  return { level: levelFilter, source: sourceFilter, sessionId, filterText };
 }
 
 function matchesFilters(e, f) {
-  if (!f.activeLevels.has(e.level)) return false;
+  if (f.level !== 'all' && e.level !== f.level) return false;
   if (f.source && e.source !== f.source) return false;
   if (f.sessionId && e.sessionId !== f.sessionId) return false;
   const haystack = `${e.message} ${e.source} ${e.ctx ? JSON.stringify(e.ctx) : ''}`;
@@ -136,8 +179,9 @@ function matchesFilters(e, f) {
 }
 
 function updatePillCounts() {
-  document.querySelectorAll('#debugLogLevelPills .filter-pill').forEach((btn) => {
-    const n = lastEntries.filter((e) => e.level === btn.dataset.level).length;
+  document.querySelectorAll('#debugLogLevelPills .seg-btn').forEach((btn) => {
+    const lvl = /** @type {HTMLElement} */ (btn).dataset.level;
+    const n = lvl === 'all' ? lastEntries.length : lastEntries.filter((e) => e.level === lvl).length;
     const span = btn.querySelector('.pill-count');
     if (span) span.textContent = n > 0 ? String(n) : '';
   });
@@ -203,13 +247,12 @@ function buildRowHtml(e) {
   const hasCtx = e.ctx && Object.keys(e.ctx).length > 0;
   const sessionLabel = e.sessionId ? getSessionLabel(e.sessionId) : '';
   return `
-    <div class="debuglog-entry" data-id="${e.id ?? ''}">
-      <div class="debuglog-row${hasCtx ? ' has-ctx' : ''}">
+    <div class="debuglog-entry debuglog-entry-${e.level}" data-id="${e.id ?? ''}">
+      <div class="debuglog-row${hasCtx ? ' has-ctx' : ''}"${sessionLabel ? ` title="Session: ${escHtml(sessionLabel)}"` : ''}>
+        <span class="debuglog-ts">${new Date(e.ts).toLocaleTimeString([], { hour12: false })}</span>
         <span class="debuglog-level debuglog-level-${e.level}">${e.level}</span>
-        <span class="debuglog-ts">${new Date(e.ts).toLocaleTimeString()}</span>
         <span class="debuglog-source">${escHtml(e.source || 'app')}</span>
-        <span class="debuglog-session">${escHtml(sessionLabel)}</span>
-        <span class="debuglog-msg">${escHtml(e.message)}</span>
+        <span class="debuglog-msg">${escHtml(e.message)}${sessionLabel ? ` <span class="debuglog-session">\u00b7 ${escHtml(sessionLabel)}</span>` : ''}</span>
       </div>
       ${hasCtx ? `<pre class="debuglog-ctx">${escHtml(JSON.stringify(e.ctx, null, 2))}</pre>` : ''}
     </div>`;
@@ -221,9 +264,9 @@ async function copyDebugLog() {
     : 'No internal errors logged yet.';
   await testerBrowser.clipboard.write(text);
   const btn = document.getElementById('copyDebugLogBtn');
-  const prev = btn.textContent;
-  btn.textContent = '✓';
-  setTimeout(() => { btn.textContent = prev; }, 1500);
+  const prev = btn.innerHTML;
+  btn.innerHTML = '<i class="icon-check" aria-hidden="true"></i>Copied';
+  setTimeout(() => { btn.innerHTML = prev; }, 1500);
 }
 
 function formatEntryForCopy(e) {
