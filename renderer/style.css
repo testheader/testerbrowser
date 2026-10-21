@@ -2321,3 +2321,38 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .res-toggle .res-enable:checked::after { left: 18px; }
 .mock-rule-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .mock-rule-line .mock-rule-url { min-width: 0; }
+
+/* ── Record & playback (#312) ── */
+#testsPanel { flex-direction: column; }
+.rp-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex: 0 0 auto;
+  border-bottom: 1px solid var(--tb-line); }
+.rp-toolbar-status { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--tb-text-2); }
+.rp-spacer { flex: 1; }
+.rp-rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tb-err); animation: rp-pulse 1.2s ease-in-out infinite; }
+.rp-rec-label { color: var(--tb-err); font-weight: 500; }
+@keyframes rp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.rp-strong { display: inline-flex; align-items: center; gap: 6px; background: var(--tb-text); color: var(--tb-surface);
+  border: none; border-radius: var(--tb-r); padding: 5px 11px; font: inherit; font-weight: 500; cursor: pointer; }
+.rp-strong[hidden], #rpAddAssertBtn[hidden] { display: none; }
+.rp-wrap { flex: 1; min-height: 0; height: auto; }
+.rp-col, .rp-main { background: var(--tb-surface); }
+.rp-section-title { color: var(--tb-text-3); font-size: 11.5px; letter-spacing: 0; text-transform: none; font-weight: 600; }
+.rp-input { background: var(--tb-sunken); border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); color: var(--tb-text); }
+.rp-btn { background: transparent; border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); color: var(--tb-text); }
+.rp-btn:hover:not(:disabled) { background: var(--tb-hover); }
+.rp-btn-record { color: var(--tb-err); border-color: var(--tb-err); }
+.rp-live-step { background: transparent; border: none; border-bottom: 1px solid var(--tb-line); border-radius: 0; min-height: 40px; gap: 8px; }
+.rp-live-step:hover { background: var(--tb-hover); }
+.rp-step-num { font-family: var(--tb-font-mono); color: var(--tb-text-3); min-width: 20px; }
+.rp-step-icon { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex: 0 0 auto;
+  background: var(--tb-sunken); border-radius: var(--tb-r-sm); color: var(--tb-text-2); font-size: 14px; }
+.rp-step-icon-assert { background: var(--tb-ok-soft); color: var(--tb-ok); }
+.rp-step-type { color: var(--tb-text); font-family: var(--tb-font-ui); font-size: 13px; font-weight: 500; min-width: 90px; }
+.rp-type-assert { color: var(--tb-ok); }
+.rp-step-desc { font-family: var(--tb-font-mono); font-size: 12px; color: var(--tb-text-2); }
+.rp-step-val { font-family: var(--tb-font-mono); font-size: 11.5px; color: var(--tb-text-3); font-style: normal; }
+.rp-test-item { background: var(--tb-surface); border: 1px solid var(--tb-line); border-radius: var(--tb-r-lg); }
+.rp-test-name { color: var(--tb-text); }
+.rp-test-meta { color: var(--tb-text-3); }
+.rp-placeholder-empty { padding: 0; }
+.rp-placeholder-empty .empty-state { min-height: 240px; }

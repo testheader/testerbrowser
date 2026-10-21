@@ -3,6 +3,7 @@ import { getActiveId } from './tabs.js';
 import { escHtml, mergeRecordedSteps } from './utils.js';
 import { openImageOverlay } from './image-overlay.js';
 import { showStatus } from './status-msg.js';
+import { renderEmptyState } from './empty-state.js';
 
 let initialized = false;
 let isRecording = false;
@@ -39,6 +40,12 @@ export function initRecordPlayback() {
   initialized = true;
 
   panel.innerHTML = `
+    <div class="rp-toolbar" id="rpToolbar">
+      <span class="rp-toolbar-status" id="rpToolbarStatus"></span>
+      <span class="rp-spacer"></span>
+      <button class="net-chip" id="rpAddAssertBtn" type="button" hidden><i class="icon-badge-check" aria-hidden="true"></i>Add assertion</button>
+      <button class="rp-strong" id="rpStopSaveBtn" type="button" hidden><i class="icon-square" aria-hidden="true"></i>Stop and save</button>
+    </div>
     <div class="rp-wrap">
       <div class="rp-col rp-record-col" id="rpRecordCol">
         <div class="rp-section-title">Record New Test</div>
@@ -102,6 +109,14 @@ export function initRecordPlayback() {
   document.getElementById('rpRunClose').addEventListener('click', () => {
     document.getElementById('rpRunView').hidden = true;
     document.getElementById('rpRunPlaceholder').hidden = false;
+  });
+  document.getElementById('rpStopSaveBtn').addEventListener('click', async () => {
+    await stopRecording();
+    await saveRecordedTest();
+  });
+  document.getElementById('rpAddAssertBtn').addEventListener('click', (e) => {
+    const r = /** @type {HTMLElement} */ (e.currentTarget).getBoundingClientRect();
+    showAssertionMenu(currentSteps.length - 1, r.left, r.bottom + 4);
   });
   document.getElementById('rpNextStepBtn').addEventListener('click', () => resolveStepAdvance('next'));
   document.getElementById('rpStopStepBtn').addEventListener('click', () => resolveStepAdvance('stop'));
@@ -222,6 +237,50 @@ function showFormStatus(msg, isError) {
   showStatus('rpFormStatus', msg, isError);
 }
 
+// #312: the toolbar reflects the three states — no saved tests, saved tests
+// idle, and recording (pulsing dot + live step count, Add assertion, Stop and save).
+function updateToolbar() {
+  const status = document.getElementById('rpToolbarStatus');
+  if (!status) return;
+  if (isRecording) {
+    const n = currentSteps.length;
+    status.innerHTML = `<span class="rp-rec-dot" aria-hidden="true"></span><span class="rp-rec-label">Recording \u00b7 ${n} step${n === 1 ? '' : 's'}</span>`;
+  } else if (currentSteps.length > 0) {
+    status.textContent = `${currentSteps.length} recorded step${currentSteps.length === 1 ? '' : 's'} \u2014 save or discard`;
+  } else {
+    status.textContent = savedTests.length === 0 ? 'No saved tests' : `${savedTests.length} saved test${savedTests.length === 1 ? '' : 's'}`;
+  }
+  document.getElementById('rpStopSaveBtn').hidden = !isRecording;
+  document.getElementById('rpAddAssertBtn').hidden = !(isRecording || currentSteps.length > 0);
+}
+
+// With nothing saved the run area becomes the shared empty state with a
+// Start recording call to action; otherwise it keeps the "select a test" hint.
+function updatePlaceholder() {
+  const el = document.getElementById('rpRunPlaceholder');
+  if (!el) return;
+  if (savedTests.length === 0) {
+    el.className = 'rp-placeholder rp-placeholder-empty';
+    el.replaceChildren(renderEmptyState({
+      icon: 'circle-dot', tone: 'err', title: 'No recorded tests yet',
+      text: 'Clicks, typing and navigation in this tab become replayable steps.',
+      actionLabel: 'Start recording',
+      onAction: () => { if (!isRecording) startRecording(); },
+    }));
+  } else {
+    el.className = 'rp-placeholder';
+    el.textContent = 'Select a test and click Run to start';
+  }
+}
+
+const STEP_ICONS = {
+  navigate: 'globe', click: 'mouse-pointer-click', fill: 'keyboard', check: 'square-check',
+  'wait-navigation': 'timer', 'wait-visible': 'timer',
+};
+function stepIcon(type) {
+  return type.startsWith('assert') ? 'badge-check' : (STEP_ICONS[type] || 'circle');
+}
+
 // ─── Recording ─────────────────────────────────────────────────────────────
 
 async function startRecording() {
@@ -281,6 +340,7 @@ async function saveRecordedTest() {
 }
 
 function setRecordBtns(recording) {
+  updateToolbar();
   /** @type {HTMLButtonElement} */ (document.getElementById('rpStartBtn')).disabled = recording;
   /** @type {HTMLButtonElement} */ (document.getElementById('rpStopBtn')).disabled = !recording;
   /** @type {HTMLButtonElement} */ (document.getElementById('rpSaveBtn')).disabled = recording || currentSteps.length === 0;
@@ -290,6 +350,7 @@ function setRecordBtns(recording) {
 function renderLiveSteps() {
   const el = document.getElementById('rpLiveSteps');
   if (!el) return;
+  updateToolbar();
   if (currentSteps.length === 0) {
     el.innerHTML = isRecording ? '<div class="rp-hint">Recording… interact with the page</div>' : '';
     return;
@@ -297,6 +358,7 @@ function renderLiveSteps() {
   el.innerHTML = currentSteps.map((s, i) => `
     <div class="rp-live-step" data-idx="${i}" title="Right-click to add assertion after this step">
       <span class="rp-step-num">${i + 1}</span>
+      <span class="rp-step-icon${s.type.startsWith('assert') ? ' rp-step-icon-assert' : ''}"><i class="icon-${stepIcon(s.type)}" aria-hidden="true"></i></span>
       ${s.selector ? `<span class="rp-confidence-dot rp-confidence-pending" data-selector-idx="${i}" title="Checking selector…"></span>` : ''}
       ${stepRowFieldsHtml(s, i, false)}
       <button class="rp-del-step" data-idx="${i}" title="Remove step" aria-label="Remove step">×</button>
@@ -521,13 +583,15 @@ async function refreshTestList() {
   try { savedTests = (await testerBrowser.tests.list()) || []; } catch { savedTests = []; }
   if (!savedTests.some(t => t.id === expandedTestId)) expandedTestId = null;
   renderTestList();
+  updateToolbar();
+  updatePlaceholder();
 }
 
 function renderTestList() {
   const el = document.getElementById('rpTestList');
   if (!el) return;
   if (savedTests.length === 0) {
-    el.innerHTML = '<div class="rp-hint">Click Record to start capturing browser interactions.</div>';
+    el.innerHTML = '';
     return;
   }
   el.innerHTML = savedTests.map(t => `

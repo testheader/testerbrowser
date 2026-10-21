@@ -28,6 +28,36 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
+// ── #312: empty state and recording toolbar ─────────────────────────────────
+
+test('with no saved tests the Record tab shows the empty state, and recording shows a live toolbar (#312)', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await expect(window.locator('#rpToolbarStatus')).toHaveText('No saved tests');
+  await expect(window.locator('#rpRunPlaceholder .empty-state-title')).toHaveText('No recorded tests yet');
+  await expect(window.locator('#rpStopSaveBtn')).toBeHidden();
+
+  await window.click('#rpRunPlaceholder .empty-state-btn');
+  await expect(window.locator('#rpToolbarStatus')).toContainText('Recording · 0 steps');
+  await expect(window.locator('#rpStopSaveBtn')).toBeVisible();
+  await expect(window.locator('#rpAddAssertBtn')).toBeVisible();
+
+  await tab.click('[data-testid="rp-btn"]');
+  await expect(window.locator('#rpToolbarStatus')).toContainText('Recording · 1 step', { timeout: 5_000 });
+
+  await window.fill('#rpTestName', 'toolbar save');
+  await window.click('#rpStopSaveBtn');
+  await expect(window.locator('.rp-test-item', { hasText: 'toolbar save' })).toBeVisible();
+  await expect(window.locator('#rpToolbarStatus')).toHaveText('1 saved test');
+  await window.click('.rp-test-item:has-text("toolbar save") .rp-btn-del');
+  await expect(window.locator('#rpToolbarStatus')).toHaveText('No saved tests');
+});
+
 // ── Real record → save → run cycle ──────────────────────────────────────────
 
 test('recording a fill + click and running it back actually replays successfully', async () => {
