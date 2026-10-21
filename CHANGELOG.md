@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.146.5 — 2026-10-21
+
+### Fixes
+
+- keep unit-test fakes working with the aborted-load catch (refs #317) (c3000b9)
+- HAR export tolerates omitted binary bodies; clone and snapshot import tolerate an aborted new-tab load (refs #317) (9a72d65)
+
 ## v0.146.4 — 2026-10-21
 
 ### Fixes
