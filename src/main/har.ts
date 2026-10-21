@@ -247,7 +247,10 @@ function buildResponse(opts: {
   failed?: LoadingFailedPayload;
   body?: BodyPayload;
 }): HarResponse {
-  const { response, redirectURL, failed, body } = opts;
+  const { response, redirectURL, failed } = opts;
+  // A binary body over the recorder's size cap is stored as `{ omitted: true }`
+  // with no `body` text at all — treat it like no body, not a malformed one.
+  const body = typeof opts.body?.body === 'string' ? opts.body : undefined;
   if (failed) return { ...emptyResponse(), _error: failed.errorText };
   if (!response) return emptyResponse();
 

@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog } from 'electron';
 import fs from 'fs';
 import type { AppLog } from './appLogger';
+import { loadUrlIgnoringAbort } from './loadUrl';
 import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
 // db name → { version, stores: { storeName → { keyPath, autoIncrement, records } } } —
 // shared by session snapshots (FrameSnapshot.indexedDB below) and the live
@@ -197,7 +198,7 @@ export class SnapshotManager {
         }
       }
 
-      await s.webContents.loadURL(snap.url);
+      await loadUrlIgnoringAbort(s.webContents, snap.url);
       await waitForFrameLoad(s.webContents);
 
       if (preloadScriptId) {

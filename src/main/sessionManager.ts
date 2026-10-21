@@ -30,6 +30,7 @@ import { filterRowsSince } from './jira';
 import { writeJsonAtomic } from './jsonFile';
 import { matchShortcut } from './shortcutTable';
 import { NEWTAB_FILE, isNewtabFileUrl } from './newtabUrl';
+import { loadUrlIgnoringAbort } from './loadUrl';
 import { isSafeId } from './pathSafety';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -640,10 +641,12 @@ export class SessionManager {
       });
     }
 
+    // A load superseded by another navigation (e.g. a clone navigating straight
+    // to the source URL) rejects with ERR_ABORTED — expected, not an error.
     if (opts.startUrl) {
-      view.webContents.loadURL(opts.startUrl);
+      view.webContents.loadURL(opts.startUrl).catch(() => {});
     } else {
-      view.webContents.loadFile(NEWTAB_FILE);
+      view.webContents.loadFile(NEWTAB_FILE).catch(() => {});
     }
 
     view.webContents.on('did-navigate', (_e, url) => {
@@ -1365,7 +1368,7 @@ export class SessionManager {
         }
       }
 
-      await dest.view.webContents.loadURL(src.currentUrl);
+      await loadUrlIgnoringAbort(dest.view.webContents, src.currentUrl);
       await waitForFrameLoad(dest.view.webContents);
 
       if (preloadScriptId) {

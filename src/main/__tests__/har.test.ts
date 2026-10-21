@@ -49,6 +49,22 @@ describe('buildHar (#232)', () => {
     expect(har.log.entries).toEqual([]);
   });
 
+  it('does not throw for an omitted (over-cap binary) body, which is stored without any text', () => {
+    const rows: EventRow[] = [
+      makeRow('network-request', 1000, { requestId: 'f1', request: { url: 'file:///app/font.woff2', method: 'GET', headers: {} } }),
+      makeRow('network-response', 1050, {
+        requestId: 'f1',
+        response: { url: 'file:///app/font.woff2', status: 200, statusText: 'OK', headers: {}, mimeType: 'font/woff2', encodedDataLength: 70000 },
+        durationMs: 50,
+      }),
+      makeRow('network-body', 1060, { requestId: 'f1', base64Encoded: true, omitted: true, size: 93000 }),
+    ];
+    const { entries } = buildHar(rows, { creatorVersion: '1.0.0' }).log;
+    expect(entries).toHaveLength(1);
+    expect(entries[0].response.content.text).toBeUndefined();
+    expect(entries[0].response.content.size).toBe(70000);
+  });
+
   it('builds one entry for a simple GET with a JSON response body', () => {
     const rows: EventRow[] = [
       makeRow('network-request', 1000, {
