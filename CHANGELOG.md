@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.145.0 — 2026-10-21
+
+### Features
+
+- Debug log filters and rows (refs #315) (1b2ad4c)
+
 ## v0.144.0 — 2026-10-21
 
 ### Features
