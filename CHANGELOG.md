@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.144.0 — 2026-10-21
+
+### Features
+
+- Jira ticket view and bug form (refs #314) (cabd8b0)
+
 ## v0.143.0 — 2026-10-21
 
 ### Features
