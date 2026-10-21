@@ -1,8 +1,13 @@
 /* global testerBrowser */
 import { escHtml } from './utils.js';
 import { populateSessionPickers } from './session-picker.js';
+import { renderEmptyState } from './empty-state.js';
 
 let cachedSessions = [];
+// #313: Pause is stop + remember the pair, Resume starts it again — there is
+// no pause channel in the main process, and mirroring logic is out of scope.
+/** @type {Map<string, {leaderId: string, followerId: string, mirrorNavigation: boolean}>} */
+const pausedPairs = new Map();
 
 export function initFollow() {
   const panel = document.getElementById('followPanel');
@@ -21,10 +26,10 @@ export function initFollow() {
         <input type="checkbox" id="followMirrorNav" />
         Mirror navigation
       </label>
-      <button class="diff-run-btn" id="followStartBtn">Start Follow Along</button>
-      <button class="diff-har-btn" id="followClearLogBtn">Clear log</button>
+      <span class="follow-spacer"></span>
+      <button class="net-chip" id="followClearLogBtn" type="button">Clear log</button>
+      <button class="follow-strong" id="followStartBtn" type="button">Start following</button>
     </div>
-    <div class="follow-hint">Pick a leader and a follower session, then Start. Clicks and field input on the leader are mirrored live onto the follower via its equivalent element — not raw coordinates. "Mirror navigation" also sends the follower to whatever page the leader navigates to (link clicks, redirecting form submits, address-bar changes); leave it off to mirror only in-page interactions.</div>
     <div class="follow-pairs" id="followPairs"></div>
     <div class="follow-log" id="followLog"></div>`;
 
@@ -66,6 +71,7 @@ async function startFollow() {
 
   const result = await testerBrowser.followAlong.start(leaderId, followerId, mirrorNavigation);
   if (!result.ok) { setLog(result.error || 'Could not start Follow Along.', 'err'); return; }
+  pausedPairs.delete(leaderId);
 
   // #258: leader and follower sharing a partition (e.g. a middle-clicked tab)
   // share cookies/storage too — mirrored logins and form posts then act on
@@ -82,7 +88,25 @@ async function startFollow() {
 }
 
 async function stopFollow(leaderId) {
+  pausedPairs.delete(leaderId);
   await testerBrowser.followAlong.stop(leaderId);
+  await refreshFollowPanel();
+}
+
+async function pauseFollow(leaderId) {
+  const pairing = (await testerBrowser.followAlong.list()).find(p => p.leaderId === leaderId);
+  if (!pairing) return;
+  pausedPairs.set(leaderId, { leaderId, followerId: pairing.followerId, mirrorNavigation: !!pairing.mirrorNavigation });
+  await testerBrowser.followAlong.stop(leaderId);
+  await refreshFollowPanel();
+}
+
+async function resumeFollow(leaderId) {
+  const p = pausedPairs.get(leaderId);
+  if (!p) return;
+  const result = await testerBrowser.followAlong.start(p.leaderId, p.followerId, p.mirrorNavigation);
+  if (!result.ok) { setLog(result.error || 'Could not resume Follow Along.', 'err'); return; }
+  pausedPairs.delete(leaderId);
   await refreshFollowPanel();
 }
 
@@ -97,57 +121,95 @@ async function refreshFollowPanel() {
   const sessions = cachedSessions.length ? cachedSessions : await testerBrowser.sessions.list();
   const nameOf = (id) => sessions.find(s => s.id === id)?.name || '(closed session)';
 
-  if (pairings.length === 0) {
-    pairsEl.innerHTML = '<div class="follow-hint">No active Follow Along links.</div>';
+  if (pairings.length === 0 && pausedPairs.size === 0) {
+    pairsEl.replaceChildren(renderEmptyState({
+      icon: 'users', tone: 'accent', title: 'Follow along',
+      text: "Mirror another tab's navigation in this one.",
+      actionLabel: 'Pair with a tab', onAction: startFollow,
+    }));
     return;
   }
 
-  pairsEl.innerHTML = pairings.map(p => `
+  const live = pairings.map(p => `
     <div class="follow-pair" data-leader="${p.leaderId}">
-      <span class="follow-pair-desc"><b>${escHtml(nameOf(p.leaderId))}</b> &rarr; <b>${escHtml(nameOf(p.followerId))}</b></span>
+      <span class="follow-live"><span class="follow-live-dot" aria-hidden="true"></span>Live</span>
+      <span class="follow-chip">${escHtml(nameOf(p.leaderId))} leads</span>
+      <i class="icon-arrow-right follow-arrow" aria-hidden="true"></i>
+      <span class="follow-chip">${escHtml(nameOf(p.followerId))} follows</span>
+      <span class="follow-sub">Mirroring ${p.mirrorNavigation ? 'navigation, ' : ''}clicks and input</span>
+      <span class="follow-spacer"></span>
       <label class="follow-nav-toggle">
         <input type="checkbox" class="follow-nav-check" ${p.mirrorNavigation ? 'checked' : ''} />
         Mirror navigation
       </label>
-      <button class="follow-stop-btn">Stop</button>
-    </div>`).join('');
+      <button class="net-chip follow-pause-btn" type="button"><i class="icon-pause" aria-hidden="true"></i>Pause</button>
+      <button class="follow-strong follow-stop-btn" type="button">Stop following</button>
+    </div>`);
+  const paused = [...pausedPairs.values()].map(p => `
+    <div class="follow-pair paused" data-leader="${p.leaderId}">
+      <span class="follow-live paused">Paused</span>
+      <span class="follow-chip">${escHtml(nameOf(p.leaderId))} leads</span>
+      <i class="icon-arrow-right follow-arrow" aria-hidden="true"></i>
+      <span class="follow-chip">${escHtml(nameOf(p.followerId))} follows</span>
+      <span class="follow-spacer"></span>
+      <button class="net-chip follow-resume-btn" type="button"><i class="icon-play" aria-hidden="true"></i>Resume</button>
+      <button class="follow-strong follow-stop-btn" type="button">Stop following</button>
+    </div>`);
+  pairsEl.innerHTML = [...live, ...paused].join('');
 
   for (const row of pairsEl.querySelectorAll('.follow-pair')) {
     const leaderId = row.dataset.leader;
+    const isPaused = row.classList.contains('paused');
     /** @type {HTMLElement} */ (row.querySelector('.follow-stop-btn')).onclick = () => stopFollow(leaderId);
-    /** @type {HTMLElement} */ (row.querySelector('.follow-nav-check')).onchange = (e) => toggleMirrorNav(leaderId, /** @type {HTMLInputElement} */ (e.target).checked);
+    if (isPaused) {
+      /** @type {HTMLElement} */ (row.querySelector('.follow-resume-btn')).onclick = () => resumeFollow(leaderId);
+    } else {
+      /** @type {HTMLElement} */ (row.querySelector('.follow-nav-check')).onchange = (e) => toggleMirrorNav(leaderId, /** @type {HTMLInputElement} */ (e.target).checked);
+      /** @type {HTMLElement} */ (row.querySelector('.follow-pause-btn')).onclick = () => pauseFollow(leaderId);
+    }
   }
+}
+
+// One event row: time · icon · action · target (mono) · result on the right.
+function buildLogLine(kind, { icon, action, target, result, title }) {
+  const line = document.createElement('div');
+  line.className = 'follow-log-line ' + kind;
+  const cell = (cls, text) => { const c = document.createElement('span'); c.className = cls; c.textContent = text; return c; };
+  line.appendChild(cell('fl-time', new Date().toLocaleTimeString([], { hour12: false })));
+  const tile = document.createElement('span');
+  tile.className = 'fl-icon';
+  tile.innerHTML = `<i class="icon-${icon}" aria-hidden="true"></i>`;
+  line.appendChild(tile);
+  line.appendChild(cell('fl-action', action));
+  line.appendChild(cell('fl-target', target));
+  line.appendChild(cell('fl-result', result));
+  if (title) line.title = title;
+  return line;
 }
 
 function setLog(text, kind = 'ok') {
   const log = document.getElementById('followLog');
   if (!log) return;
-  log.innerHTML = `<div class="follow-log-line ${kind}">${escHtml(text)}</div>`;
+  log.replaceChildren(buildLogLine(kind, { icon: kind === 'ok' ? 'info' : 'triangle-alert', action: kind === 'ok' ? 'Info' : 'Warning', target: text, result: '', title: '' }));
 }
 
-// Long URLs would otherwise wrap the whole log line and push older lines
-// out of view; the full URL is still visible via a tooltip on the line
-// itself if truncated.
-function truncateUrl(url, max = 60) {
-  return url.length > max ? url.slice(0, max - 1) + '…' : url;
-}
+const STEP_LABELS = { click: ['mouse-pointer-click', 'Click'], check: ['square-check', 'Check'], fill: ['keyboard', 'Fill'],
+  navigate: ['globe', 'Navigate'], 'navigate-in-page': ['globe', 'Navigate (in page)'] };
 
 function logStepResult(step, result) {
   const log = document.getElementById('followLog');
   if (!log) return;
-  const desc = step.type === 'click' ? `click ${step.selector}`
-    : step.type === 'check' ? `${step.value ? 'check' : 'uncheck'} ${step.selector}`
-    : step.type === 'fill' ? (step.sensitive ? `fill ${step.selector} (hidden — not relayed)` : `fill ${step.selector}`)
-    : step.type === 'navigate' ? `navigate to ${truncateUrl(step.url || '')}`
-    : step.type === 'navigate-in-page' ? `in-page navigate to ${truncateUrl(step.url || '')}`
-    : step.type;
-  const line = document.createElement('div');
-  line.className = 'follow-log-line ' + (result.success ? 'ok' : 'err');
-  line.textContent = result.success
-    ? `✓ mirrored ${desc}`
-    : `✗ failed to mirror ${desc}: ${result.error || 'unknown error'}`;
-  if (step.url) line.title = step.url;
+  const [icon, label] = STEP_LABELS[step.type] || ['circle', step.type];
+  const action = step.type === 'check' ? (step.value ? 'Check' : 'Uncheck') : label;
+  const target = step.type === 'navigate' || step.type === 'navigate-in-page' ? (step.url || '')
+    : step.type === 'fill' && step.sensitive ? `${step.selector} (hidden \u2014 not relayed)`
+    : (step.selector || step.url || '');
+  const failMsg = result.error ? (/not found/i.test(result.error) ? 'Element not found' : result.error) : 'unknown error';
+  const line = buildLogLine(result.success ? 'ok' : 'err', {
+    icon, action, target,
+    result: result.success ? '\u2713 Mirrored' : `\u26a0 ${failMsg}`,
+    title: step.url || result.error || '',
+  });
   log.prepend(line);
   while (log.children.length > 50) log.removeChild(log.lastChild);
 }
-

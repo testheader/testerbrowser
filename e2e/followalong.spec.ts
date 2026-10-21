@@ -19,6 +19,12 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
+test('with no pairing the Follow tab shows the shared empty state (#313)', async () => {
+  await window.click('#consoleTabFollow');
+  await expect(window.locator('#followPairs .empty-state-title')).toHaveText('Follow along');
+  await expect(window.locator('#followPairs .empty-state-btn')).toHaveText('Pair with a tab');
+});
+
 test('leader interactions are mirrored onto the follower in near real time', async () => {
   const urlPath = '/record/target.html';
 
@@ -70,7 +76,7 @@ test('leader interactions are mirrored onto the follower in near real time', asy
 
   await leaderTab.evaluate(() => (document.querySelector('[data-testid="rp-btn"]') as HTMLElement).click());
   await expect(followerTab.locator('#rp-result')).toHaveText('Clicked: Ada', { timeout: 20_000 });
-  await expect(window.locator('#followLog')).toContainText('mirrored', { timeout: 5_000 });
+  await expect(window.locator('#followLog')).toContainText(/mirrored/i, { timeout: 5_000 });
 
   // Regression test for #126: upsertFill (the leader-side recording script)
   // mutates the same buffered 'fill' step in place as each keystroke lands,
@@ -90,7 +96,7 @@ test('leader interactions are mirrored onto the follower in near real time', asy
   await expect(window.locator('#followLog .follow-log-line')).toHaveCount(0);
 
   await leaderTab.evaluate(() => (document.querySelector('[data-testid="rp-btn"]') as HTMLElement).click());
-  await expect(window.locator('#followLog')).toContainText('mirrored', { timeout: 20_000 });
+  await expect(window.locator('#followLog')).toContainText(/mirrored/i, { timeout: 20_000 });
 
   // #242: a checkbox interaction relays as a real checked-state change
   // ('check' step type, dispatched the same way the fill/click cases
@@ -102,6 +108,18 @@ test('leader interactions are mirrored onto the follower in near real time', asy
     el.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await expect(followerTab.locator('[data-testid="rp-checkbox"]')).toBeChecked({ timeout: 20_000 });
+});
+
+test('Pause stops a live pairing and Resume restores it (#313)', async () => {
+  await window.click('#consoleTabFollow');
+  const live = window.locator('.follow-pair:not(.paused)');
+  await expect(live).toHaveCount(1);
+  await expect(live.locator('.follow-live')).toHaveText('Live');
+  await live.locator('.follow-pause-btn').click();
+  await expect(window.locator('.follow-pair.paused .follow-live')).toHaveText('Paused');
+  await expect(live).toHaveCount(0);
+  await window.locator('.follow-pair.paused .follow-resume-btn').click();
+  await expect(live).toHaveCount(1);
 });
 
 test('mirrored navigation logs the destination URL, and stops logging once disabled (#186)', async () => {
