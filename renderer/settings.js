@@ -245,7 +245,7 @@ export function initSettings() {
     applyTheme(/** @type {HTMLInputElement} */ (e.target).value);
   });
 
-  // #285: each console-tab toggle in the Features pane re-derives the full
+  // #285: each console-tab toggle in the Tools pane re-derives the full
   // disabledConsoleTabs list from every checkbox's current state, rather
   // than tracking a diff, so it can't drift out of sync with the DOM.
   for (const el of document.querySelectorAll('[data-tab-toggle]')) {

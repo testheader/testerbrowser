@@ -125,7 +125,7 @@ export class FollowAlongManager {
       return { ok: false, error: 'One of these sessions is already part of a Follow Along link.' };
     }
     if (this.recording.isRecording(leaderId)) {
-      return { ok: false, error: 'That session is already being recorded (Tests tab) — stop that first.' };
+      return { ok: false, error: 'That session is already being recorded (Record tab) — stop that first.' };
     }
 
     await this.recording.startRecording(leaderId);

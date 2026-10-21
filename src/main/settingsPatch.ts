@@ -26,7 +26,7 @@ export interface AppSettings {
 
 const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
 
-// Console tabs a user can hide via Settings → Features. Console and Network
+// Console tabs a user can hide via Settings → Tools. Console and Network
 // show the always-on recorded timeline (CDP capture runs regardless of which
 // panel is open, per the app's architecture), so they're excluded here and
 // can never end up in disabledConsoleTabs.

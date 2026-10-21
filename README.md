@@ -13,61 +13,65 @@ Each tab is its own browser session with separate cookies, localStorage, and cac
 
 Tabs opened via middle-click or `window.open` automatically inherit the parent session's colour, so related tabs stay visually grouped.
 
+### The tool panel
+The panel at the bottom of the window is a single tab strip, grouped by what you are doing. The chevron at its right edge collapses it to just the strip; clicking any tab expands it again.
+
+| Group | Tabs |
+|-------|------|
+| Inspect | Network · Console · Storage · A11y · Security |
+| Compare | Network diff · UI diff |
+| Simulate | Mock · Resilience · Spoof |
+| Automate | Record · Follow |
+| Connect | Jira · Debug log |
+
+Tabs can be hidden in **Settings → Tools** (Network and Console are always shown). Console, A11y and Security show a count badge when there is something to look at.
+
 ### Always-on recording
 Network requests, console output, and JS errors are captured the moment a session is created — no need to open DevTools first and miss the early requests.
 
-The **Console tab** at the bottom of the window shows a live, merged timeline for the active session. Filter by event type with one click:
+The **Network** tab is a table with one row per request (status, method, URL, type, time, size). A single toolbar row has a search box (URL, headers and body), a method filter, an **Errors** chip (failed requests and 4xx/5xx), **Mock** and **Resilience** chips for intercepted requests, a minimum-duration filter and **HAR** export. Selecting a row opens a detail pane with Headers, Response, Timing and Cookies, plus **Replay**, **Mock**, **Resilience** and **Copy as cURL**.
 
-| Pill | What it shows |
-|------|---------------|
-| Req  | Outgoing requests |
-| Res  | Responses (status, timing) |
-| Err  | Network errors |
-| JS   | `console.*` calls from the page |
-| Log  | Browser log messages |
-
-Export any session's traffic as a **HAR file** with the export button.
+The **Console** tab shows `console.*` calls, JS exceptions and browser log messages with an All / Errors / Warnings / Info / Debug level filter. Export any session's traffic as a **HAR file** from the Network tab.
 
 ### Storage inspector
-The **Storage tab** (next to Console) shows the active session's cookies and localStorage in a table — no DevTools, no extensions needed. Cookies are labelled 1st-party vs 3rd-party. Refresh on demand or on every session switch.
+The **Storage** tab lists the active session's cookies, localStorage, sessionStorage, IndexedDB and saved site permissions, with a section nav on the left. Cookies are labelled 1st-party vs 3rd-party and can be added, edited and deleted; localStorage is editable too.
 
 ### Security indicators
-The **Security tab** flags issues in captured traffic automatically:
+The **Security** tab scans captured traffic for:
 - Missing security headers
 - Insecure cookies
-- Mixed content
+- Plain-HTTP and mixed content
 - CORS problems
 - Authentication/session issues
 - Exposed sensitive data in API responses
 
+Findings are listed by severity; selecting one shows why it matters, the evidence, and **Open request** / **Report to Jira** actions.
+
 ### Network mocking
-The **Mock tab** lets you define rules to intercept and replace network requests in real time:
-- URL glob pattern, HTTP method, response status, and body
-- Add/remove/toggle rules without restarting
-- Active rules shown in the timeline with a **mocked** badge
-- Rules persist per session
+The **Mock** tab lets you define rules to intercept and replace network requests in real time:
+- URL glob pattern, HTTP method, response status, delay and body, set in an inline form
+- A rules table with live hit counts; toggle, reorder, edit and delete without restarting
+- Active rules shown in the timeline with a **Mock** badge
+- Rules persist per session and can be exported/imported as JSON
 
 ### Resilience testing
-The **Resilience tab** injects failure conditions to test how the app handles them:
-- API failures, 500 errors, timeouts, slow responses
-- Offline mode, missing assets, corrupted responses
-- Latency injection, random failure rate
-- Manually or randomly triggered
+The **Resilience** tab injects failure conditions to test how the app handles them. Pick a failure type — 500 error, gateway timeout, hang, offline, 404, corrupt body, latency or random 500 — then a URL pattern, probability and delay. The rules table shows live hit counts. Per-tab network and CPU throttling live here too.
 
 ### Accessibility tree
-The **A11y tab** fetches the full accessibility tree for the active page using `Accessibility.getFullAXTree` via CDP:
+The **A11y** tab fetches the full accessibility tree for the active page using `Accessibility.getFullAXTree` via CDP:
 - Collapsible node tree showing role, name, description, and states
-- Refreshes on navigation
+- A detail pane for the selected node, and a count badge for issues found by the background axe-core run
 
 ### Visual regression
-The **VR tab** captures baseline screenshots and diffs them against current state using `Page.captureScreenshot` + pixel matching:
-- Before / after / diff overlay shown side by side
-- Pixel-difference count and percentage
+The **UI diff** tab captures baseline screenshots and diffs them against the current state using `Page.captureScreenshot` + pixel matching:
+- Baseline / Current / Diff / Side by side / Overlay views
+- Pixel-difference count and percentage, with ignore regions
 
 ### Environment diffing
-The **Diff tab** lets you pick two sessions and compare their network timelines side by side:
-- Colour-coded rows: same / only-in-A / only-in-B / different-response
-- HAR export of the diff
+The **Network diff** tab lets you pick two sessions and compare their network timelines:
+- Result chips with counts: Different / Only in A / Only in B / Same
+- A table with status and time for both sides, plus a detail pane per row
+- Export of the diff
 
 ### Test data generators
 Right-click any form field → **Fill with test data** to inject generated values:
@@ -75,17 +79,21 @@ Right-click any form field → **Fill with test data** to inject generated value
 - Custom template strings (e.g. `{firstName} {lastName}`)
 
 ### Time & space travel
-The **Spoof tab** overrides what the browser reports to the page, without changing your system:
-- Date and time
-- Geolocation (GPS coordinates, country, city, timezone, language)
+The **Spoof** tab overrides what the browser reports to the page, without changing your system, in three cards — Device, Location & time, and Advanced:
+- Viewport/device, user agent, touch
+- Date and time (clock offset), timezone, locale
+- Geolocation (GPS coordinates, country, city)
+- CSS media preferences
 
-### Resilience & Jira integration
-The **Jira tab** connects to your Jira instance so the ticket under test is always visible:
-- Customisable field layout (not all boards are the same)
-- Quick-add a bug to the current ticket with session state snippets attached
+**Apply and reload** applies the overrides and reloads the page so it picks them up.
+
+### Jira integration
+The **Jira** tab connects to your Jira instance so the ticket under test is always visible:
+- Load a ticket by key to see its status, fields and acceptance criteria
+- Report a bug from the right-hand form with a screenshot, HAR, console errors and recorded steps attached
 
 ### Record / Playback
-The **Tests tab** provides a browser-native test recorder — no AI, no external tools:
+The **Record** tab provides a browser-native test recorder — no AI, no external tools:
 - Record clicks, navigation, form input, and keyboard interactions as structured steps
 - Robust selector generation (prefers `data-testid`, then stable IDs, then semantic attributes)
 - Condition-based playback waits (element visible/enabled, URL change, network complete)
@@ -93,7 +101,14 @@ The **Tests tab** provides a browser-native test recorder — no AI, no external
 - Run a test 10/50/100/N times to detect flaky behaviour
 - Aggregate results: pass rate, per-step failure counts, console and network diagnostics
 - Per-run failure replay
+- A live step list while recording, with **Add assertion** and **Stop and save** in the toolbar
 - Sensitive credentials stored via a safe mechanism — not as plain text
+
+### Follow along
+The **Follow** tab mirrors one tab's clicks, typing and (optionally) navigation onto another, live, so you can drive two sessions at once. Pause and resume a pairing, or stop following.
+
+### Debug log
+The **Debug log** tab shows TesterBrowser's own internal logs (turn on **Debug mode** in Settings): filter by level and source, search, and copy.
 
 ### Tab management
 - Create, close, pin, rename, clone, and drag-reorder tabs
@@ -103,14 +118,16 @@ The **Tests tab** provides a browser-native test recorder — no AI, no external
 - Per-session scratch notes
 
 ### Bookmarks & Speed Dial
-Bookmark the current page with `Ctrl+D`. Toggle the bookmarks bar with `Ctrl+Shift+B` or from the **View** menu.
+Bookmark the current page with `Ctrl+D`. Toggle the bookmarks bar with `Ctrl+Shift+B` or from the **⋯** menu next to the address bar, which also holds DevTools and Settings.
 
-The **Speed Dial** new-tab page gives you editable quick-access tiles for your most-used URLs.
+The **Speed Dial** new-tab page has a search box (using your default search engine) and editable quick-access tiles for your most-used URLs.
 
 ### Light & dark mode
-Toggle between light and dark themes at any time with the ☀ button in the title bar, or set your preference in **Settings**.
+Toggle between light and dark themes at any time with the theme button in the title bar, or set your preference in **Settings → General**.
 
 ### Keyboard shortcuts
+
+The same list is in **Settings → Shortcuts**.
 
 | Keys | Action |
 |------|--------|

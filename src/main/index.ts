@@ -224,7 +224,7 @@ function isVersionNewer(a: string, b: string): boolean {
 //   behaviour.
 // - disabledConsoleTabs
 //   #285: console-panel tabs the user has hidden from the bottom bar via
-//   Settings → Features. Console and Network stay on regardless — the
+//   Settings → Tools. Console and Network stay on regardless — the
 //   underlying recording they show runs in the background anyway — so
 //   TOGGLEABLE_CONSOLE_TABS (settingsPatch.ts) excludes them.
 // - idleInstallMinutes

@@ -25,7 +25,8 @@ features:
 src/main/          Main process: window, IPC handlers, session manager, recorder
 src/preload/       contextBridge → window.testerBrowser
 renderer/*.js      Renderer, split into ES modules (main.js is the entry point)
-renderer/index.html  Shell markup;  renderer/style.css  all styling
+renderer/index.html  Shell markup;  renderer/style.css  all styling (theme tokens: --tb-*)
+renderer/newtab.*    Speed Dial new-tab page: its own html/css/js and a strict CSP (no 'unsafe-inline')
 test-pages/        Static HTML fixtures for exercising the browser itself
 e2e/               Playwright specs + fixtures/server.ts (HTTP server for tests)
 ```

@@ -68,7 +68,10 @@ src/main/logTail.ts        Pure helpers behind the crash log's/bug report's "App
 src/preload/index.ts       contextBridge → window.testerBrowser (full API surface); exports its
                            type as TesterBrowserApi, which types/renderer-globals.d.ts uses to
                            type the renderer's testerBrowser global
-renderer/index.html        HTML shell; renderer/style.css holds the styling
+renderer/index.html        HTML shell; renderer/style.css holds the styling and the --tb-* theme tokens
+renderer/newtab.{html,css,js}  Speed Dial new-tab page. Own CSP (script/style 'self', no 'unsafe-inline'); newtab.css
+                           copies the --tb-* token block (newtab-csp.test.ts keeps it in sync); newtab.js is
+                           not type-checked (talks to the globals src/preload/newtab.ts exposes)
 renderer/*.js              Renderer logic, split into ES modules (main.js is the entry point):
                            tabs, URL bar, find, bookmarks, downloads, timeline, storage, …
 test-pages/                Static HTML fixtures for testing TesterBrowser itself (cookies,
@@ -98,10 +101,11 @@ Renderer (contextIsolation: true, nodeIntegration: false)
   window.testerBrowser (contextBridge)
   Tab state: tabOrder[], mruStack[], tabFavicons{}, tabTitles{}, navState{}
   Console panel
-    Console tab  — timeline events, pill filter toggles (Req/Res/Err/JS/Log), HAR export
+    Network tab  — one table row per request, chips (Errors/Mock/Resilience), method + duration filters, HAR export
+    Console tab  — console/log/exception rows, All/Errors/Warnings/Info/Debug level filter
     Storage tab  — cookies, localStorage, sessionStorage, IndexedDB (read-only), client-filtered
                    in-memory once fetched, optional 2 s auto-refresh while the tab is visible
-  View dropdown  — toggle console panel visibility + bookmarks bar
+  "⋯" menu       — toggle console panel visibility + bookmarks bar, open DevTools / Settings
   pollTimeline() — 1 s interval, fetches events since lastTs
 ```
 
@@ -154,7 +158,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `layout:setConsoleHeight` | R→M | resize BrowserView; pass 0 to fully hide console |
 | `layout:setTopBarHeight` | R→M | resize BrowserView top offset |
 | `layout:setViewerVisible` | R→M | show/hide BrowserView (used by modals) |
-| `layout:beginPageOverlay` | R→M | snapshot + detach the view so a dropdown (app menu, View ▾) can float over the page; returns `{ dataUrl, bounds }` |
+| `layout:beginPageOverlay` | R→M | snapshot + detach the view so a dropdown (app menu, ⋯ menu) can float over the page; returns `{ dataUrl, bounds }` |
 | `layout:endPageOverlay` | R→M | reattach the view once the dropdown closes |
 | `download:list/open/reveal/cancel/clear` | R→M | download management |
 | `permission:respond` | R→M | grant/deny browser permission request — persisted (`permissions.json`, keyed by partition+origin+permission), so a remembered grant *or* denial answers a later request without re-prompting. Exception: `openExternal` is never persisted — each request prompts with the target URL, and schemes other than mailto:/tel:/https: are denied without a prompt |
@@ -253,21 +257,28 @@ carry extra data) and stay as their own branches in both
 
 The console panel sits fixed at the bottom of the window. Height is drag-resizable. `layout:setConsoleHeight(0)` tells the main process to give the BrowserView the full height (console hidden).
 
-**Collapse** — the chevron at the right of the tab strip (`#consolePanelMinBtn`) collapses the panel to just the 39px tab strip (`layout.js`'s `applyMinimized()`, persisted in localStorage); clicking any tab while collapsed expands it. There is no panel-wide help button — Spoof and Network diff keep their own in-panel `?` popovers via `wireHelpPopover()` in `renderer/utils.js`.
+**Tab strip** — 14 tabs in five groups (Inspect: Network, Console, Storage, A11y, Security · Compare: Network diff `#consoleTabDiff`, UI diff `#consoleTabVR` · Simulate: Mock, Resilience, Spoof · Automate: Record `#consoleTabTests`, Follow · Connect: Jira, Debug log). Tab IDs are unchanged from before the redesign; labels are sentence case. Which tabs show is set in Settings → Tools (`consoleTabToggle-*`; Network and Console are locked on). Console, A11y and Security carry a count badge (`tab-badges.js`).
 
-**Console tab** — streams timeline events polled every 1 s via `recording:timeline`. Five pill toggle buttons filter by event kind (Req/Res/Err/JS/Log). Click a pill to toggle. HAR export and clear buttons on the right.
+**Collapse** — the chevron at the right of the tab strip (`#consolePanelMinBtn`) collapses the panel to just the 39px tab strip (`layout.js`'s `applyMinimized()`, persisted in localStorage); clicking any tab while collapsed expands it. There is no panel-wide help button and panels carry no in-panel explanation text; an empty panel uses the shared `renderEmptyState()` (`empty-state.js`) with one call to action.
+
+**Rule tables and forms** — Mock, Resilience and Record follow one pattern: a toolbar with a primary button, a hidden inline form (`#mockForm`, `#resForm`) that the button or a "⇒" from a request opens, and a rules table whose rows dim to 55% when disabled.
+
+**Network tab** — streams timeline events polled every 1 s via `recording:timeline`, merged into one table row per request (`network-rows.js`). Chips (Errors, Mock, Resilience) are independent toggles combined with AND; a search box matches URL, headers and body; a method filter and minimum-duration filter narrow further. Selecting a row opens the detail pane (`detail-panel.js`: Headers / Response / Timing / Cookies). HAR export and clear buttons sit on the right of the toolbar.
+
+**Console tab** — the same polled events filtered to console/log/exception rows, with an All / Errors / Warnings / Info / Debug segmented level filter, a search box and a clear button.
 
 **Storage tab** — fetches cookies, localStorage, sessionStorage, IndexedDB and Permissions once per real refresh trigger (refresh button, tab switch, session switch, or an auto-refresh tick), then keeps that snapshot in memory: the filter input re-renders from it with no further IPC calls. Cookies have a full add/edit form (domain/name/value/path/SameSite/expiry/Secure/HttpOnly); an edit calls `setCookie` first and only removes the old cookie if its identity (name/domain/path) changed, so a failed edit never loses the original. localStorage is editable the same way it always was; sessionStorage and IndexedDB (database → object store → records, expandable) are read-only diagnostic views, reusing `snapshotScripts.ts`'s IndexedDB collector. Permissions (#276) lists every grant/denial persisted for the active tab's partition with a Revoke button per entry. An "Auto-refresh" toggle (default off) polls all five sections every 2 s, but only while the Storage tab is active and the console panel is visible. `getLocalStorage`/`getSessionStorage`/`getIndexedDB` all run `executeJavaScript` in the active page — empty for pages with no content, and scoped to whatever page is currently loaded (see Gotchas).
 
 ---
 
-## Renderer: View dropdown
+## Renderer: ⋯ menu
 
-"View ▾" button in the toolbar (right of DevTools). Opens a dropdown with:
+The "⋯" button at the right of the address bar (`#viewBtn`, `view-dropdown.js`) opens a dropdown with:
 - **Console panel** — toggles `consolePanel.style.display` and calls `layout:setConsoleHeight`
 - **Bookmarks bar** — same as `Ctrl+Shift+B`
+- **DevTools** and **Settings**
 
-Dropdown closes on any outside click.
+The dropdown closes on any outside click.
 
 ---
 
