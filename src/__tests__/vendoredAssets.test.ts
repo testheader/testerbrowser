@@ -51,11 +51,11 @@ describe('vendored Lucide + JetBrains Mono (#292)', () => {
     expect(csp['connect-src']).toBe("'none'");
   });
 
-  it('newtab.html gains font-src \'self\' with its other directives unchanged', () => {
+  it('newtab.html allows same-origin fonts, and (#317) no longer needs unsafe-inline for script or style', () => {
     const csp = cspOf(read('newtab.html'));
     expect(csp['font-src']).toBe("'self'");
-    expect(csp['script-src']).toBe("'unsafe-inline'");
-    expect(csp['style-src']).toBe("'unsafe-inline'");
+    expect(csp['script-src']).toBe("'self'");
+    expect(csp['style-src']).toBe("'self'");
     expect(csp['connect-src']).toBe("'none'");
   });
 });

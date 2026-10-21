@@ -1,3 +1,6 @@
+// @ts-nocheck — standalone script for the bundled new-tab page: it runs against the globals its own
+// preload (src/preload/newtab.ts) exposes, not the app shell's testerBrowser API, and was never type-checked
+// while it lived inline in newtab.html.
     const DEFAULT_TILES = [
       { id: '1', url: 'https://www.google.com',        title: 'Google' },
       { id: '2', url: 'https://github.com',             title: 'GitHub' },
