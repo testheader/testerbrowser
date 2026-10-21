@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.2 — 2026-10-21
+
+### Other
+
+- update README, CLAUDE.md and in-app copy for the redesign (refs #318) (cd645ac)
+
 ## v0.146.1 — 2026-10-21
 
 ### Features
