@@ -1,9 +1,10 @@
 /* global testerBrowser */
-import { escHtml } from './utils.js';
+import { escHtml, formatAgo } from './utils.js';
 import { getActiveId, refreshTabs } from './tabs.js';
 
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { pollWhileVisible } from './poll.js';
+import { renderEmptyState } from './empty-state.js';
 
 /** @typedef {import('../src/main/resilienceManager').ResilienceType} ResilienceType */
 
@@ -27,12 +28,9 @@ export function openResilienceFromRequest(method, url, requestHeaders, requestBo
   if (!urlInput) return;
   urlInput.value = url || '*';
 
-  const typeSel = /** @type {HTMLSelectElement} */ (document.getElementById('resType'));
-  typeSel.value = 'error500';
-  document.getElementById('resTypeDesc').textContent = TYPES[0].desc;
-  document.getElementById('resLatencyField').classList.add('res-hidden');
-  document.getElementById('resReleaseField').classList.add('res-hidden');
+  setResType('error500');
   /** @type {HTMLInputElement} */ (document.getElementById('resProb')).value = '100';
+  setResFormOpen(true);
 
   capturedMethod         = method || null;
   capturedRequestHeaders = requestHeaders || null;
@@ -62,16 +60,41 @@ function updateMethodChip() {
 }
 
 const TYPES = [
-  { value: 'error500',  label: '500 Error',            desc: 'Return HTTP 500 Internal Server Error' },
-  { value: 'timeout',   label: 'Immediate 504',         desc: 'Return HTTP 504 Gateway Timeout immediately' },
-  { value: 'stall504',  label: 'Stall then 504',        desc: 'Wait, then return HTTP 504 Gateway Timeout' },
-  { value: 'hang',      label: 'Hang (no response)',    desc: 'Never respond — the page sees the request stay pending until it aborts client-side or navigates away' },
-  { value: 'offline',   label: 'Offline',               desc: 'Fail request as if network is disconnected' },
-  { value: 'missing',   label: '404 Missing',           desc: 'Return HTTP 404 Not Found' },
-  { value: 'corrupt',   label: 'Corrupt Response',      desc: 'Return 200 with garbled binary body' },
-  { value: 'latency',   label: 'Add Latency',           desc: 'Delay the request by the specified ms' },
-  { value: 'random500', label: 'Random 500 (% chance)', desc: 'Randomly return 500, use probability below' },
+  { value: 'error500',  label: '500 error',       icon: 'server-crash',  desc: 'Returns HTTP 500 Internal Server Error.' },
+  { value: 'timeout',   label: 'Gateway timeout', icon: 'hourglass',     desc: 'Returns HTTP 504 Gateway Timeout immediately.' },
+  { value: 'stall504',  label: 'Stall then 504',  icon: 'timer-reset',   desc: 'Waits for the delay, then returns HTTP 504 Gateway Timeout.' },
+  { value: 'hang',      label: 'Hang',            icon: 'pause',         desc: 'Never responds — the request stays pending until the page aborts it or navigates away.' },
+  { value: 'offline',   label: 'Offline',         icon: 'wifi-off',      desc: 'Fails the request as if the network were disconnected.' },
+  { value: 'missing',   label: '404',             icon: 'file-x',        desc: 'Returns HTTP 404 Not Found.' },
+  { value: 'corrupt',   label: 'Corrupt body',    icon: 'file-warning',  desc: 'Returns 200 with a garbled binary body.' },
+  { value: 'latency',   label: 'Latency',         icon: 'timer',         desc: 'Delays the request by the given milliseconds, then lets it through.' },
+  { value: 'random500', label: 'Random 500',      icon: 'dices',         desc: 'Returns HTTP 500 on a random share of requests — set the probability.' },
 ];
+
+// #311: the failure type is picked from a row of chips; #resType (a hidden
+// input) carries the current value so the rest of the form reads it as before.
+function setResType(type) {
+  const t = TYPES.find(x => x.value === type) || TYPES[0];
+  const input = /** @type {HTMLInputElement} */ (document.getElementById('resType'));
+  if (!input) return;
+  input.value = t.value;
+  document.querySelectorAll('#resTypeChips .res-type-chip').forEach(c => {
+    const on = /** @type {HTMLElement} */ (c).dataset.type === t.value;
+    c.classList.toggle('active', on);
+    c.setAttribute('aria-pressed', String(on));
+  });
+  document.getElementById('resTypeDesc').textContent = t.desc;
+  applyTypeFieldVisibility(t.value, document.getElementById('resLatencyField'),
+    /** @type {HTMLInputElement} */ (document.getElementById('resLatency')), document.getElementById('resLatencyLabel'),
+    document.getElementById('resReleaseField'));
+}
+
+// The add-rule form is inline and closed by default — Add rule opens it, as
+// does "Resilience" on a captured request; Cancel / Add rule close it again.
+function setResFormOpen(open) {
+  const form = document.getElementById('resForm');
+  if (form) form.hidden = !open;
+}
 
 // Types that reuse the "Delay ms" field (rule.latencyMs) — 'latency' delays
 // then lets the request through, 'stall504' delays then fulfils 504; only
@@ -87,9 +110,10 @@ const LATENCY_DEFAULT_BY_TYPE = { latency: '2000', stall504: '30000' };
 // tester already customized.
 function applyTypeFieldVisibility(type, latencyField, latencyInput, latencyLabel, releaseField) {
   const usesLatency = LATENCY_FIELD_TYPES.includes(type);
-  latencyField.classList.toggle('res-hidden', !usesLatency);
+  latencyInput.disabled = !usesLatency;
+  latencyField.classList.toggle('res-field-off', !usesLatency);
   if (usesLatency) {
-    latencyLabel.textContent = type === 'stall504' ? 'Stall ms' : 'Delay ms';
+    latencyLabel.textContent = type === 'stall504' ? 'Stall (ms)' : 'Delay (ms)';
     const wanted = LATENCY_DEFAULT_BY_TYPE[type];
     const other  = type === 'stall504' ? LATENCY_DEFAULT_BY_TYPE.latency : LATENCY_DEFAULT_BY_TYPE.stall504;
     if (!latencyInput.value || latencyInput.value === other) latencyInput.value = wanted;
@@ -103,83 +127,103 @@ export function initResilience() {
   panel.dataset.initialized = '1';
 
   panel.innerHTML = `
+    <div class="res-toolbar">
+      <span class="res-sub" id="resSubtitle">Inject failures into this session</span>
+      <span class="res-spacer"></span>
+      <button class="res-primary" id="resNewRuleBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>Add rule</button>
+    </div>
     <div class="res-wrap">
-      <div class="res-col res-col-left">
-      <form class="res-form" id="resForm">
-        <div class="res-form-row">
-          <div class="res-field">
-            <label class="res-field-label" for="resType">Type</label>
-            <select class="res-select" id="resType">
-              ${TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
-            </select>
-          </div>
+      <form class="res-form" id="resForm" hidden>
+        <input type="hidden" id="resType" value="error500" />
+        <div class="res-type-chips" id="resTypeChips" role="group" aria-label="Failure type">
+          ${TYPES.map(t => `<button type="button" class="res-type-chip" data-type="${t.value}" aria-pressed="false"><i class="icon-${t.icon}" aria-hidden="true"></i>${t.label}</button>`).join('')}
+        </div>
+        <div class="res-type-desc" id="resTypeDesc">${TYPES[0].desc}</div>
+        <div class="res-form-grid">
           <div class="res-field res-field-url">
             <label class="res-field-label" for="resUrl">URL pattern</label>
             <input class="res-input res-url" id="resUrl" type="text" value="*" placeholder="URL pattern (* = all)" spellcheck="false" />
             <span class="res-method-chip res-hidden" id="resMethodChip">Only <span id="resMethodChipLabel"></span> &middot; <button type="button" class="res-method-chip-clear" id="resMethodChipClear">clear</button></span>
           </div>
           <div class="res-field">
-            <label class="res-field-label" for="resProb">Probability %</label>
+            <label class="res-field-label" for="resProb">Probability (%)</label>
             <input class="res-input res-prob" id="resProb" type="number" value="100" min="1" max="100" placeholder="%" title="Probability: 1–100%" />
           </div>
-          <div class="res-field res-latency-field res-hidden" id="resLatencyField">
-            <label class="res-field-label" for="resLatency" id="resLatencyLabel">Delay ms</label>
-            <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" />
+          <div class="res-field res-latency-field res-field-off" id="resLatencyField">
+            <label class="res-field-label" for="resLatency" id="resLatencyLabel">Delay (ms)</label>
+            <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" disabled />
           </div>
           <div class="res-field res-release-field res-hidden" id="resReleaseField">
             <label class="res-field-label" for="resRelease">Release after (s)</label>
             <input class="res-input res-release" id="resRelease" type="number" value="0" min="0" max="600" placeholder="0 = never" />
           </div>
-          <button class="res-btn res-add-btn" type="submit">Add rule</button>
+          <div class="res-form-actions">
+            <button class="res-text-btn" id="resCancelBtn" type="button">Cancel</button>
+            <button class="res-primary res-add-btn" type="submit">Add rule</button>
+          </div>
         </div>
-        <div class="res-type-desc" id="resTypeDesc">${TYPES[0].desc}</div>
       </form>
-      </div>
-      <div class="res-col res-col-right">
-        <div class="res-conditions">
-          <div class="res-conditions-title">Tab conditions</div>
-          <div class="res-conditions-row">
-            <div class="res-field">
-              <label class="res-field-label" for="resNetworkSelect">Network</label>
-              <select class="res-select" id="resNetworkSelect">
-                <option value="none">No throttling</option>
-                <option value="fast3g">Fast 3G</option>
-                <option value="slow3g">Slow 3G</option>
-                <option value="offline">Offline</option>
-                <option value="custom">Custom…</option>
-              </select>
-            </div>
-            <div class="res-field">
-              <label class="res-field-label" for="resCpuSelect">CPU</label>
-              <select class="res-select" id="resCpuSelect">
-                <option value="1">No throttling</option>
-                <option value="4">4&times; slowdown</option>
-                <option value="6">6&times; slowdown</option>
-              </select>
-            </div>
+      <div class="res-conditions">
+        <div class="res-conditions-title">Tab conditions</div>
+        <div class="res-conditions-row">
+          <div class="res-field">
+            <label class="res-field-label" for="resNetworkSelect">Network</label>
+            <select class="res-select" id="resNetworkSelect">
+              <option value="none">No throttling</option>
+              <option value="fast3g">Fast 3G</option>
+              <option value="slow3g">Slow 3G</option>
+              <option value="offline">Offline</option>
+              <option value="custom">Custom…</option>
+            </select>
           </div>
-          <div class="res-conditions-custom res-hidden" id="resCustomNetworkFields">
-            <div class="res-field">
-              <label class="res-field-label" for="resCustomLatency">Latency (ms)</label>
-              <input class="res-input" id="resCustomLatency" type="number" min="0" value="100" />
-            </div>
-            <div class="res-field">
-              <label class="res-field-label" for="resCustomDownload">Download (kbps)</label>
-              <input class="res-input" id="resCustomDownload" type="number" min="0" value="1000" />
-            </div>
-            <div class="res-field">
-              <label class="res-field-label" for="resCustomUpload">Upload (kbps)</label>
-              <input class="res-input" id="resCustomUpload" type="number" min="0" value="1000" />
-            </div>
-            <button class="res-btn" type="button" id="resCustomApplyBtn">Apply</button>
+          <div class="res-field">
+            <label class="res-field-label" for="resCpuSelect">CPU</label>
+            <select class="res-select" id="resCpuSelect">
+              <option value="1">No throttling</option>
+              <option value="4">4&times; slowdown</option>
+              <option value="6">6&times; slowdown</option>
+            </select>
           </div>
         </div>
-        <div class="res-rules-title">Active rules</div>
+        <div class="res-conditions-custom res-hidden" id="resCustomNetworkFields">
+          <div class="res-field">
+            <label class="res-field-label" for="resCustomLatency">Latency (ms)</label>
+            <input class="res-input" id="resCustomLatency" type="number" min="0" value="100" />
+          </div>
+          <div class="res-field">
+            <label class="res-field-label" for="resCustomDownload">Download (kbps)</label>
+            <input class="res-input" id="resCustomDownload" type="number" min="0" value="1000" />
+          </div>
+          <div class="res-field">
+            <label class="res-field-label" for="resCustomUpload">Upload (kbps)</label>
+            <input class="res-input" id="resCustomUpload" type="number" min="0" value="1000" />
+          </div>
+          <button class="res-btn" type="button" id="resCustomApplyBtn">Apply</button>
+        </div>
+      </div>
+      <div class="res-table" id="resTable">
+        <div class="res-head" id="resHead" role="row" hidden>
+          <span></span><span>Failure</span><span>Method</span><span>Pattern</span><span>Probability</span><span>Delay</span><span>Hits</span><span></span>
+        </div>
         <div class="res-rules" id="resRules">
-          <div class="res-empty" id="resEmpty">Add a rule to intercept requests.</div>
+          <div class="res-empty" id="resEmpty"></div>
         </div>
       </div>
     </div>`;
+
+  document.getElementById('resEmpty').replaceChildren(renderEmptyState({
+    icon: 'zap', tone: 'warn', title: 'Resilience',
+    text: 'Inject failures, hangs and latency into matching requests.',
+    actionLabel: 'Add rule', onAction: () => { setResFormOpen(true); document.getElementById('resUrl').focus(); },
+  }));
+  setResType('error500');
+  document.getElementById('resNewRuleBtn').addEventListener('click', () => {
+    setResFormOpen(true);
+    document.getElementById('resUrl').focus();
+  });
+  document.getElementById('resCancelBtn').addEventListener('click', () => setResFormOpen(false));
+  document.querySelectorAll('#resTypeChips .res-type-chip').forEach(c =>
+    c.addEventListener('click', () => setResType(/** @type {HTMLElement} */ (c).dataset.type)));
 
   const networkSelect = /** @type {HTMLSelectElement} */ (document.getElementById('resNetworkSelect'));
   const cpuSelect      = /** @type {HTMLSelectElement} */ (document.getElementById('resCpuSelect'));
@@ -191,14 +235,6 @@ export function initResilience() {
   });
   cpuSelect.addEventListener('change', applyConditionsFromForm);
   document.getElementById('resCustomApplyBtn').addEventListener('click', applyConditionsFromForm);
-
-  /** @type {HTMLSelectElement} */ (document.getElementById('resType')).addEventListener('change', (e) => {
-    applyTypeFieldVisibility(/** @type {HTMLInputElement} */ (e.target).value, document.getElementById('resLatencyField'),
-      /** @type {HTMLInputElement} */ (document.getElementById('resLatency')), document.getElementById('resLatencyLabel'),
-      document.getElementById('resReleaseField'));
-    const t = TYPES.find(t => t.value === /** @type {HTMLInputElement} */ (e.target).value);
-    if (t) document.getElementById('resTypeDesc').textContent = t.desc;
-  });
 
   // Editing the URL by hand after a "⇒ Resilience" prefill means the rule
   // is no longer scoped to the exact call it was captured from — the method
@@ -215,7 +251,7 @@ export function initResilience() {
   document.getElementById('resForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!getActiveId()) return;
-    const type = /** @type {ResilienceType} */ (/** @type {HTMLSelectElement} */ (document.getElementById('resType')).value);
+    const type = /** @type {ResilienceType} */ (/** @type {HTMLInputElement} */ (document.getElementById('resType')).value);
     /** @type {Omit<import('../src/main/resilienceManager').ResilienceRule, 'hitCount' | 'lastHitAt'>} */
     const rule = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -233,6 +269,7 @@ export function initResilience() {
     if (capturedRequestHeaders) rule.requestHeaders = capturedRequestHeaders;
     if (capturedRequestBody !== null) rule.requestBody = capturedRequestBody;
     await testerBrowser.resilience.addRule(getActiveId(), rule);
+    setResFormOpen(false);
 
     capturedMethod = null;
     capturedRequestHeaders = null;
@@ -312,6 +349,13 @@ function renderRules(rules) {
   const empty = document.getElementById('resEmpty');
   if (!container) return;
   container.querySelectorAll('.res-rule-row').forEach(r => r.remove());
+  const sub = document.getElementById('resSubtitle');
+  if (sub) {
+    const name = document.querySelector('.tab.active .tab-name')?.textContent;
+    sub.textContent = name ? `Inject failures into ${name}` : 'Inject failures into this session';
+  }
+  const head = document.getElementById('resHead');
+  if (head) head.hidden = rules.length === 0;
 
   if (rules.length === 0) {
     if (empty) empty.hidden = false;
@@ -325,30 +369,31 @@ function renderRules(rules) {
 }
 
 function buildRuleRow(rule) {
-  const typeLabel = TYPES.find(t => t.value === rule.type)?.label ?? rule.type;
+  const type = TYPES.find(t => t.value === rule.type);
+  const typeLabel = type?.label ?? rule.type;
   const probLabel = Math.round(rule.probability * 100) + '%';
-  const extra = LATENCY_FIELD_TYPES.includes(rule.type) ? ` ${rule.latencyMs}ms`
-    : rule.type === 'hang' && rule.releaseAfterMs ? ` (releases after ${Math.round(rule.releaseAfterMs / 1000)}s)`
-    : '';
+  const usesDelay = LATENCY_FIELD_TYPES.includes(rule.type);
+  const delayLabel = usesDelay ? `${rule.latencyMs} ms`
+    : rule.type === 'hang' && rule.releaseAfterMs ? `${Math.round(rule.releaseAfterMs / 1000)} s`
+    : '—';
   const row = document.createElement('div');
   row.className = `res-rule-row${rule.enabled ? '' : ' rule-row-disabled'}`;
   row.dataset.id = rule.id;
-  const methodBadge = rule.method && rule.method !== '*'
-    ? `<span class="res-badge res-method-badge">${escHtml(rule.method)}</span>` : '';
   row.innerHTML = `
     <label class="res-toggle" title="Enable/disable">
-      <input type="checkbox" class="res-enable" ${rule.enabled ? 'checked' : ''} />
-      <span class="res-toggle-label"></span>
+      <input type="checkbox" class="res-enable" aria-label="Enable rule" ${rule.enabled ? 'checked' : ''} />
     </label>
-    <span class="res-rule-type res-badge">${typeLabel}${extra}</span>
-    ${methodBadge}
+    <span class="res-rule-type"><i class="icon-${type?.icon ?? 'zap'}" aria-hidden="true"></i>${escHtml(typeLabel)}</span>
+    <span class="res-rule-method">${escHtml(rule.method && rule.method !== '*' ? rule.method : 'ANY')}</span>
     <span class="res-rule-url" title="${escHtml(rule.urlPattern)}">${escHtml(rule.urlPattern)}</span>
-    <span class="res-badge res-prob-badge">${probLabel}</span>
-    ${rule.enabled ? '' : '<span class="rule-inactive-badge" title="Kept, but not currently applied to any request">Inactive</span>'}
-    <span class="res-badge res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + new Date(rule.lastHitAt).toLocaleTimeString() : 'Not hit yet'}">Hits: ${rule.hitCount || 0}</span>
-    <button class="res-btn res-network-btn" title="View matching calls in the Network tab">⇒ Network</button>
-    <button class="res-btn res-edit-btn" title="Edit rule" aria-label="Edit rule">✎</button>
-    <button class="res-btn res-del-btn" title="Remove" aria-label="Remove rule">✕</button>`;
+    <span class="res-prob-badge">${probLabel}</span>
+    <span class="res-rule-delay">${delayLabel}</span>
+    <span class="res-hits-badge${rule.hitCount ? ' res-hits-active' : ''}" title="${rule.lastHitAt ? 'Last hit ' + escHtml(formatAgo(rule.lastHitAt)) : 'Not hit yet'}">${rule.hitCount || 0}</span>
+    <div class="res-rule-actions">
+      <button class="res-icon-btn res-network-btn" title="View matching calls in the Network tab" aria-label="View in Network"><i class="icon-arrow-right" aria-hidden="true"></i></button>
+      <button class="res-icon-btn res-edit-btn" title="Edit rule" aria-label="Edit rule"><i class="icon-pencil" aria-hidden="true"></i></button>
+      <button class="res-icon-btn res-del-btn" title="Remove" aria-label="Remove rule"><i class="icon-trash-2" aria-hidden="true"></i></button>
+    </div>`;
 
   row.querySelector('.res-enable').addEventListener('change', async (e) => {
     await testerBrowser.resilience.toggleRule(getActiveId(), rule.id, /** @type {HTMLInputElement} */ (e.target).checked);

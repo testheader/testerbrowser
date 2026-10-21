@@ -29,6 +29,12 @@ test.afterAll(async () => {
 // file — a pre-existing #236 test-hygiene gap, not a bug in this feature.
 // ── #265: per-tab network/CPU conditions ────────────────────────────────
 
+/** Opens the inline add-rule form if needed, then picks a failure-type chip. */
+async function pickResType(type: string): Promise<void> {
+  if (!(await window.locator('#resForm').isVisible())) await window.click('#resNewRuleBtn');
+  await window.click(`.res-type-chip[data-type="${type}"]`);
+}
+
 async function listSessions(): Promise<{ id: string }[]> {
   return window.evaluate(() => (window as unknown as {
     testerBrowser: { sessions: { list(): Promise<{ id: string }[]> } };
@@ -201,7 +207,7 @@ test('a 100% error500 rule actually fails a matching fetch, and hits increments'
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabResilience');
-  await window.selectOption('#resType', 'error500');
+  await pickResType('error500');
   await window.fill('#resUrl', '*/api/resilience-target');
   await window.fill('#resProb', '100');
   await window.click('.res-add-btn');
@@ -211,7 +217,7 @@ test('a 100% error500 rule actually fails a matching fetch, and hits increments'
   await tab.click('#apiFetchBtn');
   await expect(tab.locator('#apiOut')).toContainText('"status":500', { timeout: 5_000 });
 
-  await expect(window.locator('.res-hits-badge')).toHaveText('Hits: 1', { timeout: 3_000 });
+  await expect(window.locator('.res-hits-badge')).toHaveText('1', { timeout: 3_000 });
 
   // The RESILIENCE flag should show on the request row, not just the response
   // row — the request is recorded before Fetch.requestPaused tags it, so this
@@ -331,7 +337,7 @@ test('a broad-but-not-wildcard rule pattern under a heavy request burst, refresh
   // special-cases, but matches any URL containing "ad" as a substring —
   // this is the pattern shared by all three bug reports behind #210.
   await window.click('#consoleTabResilience');
-  await window.selectOption('#resType', 'error500');
+  await pickResType('error500');
   await window.fill('#resUrl', '*ad*');
   await window.fill('#resProb', '100');
   await window.click('.res-add-btn');
@@ -375,7 +381,7 @@ test('a rule with a quote/HTML-bearing URL pattern renders safely, and round-tri
   const evilPattern = '*/q?x="a"&y=<b>';
 
   await window.click('#consoleTabResilience');
-  await window.selectOption('#resType', 'error500');
+  await pickResType('error500');
   await window.fill('#resUrl', evilPattern);
   await window.fill('#resProb', '100');
   await window.click('.res-add-btn');
@@ -406,7 +412,7 @@ test('a "hang" rule leaves the request pending until the client aborts it (#236)
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabResilience');
-  await window.selectOption('#resType', 'hang');
+  await pickResType('hang');
   await window.fill('#resUrl', '*/api/hang-target');
   await window.fill('#resProb', '100');
   await window.click('.res-add-btn');
@@ -428,7 +434,7 @@ test('a "hang" rule with Release after (s) eventually fails the request on its o
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabResilience');
-  await window.selectOption('#resType', 'hang');
+  await pickResType('hang');
   await window.fill('#resUrl', '*/api/hang-release-target');
   await window.fill('#resProb', '100');
   await expect(window.locator('#resReleaseField')).toBeVisible();
@@ -455,7 +461,7 @@ test('a "stall504" rule waits latencyMs then returns 504 (#236)', async () => {
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabResilience');
-  await window.selectOption('#resType', 'stall504');
+  await pickResType('stall504');
   await window.fill('#resUrl', '*/api/stall-target');
   await window.fill('#resProb', '100');
   await window.fill('#resLatency', '1500');
@@ -474,12 +480,12 @@ test('fall-through: a rule whose roll misses lets a later matching rule fire on 
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabResilience');
-  await window.selectOption('#resType', 'random500');
+  await pickResType('random500');
   await window.fill('#resUrl', '*/api/fallthrough-target');
   await window.fill('#resProb', '1');
   await window.click('.res-add-btn');
 
-  await window.selectOption('#resType', 'error500');
+  await pickResType('error500');
   await window.fill('#resUrl', '*/api/fallthrough-target');
   await window.fill('#resProb', '100');
   await window.click('.res-add-btn');
@@ -603,7 +609,7 @@ for (const type of ['latency', 'stall504']) {
 // #303: the green intro box and field hints are gone from the Resilience panel.
 test('the Resilience panel has no inline explanation block (#303)', async () => {
   await window.click('#consoleTabResilience');
-  await expect(window.locator('#resForm')).toBeVisible();
+  await expect(window.locator('#resNewRuleBtn')).toBeVisible();
   await expect(window.locator('#resiliencePanel')).not.toContainText('Resilience testing lets you inject network failures');
   await expect(window.locator('.res-guide')).toHaveCount(0);
   await expect(window.locator('.res-field-hint')).toHaveCount(0);
