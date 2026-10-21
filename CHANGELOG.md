@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.141.0 — 2026-10-21
+
+### Features
+
+- Resilience rules table and failure-type chips (refs #311) (db6ac95)
+
 ## v0.140.0 — 2026-10-20
 
 ### Features
