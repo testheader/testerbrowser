@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.3 — 2026-10-21
+
+### Fixes
+
+- stop the UI diff bar's Reset overlapping Compare on narrow windows; keep middle-click tab close working when the strip overflows (refs #308) (917ea16)
+
 ## v0.146.2 — 2026-10-21
 
 ### Other
