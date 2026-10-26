@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.6 — 2026-10-26
+
+### Fixes
+
+- enlarge per-group new-tab (+) button hit target (a596596)
+
 ## v0.146.5 — 2026-10-21
 
 ### Fixes
