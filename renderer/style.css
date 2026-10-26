@@ -235,9 +235,12 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
                  font-family: inherit; transition: background 0.1s, color 0.1s; }
 #newSessionBtn:hover { background: var(--tb-hover); color: var(--tb-text); }
 #newSessionBtn:active { background: var(--tb-line); color: var(--tb-text); }
-.tab-group-add { flex-shrink: 0; cursor: pointer; color: var(--text-faint); font-size: 13px; padding: 0 3px; user-select: none;
-                 border-radius: 3px; line-height: 1; margin-right: 4px; }
-.tab-group-add:hover { color: var(--accent); background: var(--bg-hover); }
+/* Sized to match #newSessionBtn's hit target so the per-group "+" is easy to click. */
+.tab-group-add { flex-shrink: 0; cursor: pointer; color: var(--tb-text-2); font-size: 16px; width: 22px; height: 22px;
+                 margin: 0 2px 6px; display: flex; align-items: center; justify-content: center; user-select: none;
+                 border-radius: var(--tb-r-sm); line-height: 1; }
+.tab-group-add:hover { color: var(--tb-text); background: var(--tb-hover); }
+.tab-group-add:active { background: var(--tb-line); color: var(--tb-text); }
 
 /* Loading spinner in tab (replaces favicon/dot while loading) */
 .tab-spinner { width: 12px; height: 12px; border: 2px solid var(--border-strong);
