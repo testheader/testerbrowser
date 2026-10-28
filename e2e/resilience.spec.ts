@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH, openNewSession } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -134,13 +134,13 @@ test('Slow 3G measurably slows a ~100KB fetch relative to the same fetch unthrot
 });
 
 test('CPU 6x slowdown measurably slows a fixed busy-loop relative to the same loop unthrottled (#265)', async () => {
-  await window.click('#newSessionBtn');
+  const { id: sessionId } = await openNewSession(window);
   const urlPath = '/network/api.html?t=265-cpu';
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(urlPath));
   await window.press('#urlbar', 'Enter');
   const tab = await getTabPage(app, urlPath);
-  const sessionId = (await listSessions()).slice(-1)[0].id;
+  await tab.waitForLoadState('load');
   await window.click('#consoleTabSpoof');
 
   const runBusyLoop = () => tab.evaluate(() => {
@@ -150,15 +150,26 @@ test('CPU 6x slowdown measurably slows a fixed busy-loop relative to the same lo
     (window as unknown as { __busyLoopResult?: number }).__busyLoopResult = x; // keep the loop from being optimized away
     return performance.now() - start;
   });
+  // Best of three: a shared CI runner's noise only ever makes a run slower,
+  // so the fastest run is the closest to the loop's real cost.
+  const bestOf3 = async () => Math.min(await runBusyLoop(), await runBusyLoop(), await runBusyLoop());
 
-  const unthrottledMs = await runBusyLoop();
+  // Warm up first. The very first run includes V8 compiling and optimizing
+  // the loop, which made the old single "unthrottled" sample several times
+  // slower than the warm, throttled run that followed — on CI that once
+  // measured 57ms unthrottled vs 59ms at 6x, a "failure" with the throttle
+  // working exactly as intended.
+  await runBusyLoop();
+  const unthrottledMs = await bestOf3();
 
   await window.selectOption('#resCpuSelect', '6');
   await waitForConditionsApplied(sessionId, { cpuRate: 6 });
-  const throttledMs = await runBusyLoop();
+  // 6x nominal; asserting 3x leaves room for runner noise without letting a
+  // throttle that never applied (~1x) pass. Polled, in case CDP's throttle
+  // lands a moment after getConditions() reports it.
+  await expect.poll(bestOf3, { timeout: 20_000, message: `unthrottled best-of-3 was ${unthrottledMs.toFixed(1)}ms` })
+    .toBeGreaterThanOrEqual(unthrottledMs * 3);
   await window.selectOption('#resCpuSelect', '1');
-
-  expect(throttledMs).toBeGreaterThanOrEqual(unthrottledMs * 3);
 
   await window.keyboard.press('Control+w'); // see the comment above the Offline test
 });

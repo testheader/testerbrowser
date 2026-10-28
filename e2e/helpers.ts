@@ -113,6 +113,31 @@ export async function getTabPage(app: ElectronApplication, urlIncludes: string, 
 }
 
 /**
+ * Clicks the "+" new-tab button and waits until the new session exists and is
+ * the active tab, then returns it. win.click() only dispatches the click: the
+ * renderer's newSession() then awaits sessions.create() and switches to the
+ * new tab, so a sessions.list() read straight after the click can still miss
+ * it. The new tab is already active, so callers don't need to click it — which
+ * matters because with ~7+ tabs open the strip shrinks each tab's .tab-name to
+ * zero width, and Playwright then refuses to click it as "not visible".
+ */
+export async function openNewSession(win: Page): Promise<{ id: string; partition: string }> {
+  type Session = { id: string; partition: string };
+  const list = () => win.evaluate(() => (window as unknown as {
+    testerBrowser: { sessions: { list(): Promise<Session[]> } };
+  }).testerBrowser.sessions.list());
+  const before = new Set((await list()).map(s => s.id));
+  await win.click('#newSessionBtn');
+  let created: Session | undefined;
+  await expect.poll(async () => {
+    created = (await list()).find(s => !before.has(s.id));
+    return created?.id;
+  }, { timeout: 10_000, message: 'the new session never appeared in sessions.list()' }).toBeTruthy();
+  await expect(win.locator(`.tab.active[data-id="${created!.id}"]`)).toHaveCount(1, { timeout: 10_000 });
+  return created!;
+}
+
+/**
  * Bounds of the active session's native WebContentsView, straight from
  * Electron's contentView tree in the main process. Returns null while the
  * view is detached (e.g. mid dropdown-overlay — see layout.js

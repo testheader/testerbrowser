@@ -1,9 +1,9 @@
 import { isAbortedLoad, loadUrlIgnoringAbort } from '../loadUrl';
 
 describe('loadUrlIgnoringAbort', () => {
-  it('swallows ERR_ABORTED (-3) rejections', async () => {
+  it('swallows ERR_ABORTED (-3) rejections, reporting the load as still in flight', async () => {
     const wc = { loadURL: jest.fn().mockRejectedValue(new Error("ERR_ABORTED (-3) loading 'file:///x/newtab.html'")) };
-    await expect(loadUrlIgnoringAbort(wc, 'http://a.test/')).resolves.toBeUndefined();
+    await expect(loadUrlIgnoringAbort(wc, 'http://a.test/')).resolves.toBe(false);
     expect(isAbortedLoad(new Error(' (-3) loading')) ).toBe(true);
   });
 
@@ -12,9 +12,9 @@ describe('loadUrlIgnoringAbort', () => {
     await expect(loadUrlIgnoringAbort(wc, 'http://a.test/')).rejects.toThrow('-105');
   });
 
-  it('resolves normally on success', async () => {
+  it('resolves true on success, so callers know the page already loaded', async () => {
     const wc = { loadURL: jest.fn().mockResolvedValue(undefined) };
-    await loadUrlIgnoringAbort(wc, 'http://a.test/');
+    await expect(loadUrlIgnoringAbort(wc, 'http://a.test/')).resolves.toBe(true);
     expect(wc.loadURL).toHaveBeenCalledWith('http://a.test/');
   });
 });

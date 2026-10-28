@@ -3,7 +3,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH, openNewSession } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -34,8 +34,22 @@ test.beforeAll(async () => {
     // warnings summary both use dialog.showMessageBox — auto-approve so a
     // real modal never blocks the (headless) app.
     dialog.showMessageBox = (() => Promise.resolve({ response: 0, checkboxChecked: false })) as typeof dialog.showMessageBox;
+    // showErrorBox() is a *synchronous* native modal on Windows: if an
+    // export/import fails for real, an unstubbed one freezes the whole main
+    // process, so the test times out and then app.close() in afterAll hangs
+    // too ("Worker teardown timeout"). Record the calls instead, so a failure
+    // shows up as a readable assertion.
+    (globalThis as unknown as { __showErrorBoxCalls: { title: string; content: string }[] }).__showErrorBoxCalls = [];
+    dialog.showErrorBox = (title: string, content: string) => {
+      (globalThis as unknown as { __showErrorBoxCalls: { title: string; content: string }[] }).__showErrorBoxCalls.push({ title, content });
+    };
   });
 });
+
+async function errorBoxCalls(): Promise<{ title: string; content: string }[]> {
+  return app.evaluate(() =>
+    (globalThis as unknown as { __showErrorBoxCalls?: { title: string; content: string }[] }).__showErrorBoxCalls ?? []);
+}
 
 test.afterAll(async () => {
   await app.close();
@@ -90,6 +104,7 @@ test('export then import round-trips cookies (incl. sameSite) and seeds storage 
   }, tmpPath);
 
   await contextMenuClick(sourceId, 'Export snapshot…');
+  expect(await errorBoxCalls()).toEqual([]);
   await expect.poll(() => fs.existsSync(tmpPath), { timeout: 10_000 }).toBe(true);
 
   const snap = JSON.parse(fs.readFileSync(tmpPath, 'utf-8'));
@@ -103,12 +118,10 @@ test('export then import round-trips cookies (incl. sameSite) and seeds storage 
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
   }, tmpPath);
 
-  await window.click('#newSessionBtn');
-  const sessionsAfterNew = await listSessions();
-  const target = sessionsAfterNew.find((s) => s.id !== sourceId)!;
-  await window.click(`.tab[data-id="${target.id}"] .tab-name`);
+  const target = await openNewSession(window);
 
   await contextMenuClick(target.id, 'Import snapshot…');
+  expect(await errorBoxCalls()).toEqual([]);
 
   const importedTab = await getTabPage(app, urlPath, sourceTab);
   await importedTab.waitForLoadState('load');

@@ -11,7 +11,7 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createServer, Server } from 'http';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH, openNewSession } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -286,38 +286,32 @@ test('replay cookie session picker filters out cookies from unrelated domains', 
 });
 
 test('replay cookie session picker shows each session\'s own cookies independently', async () => {
-  // Ensure two sessions exist (test 3 usually creates the second, but a worker
-  // restart after a flaky earlier test may leave only one).
-  let allSessions: Array<{ id: string; partition: string }> =
-    await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  if (allSessions.length < 2) {
-    await window.click('#newSessionBtn');
-    allSessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  }
-  const { id: session1Id, partition: partition1 } = allSessions[0];
-  const { id: session2Id, partition: partition2 } = allSessions[1];
+  // Two fresh tabs of this test's own, each with its own persist:<id>
+  // partition — not "the first two sessions" earlier tests left behind, which
+  // can share a partition. Fresh partitions also start with no cookies, so
+  // nothing has to be cleared first (a clearStorageData() immediately before
+  // the cookies.set() is one way the old version came up with an empty table).
+  const s1 = await openNewSession(window);
+  const s2 = await openNewSession(window);
+  expect(s1.partition).not.toBe(s2.partition);
+  const session1Id = s1.id;
+  const session2Id = s2.id;
 
   // Inject unique cookies directly via Electron's session API so we don't
   // depend on server-set cookies (Chromium rejects explicit domain for IPs).
   // Setting without a domain stores them as host-only (domain: ''), which
   // cookieMatchesDomain passes through for 127.0.0.1 replay requests.
   await app.evaluate(async ({ session: electronSession }, [part1, part2]) => {
-    const ses1 = electronSession.fromPartition(part1);
-    const ses2 = electronSession.fromPartition(part2);
-    await ses1.clearStorageData({ storages: ['cookies'] });
-    await ses2.clearStorageData({ storages: ['cookies'] });
-    await ses1.cookies.set({ url: 'http://127.0.0.1', name: 's1_unique_tok', value: '1' });
-    await ses2.cookies.set({ url: 'http://127.0.0.1', name: 's2_unique_tok', value: '1' });
-  }, [partition1, partition2]);
+    await electronSession.fromPartition(part1).cookies.set({ url: 'http://127.0.0.1', name: 's1_unique_tok', value: '1' });
+    await electronSession.fromPartition(part2).cookies.set({ url: 'http://127.0.0.1', name: 's2_unique_tok', value: '1' });
+  }, [s1.partition, s2.partition]);
 
-  // Switch to session 1 and navigate to produce a 127.0.0.1 replay event.
-  await window.evaluate((id: string) => (window as any).testerBrowser.sessions.switchTo(id), session1Id);
-  await window.fill('#urlbar', `http://127.0.0.1:${testPort}`);
-  await window.press('#urlbar', 'Enter');
-  const navTab = await getTabPage(app, `127.0.0.1:${testPort}`, window);
-  await navTab.waitForLoadState('load');
-
+  // Navigate the active tab (s2) to produce a 127.0.0.1 request to replay.
   await openReplayOverlay(window, testPort);
+  // The picker only lists cookies matching the replayed request's host —
+  // assert it so a wrong row being replayed fails here, by name, rather than
+  // as an unexplained empty cookie table below.
+  await expect(window.locator('#replayCookieSessionPick')).toHaveAttribute('data-req-host', '127.0.0.1');
 
   // ── Session 1 ──
   await window.selectOption('#replayCookieSessionPick', { value: session1Id });
@@ -336,6 +330,7 @@ test('replay cookie session picker shows each session\'s own cookies independent
   expect(s2Names).not.toContain('s1_unique_tok');
 
   await window.click('#closeReplayBtn');
+  for (const id of [session2Id, session1Id]) await window.locator(`.tab[data-id="${id}"] .tab-close`).click();
 });
 
 test('replay-actions: ⇒ Resilience carries the edited URL to the Resilience tab', async () => {

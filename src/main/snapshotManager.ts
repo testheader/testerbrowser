@@ -198,8 +198,7 @@ export class SnapshotManager {
         }
       }
 
-      await loadUrlIgnoringAbort(s.webContents, snap.url);
-      await waitForFrameLoad(s.webContents);
+      if (!(await loadUrlIgnoringAbort(s.webContents, snap.url))) await waitForFrameLoad(s.webContents);
 
       if (preloadScriptId) {
         await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: preloadScriptId })

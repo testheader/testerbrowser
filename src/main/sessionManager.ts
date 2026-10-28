@@ -1371,8 +1371,7 @@ export class SessionManager {
         }
       }
 
-      await loadUrlIgnoringAbort(dest.view.webContents, src.currentUrl);
-      await waitForFrameLoad(dest.view.webContents);
+      if (!(await loadUrlIgnoringAbort(dest.view.webContents, src.currentUrl))) await waitForFrameLoad(dest.view.webContents);
 
       if (preloadScriptId) {
         await dbg.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: preloadScriptId })

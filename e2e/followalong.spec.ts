@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
+import { getMainWindow, getTabPage, launchApp, MAIN_PATH, openNewSession } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
 let app: ElectronApplication;
@@ -286,16 +286,14 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
 // ── Disambiguating session pickers, and a shared-partition warning (#258) ──
 
 test('session picker options are labelled with the session name and current host, so two tabs on the same site are distinguishable', async () => {
-  const sharedPath = '/record/target.html';
+  // Unique query: earlier tests in this file leave /record/target.html tabs
+  // open, and getTabPage() matches on a URL substring.
+  const sharedPath = '/record/target.html?t=picker-labels';
 
-  const idsBefore = new Set(
-    (await window.evaluate(() => (window as any).testerBrowser.sessions.list())).map((s: { id: string }) => s.id)
-  );
-
-  await window.click('#newSessionBtn');
-  let sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const idA = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
-  idsBefore.add(idA);
+  // openNewSession() waits for each new tab to exist and be active, so the
+  // urlbar below navigates it without clicking its (possibly zero-width,
+  // once enough tabs are open) .tab-name.
+  const { id: idA } = await openNewSession(window);
 
   // pickerLabel() reads each session's `url` from sessions.list(), which the
   // main process only populates once its own did-navigate handler updates
@@ -310,7 +308,6 @@ test('session picker options are labelled with the session name and current host
     return list.find((s: { id: string }) => s.id === id)?.url;
   }, { timeout: 10_000 }).toContain(sharedPath);
 
-  await window.click(`.tab[data-id="${idA}"] .tab-name`);
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
@@ -318,12 +315,7 @@ test('session picker options are labelled with the session name and current host
   await tabA.waitForLoadState('load');
   await waitForSessionUrl(idA);
 
-  await window.click('#newSessionBtn');
-  sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
-  const idB = sessions.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
-  idsBefore.add(idB);
-
-  await window.click(`.tab[data-id="${idB}"] .tab-name`);
+  const { id: idB } = await openNewSession(window);
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(sharedPath));
   await window.press('#urlbar', 'Enter');
