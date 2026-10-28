@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.7 — 2026-10-28
+
+### Fixes
+
+- chip labels and counts use a consistent 4px gap (refs #339) (4477540)
+
 ## v0.148.6 — 2026-10-28
 
 _No changes recorded._
