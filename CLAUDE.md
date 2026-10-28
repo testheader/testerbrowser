@@ -105,7 +105,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
     Console tab  — console/log/exception rows, All/Errors/Warnings/Info/Debug level filter
     Storage tab  — cookies, localStorage, sessionStorage, IndexedDB (read-only), client-filtered
                    in-memory once fetched, optional 2 s auto-refresh while the tab is visible
-  "⋯" menu       — toggle console panel visibility + bookmarks bar, open DevTools / Settings
+  App menu (logo) — new temp tab, test data, console panel + bookmarks bar toggles, DevTools, Settings, Report bug
   pollTimeline() — 1 s interval, fetches events since lastTs
 ```
 
@@ -271,14 +271,9 @@ The console panel sits fixed at the bottom of the window. Height is drag-resizab
 
 ---
 
-## Renderer: ⋯ menu
+## Renderer: app menu
 
-The "⋯" button at the right of the address bar (`#viewBtn`, `view-dropdown.js`) opens a dropdown with:
-- **Console panel** — toggles `consolePanel.style.display` and calls `layout:setConsoleHeight`
-- **Bookmarks bar** — same as `Ctrl+Shift+B`
-- **DevTools** and **Settings**
-
-The dropdown closes on any outside click.
+The logo button at the left of the title bar (`#appName`, `app-menu.js`) opens the one app menu, in three groups: **Tabs** (New temporary tab, Fill with test data), **View** (Console panel and Bookmarks bar toggles, DevTools) and **App** (Settings, Report bug). There is no separate ⋯ menu. Opening it snapshots and detaches the page view (`beginPageOverlay`); it closes on any outside click or Esc.
 
 ---
 
