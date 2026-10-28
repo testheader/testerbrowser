@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.9 — 2026-10-28
+
+### Other
+
+- one menu under the logo, and remove the ⋯ button (refs #326) (088b0d2)
+
 ## v0.148.8 — 2026-10-28
 
 ### Fixes
