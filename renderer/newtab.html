@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src https://www.google.com data:; connect-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src data:; connect-src 'none'">
   <title>New Tab</title>
   <link rel="stylesheet" href="vendor/lucide/lucide.css">
   <link rel="stylesheet" href="newtab.css">
@@ -13,39 +13,8 @@
     <input id="searchInput" type="text" aria-label="Search or enter an address" autocomplete="off" spellcheck="false">
   </form>
   <div class="grid" id="grid"></div>
-  <div class="dashboard">
-    <div class="dash-main">
-    </div>
-    <aside class="dash-side">
-      <section class="panel" id="bookmarksPanel">
-        <h3>Bookmarks</h3>
-        <div id="bookmarksList"></div>
-      </section>
-      <section class="panel" id="quickSettingsPanel">
-        <h3>Quick settings</h3>
-        <div class="qs-row">
-          <span>Theme</span>
-          <div class="qs-theme-toggle" id="themeToggleGroup">
-            <button data-scheme="system">System</button>
-            <button data-scheme="light">Light</button>
-            <button data-scheme="dark">Dark</button>
-          </div>
-        </div>
-        <div class="qs-row">
-          <span>Redact sensitive headers</span>
-          <input type="checkbox" id="redactToggle" />
-        </div>
-        <div class="qs-row">
-          <span>Version</span>
-          <span id="qsVersion">—</span>
-        </div>
-        <div id="qsUpdateStatus"></div>
-      </section>
-    </aside>
-  </div>
-
   <!-- Background settings -->
-  <button id="bgSettingsBtn" title="Customize background" aria-label="Customize background">&#9881;</button>
+  <button id="bgSettingsBtn" title="Customize background" aria-label="Customize background"><i class="icon-settings" aria-hidden="true"></i></button>
   <div id="bgPanel">
     <h3>Background</h3>
     <div class="bg-presets" id="bgPresets"></div>

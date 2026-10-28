@@ -92,10 +92,6 @@ test('the new-tab page itself can still read and write settings, bookmarks and t
   const newTabPage = await getTabPage(app, 'newtab.html');
   await newTabPage.waitForLoadState('load');
 
-  const redactToggle = newTabPage.locator('#redactToggle');
-  await expect(redactToggle).toBeVisible();
-  await expect(redactToggle).toBeEnabled();
-
   // Exercise the full privileged IPC surface directly from the new-tab page's
   // own JS context — a real round trip through NEWTAB_PRELOAD and the main
   // process, proving the trusted-sender check doesn't also lock out the page
@@ -115,11 +111,6 @@ test('the new-tab page itself can still read and write settings, bookmarks and t
   expect(typeof result.theme).toBe('string');
   expect(typeof result.bookmarksCount).toBe('number');
   expect(result.hasVersion).toBe(true);
-
-  // The UI toggle itself reflects the same underlying setting.
-  await newTabPage.reload();
-  await newTabPage.waitForLoadState('load');
-  await expect(redactToggle).toBeChecked({ checked: !before.redactSensitiveHeaders });
 
   // Restore, so this doesn't leak into other spec files.
   await newTabPage.evaluate((wasChecked: boolean) =>

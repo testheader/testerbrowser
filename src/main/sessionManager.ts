@@ -181,6 +181,8 @@ function isSafeUrl(url: string): boolean {
 }
 
 export class SessionManager {
+  // #340: called with a persistent tab's page URL and its favicon URL, so the Speed Dial can cache the icon.
+  onFaviconSeen?: (pageUrl: string, faviconUrl: string) => void;
   private win: BrowserWindow;
   private sessions = new Map<string, TestSession>();
   private activeId: string | null = null;
@@ -682,6 +684,7 @@ export class SessionManager {
     });
     view.webContents.on('page-favicon-updated', (_e, favicons) => {
       if (favicons[0]) this.win.webContents.send('session:faviconUpdated', { id, favicon: favicons[0] });
+      if (favicons[0] && persistent) this.onFaviconSeen?.(view.webContents.getURL(), favicons[0]);
     });
     view.webContents.on('found-in-page', (_e, result) => {
       this.win.webContents.send('find:result', {

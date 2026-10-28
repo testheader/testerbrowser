@@ -2,7 +2,7 @@
 // preload (src/preload/newtab.ts) exposes, not the app shell's testerBrowser API, and was never type-checked
 // while it lived inline in newtab.html.
     const DEFAULT_TILES = [
-      { id: '1', url: 'https://www.google.com',        title: 'Google' },
+      { id: '1', url: 'https://duckduckgo.com',         title: 'DuckDuckGo' },
       { id: '2', url: 'https://github.com',             title: 'GitHub' },
       { id: '3', url: 'https://developer.mozilla.org',  title: 'MDN' },
       { id: '4', url: 'https://stackoverflow.com',      title: 'Stack Overflow' },
@@ -14,18 +14,25 @@
 
     let tiles = [];
 
-    function faviconSrc(url) {
-      try {
-        const host = new URL(url).hostname;
-        return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
-      } catch { return ''; }
+    // #340: tiles show the icon the app cached from the site itself (main process,
+    // keyed by origin), else an initial-letter tile. Nothing is requested from a third party.
+    let favicons = {};
+
+    function originOf(url) {
+      try { return new URL(url).origin; } catch { return ''; }
+    }
+
+    async function loadFavicons() {
+      if (!window.speedDial || !window.speedDial.getFavicons) return;
+      try { favicons = (await window.speedDial.getFavicons(tiles.map((t) => t.url))) || {}; } catch { favicons = {}; }
     }
 
     function makeFaviconEl(tile) {
-      const src = faviconSrc(tile.url);
+      const src = favicons[originOf(tile.url)];
       if (!src) return makeInitialEl(tile);
       const img = document.createElement('img');
       img.className = 'tile-favicon';
+      img.alt = '';
       img.src = src;
       img.onerror = () => img.replaceWith(makeInitialEl(tile));
       return img;
@@ -108,6 +115,7 @@
       } else {
         tiles = DEFAULT_TILES;
       }
+      await loadFavicons();
       renderGrid();
     }
 
@@ -269,138 +277,4 @@
       window.appTheme.onChange(apply);
     })();
 
-    // ── Bookmarks panel ──
-    function makeBookmarkFavicon(bm) {
-      const src = faviconSrc(bm.url);
-      if (!src) return makeBookmarkInitial(bm);
-      const img = document.createElement('img');
-      img.className = 'bm-row-favicon';
-      img.src = src;
-      img.onerror = () => img.replaceWith(makeBookmarkInitial(bm));
-      return img;
-    }
-
-    function makeBookmarkInitial(bm) {
-      const el = document.createElement('span');
-      el.className = 'bm-row-initial';
-      el.textContent = ((bm.title || bm.url)[0] || '?').toUpperCase();
-      return el;
-    }
-
-    function makeBookmarkRow(bm) {
-      const row = document.createElement('div');
-      row.className = 'bm-row';
-      row.title = bm.url;
-      row.appendChild(makeBookmarkFavicon(bm));
-
-      const label = document.createElement('span');
-      label.className = 'bm-row-title';
-      label.textContent = bm.title || bm.url;
-      row.appendChild(label);
-
-      const rm = document.createElement('button');
-      rm.className = 'bm-row-remove';
-      rm.textContent = '×';
-      rm.title = 'Remove bookmark';
-      rm.setAttribute('aria-label', 'Remove bookmark');
-      rm.onclick = async (e) => {
-        e.stopPropagation();
-        await window.bookmarksApi.remove(bm.url);
-        loadBookmarksPanel();
-      };
-      row.appendChild(rm);
-
-      row.onclick = () => { if (/^https?:\/\//i.test(bm.url)) window.location.href = bm.url; };
-      return row;
-    }
-
-    async function loadBookmarksPanel() {
-      const listEl = document.getElementById('bookmarksList');
-      if (!window.bookmarksApi) { listEl.innerHTML = '<div class="bm-empty">Not available</div>'; return; }
-
-      const [bookmarks, folders] = await Promise.all([
-        window.bookmarksApi.list(),
-        window.bookmarksApi.listFolders(),
-      ]);
-
-      listEl.innerHTML = '';
-      if (bookmarks.length === 0) {
-        listEl.innerHTML = '<div class="bm-empty">No bookmarks yet — press Ctrl+D on a page to add one.</div>';
-        return;
-      }
-
-      const folderIds = new Set(folders.map((f) => f.id));
-      const topLevel  = bookmarks.filter((b) => !b.folderId || !folderIds.has(b.folderId));
-      for (const bm of topLevel) listEl.appendChild(makeBookmarkRow(bm));
-
-      for (const folder of folders) {
-        const inFolder = bookmarks.filter((b) => b.folderId === folder.id);
-        if (inFolder.length === 0) continue;
-        const heading = document.createElement('div');
-        heading.className = 'bm-folder-heading';
-        heading.textContent = folder.name;
-        listEl.appendChild(heading);
-        for (const bm of inFolder) listEl.appendChild(makeBookmarkRow(bm));
-      }
-    }
-
-    // ── Quick settings panel ──
-    function initQuickSettingsTheme() {
-      const group = document.getElementById('themeToggleGroup');
-      const btns  = [...group.querySelectorAll('button')];
-      const THEME_CHOICE_KEY = 'newtabThemeChoice';
-
-      const setActive = (scheme) => btns.forEach((b) => b.classList.toggle('active', b.dataset.scheme === scheme));
-      let choice;
-      try { choice = localStorage.getItem(THEME_CHOICE_KEY); } catch {}
-      setActive(choice || 'system');
-
-      btns.forEach((btn) => btn.addEventListener('click', () => {
-        const scheme = btn.dataset.scheme;
-        try { localStorage.setItem(THEME_CHOICE_KEY, scheme); } catch {}
-        setActive(scheme);
-        // The shared theme store only tracks a light/dark binary, so "system" is
-        // resolved to whichever it currently reads before persisting — the actual
-        // class toggle happens reactively via the appTheme.onChange listener above.
-        const resolved = scheme === 'system'
-          ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
-          : scheme;
-        window.appTheme?.set?.(resolved);
-      }));
-    }
-
-    async function initRedactToggle() {
-      const toggle = document.getElementById('redactToggle');
-      if (!window.appSettings) { toggle.disabled = true; return; }
-      try {
-        const settings = await window.appSettings.get();
-        toggle.checked = !!settings.redactSensitiveHeaders;
-      } catch {}
-      toggle.addEventListener('change', () => {
-        window.appSettings.set({ redactSensitiveHeaders: toggle.checked });
-      });
-    }
-
-    async function initVersionInfo() {
-      const versionEl = document.getElementById('qsVersion');
-      const statusEl  = document.getElementById('qsUpdateStatus');
-      if (!window.appInfo) return;
-      try {
-        const info = await window.appInfo.getVersionInfo();
-        versionEl.textContent = info.current || '—';
-        if (info.latest && info.latest !== info.current) {
-          statusEl.textContent = `Update available: ${info.latest}`;
-        } else if (info.status === 'downloaded') {
-          statusEl.textContent = 'Update downloaded — restart the app to install';
-        } else if (info.isPackaged) {
-          statusEl.textContent = "You're up to date";
-        }
-      } catch {}
-    }
-
-    loadBookmarksPanel();
     initSearch();
-    initQuickSettingsTheme();
-    initRedactToggle();
-    initVersionInfo();
-  

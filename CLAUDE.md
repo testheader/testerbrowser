@@ -180,6 +180,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `settings:get/set` | R→M | app settings (`set` takes a validated patch — `settingsPatch.ts`) |
 | `theme:get/set` | R→M | colour scheme |
 | `speeddial:get/set` | R→M | new-tab page tiles |
+| `favicons:get` | R→M | `(urls)` → `{ [origin]: dataUrl }` — site icons cached by `faviconCache.ts` (`userData/favicons.json`, saved from persistent tabs' `page-favicon-updated`); a new-tab channel. Tiles fall back to an initial-letter tile, so the page never asks google.com |
 | `bookmarks:createFolder/listFolders/move/rename/renameFolder/removeFolder` | R→M | bookmark folders (plain add/list/remove are above) |
 | `sessions:setTabOrder` / `sessions:getHistory` / `sessions:getLoadedDomains` | R→M | persist tab order; per-tab navigation history; domains loaded by the tab |
 | `sessions:setCookie/deleteCookie/clearCookies` | R→M | cookie editing (Storage tab) |

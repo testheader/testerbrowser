@@ -29,6 +29,8 @@ import { registerVisualRegressionIpc } from './ipc/visualRegression';
 import { registerDownloadsIpc } from './ipc/downloads';
 import { registerPermissionsIpc } from './ipc/permissions';
 import { registerBookmarksIpc } from './ipc/bookmarks';
+import { DEFAULT_SPEED_DIAL } from './speedDialDefaults';
+import { FaviconCache, cacheFavicon } from './faviconCache';
 import { registerLayoutIpc } from './ipc/layout';
 import { registerSettingsIpc } from './ipc/settings';
 import { registerAppIpc } from './ipc/app';
@@ -248,22 +250,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   disabledConsoleTabs: [],
   idleInstallMinutes: IDLE_INSTALL_MINUTES,
 };
-const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
-  { id: '1', url: 'https://www.google.com',       title: 'Google' },
-  { id: '2', url: 'https://github.com',            title: 'GitHub' },
-  { id: '3', url: 'https://developer.mozilla.org', title: 'MDN' },
-  { id: '4', url: 'https://stackoverflow.com',     title: 'Stack Overflow' },
-  { id: '5', url: 'https://caniuse.com',           title: 'Can I Use' },
-  { id: '6', url: 'https://regex101.com',          title: 'Regex 101' },
-  { id: '7', url: 'https://jsonformatter.org',     title: 'JSON Formatter' },
-  { id: '8', url: 'https://httpstatuses.io',       title: 'HTTP Status' },
-];
 
 const bookmarkStore   = new JsonStore<Bookmark[]>('bookmarks.json', [],
   (raw) => (raw as Partial<Bookmark>[]).map(b => ({ folderId: null, ...b } as Bookmark)));
 const bookmarkFoldersStore = new JsonStore<BookmarkFolder[]>('bookmark-folders.json', []);
 const urlHistoryStore = new JsonStore<string[]>('url-history.json', []);
 const speedDialStore  = new JsonStore<SpeedDialTile[]>('speed-dial.json', DEFAULT_SPEED_DIAL);
+// #340: favicons seen while browsing, keyed by origin, for the Speed Dial tiles.
+const faviconStore    = new JsonStore<Record<string, string>>('favicons.json', {});
+const faviconCache    = new FaviconCache(faviconStore);
 // Mirrors the shell's theme choice so newtab views can read it on load.
 const themeStore      = new JsonStore<{ scheme: string }>('theme.json', { scheme: 'dark' });
 const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETTINGS, (raw) => {
@@ -354,6 +349,9 @@ function createWindow() {
     () => settingsStore.get().recorderMaxEvents,
     () => settingsStore.get().allowRealPopups
   );
+  sessionManager.onFaviconSeen = (pageUrl, faviconUrl) => {
+    void cacheFavicon(faviconCache, pageUrl, faviconUrl, (u) => net.fetch(u, { bypassCustomProtocolHandlers: true }));
+  };
   visualRegressionStore = new VisualRegressionStore(win);
 
   const restored = sessionManager.loadAndRestoreSessions();
@@ -700,7 +698,7 @@ registerEmulationIpc(appDeps);
 registerVisualRegressionIpc(appDeps);
 registerDownloadsIpc(appDeps);
 registerPermissionsIpc(appDeps);
-registerBookmarksIpc(appDeps, { bookmarkStore, bookmarkFoldersStore, urlHistoryStore, speedDialStore });
+registerBookmarksIpc(appDeps, { bookmarkStore, bookmarkFoldersStore, urlHistoryStore, speedDialStore, faviconCache });
 registerLayoutIpc(appDeps);
 registerSettingsIpc(appDeps, { settingsStore, themeStore, maybeStartIdleInstallTimer });
 registerAppIpc(appDeps, {

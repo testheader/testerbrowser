@@ -18,6 +18,7 @@ if (isNewtabPage()) {
   contextBridge.exposeInMainWorld('speedDial', {
     getTiles: () => ipcRenderer.invoke('speeddial:get'),
     saveTiles: (tiles: unknown[]) => ipcRenderer.invoke('speeddial:set', tiles),
+    getFavicons: (urls: string[]) => ipcRenderer.invoke('favicons:get', urls),
   });
 
   contextBridge.exposeInMainWorld('appTheme', {
