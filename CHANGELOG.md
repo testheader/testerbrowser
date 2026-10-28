@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.11 — 2026-10-28
+
+### Fixes
+
+- keep request detail per tool and close it when the tool changes (refs #324) (7ae934f)
+
 ## v0.146.10 — 2026-10-28
 
 ### Fixes
