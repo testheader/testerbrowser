@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.1 — 2026-10-28
+
+### Fixes
+
+- show the session-group "+" on hover and use the Lucide pin icon (refs #333) (f4a29af)
+
 ## v0.148.0 — 2026-10-28
 
 ### Features
