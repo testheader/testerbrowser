@@ -234,15 +234,18 @@ test('a network request\'s detail panel offers Replay, Mock and Resilience, in t
     await expect(window.locator('#detailReplayBtn')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 
-  // #232 added Copy as cURL / Copy as fetch to this same row; #301 dropped
-  // the arrow/glyph prefixes (labels are now plain, with a Lucide icon).
+  // #232 added Copy as cURL / Copy as fetch to this same row (#336 folded them
+  // into one Copy menu); #301 dropped the arrow/glyph prefixes.
   const actions = window.locator('.detail-actions .detail-action-btn');
-  await expect(actions).toHaveCount(5);
+  await expect(actions).toHaveCount(4);
   await expect(actions.nth(0)).toHaveText('Replay');
   await expect(actions.nth(1)).toHaveText('Mock');
   await expect(actions.nth(2)).toHaveText('Resilience');
-  await expect(actions.nth(3)).toHaveText('Copy as cURL');
-  await expect(actions.nth(4)).toHaveText('Copy as fetch');
+  await expect(actions.nth(3)).toHaveText('Copy');
+  await window.click('#detailCopyBtn');
+  await expect(window.locator('#detailCurlBtn')).toHaveText('Copy as cURL');
+  await expect(window.locator('#detailFetchBtn')).toHaveText('Copy as fetch');
+  await window.keyboard.press('Escape');
 
   // Replay: opens the modal, prefilled from this exact call.
   await window.locator('#detailReplayBtn').click();
