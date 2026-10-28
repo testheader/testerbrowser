@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.149.0 — 2026-10-28
+
+### Features
+
+- Speed Dial uses cached or initial-letter favicons and no google.com requests (refs #340) (ba1ec77)
+
 ## v0.148.12 — 2026-10-28
 
 ### Other
