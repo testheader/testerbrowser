@@ -18,3 +18,11 @@ describe('renderer/style.css #detailPanel', () => {
     expect(css).toMatch(/@container \(max-width: 1040px\)[^{]*\{\s*#detailPanel\.open \{ position: absolute/);
   });
 });
+
+// #321: cookie columns drop Path, then Flags, then Domain; Name (1) and Value (2) never hide.
+describe('renderer/style.css cookie table columns', () => {
+  it('hides only columns 4, 6, 3 responsively', () => {
+    const hidden = [...css.matchAll(/\.storage-cookie-table[^{]*:nth-child\((\d)\) \{ display: none; \}/g)].map(m => m[1]);
+    expect(hidden).toEqual(['4', '6', '3']);
+  });
+});

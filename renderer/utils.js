@@ -374,3 +374,19 @@ export function formatAgo(ts, now = Date.now()) {
   if (h < 24) return `${h} h ago`;
   return `${Math.round(h / 24)} d ago`;
 }
+
+/**
+ * Relative time to an expiry: "in 7 days" for the future, "3 d ago" once passed (#321).
+ * @param {number} ts epoch ms
+ * @param {number} [now]
+ */
+export function formatRelativeExpiry(ts, now = Date.now()) {
+  if (ts < now) return formatAgo(ts, now);
+  if (ts - now < 60000) return 'in <1 min';
+  const min = Math.round((ts - now) / 60000);
+  if (min < 60) return `in ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `in ${h} ${h === 1 ? 'hour' : 'hours'}`;
+  const d = Math.round(h / 24);
+  return `in ${d} ${d === 1 ? 'day' : 'days'}`;
+}

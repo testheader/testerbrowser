@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { cookieMatchesDomain } from './utils.js';
+import { cookieMatchesDomain, formatRelativeExpiry } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 import { isConsoleVisible } from './layout.js';
@@ -293,12 +293,13 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     const nameTd = document.createElement('td');
     nameTd.className = 'storage-key';
     nameTd.textContent = c.name;
+    nameTd.title = c.name;
     tr.appendChild(nameTd);
 
     const valTd = document.createElement('td');
     valTd.className  = 'copyable storage-val';
     valTd.textContent = c.value;
-    valTd.title       = 'Click to copy · Double-click to edit';
+    valTd.title       = `${c.value}\n\nClick to copy · Double-click to edit`;
     valTd.onclick     = () => { copyToClipboard(c.value); flashCopied(valTd); };
     valTd.ondblclick  = (e) => {
       e.stopPropagation();
@@ -346,6 +347,7 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     const domainTd = document.createElement('td');
     domainTd.className = 'storage-domain';
     domainTd.appendChild(document.createTextNode(c.domain || ''));
+    domainTd.title = c.domain || '';
     if (currentHostname) {
       const tag = document.createElement('span');
       if (isFirstParty) {
@@ -361,10 +363,11 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     }
     tr.appendChild(domainTd);
 
-    const pathTd = document.createElement('td'); pathTd.className = 'storage-path'; pathTd.textContent = c.path || '/'; tr.appendChild(pathTd);
+    const pathTd = document.createElement('td'); pathTd.className = 'storage-path'; pathTd.textContent = c.path || '/'; pathTd.title = c.path || '/'; tr.appendChild(pathTd);
     const expTd  = document.createElement('td');
     expTd.className = 'storage-expires';
-    expTd.textContent = formatCookieExpiry(c.expirationDate);
+    expTd.textContent = c.expirationDate ? formatRelativeExpiry(c.expirationDate * 1000) : '—';
+    expTd.title = c.expirationDate ? formatCookieExpiry(c.expirationDate) : 'Session cookie';
     tr.appendChild(expTd);
 
     // Flags as outline tags: HttpOnly, Secure, then Lax / Strict / None.
@@ -375,6 +378,8 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     if (c.secure) flags.push('Secure');
     const ssLabel = formatSameSite(c.sameSite);
     if (ssLabel !== '—') flags.push(ssLabel);
+    // The Flags column hides in narrow panels (style.css), so the name cell carries them too.
+    if (flags.length) nameTd.title = `${c.name}\n${flags.join(', ')}`;
     for (const f of flags) {
       const tag = document.createElement('span');
       tag.className = 'storage-tag';
