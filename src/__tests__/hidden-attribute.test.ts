@@ -33,3 +33,11 @@ describe('renderer/style.css Jira not-connected state', () => {
     expect(css).toMatch(/\.jira-unconfigured \.jira-key-field, \.jira-unconfigured #jiraFetchBtn \{ display: none; \}/);
   });
 });
+
+// #339: Network chips keep a 4px label/count gap.
+describe('renderer/style.css Network chips', () => {
+  it('uses a 4px gap between label and count', () => {
+    expect(css).toMatch(/#networkPills \.filter-pill \{[^}]*gap: 4px/);
+    expect(css).toMatch(/#networkPills \.pill-count \{ margin-left: 0; \}/);
+  });
+});

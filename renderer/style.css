@@ -1923,6 +1923,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                      border: 1px solid var(--tb-line-strong); background: var(--tb-sunken); color: var(--tb-text);
                      font-family: inherit; font-size: 12.5px; }
 #networkFilterText:focus { outline: none; border-color: var(--tb-accent); }
+/* #339: a 4px gap between each Network chip's label and its count, whichever chip it is. */
+#networkPills .filter-pill { display: inline-flex; align-items: center; gap: 4px; }
+#networkPills .pill-count { margin-left: 0; }
+#networkPills .pill-count:empty { display: none; }
 #networkControls .filter-pill { height: 26px; padding: 0 10px; border-radius: var(--tb-r-pill); font-size: 12px; }
 .net-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; flex-shrink: 0;
             border-radius: var(--tb-r-pill); border: 1px solid var(--tb-line-strong); background: none;
