@@ -304,13 +304,29 @@ function actionButtons() {
     <button class="detail-action-btn strong" id="detailReplayBtn" title="Edit and replay this request"><i class="icon-rotate-ccw" aria-hidden="true"></i>Replay</button>
     <button class="detail-action-btn" id="detailMockBtn" title="Send this call's method, URL, status and body to the Mock panel"><i class="icon-replace" aria-hidden="true"></i>Mock</button>
     <button class="detail-action-btn" id="detailResilienceBtn" title="Send this call's method and URL to the Resilience panel"><i class="icon-zap-off" aria-hidden="true"></i>Resilience</button>
-    <button class="detail-action-btn" id="detailCurlBtn" title="Copy this request as a curl command"><i class="icon-copy" aria-hidden="true"></i>Copy as cURL</button>
-    <button class="detail-action-btn" id="detailFetchBtn" title="Copy this request as a fetch() call"><i class="icon-copy" aria-hidden="true"></i>Copy as fetch</button>
+    <div class="detail-copy-wrap">
+      <button class="detail-action-btn" id="detailCopyBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="detailCopyMenu"><i class="icon-copy" aria-hidden="true"></i>Copy<i class="icon-chevron-down" aria-hidden="true"></i></button>
+      <div class="detail-copy-menu" id="detailCopyMenu" role="menu" hidden>
+        <button class="detail-copy-item" id="detailCurlBtn" role="menuitem" title="Copy this request as a curl command">Copy as cURL</button>
+        <button class="detail-copy-item" id="detailFetchBtn" role="menuitem" title="Copy this request as a fetch() call">Copy as fetch</button>
+      </div>
+    </div>
   </div>`;
+}
+
+// #336: Copy ▾ is one split button whose menu offers cURL and fetch.
+function setCopyMenuOpen(open) {
+  const menu = document.getElementById('detailCopyMenu');
+  const btn = document.getElementById('detailCopyBtn');
+  if (!menu || !btn) return;
+  menu.hidden = !open;
+  btn.setAttribute('aria-expanded', String(open));
 }
 
 function wireActions(v) {
   const mockData = v.mockData;
+  const copyBtn = document.getElementById('detailCopyBtn');
+  if (copyBtn) copyBtn.onclick = (e) => { e.stopPropagation(); setCopyMenuOpen(document.getElementById('detailCopyMenu').hidden); };
   if (!mockData) return;
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
   on('detailMockBtn', () => openMockFromRequest(mockData.method, mockData.url, mockData.statusCode, mockData.body, {
@@ -320,12 +336,12 @@ function wireActions(v) {
   }));
   if (v.reqEvt) on('detailReplayBtn', () => openReplay(v.reqEvt, getActiveId()));
   on('detailResilienceBtn', () => openResilienceFromRequest(mockData.method, mockData.url, mockData.requestHeaders, mockData.requestBody));
-  on('detailCurlBtn', () => testerBrowser.clipboard.write(toCurl({
+  on('detailCurlBtn', () => { setCopyMenuOpen(false); testerBrowser.clipboard.write(toCurl({
     method: mockData.method, url: mockData.url, headers: mockData.requestHeaders, postData: mockData.requestBody,
-  })));
-  on('detailFetchBtn', () => testerBrowser.clipboard.write(toFetch({
+  })); });
+  on('detailFetchBtn', () => { setCopyMenuOpen(false); testerBrowser.clipboard.write(toFetch({
     method: mockData.method, url: mockData.url, headers: mockData.requestHeaders, postData: mockData.requestBody,
-  })));
+  })); });
 }
 
 function renderDetailPanelBody() {
@@ -412,6 +428,11 @@ export function renderDetailPanel() {
 }
 
 export function initDetailPanel() {
+  document.addEventListener('click', (e) => {
+    if (!(/** @type {HTMLElement} */ (e.target)).closest?.('.detail-copy-wrap')) setCopyMenuOpen(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setCopyMenuOpen(false); });
+
   const handle = document.getElementById('detailPanelResizeHandle');
   const panel  = document.getElementById('detailPanel');
   const body   = document.getElementById('consolePanelBody');

@@ -329,8 +329,12 @@ test('network/status-codes.html: Copy as cURL copies a curl command for the sele
   const curlBtn = window.locator('#detailCurlBtn');
   await expect(async () => {
     await requestRow.first().click({ timeout: 2_000 });
-    await expect(curlBtn).toBeVisible({ timeout: 1_000 });
+    await expect(window.locator('#detailCopyBtn')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
+  // #336: cURL and fetch live in the Copy ▾ menu.
+  await window.click('#detailCopyBtn');
+  await expect(curlBtn).toBeVisible();
+  await expect(window.locator('#detailFetchBtn')).toBeVisible();
   await curlBtn.click();
 
   const clipboardText = await app.evaluate(({ clipboard }) => clipboard.readText());

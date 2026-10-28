@@ -828,7 +828,16 @@ button.timeline-load-older:hover { color: var(--text-primary); background: var(-
 .detail-close:hover { background: var(--tb-hover); color: var(--tb-text); }
 .detail-urlline { font-family: var(--tb-font-mono); font-size: 12.5px; word-break: break-all; line-height: 1.45; color: var(--tb-text); }
 .detail-url-method { color: var(--tb-text-3); }
-.detail-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.detail-actions { display: flex; flex-wrap: nowrap; gap: 6px; }
+/* #336: Copy ▾ — one button, menu with both copy formats. */
+.detail-copy-wrap { position: relative; }
+.detail-copy-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; min-width: 150px; padding: 4px;
+                    background: var(--tb-surface); border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r);
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); display: flex; flex-direction: column; }
+.detail-copy-menu[hidden] { display: none; }
+.detail-copy-item { background: none; border: none; text-align: left; padding: 6px 8px; border-radius: var(--tb-r-sm);
+                    color: var(--tb-text); font-family: var(--tb-font-ui); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.detail-copy-item:hover { background: var(--tb-hover); }
 #detailPanelTabBar { display: flex; border-bottom: 1px solid var(--tb-line); overflow-x: auto; flex-shrink: 0; min-height: 36px; padding: 0 8px; }
 .detail-tab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--tb-text-2);
               font-size: 12.5px; cursor: pointer; padding: 0 10px; height: 36px; white-space: nowrap;
