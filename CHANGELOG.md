@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.12 — 2026-10-28
+
+### Other
+
+- Spoof uses plain labels and a one-line helper text (refs #331) (55fd129)
+
 ## v0.148.11 — 2026-10-28
 
 _No changes recorded._
