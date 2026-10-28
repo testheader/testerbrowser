@@ -96,3 +96,18 @@ test('with the Debug log console tab active, opening the bug report pre-selects 
   await openBugReportModal();
   await expect(window.locator('#bugReportArea')).toHaveValue('Debug log');
 });
+
+// #338: diagnostics start collapsed, and the Submit/Cancel footer stays in view on a short window.
+test('diagnostics are collapsed by default and the footer is visible at 600px window height (#338)', async () => {
+  await window.keyboard.press('Escape');
+  await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(1000, 600); });
+  await openBugReportModal();
+  await expect(window.locator('#bugReportDiagDetails')).not.toHaveAttribute('open', '');
+  await expect(window.locator('#bugReportSubmitBtn')).toBeInViewport();
+  await expect(window.locator('#bugReportCancelBtn')).toBeInViewport();
+  await window.click('#bugReportDiagDetails summary');
+  await expect(window.locator('#bugReportDiagPreview')).toBeVisible();
+  await expect(window.locator('#bugReportSubmitBtn')).toBeInViewport();
+  await window.keyboard.press('Escape');
+  await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(1400, 900); });
+});
