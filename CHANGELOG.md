@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.148.10 — 2026-10-28
+
+### Other
+
+- hide custom throttle fields unless the preset is Custom (refs #330) (db0bab6)
+- move A11y, Mock and Resilience onto the shared controls (refs #328) (03f3f94)
+
 ## v0.148.9 — 2026-10-28
 
 ### Other
