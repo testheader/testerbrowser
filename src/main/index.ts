@@ -8,6 +8,7 @@ import { firstHttpUrl } from './singleInstance';
 import { installIpcGuard } from './ipcGuard';
 import { canAutoInstall, IDLE_INSTALL_MINUTES, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX } from './idleInstall';
 import { UPDATE_CHECK_INTERVAL_MS, shouldRunPeriodicCheck } from './updateCheck';
+import { isPreV2Settings, SETTINGS_VERSION } from './settingsMigration';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
@@ -248,6 +249,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   allowRealPopups: false,
   disabledConsoleTabs: [],
   idleInstallMinutes: IDLE_INSTALL_MINUTES,
+  settingsVersion: SETTINGS_VERSION,
 };
 const DEFAULT_SPEED_DIAL: SpeedDialTile[] = [
   { id: '1', url: 'https://www.google.com',       title: 'Google' },
@@ -267,8 +269,18 @@ const urlHistoryStore = new JsonStore<string[]>('url-history.json', []);
 const speedDialStore  = new JsonStore<SpeedDialTile[]>('speed-dial.json', DEFAULT_SPEED_DIAL);
 // Mirrors the shell's theme choice so newtab views can read it on load.
 const themeStore      = new JsonStore<{ scheme: string }>('theme.json', { scheme: 'dark' });
+// settingsMigrated is set when a pre-v2 file is loaded. The store is then
+// saved once, so the migration doesn't run again on the next launch.
+let settingsMigrated = false;
 const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETTINGS, (raw) => {
   const merged = { ...DEFAULT_SETTINGS, ...(raw as Partial<AppSettings>) };
+  // v2 (#259 follow-up): idle install is on by default, so turn it on once for
+  // existing users. Later saves keep whatever the user chose.
+  if (isPreV2Settings(raw)) {
+    merged.autoInstallWhenIdle = true;
+    settingsMigrated = true;
+  }
+  merged.settingsVersion = SETTINGS_VERSION;
   // #229: a hand-edited or stale settings.json could carry an out-of-range
   // or malformed value — clamp on load the same way settings:set does.
   merged.recorderMaxEvents = clampNumberSetting(
@@ -300,6 +312,7 @@ const jiraStore = new JsonStore<JiraSettingsFile>('jira-settings.json', DEFAULT_
   return settings;
 });
 if (jiraTokenMigrated) jiraStore.set(jiraStore.get()); // persist the migration, dropping the plaintext token from disk
+if (settingsMigrated) settingsStore.set(settingsStore.get()); // persist the v2 migration, so it runs once
 
 const testsStore = new JsonStore<SavedTest[]>('tests.json', []);
 

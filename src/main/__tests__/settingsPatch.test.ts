@@ -14,6 +14,7 @@ const BASE: AppSettings = {
   allowRealPopups: false,
   disabledConsoleTabs: [],
   idleInstallMinutes: 15,
+  settingsVersion: 2,
 };
 
 describe('applySettingsPatch (#217 — settings:set whitelist)', () => {

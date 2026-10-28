@@ -22,6 +22,7 @@ export interface AppSettings {
   allowRealPopups: boolean;
   disabledConsoleTabs: string[];
   idleInstallMinutes: number;
+  settingsVersion: number;
 }
 
 const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
