@@ -26,7 +26,7 @@
           <span>Settings</span>
         </div>
         <div class="view-item" id="appMenuBugReport">
-          <span>Report Bug…</span>
+          <span>Report bug…</span>
           <span class="view-shortcut">Ctrl+Shift+R</span>
         </div>
       </div>
@@ -78,7 +78,7 @@
         <div id="viewDropdown" role="menu">
           <div class="view-item" id="viewToggleConsole" role="menuitemcheckbox" tabindex="0" aria-checked="true">
             <span class="view-check" id="viewConsoleCheck">&#10003;</span>
-            <span>Console panel</span>
+            <span>Tool panel</span>
           </div>
           <div class="view-item" id="viewToggleBookmarks" role="menuitemcheckbox" tabindex="0" aria-checked="false">
             <span class="view-check" id="viewBookmarksCheck"></span>
@@ -131,7 +131,7 @@
     <div id="consoleDragHandle"></div>
     <div id="consoleHeader">
       <div id="consoleTabsWrap">
-      <div class="console-tabs" id="consoleTabsStrip" role="tablist" aria-label="Console panel">
+      <div class="console-tabs" id="consoleTabsStrip" role="tablist" aria-label="Tool panel">
         <div class="console-tab-group" role="presentation">
           <button class="console-tab" id="consoleTabNetwork" role="tab" aria-selected="false"><i class="icon-globe" aria-hidden="true"></i><span>Network</span></button>
           <button class="console-tab active" id="consoleTabConsole" role="tab" aria-selected="true"><i class="icon-terminal" aria-hidden="true"></i><span>Console</span></button>
@@ -457,7 +457,7 @@
     <div id="replayModal">
       <button class="modal-close-btn" id="replayCloseXBtn" title="Close" aria-label="Close replay dialog">&#10005;</button>
       <div class="replay-head">
-        <h2>Replay Request</h2>
+        <h2>Replay request</h2>
         <div class="replay-url-row">
           <select id="replayMethod">
             <option>GET</option><option>POST</option><option>PUT</option>
@@ -505,10 +505,10 @@
           <input type="number" id="replayTimeout" min="1" max="600" value="30" />
         </label>
         <span id="replaySpinner">Sending…</span>
-        <button class="detail-action-btn" id="replayToMockBtn"       title="Send this request's method, URL, headers and last response to the Mock panel">⇒ Mock</button>
-        <button class="detail-action-btn" id="replayToResilienceBtn" title="Send this request's method, URL and headers to the Resilience panel">⇒ Resilience</button>
+        <button class="detail-action-btn" id="replayToMockBtn"       title="Send this request's method, URL, headers and last response to the Mock panel">Mock</button>
+        <button class="detail-action-btn" id="replayToResilienceBtn" title="Send this request's method, URL and headers to the Resilience panel">Resilience</button>
         <button class="btn btn-secondary" id="closeReplayBtn">Close</button>
-        <button class="btn btn-primary"   id="sendReplayBtn">Send ↵</button>
+        <button class="btn btn-primary"   id="sendReplayBtn">Send</button>
       </div>
     </div>
   </div>
@@ -587,7 +587,7 @@
   <!-- Bug Report -->
   <div id="bugReportOverlay">
     <div id="bugReportModal">
-      <h2>Report Bug</h2>
+      <h2>Report bug</h2>
       <div id="bugReportFormView">
         <div class="setting-row" style="align-items:center;padding:6px 0">
           <span class="setting-label" style="flex-shrink:0">Feature area</span>
@@ -602,8 +602,8 @@
             <option>Mock</option>
             <option>Resilience</option>
             <option>Jira</option>
-            <option>Record Playback</option>
-            <option>Follow Along</option>
+            <option>Record</option>
+            <option>Follow</option>
             <option>Debug log</option>
             <option>Tabs / Sessions</option>
             <option>Bookmarks / Downloads</option>

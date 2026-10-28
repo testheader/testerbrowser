@@ -48,7 +48,7 @@ export function initRecordPlayback() {
     </div>
     <div class="rp-wrap">
       <div class="rp-col rp-record-col" id="rpRecordCol">
-        <div class="rp-section-title">Record New Test</div>
+        <div class="rp-section-title">New recording</div>
         <div class="rp-record-form">
           <input class="rp-input" id="rpTestName" type="text" placeholder="Test name…" />
           <div class="rp-record-btns">
@@ -65,7 +65,7 @@ export function initRecordPlayback() {
       <div class="rp-splitter" id="rpSplitter1" title="Drag to resize"></div>
 
       <div class="rp-col rp-saved-col" id="rpSavedCol">
-        <div class="rp-section-title">Replay Tests</div>
+        <div class="rp-section-title">Saved recordings</div>
         <label class="rp-step-mode-toggle" title="Pause after each step instead of running the test straight through — useful for debugging where a script fails. Applies to the single Run button only, not Run N×.">
           <input type="checkbox" id="rpStepModeToggle" /> Step-by-step playback
         </label>

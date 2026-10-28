@@ -379,7 +379,7 @@ function createWindow() {
       submenu: [
         { label: 'About / Settings', click: () => win?.webContents.send('show:settings') },
         {
-          label: 'Report Bug…',
+          label: 'Report bug…',
           accelerator: 'CmdOrCtrl+Shift+R',
           click: () => win?.webContents.send('show:bugreport'),
         },

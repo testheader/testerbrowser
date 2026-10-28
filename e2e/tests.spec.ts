@@ -688,8 +688,8 @@ test('the tab lays out as three columns: Record new test, Replay tests, then the
   const recordCol = window.locator('#rpRecordCol');
   const savedCol  = window.locator('#rpSavedCol');
   const mainCol   = window.locator('.rp-main');
-  await expect(recordCol).toContainText('Record New Test');
-  await expect(savedCol).toContainText('Replay Tests');
+  await expect(recordCol).toContainText('New recording');
+  await expect(savedCol).toContainText('Saved recordings');
   await expect(mainCol).toBeVisible();
 
   const recordBox = (await recordCol.boundingBox())!;
