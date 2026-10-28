@@ -3,6 +3,7 @@ import { applyTheme, getStoredScheme } from './theme.js';
 import { initModal, openModal, closeModal } from './modal.js';
 import { applyConsoleTabVisibility } from './console-tabs.js';
 import { buildShortcutRows } from './shortcut-list.js';
+import { tempTabCount } from './update-pill.js';
 
 const STATUS_CONFIG = {
   checking:          { cls: 'info', text: 'Checking for updates…' },
@@ -18,8 +19,19 @@ const STATUS_CONFIG = {
   error:             { cls: 'err',  text: (msg) => `Update error: ${msg || 'unknown'}` },
 };
 
+// Install now is silent (quitAndInstall with isSilent), so it's the same
+// action as the update pill's restart. Temporary tabs are discarded on quit,
+// so the label says how many will close, the way the pill's confirmation does.
+async function refreshInstallButton() {
+  const n = tempTabCount(await testerBrowser.sessions.list());
+  document.getElementById('restartBtn').textContent = n
+    ? `Install now — closes ${n} temporary tab${n === 1 ? '' : 's'}`
+    : 'Install now';
+}
+
 function applyUpdateStatus({ status, current, latest }) {
   document.getElementById('currentVersion').textContent = current || '—';
+  if (status === 'downloaded') refreshInstallButton();
   document.getElementById('latestVersion').textContent  = latest || (status === 'not-available' ? current : '—');
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.checking;
   const el  = document.getElementById('updateStatusText');

@@ -554,21 +554,22 @@ test('the "install updates automatically when idle" toggle exists in Settings an
   await window.click('.settings-nav-btn[data-pane="general"]');
 
   const toggle = window.locator('#autoInstallWhenIdleToggle');
-  await expect(toggle).not.toBeChecked();
+  // On by default (#259 follow-up).
+  await expect(toggle).toBeChecked();
   // The checkbox itself is visually hidden by .toggle-switch (opacity/size
   // zeroed out — only the sibling .toggle-slider is rendered), so Playwright
   // won't treat it as clickable; click the visible slider instead, same as
   // debug-mode.spec.ts does for the equivalent debugModeToggle.
   await window.locator('#autoInstallWhenIdleToggle + .toggle-slider').click();
-  await expect(toggle).toBeChecked();
+  await expect(toggle).not.toBeChecked();
   await expect.poll(
     () => window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.get()
       .then((s: { autoInstallWhenIdle: boolean }) => s.autoInstallWhenIdle))
-  ).toBe(true);
+  ).toBe(false);
 
   await window.click('#settingsCloseXBtn');
   // Reset so this doesn't leak into later tests in this shared-app file.
-  await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ autoInstallWhenIdle: false }));
+  await window.evaluate(() => (window as unknown as { testerBrowser: any }).testerBrowser.settings.set({ autoInstallWhenIdle: true }));
 });
 
 test('Settings modal has General / Tools / Shortcuts / About, with locked Network and Console tool toggles and a generated shortcut list (#316)', async () => {

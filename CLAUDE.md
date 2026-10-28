@@ -321,7 +321,7 @@ npm run dist:win          # Full Windows installer build + publish
 
 ## Auto-update
 
-`electron-updater` runs on startup (packaged builds only). Fetches `latest.yml` from GitHub releases, downloads in background, notifies on restart. The bump-version CI job ensures every release has a unique version number.
+`electron-updater` runs on startup and then every 15 minutes (packaged builds only; `updateCheck.ts`). Fetches `latest.yml` from GitHub releases and downloads in background. Once downloaded, the update installs silently when idle (`autoInstallWhenIdle`, on by default) or straight away via the About pane's "Install now". Periodic re-checks are skipped while a download is in flight or ready, so they can't reset the `downloaded` status the idle timer needs. The bump-version CI job ensures every release has a unique version number.
 
 ---
 

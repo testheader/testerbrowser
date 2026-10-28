@@ -150,7 +150,7 @@ The same list is in **Settings → Shortcuts**.
 | `Right-click tab` | Rename, pin, clone, notes, close |
 
 ### Auto-updates
-TesterBrowser checks for updates on launch and installs them in the background. You'll be prompted to restart when a new version is ready.
+TesterBrowser checks for updates on launch and every 15 minutes after that, and downloads them in the background. When an update is ready it installs silently once the machine has been idle for 15 minutes (never while recording, playing back or downloading). You can turn that off in Settings › General, or install straight away from Settings › About.
 
 ---
 

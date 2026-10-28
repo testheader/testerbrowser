@@ -7,6 +7,7 @@ import { VisualRegressionStore } from './visualRegressionStore';
 import { firstHttpUrl } from './singleInstance';
 import { installIpcGuard } from './ipcGuard';
 import { canAutoInstall, IDLE_INSTALL_MINUTES, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX } from './idleInstall';
+import { UPDATE_CHECK_INTERVAL_MS, shouldRunPeriodicCheck } from './updateCheck';
 import { writeAppErrors, readAppErrors, AppErrorEntry, AppLogLevel } from './errorLog';
 import { DebugLogStore } from './debugLogStore';
 import { log, initLogger, getRecentErrors } from './appLogger';
@@ -243,7 +244,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoOpenDownloadsPanel: false,
   recorderMaxEvents: 20000,
   recordingRetentionDays: 30,
-  autoInstallWhenIdle: false,
+  autoInstallWhenIdle: true,
   allowRealPopups: false,
   disabledConsoleTabs: [],
   idleInstallMinutes: IDLE_INSTALL_MINUTES,
@@ -545,6 +546,11 @@ if (!gotSingleInstanceLock) {
         pushUpdateStatus();
       });
       autoUpdater.checkForUpdates();
+      // Re-check while running, so a long-lived session still sees new releases.
+      // Skipped while an update is in flight or already downloaded (see updateCheck.ts).
+      setInterval(() => {
+        if (shouldRunPeriodicCheck(updateStatus)) autoUpdater.checkForUpdates();
+      }, UPDATE_CHECK_INTERVAL_MS);
     } else {
       updateStatus = 'not-available';
     }
