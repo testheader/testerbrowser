@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.10 — 2026-10-28
+
+### Fixes
+
+- Jira not-connected state shows controls that do nothing (refs #323) (449e0cc)
+
 ## v0.146.9 — 2026-10-28
 
 ### Fixes
