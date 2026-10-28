@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.9 — 2026-10-28
+
+### Fixes
+
+- Storage cookie table drops the Value column at narrow widths (refs #321) (e13aa64)
+
 ## v0.146.8 — 2026-10-28
 
 ### Fixes
