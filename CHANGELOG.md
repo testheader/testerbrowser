@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.147.0 — 2026-10-28
+
+### Features
+
+- collapse the Mock new-rule form until New rule is pressed (refs #329) (900b23c)
+
 ## v0.146.13 — 2026-10-28
 
 ### Fixes
