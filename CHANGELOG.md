@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.8 — 2026-10-28
+
+### Fixes
+
+- Network detail pane breaks the request table in narrow windows (refs #320) (342f0cf)
+
 ## v0.146.7 — 2026-10-28
 
 ### Fixes
