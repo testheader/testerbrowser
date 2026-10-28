@@ -2386,6 +2386,13 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .follow-strong { display: inline-flex; align-items: center; gap: 6px; background: var(--tb-text); color: var(--tb-surface);
   border: none; border-radius: var(--tb-r); padding: 5px 11px; font: inherit; font-weight: 500; cursor: pointer; }
 .follow-toolbar { border-bottom: 1px solid var(--tb-line); }
+#followPanel { position: relative; }
+/* #325: pairing popover, opened from the empty state's "Pair with a tab" or the toolbar's "Pair another tab". */
+.follow-popover { position: absolute; z-index: 30; top: 48px; left: 12px; width: 280px; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  background: var(--tb-surface); border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
+.follow-unpaired .follow-popover { top: 12px; }
+.follow-popover .diff-label { display: flex; flex-direction: column; gap: 4px; }
+.follow-popover-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .follow-pairs { padding: 0; }
 .follow-pair { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--tb-line); font-size: 12.5px; }
 .follow-live { display: inline-flex; align-items: center; gap: 6px; color: var(--tb-ok); font-weight: 500; }

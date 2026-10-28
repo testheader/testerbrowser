@@ -19,10 +19,21 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
+// #325: pickers live in a popover — opened from the empty state when unpaired, or the toolbar once a pair exists.
+async function openPairPopover() {
+  const pairBtn = window.locator('#followPairBtn');
+  if (await pairBtn.isVisible()) await pairBtn.click();
+  else await window.click('#followPairs .empty-state-btn');
+  await expect(window.locator('#followPairPopover')).toBeVisible();
+}
+
 test('with no pairing the Follow tab shows the shared empty state (#313)', async () => {
   await window.click('#consoleTabFollow');
   await expect(window.locator('#followPairs .empty-state-title')).toHaveText('Follow along');
   await expect(window.locator('#followPairs .empty-state-btn')).toHaveText('Pair with a tab');
+  // #325: unpaired shows only the empty state — no toolbar, no pickers until the popover opens.
+  await expect(window.locator('#followToolbar')).toBeHidden();
+  await expect(window.locator('#followPickLeader')).toBeHidden();
 });
 
 test('leader interactions are mirrored onto the follower in near real time', async () => {
@@ -51,6 +62,7 @@ test('leader interactions are mirrored onto the follower in near real time', asy
   const followerTab = await getTabPage(app, urlPath, leaderTab);
 
   await window.click('#consoleTabFollow');
+  await openPairPopover();
   await window.selectOption('#followPickLeader', leaderId);
   await window.selectOption('#followPickFollower', followerId);
   await window.click('#followStartBtn');
@@ -173,6 +185,7 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   await expectSessionUrl(followerId, followerStart);
 
   await window.click('#consoleTabFollow');
+  await openPairPopover();
   await window.selectOption('#followPickLeader', leaderId);
   await window.selectOption('#followPickFollower', followerId);
   await window.check('#followMirrorNav');
@@ -234,6 +247,7 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   await expectSessionUrl(follower2Id, followerStart);
 
   await window.click('#consoleTabFollow');
+  await openPairPopover();
   await window.selectOption('#followPickLeader', leader2Id);
   await window.selectOption('#followPickFollower', follower2Id);
   await window.check('#followMirrorNav');
@@ -350,6 +364,7 @@ test('starting Follow Along on a shared-partition pair shows a warning in the lo
   const followerId = afterCreate.map((s: { id: string }) => s.id).find((id: string) => !idsBefore.has(id));
 
   await window.click('#consoleTabFollow');
+  await openPairPopover();
   await window.selectOption('#followPickLeader', leaderId);
   await window.selectOption('#followPickFollower', followerId);
   await window.click('#followStartBtn');

@@ -14,8 +14,16 @@ export function initFollow() {
   if (panel.dataset.initialized) { refreshFollowPanel(); return; }
   panel.dataset.initialized = '1';
 
+  // #325: unpaired, the panel is just the empty state; its "Pair with a tab"
+  // button opens the pairing popover (leader, follower, Mirror navigation).
+  // The toolbar only appears once a pair exists.
   panel.innerHTML = `
-    <div class="follow-toolbar">
+    <div class="follow-toolbar" id="followToolbar" hidden>
+      <button class="net-chip" id="followPairBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>Pair another tab</button>
+      <span class="follow-spacer"></span>
+      <button class="net-chip" id="followClearLogBtn" type="button">Clear log</button>
+    </div>
+    <div class="follow-popover" id="followPairPopover" role="dialog" aria-label="Pair with a tab" hidden>
       <label class="diff-label">Leader
         <select class="diff-pick" id="followPickLeader"></select>
       </label>
@@ -26,9 +34,10 @@ export function initFollow() {
         <input type="checkbox" id="followMirrorNav" />
         Mirror navigation
       </label>
-      <span class="follow-spacer"></span>
-      <button class="net-chip" id="followClearLogBtn" type="button">Clear log</button>
-      <button class="follow-strong" id="followStartBtn" type="button">Start following</button>
+      <div class="follow-popover-actions">
+        <button class="net-chip" id="followPairCancelBtn" type="button">Cancel</button>
+        <button class="follow-strong" id="followStartBtn" type="button">Start following</button>
+      </div>
     </div>
     <div class="follow-pairs" id="followPairs"></div>
     <div class="follow-log" id="followLog"></div>`;
@@ -41,6 +50,9 @@ export function initFollow() {
   // a real session from the OTHER picker's option list entirely on the
   // panel's first-ever open in a session.
   document.getElementById('followStartBtn').addEventListener('click', startFollow);
+  document.getElementById('followPairBtn').addEventListener('click', openPairPopover);
+  document.getElementById('followPairCancelBtn').addEventListener('click', closePairPopover);
+  document.getElementById('followPairPopover').addEventListener('keydown', (e) => { if (e.key === 'Escape') closePairPopover(); });
   document.getElementById('followClearLogBtn').addEventListener('click', () => {
     document.getElementById('followLog').innerHTML = '';
   });
@@ -55,6 +67,17 @@ export async function refreshFollowPickers() {
   if (!pick) return; // panel not yet initialised
   await populatePickers();
   await refreshFollowPanel();
+}
+
+async function openPairPopover() {
+  await populatePickers();
+  document.getElementById('followPairPopover').hidden = false;
+  document.getElementById('followPickLeader').focus();
+}
+
+function closePairPopover() {
+  const pop = document.getElementById('followPairPopover');
+  if (pop) pop.hidden = true;
 }
 
 async function populatePickers() {
@@ -72,6 +95,7 @@ async function startFollow() {
   const result = await testerBrowser.followAlong.start(leaderId, followerId, mirrorNavigation);
   if (!result.ok) { setLog(result.error || 'Could not start Follow Along.', 'err'); return; }
   pausedPairs.delete(leaderId);
+  closePairPopover();
 
   // #258: leader and follower sharing a partition (e.g. a middle-clicked tab)
   // share cookies/storage too — mirrored logins and form posts then act on
@@ -121,11 +145,15 @@ async function refreshFollowPanel() {
   const sessions = cachedSessions.length ? cachedSessions : await testerBrowser.sessions.list();
   const nameOf = (id) => sessions.find(s => s.id === id)?.name || '(closed session)';
 
-  if (pairings.length === 0 && pausedPairs.size === 0) {
+  const unpaired = pairings.length === 0 && pausedPairs.size === 0;
+  document.getElementById('followToolbar').hidden = unpaired;
+  document.getElementById('followPanel').classList.toggle('follow-unpaired', unpaired);
+
+  if (unpaired) {
     pairsEl.replaceChildren(renderEmptyState({
       icon: 'users', tone: 'accent', title: 'Follow along',
       text: "Mirror another tab's navigation in this one.",
-      actionLabel: 'Pair with a tab', onAction: startFollow,
+      actionLabel: 'Pair with a tab', onAction: openPairPopover,
     }));
     return;
   }
