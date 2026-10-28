@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.12 — 2026-10-28
+
+### Other
+
+- Follow shows two competing ways to start pairing (refs #325) (1500cac)
+
 ## v0.146.11 — 2026-10-28
 
 ### Fixes
