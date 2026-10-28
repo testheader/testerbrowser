@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.149.1 — 2026-10-28
+
+### Other
+
+- move network and CPU throttling into Spoof › Advanced (refs #341) (873243c)
+
 ## v0.149.0 — 2026-10-28
 
 ### Features
