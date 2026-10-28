@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.13 — 2026-10-28
+
+### Fixes
+
+- hide empty-state filters and repeated actions; use verb labels for first actions (refs #327) (506f5d0)
+
 ## v0.146.12 — 2026-10-28
 
 ### Other
