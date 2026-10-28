@@ -2421,6 +2421,8 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .jira-conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--tb-text-2); }
 .jira-conn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tb-ok); }
 .jira-icon-btn { color: var(--tb-text-2); font-size: 15px; }
+/* #323: until Jira is connected the toolbar offers only the settings button — the empty state carries the call to action. */
+.jira-unconfigured .jira-key-field, .jira-unconfigured #jiraFetchBtn { display: none; }
 .jira-split { display: flex; align-items: flex-start; min-height: 0; }
 .jira-left { flex: 1; min-width: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
 .jira-not-configured .empty-state { min-height: 220px; }

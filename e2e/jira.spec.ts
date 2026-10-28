@@ -39,6 +39,12 @@ async function getJiraSettings() {
 // #314: not configured → shared empty state whose button opens the settings form.
 test('before Jira is configured the tab shows a Connect Jira empty state that opens settings (#314)', async () => {
   await expect(window.locator('#jiraNotConfigured .empty-state-title')).toHaveText('Connect Jira');
+  // #323: only the empty state shows before Jira is connected.
+  await expect(window.locator('#jiraTicketKey')).toBeHidden();
+  await expect(window.locator('#jiraFetchBtn')).toBeHidden();
+  await expect(window.locator('#jiraConn')).toBeHidden();
+  await expect(window.locator('#jiraActionsBar')).toBeHidden();
+  await expect(window.locator('#jiraBugForm')).toBeHidden();
   await window.click('#jiraNotConfigured .empty-state-btn');
   await expect(window.locator('#jiraSetupView')).toBeVisible();
   await window.click('#jiraCancelSettingsBtn');

@@ -26,3 +26,10 @@ describe('renderer/style.css cookie table columns', () => {
     expect(hidden).toEqual(['4', '6', '3']);
   });
 });
+
+// #323: the not-connected Jira toolbar hides the ticket-key input and Load button.
+describe('renderer/style.css Jira not-connected state', () => {
+  it('hides the key field and Load button under .jira-unconfigured', () => {
+    expect(css).toMatch(/\.jira-unconfigured \.jira-key-field, \.jira-unconfigured #jiraFetchBtn \{ display: none; \}/);
+  });
+});
