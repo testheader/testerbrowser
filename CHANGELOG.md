@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.4 — 2026-10-28
+
+### Other
+
+- combine Copy as cURL and Copy as fetch into one split button (refs #336) (ce93eb8)
+
 ## v0.148.3 — 2026-10-28
 
 ### Fixes
