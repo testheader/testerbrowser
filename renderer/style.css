@@ -247,6 +247,9 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 .tab-group-add:hover { color: var(--tb-text); background: var(--tb-hover); }
 .tab-group-add:active { background: var(--tb-line); color: var(--tb-text); }
 
+/* #335: tabs are keyboard-focusable. */
+.tab:focus-visible, .tab-group-add:focus-visible { outline: 2px solid var(--tb-accent); outline-offset: -2px; }
+
 /* Loading spinner in tab (replaces favicon/dot while loading) */
 .tab-spinner { width: 12px; height: 12px; border: 2px solid var(--border-strong);
                border-top-color: var(--tab-color, var(--accent)); border-radius: 50%;

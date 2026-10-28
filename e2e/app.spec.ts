@@ -1041,3 +1041,21 @@ test('the per-group "+" is invisible until hovered or focused, and is a focusabl
   expect(await add.evaluate((el) => el.tagName)).toBe('BUTTON');
   await expect(window.locator('#newSessionBtn')).toBeVisible();
 });
+
+// #335: tabs are keyboard-reachable; aria-current follows the active tab.
+test('tabs support roving tabindex: arrows move focus, Enter activates, aria-current follows (#335)', async () => {
+  await window.click('#newSessionBtn');
+  const tabs = window.locator('#tabs .tab');
+  expect(await tabs.count()).toBeGreaterThanOrEqual(2);
+  const active = window.locator('#tabs .tab.active');
+  await expect(active).toHaveAttribute('tabindex', '0');
+  await expect(active).toHaveAttribute('aria-current', 'true');
+  await active.focus();
+  await window.keyboard.press('ArrowLeft');
+  const focusedId = await window.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.id);
+  expect(focusedId).toBeTruthy();
+  expect(focusedId).not.toBe(await active.getAttribute('data-id'));
+  await window.keyboard.press('Enter');
+  await expect(window.locator(`#tabs .tab[data-id="${focusedId}"]`)).toHaveAttribute('aria-current', 'true');
+  await expect(window.locator('#tabs .tab[aria-current="true"]')).toHaveCount(1);
+});

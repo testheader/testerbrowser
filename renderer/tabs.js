@@ -145,6 +145,29 @@ function createTabElement(s) {
 
   tab.oncontextmenu = (e) => { e.preventDefault(); testerBrowser.sessions.contextMenu(s.id); };
 
+  // #335: roving tabindex (the active tab is the one tab stop, set in
+  // updateTabElement) — Enter/Space activate, arrows/Home/End move focus.
+  // Only keys aimed at the tab itself: a rename <input> inside it keeps its own.
+  tab.addEventListener('keydown', (e) => {
+    if (e.target !== tab || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      switchToSession(s.id);
+      return;
+    }
+    const tabs = [...document.querySelectorAll('#tabs .tab')];
+    const i = tabs.indexOf(tab);
+    const next = e.key === 'ArrowRight' ? tabs[i + 1]
+      : e.key === 'ArrowLeft' ? tabs[i - 1]
+      : e.key === 'Home' ? tabs[0]
+      : e.key === 'End' ? tabs[tabs.length - 1]
+      : undefined;
+    if (next) {
+      e.preventDefault();
+      /** @type {HTMLElement} */ (next).focus();
+    }
+  });
+
   tab.draggable = true;
   tab.addEventListener('dragstart', (e) => {
     dragSourceId = s.id;
@@ -226,6 +249,8 @@ function updateTabElement(tab, s) {
   // one" without claiming a tab-widget pattern this DOM can't fully support.
   if (s.id === activeId) tab.setAttribute('aria-current', 'true');
   else tab.removeAttribute('aria-current');
+  // #335: roving tabindex — only the active tab is in the Tab order; arrows reach the rest.
+  tab.tabIndex = s.id === activeId ? 0 : -1;
   if (s.color) tab.style.setProperty('--tab-color', s.color);
   tab.dataset.pinned = s.pinned ? '1' : '';
   // #265: a title only when throttled, so an unthrottled tab isn't left with
