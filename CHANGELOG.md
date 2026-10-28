@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.0 — 2026-10-28
+
+### Features
+
+- overflow menu for tool tabs hidden in narrow windows (refs #332) (fdd4659)
+
 ## v0.147.0 — 2026-10-28
 
 ### Features
