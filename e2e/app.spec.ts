@@ -1059,3 +1059,21 @@ test('tabs support roving tabindex: arrows move focus, Enter activates, aria-cur
   await expect(window.locator(`#tabs .tab[data-id="${focusedId}"]`)).toHaveAttribute('aria-current', 'true');
   await expect(window.locator('#tabs .tab[aria-current="true"]')).toHaveCount(1);
 });
+
+// #337: the Shortcuts pane is two columns with nowrap labels and no horizontal scroll.
+test('Settings › Shortcuts has no horizontal overflow and keeps labels on one line (#337)', async () => {
+  await window.click('#appName');
+  await window.click('#appMenuSettings');
+  await expect(window.locator('#settingsOverlay')).toHaveClass(/open/);
+  await window.click('.settings-nav-btn[data-pane="shortcuts"]');
+  await expect(window.locator('#shortcutList .shortcut-row').first()).toBeVisible();
+  const overflow = await window.evaluate(() => {
+    const c = document.querySelector('.settings-content') as HTMLElement;
+    return c.scrollWidth - c.clientWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(0);
+  const wraps = await window.locator('#shortcutList .shortcut-row > span:first-child').evaluateAll(
+    (els) => els.filter((e) => (e as HTMLElement).offsetHeight > 24).length);
+  expect(wraps).toBe(0);
+  await window.keyboard.press('Escape');
+});
