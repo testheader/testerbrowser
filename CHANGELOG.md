@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.150.3 — 2026-10-28
+
+### Fixes
+
+- **e2e:** focus-order test matched "on" inside the button's own class (b95073f)
+- four flaky e2e tests, and a 10s stall in snapshot import and tab clone (1212baa)
+
+### Other
+
+- Merge remote-tracking branch 'origin/main' into claude/project-state-assessment-gwx7o0 (e4a1b2b)
+
 ## v0.150.2 — 2026-10-28
 
 ### Fixes
