@@ -2288,6 +2288,8 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .mock-sub { color: var(--tb-text-muted, var(--text-muted)); font-size: 12px; }
 .mock-spacer { flex: 1; }
 .mock-primary { background: var(--tb-accent, var(--info-surface)); color: #fff; }
+.mock-primary[aria-pressed="true"] { background: var(--tb-accent-soft); color: var(--tb-accent); box-shadow: inset 0 0 0 1px var(--tb-accent); }
+.mock-form[hidden] { display: none; }
 .mock-head, .mock-rule-row { display: grid; grid-template-columns: 44px 64px 1fr 70px 90px 90px 120px;
   align-items: center; gap: 8px; }
 .mock-head { padding: 4px 12px; font-size: 11px; text-transform: uppercase; color: var(--tb-text-muted, var(--text-muted)); }

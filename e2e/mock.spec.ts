@@ -28,6 +28,20 @@ test.afterAll(async () => {
   await fixtures.close();
 });
 
+// #329: the add-rule form is closed on first open; New rule opens it (pressed), Cancel closes it.
+test('the new-rule form starts closed, New rule opens it with aria-pressed, Cancel closes it', async () => {
+  await window.click('#consoleTabMock');
+  await expect(window.locator('#mockForm')).toBeHidden();
+  expect(await window.locator('#mockForm').evaluate((el) => getComputedStyle(el).display)).toBe('none');
+  await expect(window.locator('#mockNewRuleBtn')).toHaveAttribute('aria-pressed', 'false');
+  await window.click('#mockNewRuleBtn');
+  await expect(window.locator('#mockForm')).toBeVisible();
+  await expect(window.locator('#mockNewRuleBtn')).toHaveAttribute('aria-pressed', 'true');
+  await window.click('#mockCancelBtn');
+  await expect(window.locator('#mockForm')).toBeHidden();
+  await expect(window.locator('#mockNewRuleBtn')).toHaveAttribute('aria-pressed', 'false');
+});
+
 test('a rule actually intercepts a matching fetch and its hit count increments', async () => {
   const urlPath = '/network/api.html';
   await window.click('#urlbar');

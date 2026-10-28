@@ -68,6 +68,7 @@ export function openMockFromRequest(method, url, statusCode, body, opts = {}) {
 function setMockFormOpen(open) {
   const form = document.getElementById('mockForm');
   if (form) form.hidden = !open;
+  document.getElementById('mockNewRuleBtn')?.setAttribute('aria-pressed', String(open));
 }
 
 function resetMockForm() {
@@ -84,7 +85,8 @@ function resetMockForm() {
 
 export function initMock() {
   const panel = document.getElementById('mockPanel');
-  if (panel.dataset.initialized) { loadRules(); return; }
+  // #329: every visit starts with the add-rule form closed.
+  if (panel.dataset.initialized) { setMockFormOpen(false); loadRules(); return; }
   panel.dataset.initialized = '1';
 
   panel.innerHTML = `
@@ -94,7 +96,7 @@ export function initMock() {
       <span class="mock-io-status" id="mockIoStatus"></span>
       <button class="net-chip mock-export-btn" id="mockExportBtn" type="button"><i class="icon-file-down" aria-hidden="true"></i>Export…</button>
       <button class="net-chip mock-import-btn" id="mockImportBtn" type="button"><i class="icon-file-up" aria-hidden="true"></i>Import…</button>
-      <button class="mock-primary" id="mockNewRuleBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>New rule</button>
+      <button class="mock-primary" id="mockNewRuleBtn" type="button" aria-pressed="false"><i class="icon-plus" aria-hidden="true"></i>New rule</button>
     </div>
     <div class="mock-wrap">
       <form class="mock-form" id="mockForm" hidden>
