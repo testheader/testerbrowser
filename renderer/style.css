@@ -22,6 +22,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Class rules that set display would otherwise beat the UA [hidden] rule. */
+[hidden] { display: none !important; }
 
 /* Native number-input spin buttons render as unwanted scrollbar-like arrows
    in every browser theme — every number field in the app is small and
