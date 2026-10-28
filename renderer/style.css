@@ -443,12 +443,24 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 /* Collapsed: no active underline, tab strip only. */
 #consolePanel.collapsed .console-tab.active { border-bottom-color: transparent; }
 #consoleTabsWrap { display: flex; align-items: center; height: 100%; min-width: 0; flex-shrink: 1; }
-.console-tabs-chevron { flex-shrink: 0; background: var(--bg-primary); border: none; color: var(--text-muted); cursor: pointer;
-                        font-size: 15px; padding: 0 4px; height: 100%; line-height: 1; }
-.console-tabs-chevron:hover { color: var(--text-primary); background: var(--bg-primary); }
-.console-tabs-chevron[hidden] { display: none; }
-.console-tabs { display: flex; height: 100%; overflow-x: auto; min-width: 0; scrollbar-width: none;
-                scroll-behavior: smooth; }
+/* #332: tools that don't fit are listed under a "More (N)" menu instead of scroll arrows. */
+#consoleTabsWrap { position: relative; }
+.console-tabs-more { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; height: 100%; padding: 0 10px;
+                     background: none; border: none; border-bottom: 2px solid transparent; color: var(--tb-text-2);
+                     font-family: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.console-tabs-more:hover, .console-tabs-more[aria-expanded="true"] { color: var(--tb-text); }
+.console-tabs-more.active { color: var(--tb-text); font-weight: 600; border-bottom-color: var(--tb-accent); }
+.console-tabs-more[hidden] { display: none; }
+.console-tabs-more-menu { position: absolute; top: 100%; right: 0; z-index: 40; min-width: 200px; max-height: 170px; overflow-y: auto;
+                          padding: 4px; background: var(--tb-surface); border: 1px solid var(--tb-line-strong);
+                          border-radius: var(--tb-r); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28); }
+.console-tabs-more-menu[hidden] { display: none; }
+.console-more-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; background: none; border: none;
+                     border-radius: var(--tb-r-sm); color: var(--tb-text); font-family: inherit; font-size: 12.5px; cursor: pointer; text-align: left; }
+.console-more-item:hover { background: var(--tb-hover); }
+.console-more-item.active { font-weight: 600; }
+.console-more-item .tab-badge { margin-left: auto; }
+.console-tabs { display: flex; height: 100%; overflow-x: hidden; min-width: 0; scrollbar-width: none; }
 .console-tabs::-webkit-scrollbar { display: none; }
 /* #296: tabs are grouped (Inspect / Compare / Simulate / Automate / Connect),
    a 1px divider between groups; icons are Lucide, labels sentence case. */

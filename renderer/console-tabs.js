@@ -40,6 +40,7 @@ export function applyConsoleTabVisibility(disabledTabs) {
     document.getElementById(id).hidden = disabled.has(tabName);
   }
   if (disabled.has(activeConsoleTab)) switchConsoleTab('console');
+  updateTabOverflow();
 }
 
 export function switchConsoleTab(tab) {
@@ -83,6 +84,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'tests') initRecordPlayback();
   if (tab === 'follow') { initFollow(); refreshFollowPickers(); }
   if (tab === 'debuglog') initDebugLog();
+  updateTabOverflow();
 }
 
 export function initConsoleTabs() {
@@ -109,22 +111,72 @@ export function initConsoleTabs() {
   testerBrowser.settings.get().then((s) => applyConsoleTabVisibility(s.disabledConsoleTabs));
 }
 
+// #332: tabs that don't fit the strip are listed in a "More (N)" menu (each with
+// its badge, if any) instead of being reached with scroll arrows.
+let updateTabOverflow = () => {};
+
+function hiddenOverflowTabs() {
+  const strip = document.getElementById('consoleTabsStrip');
+  const right = strip.getBoundingClientRect().right;
+  return [...strip.querySelectorAll('.console-tab:not([hidden])')]
+    .filter((btn) => btn.getBoundingClientRect().right > right + 1);
+}
+
 function initTabOverflow() {
   const strip = document.getElementById('consoleTabsStrip');
-  const prevBtn = document.getElementById('consoleTabsPrevBtn');
-  const nextBtn = document.getElementById('consoleTabsNextBtn');
+  const moreBtn = document.getElementById('consoleTabsMoreBtn');
+  const menu = document.getElementById('consoleTabsMoreMenu');
 
-  function updateChevrons() {
-    const overflowing = strip.scrollWidth > strip.clientWidth + 1;
-    prevBtn.hidden = !overflowing || strip.scrollLeft <= 0;
-    nextBtn.hidden = !overflowing || strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 1;
+  function closeMenu() {
+    menu.hidden = true;
+    moreBtn.setAttribute('aria-expanded', 'false');
   }
 
-  prevBtn.addEventListener('click', () => { strip.scrollLeft -= 120; });
-  nextBtn.addEventListener('click', () => { strip.scrollLeft += 120; });
-  strip.addEventListener('scroll', updateChevrons);
-  window.addEventListener('resize', updateChevrons);
-  new ResizeObserver(updateChevrons).observe(strip);
+  function buildMenu(tabs) {
+    menu.replaceChildren(...tabs.map((tab) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'console-more-item' + (tab.classList.contains('active') ? ' active' : '');
+      item.setAttribute('role', 'menuitem');
+      item.dataset.tabId = tab.id;
+      const icon = tab.querySelector('i');
+      if (icon) item.appendChild(icon.cloneNode(true));
+      const label = document.createElement('span');
+      label.textContent = tab.querySelector('span')?.textContent || '';
+      item.appendChild(label);
+      const badge = tab.querySelector('.tab-badge');
+      if (badge) item.appendChild(badge.cloneNode(true));
+      item.addEventListener('click', () => { closeMenu(); tab.click(); });
+      return item;
+    }));
+  }
 
-  updateChevrons();
+  updateTabOverflow = () => {
+    const tabs = hiddenOverflowTabs();
+    moreBtn.hidden = tabs.length === 0;
+    if (tabs.length === 0) { closeMenu(); return; }
+    document.getElementById('consoleTabsMoreLabel').textContent = `More (${tabs.length})`;
+    moreBtn.classList.toggle('active', tabs.some((t) => t.classList.contains('active')));
+    if (!menu.hidden) buildMenu(tabs);
+  };
+
+  moreBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!menu.hidden) { closeMenu(); return; }
+    if (isConsolePanelMinimized()) expandConsolePanel();
+    buildMenu(hiddenOverflowTabs());
+    menu.hidden = false;
+    moreBtn.setAttribute('aria-expanded', 'true');
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !menu.contains(/** @type {Node} */ (e.target))) closeMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  window.addEventListener('resize', () => updateTabOverflow());
+  // Tabs grow when a badge appears or the active tab turns bold, which changes what fits.
+  const ro = new ResizeObserver(() => updateTabOverflow());
+  ro.observe(strip);
+  strip.querySelectorAll('.console-tab').forEach((t) => ro.observe(t));
+
+  updateTabOverflow();
 }

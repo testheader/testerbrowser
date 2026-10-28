@@ -131,7 +131,6 @@
     <div id="consoleDragHandle"></div>
     <div id="consoleHeader">
       <div id="consoleTabsWrap">
-      <button class="console-tabs-chevron" id="consoleTabsPrevBtn" title="Scroll tabs left" aria-label="Scroll tabs left" hidden>&#8249;</button>
       <div class="console-tabs" id="consoleTabsStrip" role="tablist" aria-label="Console panel">
         <div class="console-tab-group" role="presentation">
           <button class="console-tab" id="consoleTabNetwork" role="tab" aria-selected="false"><i class="icon-globe" aria-hidden="true"></i><span>Network</span></button>
@@ -158,7 +157,8 @@
           <button class="console-tab" id="consoleTabDebugLog" role="tab" aria-selected="false"><i class="icon-scroll-text" aria-hidden="true"></i><span>Debug log</span></button>
         </div>
       </div>
-      <button class="console-tabs-chevron" id="consoleTabsNextBtn" title="Scroll tabs right" aria-label="Scroll tabs right" hidden>&#8250;</button>
+      <button class="console-tabs-more" id="consoleTabsMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="consoleTabsMoreMenu" hidden><span id="consoleTabsMoreLabel">More</span><i class="icon-chevron-down" aria-hidden="true"></i></button>
+      <div class="console-tabs-more-menu" id="consoleTabsMoreMenu" role="menu" aria-label="More tools" hidden></div>
       </div>
       <button class="console-icon-btn" id="consolePanelMinBtn" title="Minimize / restore panel" aria-label="Minimize / restore panel"><i class="icon-chevron-down" aria-hidden="true"></i></button>
     </div>
