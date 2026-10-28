@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.148.5 — 2026-10-28
+
+### Fixes
+
+- bug report footer stays visible; diagnostics collapsed by default (refs #338) (ed222c0)
+
+### Other
+
+- Settings shortcuts list uses a single column with keycap styling (refs #337) (f03b447)
+
 ## v0.148.4 — 2026-10-28
 
 ### Other
