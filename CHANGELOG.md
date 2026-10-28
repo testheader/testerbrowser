@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.150.2 — 2026-10-28
+
+### Fixes
+
+- match the on class by word in the Focus order and Inspect e2e checks (c5eb8f3)
+
+### Other
+
+- Merge remote-tracking branch 'origin/main' into claude/cool-shannon-3xyfz9 (24d2efe)
+
 ## v0.150.1 — 2026-10-28
 
 ### Features

@@ -287,7 +287,6 @@ test('Focus order overlay computes tab order (positive tabindex first) and flags
   await expect(rows.nth(idx2)).not.toContainText('no visible focus indicator');
 
   await window.click('#a11yFocusOrderBtn');
-  // Whole-word match: a bare /on/ also matches the button's own "a11y-focus-only" class.
   await expect(window.locator('#a11yFocusOrderBtn')).not.toHaveClass(/\bon\b/);
 });
 
