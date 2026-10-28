@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.150.1 — 2026-10-28
+
+### Features
+
+- migrate existing settings so idle install is on by default (06950f0)
+- re-check for updates every 15 minutes and install idle updates by default (0213f1c)
+
+### Other
+
+- Merge origin/main into claude/cool-shannon-3xyfz9 (40549e6)
+- use plain Spoof labels and a one-line viewport hint (279c219)
+
 ## v0.150.0 — 2026-10-28
 
 ### Features
