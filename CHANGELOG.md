@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.2 — 2026-10-28
+
+### Other
+
+- sentence case and one panel name across the app (refs #334) (9ee5510)
+
 ## v0.148.1 — 2026-10-28
 
 ### Fixes
