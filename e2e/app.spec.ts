@@ -1029,3 +1029,15 @@ test('Storage nav switches sections, shows counts, and the toolbar Add/Clear fol
 
   await showStorageSection(window, 'cookies');
 });
+
+// #333: the group "+" is hidden until its group is hovered or focused, and is a keyboard-reachable button.
+test('the per-group "+" is invisible until hovered or focused, and is a focusable button (#333)', async () => {
+  const add = window.locator('.tab-group-add').first();
+  await expect(add).toHaveAttribute('title', 'New tab in this session');
+  await window.mouse.move(5, 5);
+  expect(await add.evaluate((el) => getComputedStyle(el).opacity)).toBe('0');
+  await window.locator('.tab').first().hover();
+  await expect.poll(() => add.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+  expect(await add.evaluate((el) => el.tagName)).toBe('BUTTON');
+  await expect(window.locator('#newSessionBtn')).toBeVisible();
+});

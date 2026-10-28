@@ -259,7 +259,11 @@ function updateTabElement(tab, s) {
   if (s.pinned && !pin) {
     pin = document.createElement('span');
     pin.className   = 'tab-pin';
-    pin.textContent = '📌';
+    pin.title       = 'Pinned';
+    const pinIcon = document.createElement('i');
+    pinIcon.className = 'icon-pin';
+    pinIcon.setAttribute('aria-hidden', 'true');
+    pin.appendChild(pinIcon);
     tab.insertBefore(pin, name);
   } else if (!s.pinned && pin) {
     pin.remove();
@@ -323,17 +327,22 @@ export async function refreshTabs() {
   }
 
   for (const run of runs) {
+    const groupKey = String(runs.indexOf(run));
     for (const id of run.ids) {
       const s = sessionMap.get(id);
       const tab = existingTabs.get(id) ?? createTabElement(s);
       updateTabElement(tab, s);
+      tab.dataset.group = groupKey;
       tabsEl.insertBefore(tab, newSessionBtn);
     }
 
-    const addBtn = document.createElement('span');
+    // #333: a real <button>, so it is keyboard-focusable and Enter/Space activate it;
+    // CSS keeps it invisible until its group is hovered or it has focus.
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
     addBtn.className = 'tab-group-add';
+    addBtn.dataset.group = groupKey;
     addBtn.title = 'New tab in this session';
-    addBtn.setAttribute('role', 'button');
     addBtn.setAttribute('aria-label', 'New tab in this session');
     addBtn.textContent = '+';
     addBtn.onclick = async () => {
@@ -470,6 +479,20 @@ export function initTabs() {
   // e is undefined if this is ever called programmatically — treat that the
   // same as an unmodified click. (Ctrl+T calls newSession() directly.)
   document.getElementById('newSessionBtn').onclick = (e) => newSession({ persistent: !e?.shiftKey });
+
+  // #333: a group's "+" shows while its group is hovered or focused (CSS can't relate
+  // the "+" to its tabs, which are siblings, so the group is tracked here).
+  const tabsStrip = document.getElementById('tabs');
+  const setHotGroup = (group) => {
+    for (const btn of tabsStrip.querySelectorAll('.tab-group-add')) {
+      btn.classList.toggle('group-hot', group !== undefined && /** @type {HTMLElement} */ (btn).dataset.group === group);
+    }
+  };
+  const groupOf = (e) => /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest?.('.tab, .tab-group-add'))?.dataset.group;
+  tabsStrip.addEventListener('mouseover', (e) => setHotGroup(groupOf(e)));
+  tabsStrip.addEventListener('mouseleave', () => setHotGroup(undefined));
+  tabsStrip.addEventListener('focusin', (e) => setHotGroup(groupOf(e)));
+  tabsStrip.addEventListener('focusout', () => setHotGroup(undefined));
 
   testerBrowser.sessions.onTitleUpdated(({ id, title }) => {
     tabTitles[id] = title;

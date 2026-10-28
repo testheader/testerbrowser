@@ -50,6 +50,10 @@ test('a pinned tab is still pinned after a full app restart (#231)', async () =>
 
   await expect(window2.locator('.tab', { hasText: 'Pinned across restart' }))
     .toHaveAttribute('data-pinned', '1', { timeout: 30_000 });
+  // #333: the pinned indicator is the Lucide pin icon, not the emoji.
+  const pin = window2.locator('.tab', { hasText: 'Pinned across restart' }).locator('.tab-pin');
+  await expect(pin.locator('i.icon-pin')).toHaveCount(1);
+  await expect(pin).not.toContainText('📌');
 
   await app2.close();
   fs.rmSync(userDataDir, { recursive: true, force: true });

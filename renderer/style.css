@@ -220,7 +220,7 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 .tab-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--tab-color, var(--tb-text-3)); }
 /* In-memory sessions read slightly quieter than persistent ones. */
 .tab-dot.ephemeral { opacity: 0.55; }
-.tab-pin { font-size: 10px; color: var(--warn-strong); flex-shrink: 0; }
+.tab-pin { display: inline-flex; font-size: 11px; color: var(--warn-strong); flex-shrink: 0; }
 /* #265: a throttled tab (network and/or CPU conditions active) gets a small
    fixed icon before its name — content, not a DOM node, since the tab's own
    `title` attribute already carries the full "Throttled: …" description. */
@@ -240,7 +240,10 @@ body { margin: 0; font-family: var(--tb-font-ui); background: var(--bg-primary);
 /* Sized to match #newSessionBtn's hit target so the per-group "+" is easy to click. */
 .tab-group-add { flex-shrink: 0; cursor: pointer; color: var(--tb-text-2); font-size: 16px; width: 22px; height: 22px;
                  margin: 0 2px 6px; display: flex; align-items: center; justify-content: center; user-select: none;
-                 border-radius: var(--tb-r-sm); line-height: 1; }
+                 border-radius: var(--tb-r-sm); line-height: 1; padding: 0; background: none; border: none; font-family: inherit;
+                 opacity: 0; transition: opacity 0.1s, background 0.1s, color 0.1s; }
+/* #333: only visible while its group is hovered or the button has focus. */
+.tab-group-add.group-hot, .tab-group-add:hover, .tab-group-add:focus-visible { opacity: 1; }
 .tab-group-add:hover { color: var(--tb-text); background: var(--tb-hover); }
 .tab-group-add:active { background: var(--tb-line); color: var(--tb-text); }
 
