@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.150.0 — 2026-10-28
+
+### Features
+
+- Focus view in the A11y panel (focus order and focus trap) (refs #342) (3066bbb)
+
 ## v0.149.1 — 2026-10-28
 
 ### Other
