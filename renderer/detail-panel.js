@@ -13,12 +13,23 @@ import { getActiveId } from './tabs.js';
 // of one tab per opened request) and the selected section — nothing outside
 // this file touches them; console-tabs.js and timeline.js only need read
 // access, via getDetailTabsCount()/isDetailTabActive() below.
-/** @type {{ id: string, event: any, fetchedPostData?: string | false | null } | null} */
-let current = null;
+/** @typedef {{ id: string, event: any, fetchedPostData?: string | false | null }} DetailItem */
+// #324: each tool keeps its own open item — a request opened in Network doesn't
+// follow the user to Console (with Replay/Mock acting on it), and is still there
+// when they switch back.
+/** @type {{ network: DetailItem | null, console: DetailItem | null }} */
+const items = { network: null, console: null };
 let activeSection = 'headers';
 
-export function getDetailTabsCount() { return current ? 1 : 0; }
-export function isDetailTabActive(tabId) { return current?.id === tabId; }
+/** The item belonging to the tool that is showing, or null on any other tab. */
+function cur() {
+  const tab = getActiveConsoleTab();
+  return tab === 'network' || tab === 'console' ? items[tab] : null;
+}
+const toolOf = (e) => (e.kind.startsWith('network-') ? 'network' : 'console');
+
+export function getDetailTabsCount() { return cur() ? 1 : 0; }
+export function isDetailTabActive(tabId) { return cur()?.id === tabId; }
 
 function statusClass(code) {
   if (!code) return 'detail-status-err';
@@ -39,18 +50,20 @@ async function fetchPostDataFor(item, requestId) {
   } catch {
     item.fetchedPostData = false;
   }
-  if (current === item) renderDetailPanel();
+  if (cur() === item) renderDetailPanel();
 }
 
 export function openDetailTab(e) {
   const tabId = getEventTabId(e);
-  if (current?.id !== tabId) current = { id: tabId, event: e };
+  const tool = toolOf(e);
+  if (items[tool]?.id !== tabId) items[tool] = { id: tabId, event: e };
   renderDetailPanel();
 }
 
 export function closeDetailTab(tabId) {
-  if (!current || current.id !== tabId) return;
-  current = null;
+  for (const tool of /** @type {const} */ (['network', 'console'])) {
+    if (items[tool]?.id === tabId) items[tool] = null;
+  }
   renderDetailPanel();
 }
 
@@ -60,7 +73,7 @@ export function closeDetailTab(tabId) {
 // left a stale request showing (and Replay/Mock/Resilience acting on the
 // wrong tab).
 export function clearDetailTabs() {
-  current = null;
+  items.network = items.console = null;
   renderDetailPanel();
 }
 
@@ -319,6 +332,7 @@ function renderDetailPanelBody() {
   const header  = document.getElementById('detailPanelHeader');
   const bar     = document.getElementById('detailPanelTabBar');
   const content = document.getElementById('detailPanelContent');
+  const current = cur();
   if (!current) { header.innerHTML = ''; bar.innerHTML = ''; content.innerHTML = ''; return; }
 
   const e = current.event;
@@ -387,7 +401,7 @@ export function renderDetailPanel() {
   // can open the pane. (The Security tab has its own finding pane, #306.)
   const activeConsoleTab = getActiveConsoleTab();
   const showsDetail  = activeConsoleTab === 'console' || activeConsoleTab === 'network';
-  const hasOpen      = !!current && showsDetail;
+  const hasOpen      = !!cur() && showsDetail;
   panel.classList.toggle('open', hasOpen);
   resizeHandle.style.display = hasOpen ? 'block' : 'none';
   renderDetailPanelBody();

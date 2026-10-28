@@ -11,7 +11,7 @@ import { initJira } from './jira.js';
 import { initRecordPlayback } from './record-playback.js';
 import { initFollow, refreshFollowPickers } from './followalong.js';
 import { renderTimeline } from './timeline.js';
-import { getDetailTabsCount } from './detail-panel.js';
+import { renderDetailPanel } from './detail-panel.js';
 import { initDebugLog } from './debuglog.js';
 import { isConsolePanelMinimized, expandConsolePanel } from './layout.js';
 
@@ -70,9 +70,8 @@ export function switchConsoleTab(tab) {
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
   document.getElementById('followPanel').style.display          = tab === 'follow'     ? 'flex'  : 'none';
   document.getElementById('debugLogPanel').style.display        = tab === 'debuglog'   ? 'flex'  : 'none';
-  const hasDetailTabs = getDetailTabsCount() > 0 && timelineVisible;
-  document.getElementById('detailPanel').classList.toggle('open', hasDetailTabs);
-  document.getElementById('detailPanelResizeHandle').style.display = hasDetailTabs ? 'block' : 'none';
+  // #324: re-render so the pane shows the item belonging to this tool (or closes).
+  renderDetailPanel();
   if (tab === 'console' || tab === 'network') renderTimeline();
   if (tab === 'storage') { loadStoragePanel(); resumeStorageAutoRefreshIfOn(); }
   if (tab === 'a11y') { initA11y(); }

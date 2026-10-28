@@ -969,6 +969,14 @@ test('selecting a request shows its status pill, section tabs, and Mock opens th
   await window.click('#detailMockBtn');
   await expect(window.locator('#mockPanel')).toBeVisible();
   await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
+
+  // #324: the detail belongs to Network — Console doesn't show it, and Network restores it.
+  await window.click('#consoleTabNetwork');
+  await expect(window.locator('#detailPanel')).toHaveClass(/\bopen\b/);
+  await window.click('#consoleTabConsole');
+  await expect(window.locator('#detailPanel')).not.toHaveClass(/\bopen\b/);
+  await window.click('#consoleTabNetwork');
+  await expect(window.locator('#detailPanel')).toHaveClass(/\bopen\b/);
 });
 
 // #302: Console segmented level filter + rows.
