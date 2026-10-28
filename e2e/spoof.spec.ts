@@ -513,7 +513,7 @@ test('Dark prefers-color-scheme takes effect on a real page\'s matchMedia() (#27
   await window.selectOption('#spoofColorScheme', 'dark');
   await window.click('#spoofApply');
   await expect(window.locator('#spoofStatus')).toContainText('Overrides applied', { timeout: 5_000 });
-  await expect(window.locator('#spoofCurrent')).toContainText('prefers-color-scheme: dark');
+  await expect(window.locator('#spoofCurrent')).toContainText('Color scheme: dark');
 
   await expect.poll(
     () => safeEval(tab, () => matchMedia('(prefers-color-scheme: dark)').matches),

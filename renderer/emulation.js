@@ -177,7 +177,7 @@ export function initSpoof() {
   const advancedBody = `
     <div class="spoof-fields">
       <div class="spoof-field">
-        <label class="spoof-label" for="spoofColorScheme">prefers-color-scheme</label>
+        <label class="spoof-label" for="spoofColorScheme">Color scheme</label>
         <select class="spoof-input" id="spoofColorScheme">
           <option value="">System</option>
           <option value="light">Light</option>
@@ -185,7 +185,7 @@ export function initSpoof() {
         </select>
       </div>
       <div class="spoof-field">
-        <label class="spoof-label" for="spoofReducedMotion">prefers-reduced-motion</label>
+        <label class="spoof-label" for="spoofReducedMotion">Reduced motion</label>
         <select class="spoof-input" id="spoofReducedMotion">
           <option value="">System</option>
           <option value="no-preference">No preference</option>
@@ -544,8 +544,8 @@ function renderCurrent() {
       const spoofedNow = new Date(Date.now() + a.timeOffsetMs).toLocaleString();
       chips.push(['clock', formatOffsetMs(a.timeOffsetMs), `Page clock reads ${spoofedNow}`]);
     }
-    if (a.colorScheme) chips.push(['prefers-color-scheme:', a.colorScheme]);
-    if (a.reducedMotion) chips.push(['prefers-reduced-motion:', a.reducedMotion]);
+    if (a.colorScheme) chips.push(['Color scheme:', a.colorScheme]);
+    if (a.reducedMotion) chips.push(['Reduced motion:', a.reducedMotion]);
   }
 
   current.replaceChildren();
@@ -652,7 +652,7 @@ function updateDirtyState() {
   const preset = DEVICE_PRESETS[devicePreset];
   hint.textContent = preset ? describeMetrics(preset)
     : devicePreset === '__custom' ? 'Enter a width and height below.'
-    : "Changes the page's viewport, not the window size.";
+    : 'Sets the page viewport only.';
 }
 
 // #241: every field's error key, mapped to the label used in the
