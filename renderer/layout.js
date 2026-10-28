@@ -7,7 +7,7 @@ const LS_MIN_KEY = 'consoleMinimized';
 // Layout owns every pure visibility/dimension flag that feeds the topbar and
 // console-panel height math (findOpen, bookmarksBarVisible, consoleVisible,
 // consolePanelMinimized, consoleHeight) — the feature modules that toggle
-// them (find.js, bookmarks.js, view-dropdown.js) already depend one-way on
+// them (find.js, bookmarks.js, app-menu.js) already depend one-way on
 // this module for the height recompute that follows every toggle, so they
 // go through the setters below instead of touching layout state directly.
 let consoleHeight         = 220;
@@ -59,7 +59,7 @@ function applyMinimized(minimized) {
 }
 
 // Single source of truth for how tall the BrowserView thinks the console panel
-// is: hidden (via View ▾) has nothing to show, so it collapses to 0. Minimized
+// is: hidden (via the app menu) has nothing to show, so it collapses to 0. Minimized
 // (via the panel's own button) still renders a real, always-visible header bar,
 // so the BrowserView must leave room for it instead of painting over it.
 export function syncConsoleViewHeight() {
@@ -97,9 +97,9 @@ export function updateTopBarHeight() {
   document.getElementById('permissionNotifications').style.top = h + 'px';
 }
 
-// Backs the app-menu and View ▾ dropdowns: both extend below the topbar into
+// Backs the app-menu dropdown: it extends below the topbar into
 // the region the native WebContentsView paints over regardless of CSS z-index,
-// so the view is snapshotted and detached while either is open — #pageSnapshot
+// so the view is snapshotted and detached while it is open — #pageSnapshot
 // stands in its exact place so the page appears to keep rendering underneath,
 // with zero reflow. Guarded so a stray double-open/close (e.g. switching
 // straight from one dropdown to the other) can't double-capture or

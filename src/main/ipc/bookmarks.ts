@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron';
+import type { FaviconCache } from '../faviconCache';
 import type { AppDeps, Bookmark, BookmarkStore, BookmarkFoldersStore, UrlHistoryStore, SpeedDialStore, SpeedDialTile } from './deps';
 
 export interface BookmarksIpcStores {
@@ -6,11 +7,12 @@ export interface BookmarksIpcStores {
   bookmarkFoldersStore: BookmarkFoldersStore;
   urlHistoryStore: UrlHistoryStore;
   speedDialStore: SpeedDialStore;
+  faviconCache: FaviconCache;
 }
 
 /** Bookmarks bar/folders, URL autocomplete history, and new-tab speed-dial IPC. */
 export function registerBookmarksIpc(_deps: AppDeps, stores: BookmarksIpcStores): void {
-  const { bookmarkStore, bookmarkFoldersStore, urlHistoryStore, speedDialStore } = stores;
+  const { bookmarkStore, bookmarkFoldersStore, urlHistoryStore, speedDialStore, faviconCache } = stores;
 
   ipcMain.handle('bookmarks:list',   () => bookmarkStore.get());
   ipcMain.handle('bookmarks:add',    (_e, url: string, title: string) => {
@@ -47,6 +49,10 @@ export function registerBookmarksIpc(_deps: AppDeps, stores: BookmarksIpcStores)
     if (!url) return urlHistoryStore.get();
     return urlHistoryStore.update(h => [url, ...h.filter(u => u !== url)].slice(0, 500));
   });
+
+  // #340: cached site icons for the Speed Dial tiles, keyed by origin.
+  ipcMain.handle('favicons:get', (_e, urls: unknown) =>
+    Array.isArray(urls) ? faviconCache.lookup(urls.slice(0, 200)) : {});
 
   ipcMain.handle('speeddial:get', () => speedDialStore.get());
   ipcMain.handle('speeddial:set', (_e, tiles: unknown) => {

@@ -1,6 +1,7 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
 import { showStatus as showStatusMsg } from './status-msg.js';
+import { initThrottleControls, loadConditions } from './resilience.js';
 
 const PRESETS = [
   { label: 'New York',    timezone: 'America/New_York',      locale: 'en-US', latitude:  40.7128, longitude:  -74.0060 },
@@ -192,6 +193,41 @@ export function initSpoof() {
           <option value="reduce">Reduce</option>
         </select>
       </div>
+    </div>
+    <div class="spoof-fields spoof-throttle">
+      <div class="spoof-field">
+        <label class="spoof-label" for="resNetworkSelect">Network</label>
+        <select class="spoof-input" id="resNetworkSelect">
+          <option value="none">No throttling</option>
+          <option value="fast3g">Fast 3G</option>
+          <option value="slow3g">Slow 3G</option>
+          <option value="offline">Offline</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </div>
+      <div class="spoof-field">
+        <label class="spoof-label" for="resCpuSelect">CPU</label>
+        <select class="spoof-input" id="resCpuSelect">
+          <option value="1">No throttling</option>
+          <option value="4">4&times; slowdown</option>
+          <option value="6">6&times; slowdown</option>
+        </select>
+      </div>
+      <div class="spoof-field-wide spoof-throttle-custom res-hidden" id="resCustomNetworkFields">
+        <div class="spoof-field">
+          <label class="spoof-label" for="resCustomLatency">Latency (ms)</label>
+          <input class="spoof-input" id="resCustomLatency" type="number" min="0" value="100" />
+        </div>
+        <div class="spoof-field">
+          <label class="spoof-label" for="resCustomDownload">Download (kbps)</label>
+          <input class="spoof-input" id="resCustomDownload" type="number" min="0" value="1000" />
+        </div>
+        <div class="spoof-field">
+          <label class="spoof-label" for="resCustomUpload">Upload (kbps)</label>
+          <input class="spoof-input" id="resCustomUpload" type="number" min="0" value="1000" />
+        </div>
+        <button type="button" class="spoof-btn" id="resCustomApplyBtn">Apply</button>
+      </div>
     </div>`;
 
   panel.innerHTML = `
@@ -209,6 +245,8 @@ export function initSpoof() {
         ${sectionHtml('advanced', advancedBody)}
       </div>
     </div>`;
+
+  initThrottleControls();
 
   // Location chips: a pressed chip means the four location fields currently
   // hold exactly that city's values; clicking a pressed chip clears them.
@@ -412,6 +450,7 @@ export async function refreshSpoofStatus() {
   populateFields(appliedForActiveSession);
   renderCurrent();
   updateDirtyState();
+  loadConditions();
 }
 
 // Writes the active session's applied overrides into the input fields (or
@@ -665,8 +704,8 @@ const FIELD_ERROR_LABELS = {
   timeOffsetMs: 'clock offset',
   deviceMetrics: 'device/viewport',
   touch: 'touch emulation',
-  colorScheme: 'prefers-color-scheme',
-  reducedMotion: 'prefers-reduced-motion',
+  colorScheme: 'color scheme',
+  reducedMotion: 'reduced motion',
 };
 
 function reportErrors(errors, okMsg) {

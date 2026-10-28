@@ -1,14 +1,26 @@
+/* global testerBrowser */
 import { openSettings } from './settings.js';
 import { openBugReport } from './bugreport.js';
 import { newSession, getActiveId } from './tabs.js';
-import { beginPageOverlay, endPageOverlay } from './layout.js';
-import { closeViewDropdown } from './view-dropdown.js';
+import { isConsoleVisible, toggleConsoleVisible, isBookmarksBarVisible, beginPageOverlay, endPageOverlay } from './layout.js';
+import { toggleBookmarksBar } from './bookmarks.js';
 import { openTestdataModal } from './testdata.js';
+
+const $ = (id) => document.getElementById(id);
+
+function updateToggles() {
+  const consoleOn   = isConsoleVisible();
+  const bookmarksOn = isBookmarksBarVisible();
+  $('appMenuConsoleCheck').textContent   = consoleOn   ? '✓' : '';
+  $('appMenuBookmarksCheck').textContent = bookmarksOn ? '✓' : '';
+  $('appMenuToggleConsole').setAttribute('aria-checked', String(consoleOn));
+  $('appMenuToggleBookmarks').setAttribute('aria-checked', String(bookmarksOn));
+}
 
 // The dropdown can extend past the topbar into the region the native view
 // occupies — that view always paints over page HTML regardless of z-index,
 // so the page is snapshotted and the view detached while the menu is open
-// (same pattern as view-dropdown.js) instead of just pushing the view down,
+// instead of just pushing the view down,
 // which used to shove the whole page out of place. A side effect that
 // happens to fix #177's "click in the page doesn't close the menu" bug for
 // free: while the menu is open there is no live native view over the page
@@ -21,8 +33,9 @@ import { openTestdataModal } from './testdata.js';
 function openAppMenu() {
   const dropdown = document.getElementById('appMenuDropdown');
   if (dropdown.classList.contains('open')) return;
-  closeViewDropdown();
   dropdown.classList.add('open');
+  $('appName').setAttribute('aria-expanded', 'true');
+  updateToggles();
   beginPageOverlay();
 }
 
@@ -30,6 +43,7 @@ export function closeAppMenu() {
   const dropdown = document.getElementById('appMenuDropdown');
   if (!dropdown.classList.contains('open')) return;
   dropdown.classList.remove('open');
+  $('appName').setAttribute('aria-expanded', 'false');
   endPageOverlay();
 }
 
@@ -69,5 +83,33 @@ export function initAppMenu() {
   document.getElementById('appMenuBugReport').addEventListener('click', () => {
     closeAppMenu();
     openBugReport();
+  });
+
+  $('appMenuToggleConsole').addEventListener('click', () => {
+    toggleConsoleVisible();
+    closeAppMenu();
+  });
+
+  $('appMenuToggleBookmarks').addEventListener('click', () => {
+    toggleBookmarksBar();
+    closeAppMenu();
+  });
+
+  // #295: the visible DevTools gear is gone; F12 and this entry remain.
+  $('appMenuDevtools').addEventListener('click', () => {
+    closeAppMenu();
+    const id = getActiveId();
+    if (id) testerBrowser.sessions.devtools(id);
+  });
+
+  // Items are divs (to keep the checkmark layout), not real <button>s — give
+  // them the keyboard activation a button gets for free.
+  dropdown.querySelectorAll('.view-item').forEach((el) => {
+    el.addEventListener('keydown', (/** @type {KeyboardEvent} */ e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        /** @type {HTMLElement} */ (el).click();
+      }
+    });
   });
 }

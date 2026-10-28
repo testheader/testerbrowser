@@ -10,24 +10,51 @@
 <body>
   <div id="titlebar">
     <div id="appMenuWrapper">
-      <button id="appName" title="Application menu" aria-label="Application menu">
+      <button id="appName" title="Application menu" aria-label="Application menu" aria-haspopup="true" aria-expanded="false">
         <img id="appLogo" class="app-logo" src="app-logo.png" alt="" aria-hidden="true">
         <span id="appMenuCaret">&#9662;</span>
       </button>
-      <div id="appMenuDropdown">
-        <div class="view-item" id="appMenuNewTemp">
-          <span>New temporary tab</span>
-          <span class="view-shortcut">Shift+click +</span>
+      <div id="appMenuDropdown" role="menu">
+        <div class="menu-group" role="group" aria-label="Tabs">
+          <div class="menu-group-label">Tabs</div>
+          <div class="view-item" id="appMenuNewTemp" role="menuitem" tabindex="0">
+            <span class="view-check"></span>
+            <span>New temporary tab</span>
+            <span class="view-shortcut">Shift+click +</span>
+          </div>
+          <div class="view-item" id="appMenuTestData" role="menuitem" tabindex="0">
+            <span class="view-check"></span>
+            <span>Fill with test data…</span>
+          </div>
         </div>
-        <div class="view-item" id="appMenuTestData">
-          <span>Fill with test data…</span>
+        <div class="menu-group" role="group" aria-label="View">
+          <div class="menu-group-label">View</div>
+          <div class="view-item" id="appMenuToggleConsole" role="menuitemcheckbox" tabindex="0" aria-checked="true">
+            <span class="view-check" id="appMenuConsoleCheck">&#10003;</span>
+            <span>Console panel</span>
+          </div>
+          <div class="view-item" id="appMenuToggleBookmarks" role="menuitemcheckbox" tabindex="0" aria-checked="false">
+            <span class="view-check" id="appMenuBookmarksCheck"></span>
+            <span>Bookmarks bar</span>
+            <span class="view-shortcut">Ctrl+Shift+B</span>
+          </div>
+          <div class="view-item" id="appMenuDevtools" role="menuitem" tabindex="0">
+            <span class="view-check"></span>
+            <span>DevTools</span>
+            <span class="view-shortcut">F12</span>
+          </div>
         </div>
-        <div class="view-item" id="appMenuSettings">
-          <span>Settings</span>
-        </div>
-        <div class="view-item" id="appMenuBugReport">
-          <span>Report bug…</span>
-          <span class="view-shortcut">Ctrl+Shift+R</span>
+        <div class="menu-group" role="group" aria-label="App">
+          <div class="menu-group-label">App</div>
+          <div class="view-item" id="appMenuSettings" role="menuitem" tabindex="0">
+            <span class="view-check"></span>
+            <span>Settings</span>
+          </div>
+          <div class="view-item" id="appMenuBugReport" role="menuitem" tabindex="0">
+            <span class="view-check"></span>
+            <span>Report bug…</span>
+            <span class="view-shortcut">Ctrl+Shift+R</span>
+          </div>
         </div>
       </div>
     </div>
@@ -73,29 +100,6 @@
         <span id="downloadsBadge"></span>
       </div>
       <button class="nav-btn" id="bugReportBtn" title="Report bug (Ctrl+Shift+R)" aria-label="Report bug"><i class="icon-bug" aria-hidden="true"></i></button>
-      <div id="viewWrapper">
-        <button class="nav-btn" id="viewBtn" title="More" aria-label="More" aria-haspopup="true" aria-expanded="false"><i class="icon-ellipsis" aria-hidden="true"></i></button>
-        <div id="viewDropdown" role="menu">
-          <div class="view-item" id="viewToggleConsole" role="menuitemcheckbox" tabindex="0" aria-checked="true">
-            <span class="view-check" id="viewConsoleCheck">&#10003;</span>
-            <span>Tool panel</span>
-          </div>
-          <div class="view-item" id="viewToggleBookmarks" role="menuitemcheckbox" tabindex="0" aria-checked="false">
-            <span class="view-check" id="viewBookmarksCheck"></span>
-            <span>Bookmarks bar</span>
-            <span class="view-shortcut">Ctrl+Shift+B</span>
-          </div>
-          <div class="view-item" id="viewMenuDevtools" role="menuitem" tabindex="0">
-            <span class="view-check"></span>
-            <span>DevTools</span>
-            <span class="view-shortcut">F12</span>
-          </div>
-          <div class="view-item" id="viewMenuSettings" role="menuitem" tabindex="0">
-            <span class="view-check"></span>
-            <span>Settings</span>
-          </div>
-        </div>
-      </div>
     </div>
     <div id="bookmarksBar"></div>
     <div id="findBar">
@@ -109,7 +113,7 @@
   </div>
 
   <!-- Stand-in for the native page view while it's detached for the app-menu
-       or ⋯ dropdown (see layout.js beginPageOverlay/endPageOverlay) —
+       dropdown (see layout.js beginPageOverlay/endPageOverlay) —
        a snapshot of the page, positioned over its exact former bounds, so the
        dropdown has real HTML to stack above without the page appearing to move. -->
   <div id="pageSnapshot"></div>

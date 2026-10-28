@@ -32,6 +32,10 @@ const VIEWS = {
                 loaded: false, load: () => loadA11yStructure() },
   altlabels:  { btnId: 'a11yViewAltLabelsBtn',  title: 'Alt text and labels', emptyMsg: 'Check image alt text and form labels on this page.', loadLabel: 'Check alt text and labels',
                 loaded: false, load: () => loadA11yAltLabels() },
+  // #342: Focus is a view of its own; focus order (the default, and what Refresh runs)
+  // and focus trap are the two functions inside it.
+  focus:      { btnId: 'a11yViewFocusBtn',      title: 'Keyboard focus', emptyMsg: 'Show the keyboard tab order, or check the page for focus traps.', loadLabel: 'Show tab order',
+                loaded: false, load: () => enableA11yFocusOrder() },
 };
 
 // #303: the pre-load state of a view, built with the shared empty state.
@@ -67,10 +71,11 @@ export function initA11y() {
         <button class="a11y-btn" id="a11yViewContrastBtn" data-view="contrast">Contrast</button>
         <button class="a11y-btn" id="a11yViewStructureBtn" data-view="structure">Structure</button>
         <button class="a11y-btn" id="a11yViewAltLabelsBtn" data-view="altlabels">Alt &amp; Labels</button>
+        <button class="a11y-btn" id="a11yViewFocusBtn" data-view="focus">Focus</button>
       </div>
-      <span class="a11y-toolbar-sep"></span>
-      <button class="a11y-btn" id="a11yFocusOrderBtn" title="Show a numbered tab-order overlay on the page">Focus order</button>
-      <button class="a11y-btn" id="a11yFocusTrapBtn" title="Check whether Tab/Shift+Tab can reach every part of the page">Focus trap</button>
+      <span class="a11y-toolbar-sep a11y-focus-only" hidden></span>
+      <button class="a11y-btn a11y-focus-only" id="a11yFocusOrderBtn" hidden title="Show a numbered tab-order overlay on the page">Focus order</button>
+      <button class="a11y-btn a11y-focus-only" id="a11yFocusTrapBtn" hidden title="Check whether Tab/Shift+Tab can reach every part of the page">Focus trap</button>
       <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
       <span class="net-spacer"></span>
       <span class="a11y-nodecount" id="a11yNodeCount"></span>
@@ -93,8 +98,9 @@ export function initA11y() {
       // Restore whatever the currently active view would show on its own.
       const content = document.getElementById('a11yContent');
       if (content) content.replaceChildren(a11yEmptyState(activeView));
-      if (VIEWS[activeView].loaded) VIEWS[activeView].load();
+      if (VIEWS[activeView].loaded && activeView !== 'focus') VIEWS[activeView].load();
     } else {
+      VIEWS.focus.loaded = true;
       enableA11yFocusOrder();
     }
   });
@@ -114,6 +120,7 @@ function switchA11yView(view) {
   const inspectBtn = /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn'));
   if (inspectBtn) inspectBtn.style.display = view === 'tree' ? '' : 'none';
   document.getElementById('a11ySearchWrap').style.display = view === 'tree' ? '' : 'none';
+  document.querySelectorAll('.a11y-focus-only').forEach((el) => { /** @type {HTMLElement} */ (el).hidden = view !== 'focus'; });
   if (view !== 'tree') document.getElementById('a11yNodeCount').textContent = '';
   if (view !== 'tree' && inspecting) disableA11yHover();
   // The focus overlay renders its list into the shared content area, same

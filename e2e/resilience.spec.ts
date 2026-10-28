@@ -78,7 +78,7 @@ test('selecting Offline sets navigator.onLine=false and fails a fetch; reverting
   await window.fill('#urlbar', fixtures.url(urlPath));
   await window.press('#urlbar', 'Enter');
   const tab = await getTabPage(app, urlPath);
-  await window.click('#consoleTabResilience');
+  await window.click('#consoleTabSpoof');
 
   await window.selectOption('#resNetworkSelect', 'offline');
   await expect.poll(() => tab.evaluate(() => navigator.onLine)).toBe(false);
@@ -108,7 +108,7 @@ test('Slow 3G measurably slows a ~100KB fetch relative to the same fetch unthrot
   await window.press('#urlbar', 'Enter');
   const tab = await getTabPage(app, urlPath);
   const sessionId = (await listSessions()).slice(-1)[0].id;
-  await window.click('#consoleTabResilience');
+  await window.click('#consoleTabSpoof');
 
   // A fresh, unique URL each call — a response cached from the unthrottled
   // baseline fetch would let the "throttled" fetch resolve from disk/memory
@@ -141,7 +141,7 @@ test('CPU 6x slowdown measurably slows a fixed busy-loop relative to the same lo
   await window.press('#urlbar', 'Enter');
   const tab = await getTabPage(app, urlPath);
   const sessionId = (await listSessions()).slice(-1)[0].id;
-  await window.click('#consoleTabResilience');
+  await window.click('#consoleTabSpoof');
 
   const runBusyLoop = () => tab.evaluate(() => {
     const start = performance.now();
@@ -173,7 +173,7 @@ test('conditions are per tab: a new tab starts unthrottled, and switching back r
   const sessionsAfterA = await listSessions();
   const tabAId = sessionsAfterA[sessionsAfterA.length - 1].id;
 
-  await window.click('#consoleTabResilience');
+  await window.click('#consoleTabSpoof');
   await window.selectOption('#resNetworkSelect', 'offline');
   await expect.poll(() => tabA.evaluate(() => navigator.onLine)).toBe(false);
   await expect(window.locator(`.tab[data-id="${tabAId}"]`)).toHaveClass(/throttled/);

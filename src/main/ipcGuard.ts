@@ -20,6 +20,7 @@ import { isTrustedNewtabFrame } from './newtabUrl';
 // if the two drift apart.
 export const NEWTAB_CHANNELS: ReadonlySet<string> = new Set([
   'speeddial:get', 'speeddial:set',
+  'favicons:get',
   'theme:get', 'theme:set',
   'bookmarks:list', 'bookmarks:remove', 'bookmarks:listFolders',
   'settings:get', 'settings:set',

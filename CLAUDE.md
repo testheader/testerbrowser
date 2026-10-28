@@ -105,7 +105,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
     Console tab  — console/log/exception rows, All/Errors/Warnings/Info/Debug level filter
     Storage tab  — cookies, localStorage, sessionStorage, IndexedDB (read-only), client-filtered
                    in-memory once fetched, optional 2 s auto-refresh while the tab is visible
-  "⋯" menu       — toggle console panel visibility + bookmarks bar, open DevTools / Settings
+  App menu (logo) — new temp tab, test data, console panel + bookmarks bar toggles, DevTools, Settings, Report bug
   pollTimeline() — 1 s interval, fetches events since lastTs
 ```
 
@@ -180,6 +180,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `settings:get/set` | R→M | app settings (`set` takes a validated patch — `settingsPatch.ts`) |
 | `theme:get/set` | R→M | colour scheme |
 | `speeddial:get/set` | R→M | new-tab page tiles |
+| `favicons:get` | R→M | `(urls)` → `{ [origin]: dataUrl }` — site icons cached by `faviconCache.ts` (`userData/favicons.json`, saved from persistent tabs' `page-favicon-updated`); a new-tab channel. Tiles fall back to an initial-letter tile, so the page never asks google.com |
 | `bookmarks:createFolder/listFolders/move/rename/renameFolder/removeFolder` | R→M | bookmark folders (plain add/list/remove are above) |
 | `sessions:setTabOrder` / `sessions:getHistory` / `sessions:getLoadedDomains` | R→M | persist tab order; per-tab navigation history; domains loaded by the tab |
 | `sessions:setCookie/deleteCookie/clearCookies` | R→M | cookie editing (Storage tab) |
@@ -187,6 +188,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `session:setEmulation` / `session:getEmulation` | R→M | Spoof tab: device metrics, UA, geolocation, timezone, locale — per tab (`emulationManager.ts`) |
 | `mock:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Mock rule CRUD, scoped to the tab's partition (reorder/import/export are above) |
 | `resilience:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Resilience rule CRUD (latency/abort/status injection by URL glob) |
+| `resilience:setConditions/getConditions` | R→M | per-tab network + CPU throttling; the controls (`#resNetworkSelect`, `#resCpuSelect`, custom fields) live in Spoof › Advanced and apply immediately |
 | `recording:replay` | R→M | re-issue a recorded request from the page context |
 | `tests:list/save/load/delete` | R→M | saved Record/Playback tests (import/export are above) |
 | `session:startRecording/stopRecording/pollRecordingSteps/getEvidenceSteps` | R→M | Record/Playback step capture |
@@ -271,14 +273,9 @@ The console panel sits fixed at the bottom of the window. Height is drag-resizab
 
 ---
 
-## Renderer: ⋯ menu
+## Renderer: app menu
 
-The "⋯" button at the right of the address bar (`#viewBtn`, `view-dropdown.js`) opens a dropdown with:
-- **Console panel** — toggles `consolePanel.style.display` and calls `layout:setConsoleHeight`
-- **Bookmarks bar** — same as `Ctrl+Shift+B`
-- **DevTools** and **Settings**
-
-The dropdown closes on any outside click.
+The logo button at the left of the title bar (`#appName`, `app-menu.js`) opens the one app menu, in three groups: **Tabs** (New temporary tab, Fill with test data), **View** (Console panel and Bookmarks bar toggles, DevTools) and **App** (Settings, Report bug). There is no separate ⋯ menu. Opening it snapshots and detaches the page view (`beginPageOverlay`); it closes on any outside click or Esc.
 
 ---
 

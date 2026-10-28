@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.150.0 — 2026-10-28
+
+### Features
+
+- Focus view in the A11y panel (focus order and focus trap) (refs #342) (3066bbb)
+
+## v0.149.1 — 2026-10-28
+
+### Other
+
+- move network and CPU throttling into Spoof › Advanced (refs #341) (873243c)
+
+## v0.149.0 — 2026-10-28
+
+### Features
+
+- Speed Dial uses cached or initial-letter favicons and no google.com requests (refs #340) (ba1ec77)
+
+## v0.148.12 — 2026-10-28
+
+### Other
+
+- Spoof uses plain labels and a one-line helper text (refs #331) (55fd129)
+
+## v0.148.11 — 2026-10-28
+
+_No changes recorded._
+
+## v0.148.10 — 2026-10-28
+
+### Other
+
+- hide custom throttle fields unless the preset is Custom (refs #330) (db0bab6)
+- move A11y, Mock and Resilience onto the shared controls (refs #328) (03f3f94)
+
+## v0.148.9 — 2026-10-28
+
+### Other
+
+- one menu under the logo, and remove the ⋯ button (refs #326) (088b0d2)
+
 ## v0.148.8 — 2026-10-28
 
 ### Fixes
