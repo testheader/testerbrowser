@@ -2574,3 +2574,9 @@ input.set-input[type="number"] { width: 90px; }
 #updateStatusText { margin: 2px 0 0; padding: 0; background: none; font-size: 12.5px; }
 #updateStatusText.ok::before { content: '\2713\00a0'; }
 .about-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 16px; }
+
+/* ── Throttling inside Spoof › Advanced (#341) ── */
+.spoof-throttle { margin-top: 10px; }
+.spoof-throttle-custom { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.spoof-throttle-custom .spoof-input { width: 100px; }
+.spoof-throttle-custom.res-hidden { display: none; }

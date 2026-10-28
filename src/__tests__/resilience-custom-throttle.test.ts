@@ -1,17 +1,27 @@
 import fs from 'fs';
 import path from 'path';
 
-const src = fs.readFileSync(path.join(__dirname, '..', '..', 'renderer', 'resilience.js'), 'utf8');
+const renderer = path.join(__dirname, '..', '..', 'renderer');
+const resilience = fs.readFileSync(path.join(renderer, 'resilience.js'), 'utf8');
+const emulation = fs.readFileSync(path.join(renderer, 'emulation.js'), 'utf8');
 
 // #330: Latency / Download / Upload only show when the network preset is "Custom".
-describe('renderer/resilience.js custom throttle fields', () => {
-  it('start hidden in the markup', () => {
-    expect(src).toMatch(/class="res-conditions-custom res-hidden" id="resCustomNetworkFields"/);
+// #341: the throttling controls live in Spoof › Advanced, not Resilience.
+describe('custom throttle fields', () => {
+  it('start hidden in the Spoof markup', () => {
+    expect(emulation).toMatch(/spoof-throttle-custom res-hidden" id="resCustomNetworkFields"/);
   });
 
   it('are toggled by the preset select and restored from the saved conditions', () => {
-    expect(src).toMatch(/customFields\.classList\.toggle\('res-hidden', networkSelect\.value !== 'custom'\)/);
-    expect(src).toMatch(/customFields\.classList\.add\('res-hidden'\)/);
-    expect(src).toMatch(/customFields\.classList\.remove\('res-hidden'\)/);
+    expect(resilience).toMatch(/customFields\.classList\.toggle\('res-hidden', networkSelect\.value !== 'custom'\)/);
+    expect(resilience).toMatch(/customFields\.classList\.add\('res-hidden'\)/);
+    expect(resilience).toMatch(/customFields\.classList\.remove\('res-hidden'\)/);
+  });
+
+  it('are no longer part of the Resilience panel', () => {
+    expect(resilience).not.toContain('id="resNetworkSelect"');
+    expect(resilience).not.toContain('id="resCpuSelect"');
+    expect(emulation).toContain('id="resNetworkSelect"');
+    expect(emulation).toContain('id="resCpuSelect"');
   });
 });

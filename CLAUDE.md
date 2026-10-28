@@ -188,6 +188,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `session:setEmulation` / `session:getEmulation` | R→M | Spoof tab: device metrics, UA, geolocation, timezone, locale — per tab (`emulationManager.ts`) |
 | `mock:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Mock rule CRUD, scoped to the tab's partition (reorder/import/export are above) |
 | `resilience:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Resilience rule CRUD (latency/abort/status injection by URL glob) |
+| `resilience:setConditions/getConditions` | R→M | per-tab network + CPU throttling; the controls (`#resNetworkSelect`, `#resCpuSelect`, custom fields) live in Spoof › Advanced and apply immediately |
 | `recording:replay` | R→M | re-issue a recorded request from the page context |
 | `tests:list/save/load/delete` | R→M | saved Record/Playback tests (import/export are above) |
 | `session:startRecording/stopRecording/pollRecordingSteps/getEvidenceSteps` | R→M | Record/Playback step capture |
