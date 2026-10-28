@@ -10,3 +10,11 @@ describe('renderer/style.css [hidden]', () => {
     expect(css).toMatch(/^\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/m);
   });
 });
+
+// #320: the Network detail pane must never squeeze the request table below ~560px.
+describe('renderer/style.css #detailPanel', () => {
+  it('caps its width so the table keeps 560px, and overlays when narrow', () => {
+    expect(css).toMatch(/#detailPanel \{[^}]*max-width: calc\(100% - 560px\)/);
+    expect(css).toMatch(/@container \(max-width: 1040px\)[^{]*\{\s*#detailPanel\.open \{ position: absolute/);
+  });
+});

@@ -781,12 +781,20 @@ button.timeline-load-older:hover { color: var(--text-primary); background: var(-
 .evt.network-failed   .evt-line2 { color: var(--error-strong); }
 
 /* ── Detail panel (request side panel) ── */
-#consolePanelBody { display: flex; flex: 1; flex-direction: row; min-height: 0; overflow: hidden; }
+#consolePanelBody { display: flex; flex: 1; flex-direction: row; min-height: 0; overflow: hidden;
+                    position: relative; container-type: inline-size; }
 #detailPanelResizeHandle { width: 4px; background: var(--bg-hover); cursor: ew-resize; flex-shrink: 0; display: none; }
 #detailPanelResizeHandle:hover { background: var(--accent); }
-#detailPanel { width: 480px; min-width: 120px; display: none; flex-direction: column;
+/* #320: the request table keeps at least 560px; the pane takes the rest, up to its own width. */
+#detailPanel { width: 480px; min-width: 120px; max-width: calc(100% - 560px); display: none; flex-direction: column;
                border-left: 1px solid var(--tb-line); background: var(--tb-surface); flex-shrink: 0; }
 #detailPanel.open { display: flex; }
+/* Too narrow for table + pane side by side: the pane overlays the table, below the toolbar row. */
+@container (max-width: 1040px) {
+  #detailPanel.open { position: absolute; top: 44px; right: 0; bottom: 0; z-index: 5; max-width: none;
+                      width: min(480px, calc(100% - 24px)) !important; box-shadow: -6px 0 16px rgba(0, 0, 0, 0.25); }
+  #detailPanelResizeHandle { display: none !important; }
+}
 /* #301: header block (pill + meta, URL, actions), then section tabs, then the section body. */
 #detailPanelHeader { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
 .detail-head-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -1879,7 +1887,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .rp-assert-dlg-btns { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
 
 /* ── #299: Network toolbar (single 44px row) ── */
-.net-search { position: relative; display: flex; align-items: center; width: 280px; flex-shrink: 1; min-width: 120px; }
+.net-search { position: relative; display: flex; align-items: center; width: 280px; flex-shrink: 1; min-width: 200px; }
 .net-search i { position: absolute; left: 8px; font-size: 13px; color: var(--tb-text-3); pointer-events: none; }
 #networkFilterText { width: 100%; height: 28px; padding: 0 8px 0 28px; border-radius: var(--tb-r-sm);
                      border: 1px solid var(--tb-line-strong); background: var(--tb-sunken); color: var(--tb-text);
