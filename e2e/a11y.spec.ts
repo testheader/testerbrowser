@@ -265,6 +265,7 @@ test('Focus order overlay computes tab order (positive tabindex first) and flags
   await getTabPage(app, urlPath);
 
   await window.click('#consoleTabA11y');
+  await window.click('#a11yViewFocusBtn');
   await window.click('#a11yFocusOrderBtn');
 
   const content = window.locator('#a11yContent');
@@ -297,6 +298,7 @@ test('Focus trap detector flags a deliberate trap and names the trapped elements
   await getTabPage(app, urlPath);
 
   await window.click('#consoleTabA11y');
+  await window.click('#a11yViewFocusBtn');
   await window.click('#a11yFocusTrapBtn');
 
   const content = window.locator('#a11yContent');
@@ -316,6 +318,7 @@ test('Focus trap detector reports no trap on a clean page (#198)', async () => {
   await getTabPage(app, urlPath);
 
   await window.click('#consoleTabA11y');
+  await window.click('#a11yViewFocusBtn');
   await window.click('#a11yFocusTrapBtn');
 
   const content = window.locator('#a11yContent');
