@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.3 — 2026-10-28
+
+### Fixes
+
+- browser tabs and the group "+" are reachable by keyboard (refs #335) (fbf2f63)
+
 ## v0.148.2 — 2026-10-28
 
 ### Other
