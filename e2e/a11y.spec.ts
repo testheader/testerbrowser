@@ -62,7 +62,7 @@ test('Inspect element highlights and selects the hovered/clicked page element', 
   await expect(window.locator('.a11y-row.a11y-selected')).toContainText('Save changes', { timeout: 5_000 });
 
   await window.click('#a11yInspectBtn');
-  await expect(window.locator('#a11yInspectBtn')).not.toHaveClass(/on/);
+  await expect(window.locator('#a11yInspectBtn')).not.toHaveClass(/\bon\b/);
 });
 
 test('Violations view finds real axe-core issues via Refresh (#193)', async () => {
@@ -287,7 +287,8 @@ test('Focus order overlay computes tab order (positive tabindex first) and flags
   await expect(rows.nth(idx2)).not.toContainText('no visible focus indicator');
 
   await window.click('#a11yFocusOrderBtn');
-  await expect(window.locator('#a11yFocusOrderBtn')).not.toHaveClass(/on/);
+  // Whole-word match: a bare /on/ also matches the button's own "a11y-focus-only" class.
+  await expect(window.locator('#a11yFocusOrderBtn')).not.toHaveClass(/\bon\b/);
 });
 
 test('Focus trap detector flags a deliberate trap and names the trapped elements (#198)', async () => {
