@@ -451,7 +451,7 @@ function renderSummary() {
   if (d.message) {
     stats.textContent = d.message;
   } else if (!d.baselineB64) {
-    stats.textContent = 'Capture a baseline of this page, or pick one from Saved baselines.';
+    stats.textContent = ''; // #327: the empty state below already says it
   } else if (!r) {
     stats.textContent = d.baselineInfo?.source === 'capture'
       ? 'Baseline captured. Interact with the page (or pick another tab under “from”), then click Compare.'

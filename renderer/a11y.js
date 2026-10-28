@@ -22,15 +22,15 @@ let activeView = 'tree'; // 'tree' | 'violations' | 'contrast' | 'structure' | '
 // it's been manually refreshed at least once (gates reloadA11yIfLoaded the
 // same way the original single-view Tree panel did), and its loader.
 const VIEWS = {
-  tree:       { btnId: 'a11yViewTreeBtn',       title: 'Accessibility tree', emptyMsg: 'Load the accessibility tree for this page.',
+  tree:       { btnId: 'a11yViewTreeBtn',       title: 'Accessibility tree', emptyMsg: 'Load the accessibility tree for this page.', loadLabel: 'Load tree',
                 loaded: false, load: () => loadA11yTree() },
-  violations: { btnId: 'a11yViewViolationsBtn', title: 'Violations audit', emptyMsg: 'Run an accessibility violations audit on this page.',
+  violations: { btnId: 'a11yViewViolationsBtn', title: 'Violations audit', emptyMsg: 'Run an accessibility violations audit on this page.', loadLabel: 'Run audit',
                 loaded: false, load: () => loadA11yViolations() },
-  contrast:   { btnId: 'a11yViewContrastBtn',   title: 'Colour contrast', emptyMsg: 'Check this page for colour contrast failures.',
+  contrast:   { btnId: 'a11yViewContrastBtn',   title: 'Colour contrast', emptyMsg: 'Check this page for colour contrast failures.', loadLabel: 'Check contrast',
                 loaded: false, load: () => loadA11yContrast() },
-  structure:  { btnId: 'a11yViewStructureBtn',  title: 'Page structure', emptyMsg: 'List the headings and landmarks on this page.',
+  structure:  { btnId: 'a11yViewStructureBtn',  title: 'Page structure', emptyMsg: 'List the headings and landmarks on this page.', loadLabel: 'Load structure',
                 loaded: false, load: () => loadA11yStructure() },
-  altlabels:  { btnId: 'a11yViewAltLabelsBtn',  title: 'Alt text and labels', emptyMsg: 'Check image alt text and form labels on this page.',
+  altlabels:  { btnId: 'a11yViewAltLabelsBtn',  title: 'Alt text and labels', emptyMsg: 'Check image alt text and form labels on this page.', loadLabel: 'Check alt text and labels',
                 loaded: false, load: () => loadA11yAltLabels() },
 };
 
@@ -38,8 +38,18 @@ const VIEWS = {
 function a11yEmptyState(view) {
   return renderEmptyState({
     icon: 'accessibility', tone: 'accent', title: VIEWS[view].title, text: VIEWS[view].emptyMsg,
-    actionLabel: 'Refresh', onAction: () => document.getElementById('a11yRefreshBtn').click(),
+    actionLabel: VIEWS[view].loadLabel, actionIcon: 'play', actionTooltip: VIEWS[view].loadLabel,
+    onAction: () => document.getElementById('a11yRefreshBtn').click(),
   });
+}
+
+// #327: the toolbar control is "Load …" until the active view has loaded, "Refresh" after.
+function syncRefreshLabel() {
+  const btn = document.getElementById('a11yRefreshBtn');
+  if (!btn) return;
+  const label = VIEWS[activeView].loaded ? 'Refresh' : VIEWS[activeView].loadLabel;
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
 }
 
 export function initA11y() {
@@ -70,8 +80,10 @@ export function initA11y() {
   document.getElementById('a11yContent').replaceChildren(a11yEmptyState('tree'));
   document.getElementById('a11yRefreshBtn').addEventListener('click', () => {
     VIEWS[activeView].loaded = true;
+    syncRefreshLabel();
     VIEWS[activeView].load();
   });
+  syncRefreshLabel();
   /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn')).addEventListener('click', () => {
     if (inspecting) disableA11yHover(); else enableA11yHover();
   });
@@ -110,6 +122,7 @@ function switchA11yView(view) {
   if (focusOverlayOn) disableA11yFocusOrder();
   const content = document.getElementById('a11yContent');
   if (content) content.replaceChildren(a11yEmptyState(view));
+  syncRefreshLabel();
 }
 
 // Called after navigation — only refresh if the active view has already been

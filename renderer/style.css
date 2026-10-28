@@ -1991,6 +1991,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .empty-state-btn { height: 32px; padding: 0 14px; border-radius: var(--tb-r); font-family: inherit; font-size: 13px; font-weight: 600;
                    cursor: pointer; border: 1px solid var(--tb-line-strong); background: none; color: var(--tb-text); }
 .empty-state-btn:hover { background: var(--tb-hover); }
+.empty-state-btn-icon { width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
 .empty-state-btn.tone-accent { background: var(--tb-accent); border-color: var(--tb-accent); color: var(--tb-on-accent); }
 .empty-state-btn.tone-err    { background: var(--tb-err);    border-color: var(--tb-err);    color: var(--tb-on-accent); }
 .empty-state-btn.tone-accent:hover, .empty-state-btn.tone-err:hover { opacity: 0.9; background: inherit; }

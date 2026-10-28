@@ -27,7 +27,11 @@ test('Refresh loads a tree with expected roles and names', async () => {
   await getTabPage(app, urlPath);
 
   await window.click('#consoleTabA11y');
+  // #327: first load is an icon button with the tooltip "Load tree"; afterwards the toolbar control is "Refresh".
+  await expect(window.locator('#a11yContent .empty-state-btn')).toHaveAttribute('title', 'Load tree');
+  await expect(window.locator('#a11yRefreshBtn')).toHaveAttribute('title', 'Load tree');
   await window.click('#a11yRefreshBtn');
+  await expect(window.locator('#a11yRefreshBtn')).toHaveAttribute('title', 'Refresh');
 
   const content = window.locator('#a11yContent');
   await expect(content).toContainText('Save changes', { timeout: 10_000 });

@@ -94,7 +94,8 @@ test('first run: the setup row is on one line, rules and baseline saving sit beh
 
   await expect(window.locator('#vrImages .empty-state-title')).toHaveText('Visual comparison');
   await expect(window.locator('#vrImages')).toContainText('No baseline yet');
-  await expect(window.locator('#vrStats')).toContainText('Capture a baseline of this page');
+  // #327: one instruction — the empty state; the status line stays empty.
+  await expect(window.locator('#vrStats')).toHaveText('');
 
   // The colour tolerance explains itself in plain language, live as it's typed.
   await expect(window.locator('#vrThresholdHint')).toContainText('Strict');

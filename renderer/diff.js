@@ -89,7 +89,7 @@ export function initDiff() {
       <button type="button" class="diff-small-btn" id="diffIgnoreAddBtn">Add</button>
       <button type="button" class="diff-link-btn" id="diffIgnoreDefaultsBtn">Restore defaults</button>
     </div>
-    <div class="diff-toolbar diff-toolbar-row2 diff-filter-row">
+    <div class="diff-toolbar diff-toolbar-row2 diff-filter-row" id="diffFilterRow" hidden>
       <div class="filter-pills diff-chips" id="diffCatPills" role="group" aria-label="Result">
         ${bucketPill('changed', 'Different', 'Status, response headers or body differ', 'changed')}
         ${bucketPill('removed', 'Only in A', 'Only in Session A', 'removed')}
@@ -325,6 +325,8 @@ function computeDiffRowsAndRender() {
 function renderBody() {
   const body = document.getElementById('diffBody');
   if (!body) return;
+  // #327: result filters only mean something once a comparison has run.
+  document.getElementById('diffFilterRow').hidden = !diffMeta;
   if (!diffMeta) { body.replaceChildren(firstRunState()); return; }
   if (lastDiffRows.length === 0) {
     body.innerHTML = truncationBannerHtml() + metaHtml() +
@@ -341,7 +343,7 @@ function firstRunState() {
     text: cachedSessions.length < 2
       ? 'Open a second tab, then compare the two tabs\' recorded requests.'
       : 'Pick two sessions to compare their recorded requests.',
-    actionLabel: 'Compare', onAction: runDiff,
+    // #327: the toolbar's Compare is the one call to action.
   });
 }
 

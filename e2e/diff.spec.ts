@@ -51,7 +51,10 @@ test('before any comparison the panel shows the shared empty state, with no help
   await window.click('#consoleTabDiff');
   await expect(window.locator('#diffBody .empty-state-title')).toHaveText('Network diff');
   await expect(window.locator('#diffBody .empty-state-text')).toHaveText(/^(Pick two sessions to compare their recorded requests\.|Open a second tab, then compare the two tabs' recorded requests\.)$/);
-  await expect(window.locator('#diffBody .empty-state-btn')).toHaveText('Compare');
+  // #327: one Compare (the toolbar's), and no result filters until a comparison has run.
+  await expect(window.locator('#diffBody .empty-state-btn')).toHaveCount(0);
+  await expect(window.locator('#diffRunBtn')).toHaveText('Compare');
+  await expect(window.locator('#diffCatPills')).toBeHidden();
   await expect(window.locator('.diff-empty-steps')).toHaveCount(0);
   await expect(window.locator('#diffHelpBtn')).toHaveCount(0);
 

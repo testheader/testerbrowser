@@ -11,11 +11,13 @@
  *   title: string,
  *   text: string,
  *   actionLabel?: string,
+ *   actionIcon?: string,
+ *   actionTooltip?: string,
  *   onAction?: () => void,
  * }} opts
  * @returns {HTMLElement}
  */
-export function renderEmptyState({ icon, tone = 'neutral', title, text, actionLabel, onAction }) {
+export function renderEmptyState({ icon, tone = 'neutral', title, text, actionLabel, actionIcon, actionTooltip, onAction }) {
   const root = document.createElement('div');
   root.className = 'empty-state';
   root.setAttribute('role', 'status');
@@ -42,7 +44,18 @@ export function renderEmptyState({ icon, tone = 'neutral', title, text, actionLa
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = `empty-state-btn tone-${tone}`;
-    btn.textContent = actionLabel;
+    if (actionIcon) {
+      // Icon-only button: the label becomes its tooltip and accessible name.
+      btn.classList.add('empty-state-btn-icon');
+      btn.title = actionTooltip || actionLabel;
+      btn.setAttribute('aria-label', actionTooltip || actionLabel);
+      const g = document.createElement('i');
+      g.className = `icon-${actionIcon}`;
+      g.setAttribute('aria-hidden', 'true');
+      btn.appendChild(g);
+    } else {
+      btn.textContent = actionLabel;
+    }
     if (onAction) btn.addEventListener('click', onAction);
     root.appendChild(btn);
   }
