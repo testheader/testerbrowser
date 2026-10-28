@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.146.7 — 2026-10-28
+
+### Fixes
+
+- honour [hidden] in panels whose classes set display (Jira, Record) (refs #319) (addfcd9)
+
 ## v0.146.6 — 2026-10-26
 
 ### Fixes
