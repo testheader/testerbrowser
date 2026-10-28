@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.148.8 — 2026-10-28
+
+### Fixes
+
+- update detail-actions e2e for the Copy split button (refs #336) (a47b48d)
+
 ## v0.148.7 — 2026-10-28
 
 ### Fixes
