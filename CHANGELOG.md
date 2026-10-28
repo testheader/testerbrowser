@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.148.6 — 2026-10-28
+
+_No changes recorded._
+
 ## v0.148.5 — 2026-10-28
 
 ### Fixes
