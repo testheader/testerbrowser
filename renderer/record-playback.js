@@ -46,9 +46,14 @@ export function initRecordPlayback() {
       <button class="net-chip" id="rpAddAssertBtn" type="button" hidden><i class="icon-badge-check" aria-hidden="true"></i>Add assertion</button>
       <button class="rp-strong" id="rpStopSaveBtn" type="button" hidden><i class="icon-square" aria-hidden="true"></i>Stop and save</button>
     </div>
+    <div class="rp-modebar">
+      <div class="seg" id="rpModeSeg" role="group" aria-label="Recorder view">
+        <button type="button" class="seg-btn" id="rpModeNewBtn" data-mode="new" aria-pressed="false">New recording</button>
+        <button type="button" class="seg-btn" id="rpModeSavedBtn" data-mode="saved" aria-pressed="false">Saved recordings</button>
+      </div>
+    </div>
     <div class="rp-wrap">
       <div class="rp-col rp-record-col" id="rpRecordCol">
-        <div class="rp-section-title">New recording</div>
         <div class="rp-record-form">
           <input class="rp-input" id="rpTestName" type="text" placeholder="Test name…" />
           <div class="rp-record-btns">
@@ -62,10 +67,7 @@ export function initRecordPlayback() {
         <div id="rpLiveSteps" class="rp-live-steps"></div>
       </div>
 
-      <div class="rp-splitter" id="rpSplitter1" title="Drag to resize"></div>
-
       <div class="rp-col rp-saved-col" id="rpSavedCol">
-        <div class="rp-section-title">Saved recordings</div>
         <label class="rp-step-mode-toggle" title="Pause after each step instead of running the test straight through — useful for debugging where a script fails. Applies to the single Run button only, not Run N×.">
           <input type="checkbox" id="rpStepModeToggle" /> Step-by-step playback
         </label>
@@ -101,6 +103,9 @@ export function initRecordPlayback() {
   `;
 
   initColumnResize();
+
+  document.querySelectorAll('#rpModeSeg .seg-btn').forEach((btn) =>
+    btn.addEventListener('click', () => setRpMode(/** @type {HTMLElement} */ (btn).dataset.mode)));
 
   /** @type {HTMLButtonElement} */ (document.getElementById('rpStartBtn')).addEventListener('click', startRecording);
   /** @type {HTMLButtonElement} */ (document.getElementById('rpStopBtn')).addEventListener('click', stopRecording);
@@ -146,13 +151,13 @@ export function initRecordPlayback() {
     await refreshTestList();
   });
 
-  refreshTestList();
+  // Default mode: the saved list when there is one, else the recorder.
+  refreshTestList().then(() => { if (rpMode === null) setRpMode(savedTests.length > 0 ? 'saved' : 'new'); });
 }
 
-// Minimums keep every column usable and stop a splitter from being dragged
-// to (or past) zero. RP_MIN_SAVED in particular is wide enough that a step's
-// type/selector/value fields (renderSavedStepsHtml) sit side by side without
-// truncating at the default window size — the whole point of this ticket.
+// The saved list keeps a minimum so a step's type/selector/value fields
+// (renderSavedStepsHtml) sit side by side without truncating at the default
+// window size, and the run view beside it keeps its own minimum.
 const RP_MIN_RECORD = 180;
 const RP_MIN_SAVED  = 280;
 const RP_MIN_MAIN   = 200;
@@ -160,22 +165,20 @@ const RP_SPLITTER_W = 6; // matches .rp-splitter's width in style.css
 
 // Mirrors the drag-resize pattern already used for the console panel
 // (layout.js initLayout) and the detail panel (detail-panel.js
-// initDetailPanel), just on the X axis and with two splitters instead of
-// one. Widths are restored from and saved back to testerBrowser.settings
-// (settings.json) rather than localStorage, per this ticket — the same
-// store security.js's rule overrides already use.
+// initDetailPanel), just on the X axis. #350: the record column now fills
+// the panel on its own tab, so only the saved/run-view splitter remains.
+// The width is restored from and saved back to testerBrowser.settings
+// (settings.json) rather than localStorage — the same store security.js's rule
+// overrides already use.
 function initColumnResize() {
   const wrap      = /** @type {HTMLElement} */ (document.querySelector('#testsPanel .rp-wrap'));
-  const recordCol = document.getElementById('rpRecordCol');
   const savedCol  = document.getElementById('rpSavedCol');
-  const splitter1 = document.getElementById('rpSplitter1');
   const splitter2 = document.getElementById('rpSplitter2');
 
   let widths = { record: RP_MIN_RECORD, saved: RP_MIN_SAVED + 140 };
 
   function applyWidths() {
-    recordCol.style.width = widths.record + 'px';
-    savedCol.style.width  = widths.saved + 'px';
+    savedCol.style.width = widths.saved + 'px';
   }
 
   async function persistWidths() {
@@ -190,44 +193,45 @@ function initColumnResize() {
     applyWidths();
   }).catch(() => applyWidths());
 
-  function dragSplitter(handle, { getStartWidth, getMax, setWidth }) {
-    handle.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = getStartWidth();
-      handle.classList.add('dragging');
-      const onMove = (ev) => {
-        const max = getMax();
-        const newW = Math.max(0, Math.min(startW + (ev.clientX - startX), max));
-        setWidth(newW);
-        applyWidths();
-      };
-      const onUp = () => {
-        handle.classList.remove('dragging');
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        persistWidths();
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
-  }
-
-  // Splitter 1 (between Record and Replay tests) resizes the record column;
-  // its ceiling leaves the saved column and the run view at their own
-  // minimums plus room for both splitters.
-  dragSplitter(splitter1, {
-    getStartWidth: () => widths.record,
-    getMax: () => Math.max(RP_MIN_RECORD, wrap.offsetWidth - widths.saved - RP_MIN_MAIN - RP_SPLITTER_W * 2),
-    setWidth: (w) => { widths.record = Math.max(RP_MIN_RECORD, w); },
+  // The splitter between the saved list and the run view; its ceiling leaves
+  // the run view at its own minimum.
+  splitter2.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = widths.saved;
+    splitter2.classList.add('dragging');
+    const onMove = (ev) => {
+      const max = Math.max(RP_MIN_SAVED, wrap.offsetWidth - RP_MIN_MAIN - RP_SPLITTER_W);
+      widths.saved = Math.max(RP_MIN_SAVED, Math.min(startW + (ev.clientX - startX), max));
+      applyWidths();
+    };
+    const onUp = () => {
+      splitter2.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      persistWidths();
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   });
+}
 
-  // Splitter 2 (between Replay tests and the run view) resizes the saved
-  // column; its ceiling leaves the run view at its own minimum.
-  dragSplitter(splitter2, {
-    getStartWidth: () => widths.saved,
-    getMax: () => Math.max(RP_MIN_SAVED, wrap.offsetWidth - widths.record - RP_MIN_MAIN - RP_SPLITTER_W * 2),
-    setWidth: (w) => { widths.saved = Math.max(RP_MIN_SAVED, w); },
+// #350: New recording and Saved recordings are two modes of one panel. Only
+// the selected mode is shown; a recording or run in progress keeps going
+// underneath (nothing here touches isRecording/isRunning).
+/** @type {'new' | 'saved' | null} */
+let rpMode = null;
+function setRpMode(mode) {
+  rpMode = mode === 'saved' ? 'saved' : 'new';
+  const showSaved = rpMode === 'saved';
+  document.getElementById('rpRecordCol').hidden = showSaved;
+  document.getElementById('rpSavedCol').hidden = !showSaved;
+  document.getElementById('rpSplitter2').hidden = !showSaved;
+  /** @type {HTMLElement} */ (document.querySelector('#testsPanel .rp-main')).hidden = !showSaved;
+  document.querySelectorAll('#rpModeSeg .seg-btn').forEach((b) => {
+    const on = /** @type {HTMLElement} */ (b).dataset.mode === rpMode;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
   });
 }
 
@@ -286,6 +290,7 @@ function stepIcon(type) {
 async function startRecording() {
   if (!getActiveId()) { showFormStatus('No active session', true); return; }
   recordingSessionId = getActiveId();
+  setRpMode('new');
   isRecording = true;
   currentSteps = [];
   receivedCount = 0;
@@ -337,6 +342,7 @@ async function saveRecordedTest() {
   setRecordBtns(false);
   renderLiveSteps();
   await refreshTestList();
+  setRpMode('saved'); // show the new test in the list
 }
 
 function setRecordBtns(recording) {
@@ -843,6 +849,7 @@ async function runTest(testId, runCount) {
 async function runTestSteps(test, runCount, sensitiveValues) {
   const runView = document.getElementById('rpRunView');
   const placeholder = document.getElementById('rpRunPlaceholder');
+  setRpMode('saved');
   runView.hidden = false;
   placeholder.hidden = true;
 

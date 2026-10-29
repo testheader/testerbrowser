@@ -50,6 +50,7 @@ test('with no saved tests the Record tab shows the empty state, and recording sh
   await tab.click('[data-testid="rp-btn"]');
   await expect(window.locator('#rpToolbarStatus')).toContainText('Recording · 1 step', { timeout: 5_000 });
 
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'toolbar save');
   await window.click('#rpStopSaveBtn');
   await expect(window.locator('.rp-test-item', { hasText: 'toolbar save' })).toBeVisible();
@@ -68,6 +69,7 @@ test('recording a fill + click and running it back actually replays successfully
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'fill and click');
   await window.click('#rpStartBtn');
 
@@ -99,6 +101,7 @@ test('a click on a data-cy element records the selector [data-cy="..."], not [da
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'data-cy selector');
   await window.click('#rpStartBtn');
 
@@ -127,6 +130,7 @@ test('recording check then uncheck replays back to the unchecked state, not "on"
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'check uncheck');
   await window.click('#rpStartBtn');
 
@@ -166,6 +170,7 @@ test('recording a password field masks the saved step, and Run prompts for the r
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'password field');
   await window.click('#rpStartBtn');
 
@@ -209,6 +214,7 @@ test('deleting a step mid-recording keeps it removed as new steps keep arriving 
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'merge test');
   await window.click('#rpStartBtn');
 
@@ -251,6 +257,7 @@ test('a recording started on one tab keeps polling and stops on that tab, even i
   const tabAId = await window.locator('.tab.active').getAttribute('data-id');
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'wrong tab test');
   await window.click('#rpStartBtn');
 
@@ -314,6 +321,7 @@ test('assert-attr passes when the expected value matches the live attribute', as
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'assert-attr passes');
   await window.click('#rpStartBtn');
   await tab.fill('[data-testid="rp-input"]', 'Ada');
@@ -339,6 +347,7 @@ test('assert-attr fails when the expected value does not match', async () => {
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'assert-attr fails');
   await window.click('#rpStartBtn');
   await tab.fill('[data-testid="rp-input"]', 'Ada');
@@ -363,6 +372,7 @@ test('"Run N×" uses an inline number input with inline validation, not an OS pr
   await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
   const repeatInput = testItem.locator('.rp-repeat-input');
   await expect(repeatInput).toHaveValue('10');
@@ -391,6 +401,7 @@ test('a repeated run resets page state between iterations instead of accumulatin
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'counter reset');
   await window.click('#rpStartBtn');
   await tab.click('[data-testid="rp-btn"]'); // first step is a click, not a navigate
@@ -431,6 +442,7 @@ test('the assertion dialog shows inline validation instead of alert() for a miss
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'assertion validation');
   await window.click('#rpStartBtn');
   await tab.click('[data-testid="rp-btn"]');
@@ -459,6 +471,7 @@ test('the assertion dialog shows inline validation instead of alert() for a miss
 
 test('step-by-step mode pauses after each step, highlights it, and Next advances', async () => {
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
   await expect(testItem).toBeVisible();
   await expect(testItem.locator('.rp-test-meta')).toHaveText('2 steps');
@@ -489,6 +502,7 @@ test('step-by-step mode pauses after each step, highlights it, and Next advances
 
 test('Stop ends step-by-step playback cleanly without running the remaining steps', async () => {
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
 
   await window.check('#rpStepModeToggle');
@@ -507,6 +521,7 @@ test('Stop ends step-by-step playback cleanly without running the remaining step
 
 test('step-by-step toggle has no effect on "Run N×" — repeat runs stay continuous', async () => {
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
 
   await window.check('#rpStepModeToggle');
@@ -529,6 +544,7 @@ test('recorded steps show a confidence dot that turns red after navigating away,
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.click('#rpStartBtn');
   await tab.fill('[data-testid="rp-input"]', 'Ada');
   await tab.click('[data-testid="rp-btn"]');
@@ -566,6 +582,7 @@ test('a saved test can be expanded to show its steps with type, selector and val
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'editable steps target');
   await window.click('#rpStartBtn');
   await tab.fill('[data-testid="rp-input"]', 'Ada');
@@ -589,6 +606,7 @@ test('a saved test can be expanded to show its steps with type, selector and val
 
 test('editing a step\'s selector inline breaks the run, and correcting it fixes the run — without duplicating the saved test', async () => {
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'editable steps target' });
   const selectorInput = testItem.locator('.rp-saved-steps .rp-live-step').nth(0).locator('.rp-step-desc');
 
@@ -610,6 +628,7 @@ test('editing a step\'s selector inline breaks the run, and correcting it fixes 
 
 test('a failed step renders a click-to-enlarge thumbnail and a readable error line naming the selector (#185)', async () => {
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'editable steps target' });
   const selectorInput = testItem.locator('.rp-saved-steps .rp-live-step').nth(0).locator('.rp-step-desc');
 
@@ -661,6 +680,7 @@ test('deleting a step from a saved test updates the step count and the removed a
   await expect(tab.locator('[data-testid="rp-result"]')).toHaveAttribute('data-status', 'idle');
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'editable steps target' });
   await expect(testItem.locator('.rp-test-meta')).toHaveText('2 steps');
 
@@ -683,23 +703,29 @@ test('deleting a step from a saved test updates the step count and the removed a
 
 // ── Column layout (#183) ────────────────────────────────────────────────────
 
-test('the tab lays out as three columns: Record new test, Replay tests, then the run view', async () => {
+test('the tab shows one mode at a time: New recording full width, or Saved recordings beside the run view (#350)', async () => {
   await window.click('#consoleTabTests');
-  const recordCol = window.locator('#rpRecordCol');
-  const savedCol  = window.locator('#rpSavedCol');
-  const mainCol   = window.locator('.rp-main');
-  await expect(recordCol).toContainText('New recording');
-  await expect(savedCol).toContainText('Saved recordings');
-  await expect(mainCol).toBeVisible();
+  await expect(window.locator('#rpModeSeg .seg-btn')).toHaveText(['New recording', 'Saved recordings']);
 
-  const recordBox = (await recordCol.boundingBox())!;
-  const savedBox  = (await savedCol.boundingBox())!;
-  const mainBox   = (await mainCol.boundingBox())!;
-  expect(recordBox.x).toBeLessThan(savedBox.x);
+  await window.click('#rpModeNewBtn');
+  await expect(window.locator('#rpModeNewBtn')).toHaveAttribute('aria-pressed', 'true');
+  await expect(window.locator('#rpRecordCol')).toBeVisible();
+  await expect(window.locator('#rpSavedCol')).toBeHidden();
+  await expect(window.locator('.rp-main')).toBeHidden();
+  const panelBox  = (await window.locator('#testsPanel').boundingBox())!;
+  const recordBox = (await window.locator('#rpRecordCol').boundingBox())!;
+  expect(recordBox.width).toBeGreaterThan(panelBox.width * 0.9);
+
+  await window.click('#rpModeSavedBtn');
+  await expect(window.locator('#rpRecordCol')).toBeHidden();
+  const savedBox = (await window.locator('#rpSavedCol').boundingBox())!;
+  const mainBox  = (await window.locator('.rp-main').boundingBox())!;
   expect(savedBox.x).toBeLessThan(mainBox.x);
+  await expect(window.locator('#rpSplitter1')).toHaveCount(0);
 });
 
 test('dragging the splitter resizes the Replay tests column, clamped at its minimum when dragged far past it', async () => {
+  await window.click('#rpModeSavedBtn');
   const savedCol  = window.locator('#rpSavedCol');
   const splitter2 = window.locator('#rpSplitter2');
 
@@ -738,15 +764,16 @@ test('column widths persist across a restart', async () => {
   const win1 = await getMainWindow(app1);
   await win1.waitForLoadState('load');
   await win1.click('#consoleTabTests');
+  await win1.click('#rpModeSavedBtn');
 
-  const handle = (await win1.locator('#rpSplitter1').boundingBox())!;
+  const handle = (await win1.locator('#rpSplitter2').boundingBox())!;
   const y = handle.y + handle.height / 2;
   await win1.mouse.move(handle.x + handle.width / 2, y);
   await win1.mouse.down();
   await win1.mouse.move(handle.x + handle.width / 2 + 50, y, { steps: 5 });
   await win1.mouse.up();
 
-  const resizedWidth = (await win1.locator('#rpRecordCol').boundingBox())!.width;
+  const resizedWidth = (await win1.locator('#rpSavedCol').boundingBox())!.width;
   // The width write is an async settings:set IPC round-trip, not something
   // mouseup itself waits for, and a restart below reads only from the
   // persisted settings.json — poll that file directly until the write has
@@ -755,7 +782,7 @@ test('column widths persist across a restart', async () => {
   await expect.poll(() => {
     try {
       const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-      return raw?.recordPlaybackColumnWidths?.record;
+      return raw?.recordPlaybackColumnWidths?.saved;
     } catch {
       return undefined;
     }
@@ -769,8 +796,9 @@ test('column widths persist across a restart', async () => {
   const win2 = await getMainWindow(app2);
   await win2.waitForLoadState('load');
   await win2.click('#consoleTabTests');
+  await win2.click('#rpModeSavedBtn');
 
-  const restoredWidth = (await win2.locator('#rpRecordCol').boundingBox())!.width;
+  const restoredWidth = (await win2.locator('#rpSavedCol').boundingBox())!.width;
   expect(restoredWidth).toBeCloseTo(resizedWidth, 0);
 
   await app2.close();
@@ -787,6 +815,7 @@ test('playback of a fill step reaches a React-style controlled input, not just t
   await tab.waitForLoadState('load');
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'controlled input fill');
   await window.click('#rpStartBtn');
   await tab.fill('#controlledInput', 'Grace');
@@ -822,6 +851,7 @@ test('a click that fires immediately on a fast-loading page right after navigati
   await tab.waitForLoadState('load');
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'fast navigation');
   await window.click('#rpStartBtn');
 
@@ -870,6 +900,7 @@ test('a click inside a same-origin iframe is recorded with frame context and rep
   await iframe.locator('[data-testid="rp-iframe-btn"]').waitFor();
 
   await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
   await window.fill('#rpTestName', 'iframe click');
   await window.click('#rpStartBtn');
 
@@ -931,6 +962,7 @@ test('Cancel stops a run in progress between runs, and the Run buttons re-enable
   }, navigateUrl);
   await window.click('#consoleTabTests'); // re-clicking refreshes the list from the store
 
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'cancel test 274' });
   await expect(testItem).toBeVisible();
   await testItem.locator('.rp-repeat-input').fill('15');
@@ -950,6 +982,7 @@ test('Cancel stops a run in progress between runs, and the Run buttons re-enable
 
 test('clicking Run twice quickly only starts one run — Run/Run N× stay disabled for its duration (#274)', async () => {
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'cancel test 274' });
   await expect(testItem).toBeVisible();
 
@@ -973,6 +1006,7 @@ test('clicking Run twice quickly only starts one run — Run/Run N× stay disabl
 
 test('exporting a saved test and importing it back round-trips its steps (#274)', async () => {
   await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
   const testItem = window.locator('.rp-test-item', { hasText: 'fill and click' });
   await expect(testItem).toBeVisible();
 
@@ -1018,6 +1052,7 @@ test('importing a file with an invalid test alongside a valid one imports the va
   await app.evaluate(({ dialog }, filePath) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
   }, tmpPath);
+  await window.click('#rpModeSavedBtn');
   await window.click('#rpImportBtn');
 
   await expect(window.locator('#rpIoStatus')).toContainText('Imported 1 test(s)');
@@ -1025,4 +1060,19 @@ test('importing a file with an invalid test alongside a valid one imports the va
   await expect(window.locator('.rp-test-item', { hasText: 'valid imported test' })).toBeVisible();
 
   fs.rmSync(tmpPath, { force: true });
+});
+
+// #350: Start switches to New recording; switching tabs mid-recording keeps the recording running.
+test('Start switches to New recording and a recording survives switching modes (#350)', async () => {
+  await window.click('#consoleTabTests');
+  await window.click('#rpModeSavedBtn');
+  await expect(window.locator('#rpRecordCol')).toBeHidden();
+  await window.click('#rpModeNewBtn');
+  await window.click('#rpStartBtn');
+  await expect(window.locator('#rpStopBtn')).toBeEnabled();
+  await window.click('#rpModeSavedBtn');
+  await expect(window.locator('#rpToolbarStatus')).toContainText('Recording');
+  await window.click('#rpModeNewBtn');
+  await expect(window.locator('#rpStopBtn')).toBeEnabled();
+  await window.click('#rpStopBtn');
 });

@@ -2431,7 +2431,15 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .rp-input { background: var(--tb-sunken); border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); color: var(--tb-text); }
 .rp-btn { background: transparent; border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); color: var(--tb-text); }
 .rp-btn:hover:not(:disabled) { background: var(--tb-hover); }
-.rp-btn-record { color: var(--tb-err); border-color: var(--tb-err); }
+/* #350: Start is the err-filled primary, Stop / Save / Run are strong neutral, the rest outline pills. */
+.rp-modebar { padding: 8px 12px 0; flex: 0 0 auto; }
+.rp-wrap [hidden], .rp-wrap[hidden] { display: none; }
+.rp-record-col { flex: 1 1 auto; min-width: 0; border-right: none; }
+.rp-record-btns .rp-btn, .rp-io-row .rp-btn, .rp-test-actions .rp-btn { border-radius: var(--tb-r-pill); }
+.rp-btn-record { background: var(--tb-err); border-color: var(--tb-err); color: var(--tb-on-accent); }
+.rp-btn-record:hover:not(:disabled) { background: var(--tb-err); opacity: 0.9; }
+#rpStopBtn, #rpSaveBtn, .rp-run-once { background: var(--tb-text); border-color: var(--tb-text); color: var(--tb-surface); }
+#rpStopBtn:hover:not(:disabled), #rpSaveBtn:hover:not(:disabled), .rp-run-once:hover:not(:disabled) { background: var(--tb-text); opacity: 0.9; }
 .rp-live-step { background: transparent; border: none; border-bottom: 1px solid var(--tb-line); border-radius: 0; min-height: 40px; gap: 8px; }
 .rp-live-step:hover { background: var(--tb-hover); }
 .rp-step-num { font-family: var(--tb-font-mono); color: var(--tb-text-3); min-width: 20px; }
