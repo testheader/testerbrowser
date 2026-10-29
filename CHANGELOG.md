@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.151.3 — 2026-10-29
+
+### Other
+
+- Record — split into "New recording" / "Saved recordings" tabs with standard buttons (refs #350) (360a393)
+
 ## v0.151.2 — 2026-10-29
 
 ### Other
