@@ -1171,6 +1171,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .diff-chip-x:hover { color: var(--error-strong); background: var(--error-surface); }
 .diff-ignore-none { font-size: 11px; color: var(--text-muted); font-style: italic; }
 .diff-ignore-input { width: 200px; }
+.diff-ignore-popover { display: flex; flex-direction: column; gap: 8px; width: 340px; }
+.diff-ignore-popover[hidden] { display: none; }
+.diff-ignore-add { display: flex; align-items: center; gap: 6px; }
+.diff-ignore-popover .diff-link-btn { align-self: flex-start; }
 .diff-filter-row #diffStatus { margin-left: auto; }
 
 .diff-body { flex: 1; overflow: auto; }

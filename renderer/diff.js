@@ -75,19 +75,23 @@ export function initDiff() {
       <label class="diff-label diff-group-toggle" title="Collapse repeated calls to the same request into one row">
         <input type="checkbox" id="diffGroupToggle" checked /> Group duplicates
       </label>
+      <div class="net-popover-wrap">
+        <button type="button" class="net-chip" id="diffIgnoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="diffIgnoreMenu"><span id="diffIgnoreLabel">Ignored params (0)</span><i class="icon-chevron-down" aria-hidden="true"></i></button>
+        <div class="net-popover diff-ignore-popover" id="diffIgnoreMenu" role="group" aria-labelledby="diffIgnoreLabel" hidden>
+          <ul class="diff-ignore-chips" id="diffIgnoreChips" aria-labelledby="diffIgnoreLabel"></ul>
+          <div class="diff-ignore-add">
+            <input type="text" class="diff-filter-text diff-ignore-input" id="diffIgnoreParams"
+              placeholder="Add, e.g. session_id or utm_*" aria-label="Add ignored query params (comma separated)" />
+            <button type="button" class="diff-small-btn" id="diffIgnoreAddBtn">Add</button>
+          </div>
+          <button type="button" class="diff-link-btn" id="diffIgnoreDefaultsBtn">Restore defaults</button>
+        </div>
+      </div>
       <span class="diff-spacer"></span>
       <span class="status-msg" id="diffStatus" role="status" aria-live="polite"></span>
       <button type="button" class="net-chip" id="diffHarBtn" disabled><i class="icon-file-down" aria-hidden="true"></i>Export JSON</button>
       <button type="button" class="console-icon-btn" id="diffResetBtn" title="Reset comparison" aria-label="Reset comparison"><i class="icon-ban" aria-hidden="true"></i></button>
       <button type="button" class="diff-run-btn" id="diffRunBtn">Compare</button>
-    </div>
-    <div class="diff-toolbar diff-toolbar-row2" role="group" aria-labelledby="diffIgnoreLabel">
-      <span class="diff-label" id="diffIgnoreLabel">Ignored query params</span>
-      <ul class="diff-ignore-chips" id="diffIgnoreChips" aria-labelledby="diffIgnoreLabel"></ul>
-      <input type="text" class="diff-filter-text diff-ignore-input" id="diffIgnoreParams"
-        placeholder="Add, e.g. session_id or utm_*" aria-label="Add ignored query params (comma separated)" />
-      <button type="button" class="diff-small-btn" id="diffIgnoreAddBtn">Add</button>
-      <button type="button" class="diff-link-btn" id="diffIgnoreDefaultsBtn">Restore defaults</button>
     </div>
     <div class="diff-toolbar diff-toolbar-row2 diff-filter-row" id="diffFilterRow" hidden>
       <div class="filter-pills diff-chips" id="diffCatPills" role="group" aria-label="Result">
@@ -139,6 +143,22 @@ export function initDiff() {
   });
   document.getElementById('diffIgnoreDefaultsBtn').addEventListener('click', () => {
     setIgnoreParams([...DEFAULT_IGNORED_PARAMS]);
+  });
+  // #347: the ignored-params popover — click outside or Escape closes it, and
+  // Escape returns focus to the chip.
+  const ignoreBtn = document.getElementById('diffIgnoreBtn');
+  const ignoreMenu = document.getElementById('diffIgnoreMenu');
+  const setIgnoreOpen = (open) => {
+    ignoreMenu.hidden = !open;
+    ignoreBtn.setAttribute('aria-expanded', String(open));
+  };
+  ignoreBtn.addEventListener('click', (e) => { e.stopPropagation(); setIgnoreOpen(ignoreMenu.hidden); });
+  ignoreMenu.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => setIgnoreOpen(false));
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || ignoreMenu.hidden) return;
+    setIgnoreOpen(false);
+    ignoreBtn.focus();
   });
   document.getElementById('diffIgnoreChips').addEventListener('click', (e) => {
     const btn = /** @type {HTMLElement} */ (e.target).closest('button[data-param]');
@@ -192,6 +212,7 @@ function setIgnoreParams(list) {
 
 function renderIgnoreChips() {
   const ul = document.getElementById('diffIgnoreChips');
+  document.getElementById('diffIgnoreLabel').textContent = `Ignored params (${ignoreParams.length})`;
   ul.innerHTML = ignoreParams.length
     ? ignoreParams.map(p => `<li class="panel-chip diff-ignore-chip">${escHtml(p)}<button type="button" class="diff-chip-x" data-param="${escHtml(p)}" aria-label="Stop ignoring ${escHtml(p)}" title="Stop ignoring ${escHtml(p)}">&times;</button></li>`).join('')
     : '<li class="diff-ignore-none">None. Every query param counts when matching.</li>';

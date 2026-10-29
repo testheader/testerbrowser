@@ -58,8 +58,16 @@ test('before any comparison the panel shows the shared empty state, with no help
   await expect(window.locator('.diff-empty-steps')).toHaveCount(0);
   await expect(window.locator('#diffHelpBtn')).toHaveCount(0);
 
-  // Ignored params are visible up front as removable chips, not hidden in a text box.
+  // #347: a single chip carries the count; the removable chips live in its popover.
+  await expect(window.locator('.diff-toolbar-row2 #diffIgnoreChips')).toHaveCount(0);
+  await expect(window.locator('#diffIgnoreLabel')).toHaveText(/^Ignored params \(\d+\)$/);
+  await expect(window.locator('#diffIgnoreMenu')).toBeHidden();
+  await window.click('#diffIgnoreBtn');
+  await expect(window.locator('#diffIgnoreBtn')).toHaveAttribute('aria-expanded', 'true');
   await expect(window.locator('#diffIgnoreChips button[data-param="utm_*"]')).toBeVisible();
+  await window.keyboard.press('Escape');
+  await expect(window.locator('#diffIgnoreMenu')).toBeHidden();
+  await expect(window.locator('#diffIgnoreBtn')).toBeFocused();
 });
 
 test('comparing two sessions categorizes matching and unique requests correctly', async () => {
@@ -365,6 +373,7 @@ test('expanding a matched row shows a changed response header, once its query pa
   await window.click('#consoleTabDiff');
   await window.selectOption('#diffPickA', sessionAId);
   await window.selectOption('#diffPickB', sessionBId);
+  await window.click('#diffIgnoreBtn');
   // Typing into the add box (already-present params are de-duplicated) adds
   // just `v` as a new visible chip once the input commits.
   await window.fill('#diffIgnoreParams', 'v, _, cb, ts, t, timestamp, nocache, utm_*, gclid, fbclid');
@@ -413,8 +422,15 @@ test('expanding a matched row shows a changed response header, once its query pa
 
   // Removing the chip un-ignores `v` and re-matches without a re-fetch: the
   // two calls no longer share a key, so they split into removed + added.
+  await window.click('#diffIgnoreBtn');
   await window.click('#diffIgnoreChips button[data-param="v"]');
   await expect(window.locator('#diffIgnoreChips button[data-param="v"]')).toHaveCount(0);
+  // #347: the count follows removal, and Restore defaults keeps it consistent with the list.
+  const labelCount = async () => Number((await window.locator('#diffIgnoreLabel').textContent())!.match(/\((\d+)\)/)![1]);
+  expect(await labelCount()).toBe(await window.locator('#diffIgnoreChips button[data-param]').count());
+  await window.click('#diffIgnoreDefaultsBtn');
+  expect(await labelCount()).toBe(await window.locator('#diffIgnoreChips button[data-param]').count());
+  await window.keyboard.press('Escape');
   await expect(window.locator('.diff-row.only-a', { hasText: '/network/header?v=1' })).toBeVisible();
   await expect(window.locator('.diff-row.only-b', { hasText: '/network/header?v=2' })).toBeVisible();
 
