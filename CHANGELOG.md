@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.150.14 — 2026-10-29
+
+### Fixes
+
+- Jira — panel content is not centred and only spans its content width (refs #343) (ebd1764)
+
 ## v0.150.13 — 2026-10-29
 
 ### Other
