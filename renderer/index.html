@@ -220,6 +220,11 @@
         <div id="storageControls">
           <div class="net-search"><i class="icon-search" aria-hidden="true"></i><input id="storageFilter" placeholder="Filter name or value" aria-label="Filter storage" /></div>
           <button class="net-chip storage-domain-btn" id="domainFilterBtn" title="Show only cookies relevant to the current page">Current domain</button>
+          <div class="seg" id="cookiePartySeg" role="group" aria-label="Cookie party">
+            <button type="button" class="seg-btn on" data-party="all" aria-pressed="true">All</button>
+            <button type="button" class="seg-btn" data-party="1st" aria-pressed="false" title="Cookies set by the page's own domain">1st party</button>
+            <button type="button" class="seg-btn" data-party="3rd" aria-pressed="false" title="Cookies from any other domain">3rd party</button>
+          </div>
           <button class="net-chip storage-domain-btn" id="storageAutoRefreshBtn" title="Poll cookies, storage and IndexedDB every 2s while this tab is visible"><i class="icon-refresh-cw" aria-hidden="true"></i>Auto-refresh</button>
           <button class="console-icon-btn" id="refreshStorageBtn" title="Refresh storage" aria-label="Refresh storage"><i class="icon-refresh-cw" aria-hidden="true"></i></button>
           <span class="net-spacer"></span>

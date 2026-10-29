@@ -158,6 +158,12 @@ export function cookieMatchesDomain(cookie, hostname) {
   return hostname === d || hostname.endsWith('.' + d);
 }
 
+// #352: '1st' when the cookie belongs to the page's own domain, '3rd' for every
+// other cookie (loaded by the page or set during a different navigation).
+export function cookieParty(cookie, hostname) {
+  return cookieMatchesDomain(cookie, hostname) ? '1st' : '3rd';
+}
+
 // #232: single-quoted bash string, with any embedded single quote closed,
 // escaped, and reopened ('\'') — the standard trick, since bash has no
 // escape character inside single quotes.

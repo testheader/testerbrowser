@@ -1,5 +1,5 @@
 /* global testerBrowser */
-import { cookieMatchesDomain, formatRelativeExpiry } from './utils.js';
+import { cookieMatchesDomain, cookieParty, formatRelativeExpiry } from './utils.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab } from './console-tabs.js';
 import { isConsoleVisible } from './layout.js';
@@ -7,6 +7,8 @@ import { isConsoleVisible } from './layout.js';
 // domainFilterActive (the Storage tab's "only cookies relevant to this page"
 // toggle) is used only within this file.
 let domainFilterActive = true;
+// #352: 'all' | '1st' | '3rd' — the Cookies section's party filter.
+let cookiePartyFilter = 'all';
 let autoRefreshOn = false;
 let autoRefreshTimer = null;
 
@@ -116,6 +118,12 @@ function updateStorageNav(counts) {
   const clearBtn = /** @type {HTMLButtonElement} */ (document.getElementById('storageClearBtn'));
   addBtn.hidden = !sectionActions.add;
   clearBtn.hidden = !sectionActions.clear;
+  // #352: the party filter only applies to cookies, and needs a page hostname to compare against.
+  const partySeg = document.getElementById('cookiePartySeg');
+  partySeg.hidden = activeSection !== 'cookies';
+  const noHost = !cache?.currentHostname;
+  partySeg.title = noHost ? 'Load a page to filter cookies by party' : '';
+  partySeg.querySelectorAll('button').forEach((b) => { /** @type {HTMLButtonElement} */ (b).disabled = noHost; });
 }
 
 export function renderStoragePanel() {
@@ -156,11 +164,16 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
         c.value.toLowerCase().includes(filterText))
     : cookies;
 
-  const filteredCookies = domainFilterActive
+  const domainFiltered = domainFilterActive
     ? textFiltered.filter(c =>
         cookieMatchesDomain(c, currentHostname) ||
         loadedDomains.some(d => cookieMatchesDomain(c, d)))
     : textFiltered;
+  // No hostname (blank page) means no party to compare against — the control is disabled then.
+  const partyActive = cookiePartyFilter !== 'all' && !!currentHostname;
+  const filteredCookies = partyActive
+    ? domainFiltered.filter(c => cookieParty(c, currentHostname) === cookiePartyFilter)
+    : domainFiltered;
 
   const cookieTable = document.createElement('table');
   cookieTable.className = 'storage-table storage-cookie-table';
@@ -276,7 +289,7 @@ function renderCookiesSection(panel, sessionId, cookies, filterText, loadedDomai
     const empty = document.createElement('div');
     empty.className = 'storage-empty';
     empty.setAttribute('data-cookie-empty', '1');
-    empty.textContent = filterText ? 'No cookies match the filter' : 'No cookies for this session';
+    empty.textContent = filterText || partyActive ? 'No cookies match the filter' : 'No cookies for this session';
     panel.appendChild(empty);
   }
   for (const c of filteredCookies) {
@@ -777,6 +790,16 @@ export function initStorage() {
 
   document.getElementById('refreshStorageBtn').addEventListener('click', fetchStorageData);
   /** @type {HTMLInputElement} */ (document.getElementById('storageFilter')).addEventListener('input', renderStoragePanel);
+
+  document.querySelectorAll('#cookiePartySeg .seg-btn').forEach((btn) => btn.addEventListener('click', () => {
+    cookiePartyFilter = /** @type {HTMLElement} */ (btn).dataset.party;
+    document.querySelectorAll('#cookiePartySeg .seg-btn').forEach((b) => {
+      const on = /** @type {HTMLElement} */ (b).dataset.party === cookiePartyFilter;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    renderStoragePanel();
+  }));
 
   const domainFilterBtn = document.getElementById('domainFilterBtn');
   domainFilterBtn.classList.add('active'); // matches domainFilterActive = true default

@@ -2432,6 +2432,8 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .rp-btn { background: transparent; border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); color: var(--tb-text); }
 .rp-btn:hover:not(:disabled) { background: var(--tb-hover); }
 /* #350: Start is the err-filled primary, Stop / Save / Run are strong neutral, the rest outline pills. */
+#cookiePartySeg[hidden] { display: none; }
+.seg-btn:disabled { opacity: 0.5; cursor: default; }
 .rp-modebar { padding: 8px 12px 0; flex: 0 0 auto; }
 .rp-wrap [hidden], .rp-wrap[hidden] { display: none; }
 .rp-record-col { flex: 1 1 auto; min-width: 0; border-right: none; }

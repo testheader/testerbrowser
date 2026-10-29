@@ -1073,3 +1073,49 @@ test('Settings › Shortcuts has no horizontal overflow and keeps labels on one 
   expect(wraps).toBe(0);
   await window.keyboard.press('Escape');
 });
+
+// #352: 1st / 3rd party filter next to "Current domain".
+test('storage tab: the party filter shows all, only 1st party or only 3rd party cookies, and hides outside Cookies (#352)', async () => {
+  await openStorageTab(window, testPort);
+  const { partition } = await activeSession(window);
+
+  await app.evaluate(async ({ session: electronSession }, part) => {
+    const ses = electronSession.fromPartition(part);
+    await ses.clearStorageData({ storages: ['cookies'] });
+    await ses.cookies.set({ url: 'http://127.0.0.1', name: 'e2e_first_party', value: '1' });
+    await ses.cookies.set({ url: 'http://tracker.test', name: 'e2e_third_party', value: '1' });
+  }, partition);
+  await window.click('#refreshStorageBtn');
+  await waitForStorageSectionCount(window, 'Cookies', 2);
+
+  // Show every domain so "Current domain" doesn't hide the other-domain cookie.
+  if (await window.locator('#domainFilterBtn').evaluate(el => el.classList.contains('active'))) {
+    await window.click('#domainFilterBtn');
+  }
+  const rows = window.locator('#storagePanel .storage-cookie-table tbody tr');
+  await expect(window.locator('#cookiePartySeg')).toBeVisible();
+  await window.click('#cookiePartySeg [data-party="all"]');
+  await expect(rows).toHaveCount(2);
+
+  await window.click('#cookiePartySeg [data-party="1st"]');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('e2e_first_party');
+
+  await window.click('#cookiePartySeg [data-party="3rd"]');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('e2e_third_party');
+
+  // The choice survives a refresh.
+  await window.click('#refreshStorageBtn');
+  await expect(rows.first()).toContainText('e2e_third_party');
+
+  // Text filter combines with it: nothing matches → the filter message.
+  await window.fill('#storageFilter', 'e2e_first_party');
+  await expect(window.locator('[data-cookie-empty]')).toHaveText('No cookies match the filter');
+  await window.fill('#storageFilter', '');
+
+  await showStorageSection(window, 'local');
+  await expect(window.locator('#cookiePartySeg')).toBeHidden();
+  await showStorageSection(window, 'cookies');
+  await window.click('#cookiePartySeg [data-party="all"]');
+});

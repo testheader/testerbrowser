@@ -1,4 +1,4 @@
-import { cookieMatchesDomain } from '../../renderer/utils.js';
+import { cookieMatchesDomain, cookieParty } from '../../renderer/utils.js';
 
 describe('cookieMatchesDomain', () => {
   it('matches an exact host', () => {
@@ -28,5 +28,23 @@ describe('cookieMatchesDomain', () => {
 
   it('does not match a hostname that merely shares a suffix without a dot boundary', () => {
     expect(cookieMatchesDomain({ domain: 'example.com' }, 'notexample.com')).toBe(false);
+  });
+});
+
+describe('cookieParty (#352)', () => {
+  it('is 1st for an exact host, a bare parent domain or a leading-dot domain', () => {
+    expect(cookieParty({ domain: 'example.com' }, 'example.com')).toBe('1st');
+    expect(cookieParty({ domain: 'example.com' }, 'app.example.com')).toBe('1st');
+    expect(cookieParty({ domain: '.example.com' }, 'app.example.com')).toBe('1st');
+  });
+
+  it('is 3rd for an unrelated domain, including a lookalike suffix', () => {
+    expect(cookieParty({ domain: 'tracker.test' }, 'example.com')).toBe('3rd');
+    expect(cookieParty({ domain: 'notexample.com' }, 'example.com')).toBe('3rd');
+  });
+
+  it('treats host-only cookies and a missing hostname as 1st', () => {
+    expect(cookieParty({ domain: '' }, 'example.com')).toBe('1st');
+    expect(cookieParty({ domain: 'tracker.test' }, '')).toBe('1st');
   });
 });
