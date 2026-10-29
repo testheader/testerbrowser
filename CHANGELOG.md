@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.150.4 — 2026-10-29
+
+### Other
+
+- Bug report screenshot for #344 (70076f1)
+- Bug report screenshot for #343 (408e80f)
+
 ## v0.150.3 — 2026-10-28
 
 ### Fixes
