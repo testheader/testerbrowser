@@ -2490,6 +2490,13 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .fl-action { font-weight: 500; }
 .fl-target { font-family: var(--tb-font-mono); font-size: 12px; color: var(--tb-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fl-result { text-align: right; color: var(--tb-text-3); }
+/* #351: unpaired, the empty state and the old log stack and scroll as one panel; long targets truncate inside their column. */
+.follow-log-line > * { min-width: 0; }
+.follow-unpaired { overflow-y: auto; }
+.follow-unpaired .follow-pairs, .follow-unpaired .follow-log-bar { flex: 0 0 auto; }
+.follow-unpaired .follow-log { flex: 0 0 auto; overflow: visible; }
+.follow-log-bar { display: flex; align-items: center; padding: 6px 12px; border-top: 1px solid var(--tb-line); border-bottom: 1px solid var(--tb-line); }
+.follow-log-bar[hidden] { display: none; }
 .follow-log-line.err .fl-result, .follow-log-line.warn .fl-result { color: var(--tb-warn); }
 
 /* ── Jira ticket view and bug form (#314) ── */

@@ -40,6 +40,10 @@ export function initFollow() {
       </div>
     </div>
     <div class="follow-pairs" id="followPairs"></div>
+    <div class="follow-log-bar" id="followLogBar" hidden>
+      <span class="follow-spacer"></span>
+      <button class="net-chip" id="followUnpairedClearBtn" type="button">Clear log</button>
+    </div>
     <div class="follow-log" id="followLog"></div>`;
 
   // #258: don't also fire-and-forget populatePickers() here — console-tabs.js
@@ -53,9 +57,12 @@ export function initFollow() {
   document.getElementById('followPairBtn').addEventListener('click', openPairPopover);
   document.getElementById('followPairCancelBtn').addEventListener('click', closePairPopover);
   document.getElementById('followPairPopover').addEventListener('keydown', (e) => { if (e.key === 'Escape') closePairPopover(); });
-  document.getElementById('followClearLogBtn').addEventListener('click', () => {
+  const clearLog = () => {
     document.getElementById('followLog').innerHTML = '';
-  });
+    syncLogBar();
+  };
+  document.getElementById('followClearLogBtn').addEventListener('click', clearLog);
+  document.getElementById('followUnpairedClearBtn').addEventListener('click', clearLog);
 
   testerBrowser.followAlong.onStepResult(({ step, result }) => logStepResult(step, result));
 
@@ -148,6 +155,7 @@ async function refreshFollowPanel() {
   const unpaired = pairings.length === 0 && pausedPairs.size === 0;
   document.getElementById('followToolbar').hidden = unpaired;
   document.getElementById('followPanel').classList.toggle('follow-unpaired', unpaired);
+  syncLogBar(unpaired);
 
   if (unpaired) {
     pairsEl.replaceChildren(renderEmptyState({
@@ -198,6 +206,13 @@ async function refreshFollowPanel() {
   }
 }
 
+// #351: once pairing stops the toolbar is gone, but the old log stays — so
+// while unpaired and the log has rows, a "Clear log" row sits above it.
+function syncLogBar(unpaired = document.getElementById('followPanel').classList.contains('follow-unpaired')) {
+  const bar = document.getElementById('followLogBar');
+  if (bar) bar.hidden = !(unpaired && document.getElementById('followLog').children.length > 0);
+}
+
 // One event row: time · icon · action · target (mono) · result on the right.
 function buildLogLine(kind, { icon, action, target, result, title }) {
   const line = document.createElement('div');
@@ -209,7 +224,9 @@ function buildLogLine(kind, { icon, action, target, result, title }) {
   tile.innerHTML = `<i class="icon-${icon}" aria-hidden="true"></i>`;
   line.appendChild(tile);
   line.appendChild(cell('fl-action', action));
-  line.appendChild(cell('fl-target', target));
+  const targetCell = cell('fl-target', target);
+  targetCell.title = target;
+  line.appendChild(targetCell);
   line.appendChild(cell('fl-result', result));
   if (title) line.title = title;
   return line;
@@ -219,6 +236,7 @@ function setLog(text, kind = 'ok') {
   const log = document.getElementById('followLog');
   if (!log) return;
   log.replaceChildren(buildLogLine(kind, { icon: kind === 'ok' ? 'info' : 'triangle-alert', action: kind === 'ok' ? 'Info' : 'Warning', target: text, result: '', title: '' }));
+  syncLogBar();
 }
 
 const STEP_LABELS = { click: ['mouse-pointer-click', 'Click'], check: ['square-check', 'Check'], fill: ['keyboard', 'Fill'],
@@ -240,4 +258,5 @@ function logStepResult(step, result) {
   });
   log.prepend(line);
   while (log.children.length > 50) log.removeChild(log.lastChild);
+  syncLogBar();
 }

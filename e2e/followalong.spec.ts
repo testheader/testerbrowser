@@ -283,6 +283,26 @@ test('mirrored navigation logs the destination URL, and stops logging once disab
   await expect(await sessionUrl(followerId)).toContain(mirrorDest);
 });
 
+// #351: after Stop following, the empty state and the old log stack without overlapping.
+test('after stopping every pairing the empty state and the old log are both visible and do not overlap (#351)', async () => {
+  await window.click('#consoleTabFollow');
+  const stopBtns = window.locator('.follow-stop-btn');
+  while (await stopBtns.count() > 0) await stopBtns.first().click();
+  await expect(window.locator('#followPairs .empty-state-btn')).toBeVisible();
+
+  const line = window.locator('#followLog .follow-log-line').first();
+  await expect(line).toBeVisible();
+  const btnBox = (await window.locator('#followPairs .empty-state-btn').boundingBox())!;
+  const lineBox = (await line.boundingBox())!;
+  expect(btnBox.y + btnBox.height).toBeLessThanOrEqual(lineBox.y);
+
+  // The toolbar is gone when unpaired, so Clear log lives in the log bar.
+  await expect(window.locator('#followToolbar')).toBeHidden();
+  await window.click('#followUnpairedClearBtn');
+  await expect(window.locator('#followLog .follow-log-line')).toHaveCount(0);
+  await expect(window.locator('#followLogBar')).toBeHidden();
+});
+
 // ── Disambiguating session pickers, and a shared-partition warning (#258) ──
 
 test('session picker options are labelled with the session name and current host, so two tabs on the same site are distinguishable', async () => {
