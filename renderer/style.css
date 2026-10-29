@@ -2459,7 +2459,7 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .follow-log-line.err .fl-result, .follow-log-line.warn .fl-result { color: var(--tb-warn); }
 
 /* ── Jira ticket view and bug form (#314) ── */
-.jira-wrap { max-width: none; padding: 0; gap: 0; height: 100%; }
+.jira-wrap { max-width: none; padding: 0; gap: 0; height: 100%; flex: 1; min-width: 0; }
 .jira-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--tb-line); }
 .jira-spacer { flex: 1; }
 .jira-key-field { display: inline-flex; align-items: center; gap: 6px; width: 160px; padding: 0 8px; background: var(--tb-sunken);

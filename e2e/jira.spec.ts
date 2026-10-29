@@ -45,6 +45,12 @@ test('before Jira is configured the tab shows a Connect Jira empty state that op
   await expect(window.locator('#jiraConn')).toBeHidden();
   await expect(window.locator('#jiraActionsBar')).toBeHidden();
   await expect(window.locator('#jiraBugForm')).toBeHidden();
+  // #343: the wrap fills the panel and the empty state is centred in it.
+  const panelBox = await window.locator('#jiraPanel').boundingBox();
+  const wrapBox = await window.locator('#jiraPanel .jira-wrap').boundingBox();
+  const emptyBox = await window.locator('#jiraNotConfigured .empty-state').boundingBox();
+  expect(Math.abs(wrapBox!.width - panelBox!.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(emptyBox!.x + emptyBox!.width / 2 - (panelBox!.x + panelBox!.width / 2))).toBeLessThanOrEqual(4);
   await window.click('#jiraNotConfigured .empty-state-btn');
   await expect(window.locator('#jiraSetupView')).toBeVisible();
   await window.click('#jiraCancelSettingsBtn');
