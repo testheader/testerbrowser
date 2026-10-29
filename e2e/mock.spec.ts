@@ -732,3 +732,17 @@ test('Mock primary buttons use the shared accent style (#344)', async () => {
   expect(style.weight).toBe('500');
   expect(style.height).toBe('32px');
 });
+
+// #345: the add-rule form is a bordered card that doesn't overlap the rules list.
+test('Mock add-rule form renders as a card separate from the rules list (#345)', async () => {
+  await window.click('#consoleTabMock');
+  await openNewMockRule(window);
+  const form = window.locator('#mockForm');
+  await expect(form).toBeVisible();
+  const bg = await form.evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+  expect(await form.evaluate(el => getComputedStyle(el).borderTopWidth)).toBe('1px');
+  const f = (await form.boundingBox())!;
+  const t = (await window.locator('#mockTable').boundingBox())!;
+  expect(f.y + f.height).toBeLessThanOrEqual(t.y);
+});

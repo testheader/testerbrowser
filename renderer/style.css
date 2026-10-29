@@ -2031,6 +2031,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                   cursor: pointer; border: 1px solid var(--tb-accent); background: var(--tb-accent); color: var(--tb-on-accent);
                   display: inline-flex; align-items: center; gap: 6px; }
 .tb-btn-primary:hover { opacity: 0.9; }
+/* #345: Mock/Resilience add-rule forms render as a card, set apart from the rules list below. */
+.tb-form-card { background: var(--tb-sunken); border: 1px solid var(--tb-line-strong); border-radius: 10px; padding: 14px; margin-bottom: 8px; }
+.tb-form-card[hidden] { display: none; }
+.tb-form-title { font-size: 13px; font-weight: 600; color: var(--tb-text); }
 .empty-state-btn-icon { width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
 .empty-state-btn.tone-accent { background: var(--tb-accent); border-color: var(--tb-accent); color: var(--tb-on-accent); }
 .empty-state-btn.tone-err    { background: var(--tb-err);    border-color: var(--tb-err);    color: var(--tb-on-accent); }
@@ -2367,7 +2371,7 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .res-type-desc { background: none; border: none; color: var(--tb-text-muted, var(--text-muted)); padding: 0; }
 .res-form-grid { display: grid; grid-template-columns: 1fr 110px 110px auto; gap: 8px; align-items: end; }
 .res-form-grid .res-release-field { grid-column: 3; }
-.res-form-actions { display: flex; gap: 8px; align-items: center; }
+.res-form-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
 .res-field-off { opacity: 0.5; }
 .res-head, .res-rule-row { display: grid; grid-template-columns: 44px 120px 56px 1fr 90px 80px 70px 96px; align-items: center; gap: 8px; }
 .res-head { padding: 4px 8px; font-size: 11px; text-transform: none; color: var(--tb-text-muted, var(--text-muted)); }

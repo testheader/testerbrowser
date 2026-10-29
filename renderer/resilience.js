@@ -133,7 +133,8 @@ export function initResilience() {
       <button class="tb-btn-primary" id="resNewRuleBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>Add rule</button>
     </div>
     <div class="res-wrap">
-      <form class="res-form" id="resForm" hidden>
+      <form class="res-form tb-form-card" id="resForm" hidden>
+        <div class="tb-form-title">New failure rule</div>
         <input type="hidden" id="resType" value="error500" />
         <div class="res-type-chips" id="resTypeChips" role="group" aria-label="Failure type">
           ${TYPES.map(t => `<button type="button" class="res-type-chip" data-type="${t.value}" aria-pressed="false"><i class="icon-${t.icon}" aria-hidden="true"></i>${t.label}</button>`).join('')}
@@ -157,10 +158,10 @@ export function initResilience() {
             <label class="res-field-label" for="resRelease">Release after (s)</label>
             <input class="res-input res-release" id="resRelease" type="number" value="0" min="0" max="600" placeholder="0 = never" />
           </div>
-          <div class="res-form-actions">
-            <button class="res-text-btn" id="resCancelBtn" type="button">Cancel</button>
-            <button class="tb-btn-primary res-add-btn" type="submit">Add rule</button>
-          </div>
+        </div>
+        <div class="res-form-actions">
+          <button class="res-text-btn" id="resCancelBtn" type="button">Cancel</button>
+          <button class="tb-btn-primary res-add-btn" type="submit">Add rule</button>
         </div>
       </form>
       <div class="res-table" id="resTable">

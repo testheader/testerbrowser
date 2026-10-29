@@ -99,7 +99,8 @@ export function initMock() {
       <button class="tb-btn-primary" id="mockNewRuleBtn" type="button" aria-pressed="false"><i class="icon-plus" aria-hidden="true"></i>New rule</button>
     </div>
     <div class="mock-wrap">
-      <form class="mock-form" id="mockForm" hidden>
+      <form class="mock-form tb-form-card" id="mockForm" hidden>
+        <div class="tb-form-title">New rule</div>
         <div class="mock-form-row mock-form-grid">
           <label class="mock-field mock-field-method"><span class="mock-field-label">Method</span>
             <select class="mock-select" id="mockMethod" aria-label="HTTP method">
