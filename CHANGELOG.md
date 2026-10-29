@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.151.0 — 2026-10-29
+
+### Features
+
+- UI diff — guided two-step baseline/compare flow with one capture entry point (refs #346) (91dbfec)
+
 ## v0.150.16 — 2026-10-29
 
 ### Other
