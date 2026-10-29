@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.150.16 — 2026-10-29
+
+### Other
+
+- Resilience/Mock — visually separate the add-rule form from the rules list (refs #345) (506e26e)
+
 ## v0.150.15 — 2026-10-29
 
 ### Fixes
