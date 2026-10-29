@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.152.0 — 2026-10-29
+
+### Features
+
+- Storage — add a 1st / 3rd party cookie filter next to "Current domain" (refs #352) (ebbb3fc)
+
 ## v0.151.4 — 2026-10-29
 
 ### Fixes
