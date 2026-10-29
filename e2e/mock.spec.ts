@@ -713,3 +713,22 @@ test.describe('Mock rules persist across a full app restart (#264)', () => {
     }
   });
 });
+
+// #344: toolbar and form buttons use the shared primary style (accent bg, on-accent text, weight 500, 32px).
+test('Mock primary buttons use the shared accent style (#344)', async () => {
+  await window.click('#consoleTabMock');
+  const style = await window.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--tb-accent)';
+    probe.style.color = 'var(--tb-on-accent)';
+    document.body.appendChild(probe);
+    const want = { bg: getComputedStyle(probe).backgroundColor, fg: getComputedStyle(probe).color };
+    probe.remove();
+    const btn = getComputedStyle(document.getElementById('mockNewRuleBtn')!);
+    return { want, bg: btn.backgroundColor, fg: btn.color, weight: btn.fontWeight, height: btn.height };
+  });
+  expect(style.bg).toBe(style.want.bg);
+  expect(style.fg).toBe(style.want.fg);
+  expect(style.weight).toBe('500');
+  expect(style.height).toBe('32px');
+});

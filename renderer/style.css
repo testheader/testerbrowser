@@ -1614,8 +1614,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .mock-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px;
             padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .mock-btn:hover { background: var(--bg-raised); }
-.mock-add-btn { background: var(--info-surface); border-color: var(--info-border); align-self: flex-end; }
-.mock-add-btn:hover { background: var(--info-surface); }
+.mock-add-btn { align-self: flex-end; }
 .mock-io-row { display: flex; align-items: center; gap: 8px; }
 .mock-io-status { font-size: 11px; color: var(--text-faint); }
 .mock-hint { font-size: 11px; color: var(--text-faint); }
@@ -1762,8 +1761,6 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .res-btn { background: var(--bg-hover); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px;
            padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .res-btn:hover { background: var(--bg-raised); }
-.res-add-btn { background: var(--success-surface); border-color: var(--success-border); }
-.res-add-btn:hover { background: var(--success-surface); }
 .res-type-desc { font-size: 11px; color: var(--success-strong); background: var(--success-surface); border: 1px solid var(--success-border);
                  border-radius: 3px; padding: 5px 9px; min-height: 20px; }
 .res-field-hints { display: flex; flex-direction: column; gap: 2px; }
@@ -2029,6 +2026,11 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .empty-state-btn { height: 32px; padding: 0 14px; border-radius: var(--tb-r); font-family: inherit; font-size: 13px; font-weight: 600;
                    cursor: pointer; border: 1px solid var(--tb-line-strong); background: none; color: var(--tb-text); }
 .empty-state-btn:hover { background: var(--tb-hover); }
+/* #344: the one primary button — Mock/Resilience toolbar and form buttons share it with .empty-state-btn.tone-accent. */
+.tb-btn-primary { height: 32px; padding: 0 14px; border-radius: var(--tb-r); font-family: inherit; font-size: 13px; font-weight: 500;
+                  cursor: pointer; border: 1px solid var(--tb-accent); background: var(--tb-accent); color: var(--tb-on-accent);
+                  display: inline-flex; align-items: center; gap: 6px; }
+.tb-btn-primary:hover { opacity: 0.9; }
 .empty-state-btn-icon { width: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
 .empty-state-btn.tone-accent { background: var(--tb-accent); border-color: var(--tb-accent); color: var(--tb-on-accent); }
 .empty-state-btn.tone-err    { background: var(--tb-err);    border-color: var(--tb-err);    color: var(--tb-on-accent); }
@@ -2325,8 +2327,7 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .mock-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
 .mock-sub { color: var(--tb-text-muted, var(--text-muted)); font-size: 12px; }
 .mock-spacer { flex: 1; }
-.mock-primary { background: var(--tb-accent, var(--info-surface)); color: #fff; }
-.mock-primary[aria-pressed="true"] { background: var(--tb-accent-soft); color: var(--tb-accent); box-shadow: inset 0 0 0 1px var(--tb-accent); }
+.tb-btn-primary[aria-pressed="true"] { background: var(--tb-accent-soft); color: var(--tb-accent); box-shadow: inset 0 0 0 1px var(--tb-accent); }
 .mock-form[hidden] { display: none; }
 .mock-head, .mock-rule-row { display: grid; grid-template-columns: 44px 64px 1fr 70px 90px 90px 120px;
   align-items: center; gap: 8px; }
@@ -2354,7 +2355,6 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .res-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
 .res-sub { color: var(--tb-text-muted, var(--text-muted)); font-size: 12px; }
 .res-spacer { flex: 1; }
-.res-primary { background: var(--tb-accent, var(--info-surface)); color: #fff; border: none; border-radius: 6px; padding: 5px 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
 .res-text-btn { background: none; border: none; cursor: pointer; color: inherit; }
 .res-wrap { padding: 0 12px 12px; flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
 .res-form { gap: 8px; }

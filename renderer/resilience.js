@@ -130,7 +130,7 @@ export function initResilience() {
     <div class="res-toolbar">
       <span class="res-sub" id="resSubtitle">Inject failures into this session</span>
       <span class="res-spacer"></span>
-      <button class="res-primary" id="resNewRuleBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>Add rule</button>
+      <button class="tb-btn-primary" id="resNewRuleBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>Add rule</button>
     </div>
     <div class="res-wrap">
       <form class="res-form" id="resForm" hidden>
@@ -159,7 +159,7 @@ export function initResilience() {
           </div>
           <div class="res-form-actions">
             <button class="res-text-btn" id="resCancelBtn" type="button">Cancel</button>
-            <button class="res-primary res-add-btn" type="submit">Add rule</button>
+            <button class="tb-btn-primary res-add-btn" type="submit">Add rule</button>
           </div>
         </div>
       </form>

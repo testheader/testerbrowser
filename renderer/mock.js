@@ -96,7 +96,7 @@ export function initMock() {
       <span class="mock-io-status" id="mockIoStatus"></span>
       <button class="net-chip mock-export-btn" id="mockExportBtn" type="button"><i class="icon-file-down" aria-hidden="true"></i>Export…</button>
       <button class="net-chip mock-import-btn" id="mockImportBtn" type="button"><i class="icon-file-up" aria-hidden="true"></i>Import…</button>
-      <button class="mock-primary" id="mockNewRuleBtn" type="button" aria-pressed="false"><i class="icon-plus" aria-hidden="true"></i>New rule</button>
+      <button class="tb-btn-primary" id="mockNewRuleBtn" type="button" aria-pressed="false"><i class="icon-plus" aria-hidden="true"></i>New rule</button>
     </div>
     <div class="mock-wrap">
       <form class="mock-form" id="mockForm" hidden>
@@ -140,7 +140,7 @@ export function initMock() {
           </label>
           <span class="mock-spacer"></span>
           <button class="mock-text-btn" id="mockCancelBtn" type="button">Cancel</button>
-          <button class="mock-primary mock-add-btn" type="submit">Add rule</button>
+          <button class="tb-btn-primary mock-add-btn" type="submit">Add rule</button>
         </div>
       </form>
       <div class="mock-table" id="mockTable">

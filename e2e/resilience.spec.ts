@@ -637,3 +637,22 @@ test('the Resilience panel has no inline explanation block (#303)', async () => 
   await expect(window.locator('.res-guide')).toHaveCount(0);
   await expect(window.locator('.res-field-hint')).toHaveCount(0);
 });
+
+// #344: toolbar button uses the shared primary style (accent bg, on-accent text, weight 500, 32px).
+test('Resilience primary button uses the shared accent style (#344)', async () => {
+  await window.click('#consoleTabResilience');
+  const style = await window.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--tb-accent)';
+    probe.style.color = 'var(--tb-on-accent)';
+    document.body.appendChild(probe);
+    const want = { bg: getComputedStyle(probe).backgroundColor, fg: getComputedStyle(probe).color };
+    probe.remove();
+    const btn = getComputedStyle(document.getElementById('resNewRuleBtn')!);
+    return { want, bg: btn.backgroundColor, fg: btn.color, weight: btn.fontWeight, height: btn.height };
+  });
+  expect(style.bg).toBe(style.want.bg);
+  expect(style.fg).toBe(style.want.fg);
+  expect(style.weight).toBe('500');
+  expect(style.height).toBe('32px');
+});
