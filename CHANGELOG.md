@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.151.1 — 2026-10-29
+
+### Other
+
+- Network diff — move ignored query params into a toolbar popover (refs #347) (c9656c4)
+
 ## v0.151.0 — 2026-10-29
 
 ### Features
