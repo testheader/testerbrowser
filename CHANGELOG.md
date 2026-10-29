@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.150.15 — 2026-10-29
+
+### Fixes
+
+- Mock/Resilience — primary buttons don't use the app's primary button style (refs #344) (4e885be)
+
 ## v0.150.14 — 2026-10-29
 
 ### Fixes
