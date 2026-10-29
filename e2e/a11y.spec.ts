@@ -349,3 +349,24 @@ test('selecting a tree node shows its properties and the issues cards; search fi
   await expect(window.locator('#a11yDetail .a11y-issues-title')).toHaveText('Issues on this page');
   await window.fill('#a11ySearch', '');
 });
+
+// #348: the second toolbar row carries only the controls of the active view.
+test('the A11y context row shows per-view controls and hides when a view has none (#348)', async () => {
+  await window.click('#consoleTabA11y');
+  await window.click('#a11yViewTreeBtn');
+  await expect(window.locator('.a11y-toolbar-row2 #a11yInspectBtn')).toBeVisible();
+  await expect(window.locator('.a11y-toolbar-row2 #a11ySearchWrap')).toBeVisible();
+  await expect(window.locator('#a11yFocusOrderBtn')).toBeHidden();
+
+  await window.click('#a11yViewFocusBtn');
+  await expect(window.locator('.a11y-toolbar-row2 #a11yFocusOrderBtn')).toBeVisible();
+  await expect(window.locator('.a11y-toolbar-row2 #a11yFocusTrapBtn')).toBeVisible();
+  await expect(window.locator('#a11yIssuesChip')).toBeHidden();
+  await expect(window.locator('#a11yInspectBtn')).toBeHidden();
+
+  await window.click('#a11yViewViolationsBtn');
+  await expect(window.locator('#a11yContextRow')).toBeHidden();
+
+  await window.click('#a11yViewTreeBtn');
+  await expect(window.locator('#a11yContextRow')).toBeVisible();
+});

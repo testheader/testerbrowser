@@ -10,9 +10,9 @@ describe('A11y Focus view', () => {
     expect(src).toContain('id="a11yViewFocusBtn" data-view="focus"');
   });
 
-  it('keeps focus order and focus trap as buttons shown only in the Focus view', () => {
-    expect(src).toMatch(/class="a11y-btn a11y-focus-only" id="a11yFocusOrderBtn" hidden/);
-    expect(src).toMatch(/class="a11y-btn a11y-focus-only" id="a11yFocusTrapBtn" hidden/);
-    expect(src).toContain(".hidden = view !== 'focus'");
+  it('keeps focus order and focus trap as buttons in a context group shown only in the Focus view (#348)', () => {
+    expect(src).toMatch(/<div class="a11y-ctx-group" data-ctx="focus" hidden>\s*<button class="a11y-btn" id="a11yFocusOrderBtn"/);
+    expect(src).toMatch(/<button class="a11y-btn" id="a11yFocusTrapBtn"/);
+    expect(src).toContain('.dataset.ctx !== view');
   });
 });

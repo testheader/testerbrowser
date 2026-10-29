@@ -61,10 +61,7 @@ export function initA11y() {
   if (!panel || panel.dataset.initialized) return;
   panel.dataset.initialized = '1';
   panel.innerHTML = `
-    <div class="a11y-toolbar">
-      <button class="a11y-btn a11y-inspect-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first"><i class="icon-mouse-pointer-2" aria-hidden="true"></i>Inspect element</button>
-      <div class="net-search a11y-search" id="a11ySearchWrap"><i class="icon-search" aria-hidden="true"></i><input id="a11ySearch" placeholder="Find role or name" aria-label="Find role or name" /></div>
-      <button class="a11y-issues-chip" id="a11yIssuesChip" hidden title="Issues found by the accessibility audit"><i class="icon-triangle-alert" aria-hidden="true"></i><span id="a11yIssuesCount"></span></button>
+    <div class="a11y-toolbar a11y-toolbar-row1">
       <div class="a11y-view-toggle">
         <button class="a11y-btn on" id="a11yViewTreeBtn" data-view="tree">Tree</button>
         <button class="a11y-btn" id="a11yViewViolationsBtn" data-view="violations">Violations</button>
@@ -73,13 +70,21 @@ export function initA11y() {
         <button class="a11y-btn" id="a11yViewAltLabelsBtn" data-view="altlabels">Alt &amp; Labels</button>
         <button class="a11y-btn" id="a11yViewFocusBtn" data-view="focus">Focus</button>
       </div>
-      <span class="a11y-toolbar-sep a11y-focus-only" hidden></span>
-      <button class="a11y-btn a11y-focus-only" id="a11yFocusOrderBtn" hidden title="Show a numbered tab-order overlay on the page">Focus order</button>
-      <button class="a11y-btn a11y-focus-only" id="a11yFocusTrapBtn" hidden title="Check whether Tab/Shift+Tab can reach every part of the page">Focus trap</button>
-      <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
       <span class="net-spacer"></span>
       <span class="a11y-nodecount" id="a11yNodeCount"></span>
       <button class="console-icon-btn" id="a11yRefreshBtn" title="Refresh" aria-label="Refresh"><i class="icon-refresh-cw" aria-hidden="true"></i></button>
+    </div>
+    <div class="a11y-toolbar a11y-toolbar-row2" id="a11yContextRow">
+      <div class="a11y-ctx-group" data-ctx="tree">
+        <button class="a11y-btn a11y-inspect-btn" id="a11yInspectBtn" disabled title="Load the accessibility tree first"><i class="icon-mouse-pointer-2" aria-hidden="true"></i>Inspect element</button>
+        <div class="net-search a11y-search" id="a11ySearchWrap"><i class="icon-search" aria-hidden="true"></i><input id="a11ySearch" placeholder="Find role or name" aria-label="Find role or name" /></div>
+        <button class="a11y-issues-chip" id="a11yIssuesChip" hidden title="Issues found by the accessibility audit"><i class="icon-triangle-alert" aria-hidden="true"></i><span id="a11yIssuesCount"></span></button>
+      </div>
+      <div class="a11y-ctx-group" data-ctx="focus" hidden>
+        <button class="a11y-btn" id="a11yFocusOrderBtn" title="Show a numbered tab-order overlay on the page">Focus order</button>
+        <button class="a11y-btn" id="a11yFocusTrapBtn" title="Check whether Tab/Shift+Tab can reach every part of the page">Focus trap</button>
+      </div>
+      <span id="a11yInspectMsg" class="a11y-inspect-msg"></span>
     </div>
     <div class="a11y-content" id="a11yContent"></div>`;
   document.getElementById('a11yContent').replaceChildren(a11yEmptyState('tree'));
@@ -117,10 +122,11 @@ function switchA11yView(view) {
   for (const v of Object.keys(VIEWS)) {
     document.getElementById(VIEWS[v].btnId)?.classList.toggle('on', v === view);
   }
-  const inspectBtn = /** @type {HTMLButtonElement} */ (document.getElementById('a11yInspectBtn'));
-  if (inspectBtn) inspectBtn.style.display = view === 'tree' ? '' : 'none';
-  document.getElementById('a11ySearchWrap').style.display = view === 'tree' ? '' : 'none';
-  document.querySelectorAll('.a11y-focus-only').forEach((el) => { /** @type {HTMLElement} */ (el).hidden = view !== 'focus'; });
+  // #348: row 2 carries only the controls of the active view; views with none hide it.
+  document.querySelectorAll('#a11yContextRow .a11y-ctx-group').forEach((el) => {
+    /** @type {HTMLElement} */ (el).hidden = /** @type {HTMLElement} */ (el).dataset.ctx !== view;
+  });
+  document.getElementById('a11yContextRow').hidden = view !== 'tree' && view !== 'focus';
   if (view !== 'tree') document.getElementById('a11yNodeCount').textContent = '';
   if (view !== 'tree' && inspecting) disableA11yHover();
   // The focus overlay renders its list into the shared content area, same

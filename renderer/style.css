@@ -2124,6 +2124,10 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .a11y-issues-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: none; border-radius: var(--tb-r-pill);
                     background: var(--tb-warn-soft); color: var(--tb-warn); font-family: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .a11y-issues-chip[hidden] { display: none; }
+/* #348: second toolbar row — controls that belong to the active view only. */
+.a11y-toolbar[hidden], .a11y-ctx-group[hidden] { display: none; }
+.a11y-toolbar-row2 { height: 40px; }
+.a11y-ctx-group { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .a11y-nodecount { font-size: 12px; color: var(--tb-text-3); white-space: nowrap; }
 .a11y-content { padding: 0; }
 .a11y-tree-layout { display: flex; height: 100%; min-height: 0; }
