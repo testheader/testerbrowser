@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.151.2 — 2026-10-29
+
+### Other
+
+- A11y — move per-view controls to a second toolbar row (tree tools, issues chip, focus tools) (refs #348) (7eb16b8)
+
 ## v0.151.1 — 2026-10-29
 
 ### Other
