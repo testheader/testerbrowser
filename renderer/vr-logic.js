@@ -215,3 +215,14 @@ export function filterBaselines(list, query) {
 export function diffExportName(baselineName, compareLabel) {
   return `diff - ${baselineName || 'baseline'} vs ${compareLabel || 'current'}`;
 }
+
+// #346: where the capture → compare guide stands. Step 1 is active until a
+// baseline exists; step 2 is locked until then, active until a comparison exists.
+/**
+ * @param {{ hasBaseline: boolean, hasResult: boolean }} state
+ * @returns {{ capture: 'active' | 'done', compare: 'locked' | 'active' | 'done' }}
+ */
+export function guideSteps({ hasBaseline, hasResult }) {
+  if (!hasBaseline) return { capture: 'active', compare: 'locked' };
+  return { capture: 'done', compare: hasResult ? 'done' : 'active' };
+}

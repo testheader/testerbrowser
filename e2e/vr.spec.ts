@@ -50,7 +50,7 @@ async function backToSetup(): Promise<void> {
 
 async function startCapture(): Promise<void> {
   await backToSetup();
-  await window.click('#vrCaptureBtn');
+  await window.click('#vrStepCapture');
 }
 
 async function captureAndCompareSolidColor(nonce: string): Promise<void> {
@@ -62,7 +62,7 @@ async function captureAndCompareSolidColor(nonce: string): Promise<void> {
   await tab.waitForLoadState('load');
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
   await tab.click('#toggle');
   await window.click('#vrCompareBtn');
   await expect(window.locator('#vrStats')).toContainText('pixels differ', { timeout: 15_000 });
@@ -76,12 +76,16 @@ test('first run: the setup row is on one line, rules and baseline saving sit beh
   // #308: the view segments, then (setup) the saved list and the page picker,
   // and New baseline / Compare at the right edge, always visible.
   await expect(window.locator('#vrViews .vr-view-btn')).toHaveText(['Baseline', 'Current', 'Diff', 'Side by side', 'Overlay']);
+  // #346: with no baseline the guide's button is the only entry point.
   await expect(window.locator('.vr-actions #vrCaptureBtn')).toHaveText('New baseline');
-  await expect(window.locator('.vr-actions #vrCompareBtn')).toBeVisible();
+  await expect(window.locator('.vr-actions #vrCaptureBtn')).toBeHidden();
+  await expect(window.locator('.vr-actions #vrCompareBtn')).toBeHidden();
   const barIds = await window.locator('.vr-bar #vrViews, .vr-bar #vrFullPage, .vr-bar #vrBaselinesToggle, .vr-bar #vrComparePick, .vr-bar #vrCaptureBtn, .vr-bar #vrCompareBtn')
     .evaluateAll(els => els.map(el => el.id));
   expect(barIds).toEqual(['vrViews', 'vrFullPage', 'vrBaselinesToggle', 'vrComparePick', 'vrCaptureBtn', 'vrCompareBtn']);
-  await expect(window.locator('#vrCompareBtn')).toBeDisabled();
+  await expect(window.locator('#vrStepCapture')).toBeVisible();
+  await expect(window.locator('#vrStepCompare')).toBeDisabled();
+  await expect(window.locator('#vrViews .vr-view-btn[data-view="diff"]')).toBeDisabled();
 
   // Closed by default; opened from the cog.
   await expect(window.locator('#vrSettings')).toBeHidden();
@@ -92,8 +96,7 @@ test('first run: the setup row is on one line, rules and baseline saving sit beh
   await expect(window.locator('#vrSaveBaselineBtn')).toBeDisabled();
   await expect(window.locator('#vrSetup #vrImportBaselineBtn')).toBeVisible();
 
-  await expect(window.locator('#vrImages .empty-state-title')).toHaveText('Visual comparison');
-  await expect(window.locator('#vrImages')).toContainText('No baseline yet');
+  await expect(window.locator('#vrGuide .vr-guide-title')).toHaveText(['Capture baseline', 'Compare with the current page']);
   // #327: one instruction — the empty state; the status line stays empty.
   await expect(window.locator('#vrStats')).toHaveText('');
 
@@ -115,7 +118,11 @@ test('capturing a baseline, mutating the page, and comparing reports a nonzero d
 
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
+  // #346: step 1 done (baseline thumbnail), step 2 active, compare views still locked.
+  await expect(window.locator('#vrGuide .vr-guide-step').first()).toHaveClass(/done/);
+  await expect(window.locator('#vrGuide #vrBaselineImg')).toBeVisible();
+  await expect(window.locator('.vr-view-btn[data-view="diff"]')).toBeDisabled();
 
   await tab.click('#render');
 
@@ -142,7 +149,7 @@ test('comparing against a different session captures that session\'s screenshot,
 
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
 
   // A second, unrelated session navigated to the same page and then mutated —
   // if Compare still screenshots the baseline session itself (the pre-#127
@@ -189,7 +196,7 @@ test('a baseline and current screenshot of different sizes show a visible size-m
   // Full page stays unchecked, so the capture is a viewport screenshot —
   // its dimensions track the app window's size.
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
 
   const boundsBeforeResize = await getActiveViewBounds(app);
   await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0].setSize(900, 700); });
@@ -263,7 +270,7 @@ test('saving a baseline persists it — it stays listed and loadable from a diff
 
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
 
   await openSettings();
   await window.click('#vrSaveBaselineBtn');
@@ -305,7 +312,7 @@ test('a higher pixel-difference threshold reports fewer (here, zero) differing p
 
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
   await tab.click('#render');
 
   await window.click('#vrCompareBtn');
@@ -361,7 +368,7 @@ test('drawing an ignore region excludes it from the diff count and renders it wi
 
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
 
   // The whole page changes color — essentially every pixel differs.
   await tab.click('#toggle');
@@ -457,7 +464,7 @@ test('exporting then importing a saved baseline round-trips its name, dimensions
 
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
   await openSettings();
   await window.click('#vrSaveBaselineBtn');
   await window.fill('#vrSaveNameInput', 'e2e export-import baseline');
@@ -549,7 +556,7 @@ test('the diff can be saved as a PNG for a bug report, and Reset returns to setu
   await expect(window.locator('#vrSetup')).toBeVisible();
   await expect(window.locator('#vrBaselineChip')).toContainText('Unsaved capture');
   await expect(window.locator('#vrCompareBtn')).toBeEnabled();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured');
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
 });
 
 test('side-by-side, overlay (slider, keyboard-operable) and diff views, with the chosen view remembered', async () => {
@@ -608,7 +615,7 @@ test('saved baselines can be filtered, renamed, and deleted only after an explic
 
   await window.click('#consoleTabVR');
   await startCapture();
-  await expect(window.locator('#vrStats')).toContainText('Baseline captured', { timeout: 10_000 });
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
   await openSettings();
   await window.click('#vrSaveBaselineBtn');
   await window.fill('#vrSaveNameInput', 'e2e manage original');

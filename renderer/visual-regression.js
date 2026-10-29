@@ -1,5 +1,4 @@
 /* global testerBrowser */
-import { renderEmptyState } from './empty-state.js';
 import { getActiveId } from './tabs.js';
 import { buildSessionOptions } from './session-picker.js';
 import { escHtml } from './utils.js';
@@ -8,7 +7,7 @@ import {
   zoomToShowRegion, scrollToCenter, nextIndex, formatPct, parseMaxDiffPct, compareVerdict,
   DEFAULT_THRESHOLD, MAX_THRESHOLD, parseThreshold, thresholdHint,
   rectFromPoints, clampRegion, regionIndexAt, regionsCoverage, describeRegion,
-  filterBaselines, diffExportName,
+  filterBaselines, diffExportName, guideSteps,
 } from './vr-logic.js';
 
 // Lazily created, reused across comparisons — spinning up a Worker has real
@@ -360,6 +359,9 @@ function renderAll() {
   $('vrSetup').hidden = hasResult;
   $('vrResultBar').hidden = !hasResult;
   $('vrBaselines').hidden = !baselinesOpen || hasResult;
+  // #346: with no baseline the guide's own Capture button is the one entry point.
+  /** @type {HTMLButtonElement} */ ($('vrCaptureBtn')).hidden = !hasBaseline;
+  /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).hidden = !hasBaseline;
   /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).disabled = !hasBaseline;
   /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).classList.toggle('vr-primary-ready', hasBaseline);
   /** @type {HTMLButtonElement} */ ($('vrEditRegionsBtn')).disabled = !hasBaseline;
@@ -453,9 +455,7 @@ function renderSummary() {
   } else if (!d.baselineB64) {
     stats.textContent = ''; // #327: the empty state below already says it
   } else if (!r) {
-    stats.textContent = d.baselineInfo?.source === 'capture'
-      ? 'Baseline captured. Interact with the page (or pick another tab under “from”), then click Compare.'
-      : 'Baseline ready. Get the page into the state to check (or pick another tab under “from”), then click Compare.';
+    stats.textContent = ''; // #346: the guide's step 2 says it
   } else {
     const pct = formatPct(r.diffCount, r.total);
     let text = `${r.diffCount.toLocaleString()} pixels differ (${pct}% of ${r.total.toLocaleString()})`;
@@ -539,6 +539,70 @@ function currentView() {
   return d.viewMode;
 }
 
+// #346: the two-step guide shown until a comparison exists — capture, then
+// compare. Its buttons delegate to the toolbar's, which own the busy state.
+function renderGuide(d) {
+  const steps = guideSteps({ hasBaseline: !!d.baselineB64, hasResult: !!d.result });
+  const root = document.createElement('ol');
+  root.className = 'vr-guide';
+  root.id = 'vrGuide';
+
+  const step = (n, state, title, text) => {
+    const li = document.createElement('li');
+    li.className = `vr-guide-step ${state}`;
+    const num = document.createElement('span');
+    num.className = 'vr-guide-num';
+    num.textContent = state === 'done' ? '✓' : String(n);
+    const body = document.createElement('div');
+    body.className = 'vr-guide-body';
+    const h = document.createElement('div');
+    h.className = 'vr-guide-title';
+    h.textContent = title;
+    const p = document.createElement('p');
+    p.className = 'vr-guide-text';
+    p.textContent = text;
+    body.append(h, p);
+    li.append(num, body);
+    return { li, body };
+  };
+
+  const one = step(1, steps.capture, 'Capture baseline',
+    steps.capture === 'done' ? 'Baseline captured.' : 'Screenshot this tab as the reference to compare against.');
+  if (steps.capture === 'done') {
+    const img = document.createElement('img');
+    img.className = 'vr-guide-thumb';
+    img.id = 'vrBaselineImg';
+    img.src = png(d.baselineB64);
+    img.alt = 'Baseline screenshot';
+    img.draggable = false;
+    one.body.appendChild(img);
+  } else {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'vrStepCapture';
+    btn.className = 'tb-btn-primary';
+    btn.textContent = 'Capture baseline';
+    btn.addEventListener('click', () => $('vrCaptureBtn').click());
+    one.body.appendChild(btn);
+  }
+
+  const two = step(2, steps.compare, 'Compare with the current page',
+    steps.compare === 'active'
+      ? 'Interact with the page (or pick another tab under “from”), then compare.'
+      : 'Available once a baseline is captured.');
+  const cmp = document.createElement('button');
+  cmp.type = 'button';
+  cmp.id = 'vrStepCompare';
+  cmp.className = 'tb-btn-primary';
+  cmp.textContent = 'Compare';
+  cmp.disabled = steps.compare !== 'active';
+  cmp.addEventListener('click', () => $('vrCompareBtn').click());
+  two.body.appendChild(cmp);
+
+  root.append(one.li, two.li);
+  return root;
+}
+
 function renderImages() {
   const stage = $('vrImages');
   const d = activeData();
@@ -550,18 +614,14 @@ function renderImages() {
     b.setAttribute('aria-pressed', String(on));
     // Baseline needs a baseline; the other views only exist once a comparison
     // has produced them.
-    b.disabled = b.dataset.view === 'baseline' ? !d.baselineB64 : !d.result;
+    b.disabled = b.dataset.view === 'baseline' ? !d.baselineB64 || (!d.result && !regionsEditMode) : !d.result;
   });
   renderRegionNav();
   renderSide();
 
-  if (!d.baselineB64) {
+  if (!d.baselineB64 || (!d.result && !regionsEditMode)) {
     stage.classList.remove('vr-stage-images');
-    stage.replaceChildren(renderEmptyState({
-      icon: 'scan-eye', tone: 'accent', title: 'Visual comparison',
-      text: 'No baseline yet: capture this tab, then compare it with the current page.',
-      actionLabel: 'Capture baseline', onAction: () => $('vrCaptureBtn').click(),
-    }));
+    stage.replaceChildren(renderGuide(d));
     return;
   }
   stage.classList.add('vr-stage-images');

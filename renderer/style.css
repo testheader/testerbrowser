@@ -2031,6 +2031,19 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
                   cursor: pointer; border: 1px solid var(--tb-accent); background: var(--tb-accent); color: var(--tb-on-accent);
                   display: inline-flex; align-items: center; gap: 6px; }
 .tb-btn-primary:hover { opacity: 0.9; }
+/* #346: UI diff capture → compare guide. */
+.vr-guide { list-style: none; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 16px; max-width: 420px; }
+.vr-guide-step { display: flex; gap: 12px; align-items: flex-start; }
+.vr-guide-step.locked { opacity: 0.55; }
+.vr-guide-num { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; background: var(--tb-sunken); color: var(--tb-text-2); border: 1px solid var(--tb-line-strong); }
+.vr-guide-step.active .vr-guide-num { background: var(--tb-accent); border-color: var(--tb-accent); color: var(--tb-on-accent); }
+.vr-guide-step.done .vr-guide-num { background: var(--tb-ok-soft, var(--tb-sunken)); color: var(--tb-ok); }
+.vr-guide-body { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.vr-guide-title { font-size: 13px; font-weight: 600; color: var(--tb-text); }
+.vr-guide-text { margin: 0; font-size: 12.5px; color: var(--tb-text-2); }
+.vr-guide-thumb { max-width: 220px; max-height: 140px; border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); }
+.vr-guide .tb-btn-primary:disabled { opacity: 0.5; cursor: default; }
 /* #345: Mock/Resilience add-rule forms render as a card, set apart from the rules list below. */
 .tb-form-card { background: var(--tb-sunken); border: 1px solid var(--tb-line-strong); border-radius: 10px; padding: 14px; margin-bottom: 8px; }
 .tb-form-card[hidden] { display: none; }
@@ -2260,6 +2273,7 @@ li.a11y-node[hidden] { display: none; }
 .vr-setup, .vr-result { flex: 1 1 auto; flex-wrap: wrap; }
 .vr-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
 .vr-actions .vr-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; border-radius: var(--tb-r); font-family: inherit; font-size: 12.5px; white-space: nowrap; }
+.vr-actions .vr-btn[hidden] { display: none; }
 .vr-actions .vr-new-baseline { background: none; border-color: var(--tb-line-strong); color: var(--tb-text); }
 .vr-actions .vr-primary { background: var(--tb-accent); border-color: var(--tb-accent); color: var(--tb-on-accent); font-weight: 600; }
 .vr-actions .vr-primary[disabled] { opacity: 0.5; }
