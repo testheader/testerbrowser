@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.150.5 — 2026-10-29
+
+_No changes recorded._
+
 ## v0.150.4 — 2026-10-29
 
 ### Other
