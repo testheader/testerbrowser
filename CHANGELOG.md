@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.151.4 — 2026-10-29
+
+### Fixes
+
+- Follow — after stopping a pairing, the old log overlaps the "Pair with a tab" empty state (refs #351) (e78ffdb)
+
 ## v0.151.3 — 2026-10-29
 
 ### Other
