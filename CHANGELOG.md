@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.150.10 — 2026-10-29
+
+### Other
+
+- Bug report screenshot for #349 (7daaf69)
+
 ## v0.150.9 — 2026-10-29
 
 ### Other
