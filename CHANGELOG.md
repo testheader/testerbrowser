@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.152.1 — 2026-10-30
+
+### Fixes
+
+- e2e — Record empty state is reached via Saved recordings; Jira centring ignores panel scrollbar (a386ac1)
+
 ## v0.152.0 — 2026-10-29
 
 ### Features
