@@ -42,6 +42,31 @@ test('the new-rule form starts closed, New rule opens it with aria-pressed, Canc
   await expect(window.locator('#mockNewRuleBtn')).toHaveAttribute('aria-pressed', 'false');
 });
 
+// #355: the add-rule form is a request → response stepper.
+test('the new-rule stepper gates Next on the URL and Add on the status, and shows a summary (#355)', async () => {
+  await window.click('#consoleTabMock');
+  await openNewMockRule(window);
+  await expect(window.locator('#mockStepIndicator')).toHaveText('Step 1 of 2');
+  await expect(window.locator('#mockUrl')).toBeFocused();
+  await expect(window.locator('#mockNextBtn')).toBeDisabled();
+  await window.fill('#mockUrl', '*/api/stepper');
+  await window.selectOption('#mockMethod', 'GET');
+  await expect(window.locator('#mockNextBtn')).toBeEnabled();
+  await window.press('#mockUrl', 'Enter');
+  await expect(window.locator('#mockStepIndicator')).toHaveText('Step 2 of 2');
+  await expect(window.locator('#mockStatus')).toBeFocused();
+  await expect(window.locator('#mockSummary')).toHaveText('200 on GET */api/stepper');
+  await window.fill('#mockStatus', '99');
+  await expect(window.locator('#mockAddBtn')).toBeDisabled();
+  await window.fill('#mockStatus', '418');
+  await expect(window.locator('#mockSummary')).toHaveText('418 on GET */api/stepper');
+  await expect(window.locator('#mockAddBtn')).toBeEnabled();
+  await window.click('#mockBackBtn');
+  await expect(window.locator('#mockStepIndicator')).toHaveText('Step 1 of 2');
+  await window.press('#mockUrl', 'Escape');
+  await expect(window.locator('#mockForm')).toBeHidden();
+});
+
 test('a rule actually intercepts a matching fetch and its hit count increments', async () => {
   const urlPath = '/network/api.html';
   await window.click('#urlbar');
@@ -52,6 +77,7 @@ test('a rule actually intercepts a matching fetch and its hit count increments',
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/widgets');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '201');
   await window.fill('#mockBody', '{"mocked":true}');
   await window.click('.mock-add-btn');
@@ -172,6 +198,9 @@ test('the "⇒ Mock" button on a request\'s detail panel prefills method, URL, s
   }).toPass({ timeout: 20_000 });
 
   await expect(window.locator('#mockPanel')).toBeVisible();
+  // Prefill lands on the stepper's last step with the summary showing (#355).
+  await expect(window.locator('#mockAddBtn')).toBeVisible();
+  await expect(window.locator('#mockSummary')).toContainText(fixtures.url(urlPath));
   await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
   await expect(window.locator('#mockMethod')).toHaveValue('GET');
   await expect(window.locator('#mockStatus')).toHaveValue('200');
@@ -202,6 +231,7 @@ test('a mock rule\'s response headers actually reach the page (#180)', async () 
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/headers-check');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{}');
   await window.click('#mockAddResponseHeader');
@@ -274,6 +304,7 @@ test('a mock rule on one tab is visible from, and intercepted by, a new tab in t
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/session-scope');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '202');
   await window.fill('#mockBody', '{"scoped":true}');
   await window.click('.mock-add-btn');
@@ -332,6 +363,7 @@ test('a rule with a quote/HTML-bearing URL pattern and body renders safely, and 
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', evilPattern);
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', evilBody);
   await window.click('.mock-add-btn');
@@ -375,6 +407,7 @@ test('a mock rule for a URL containing "?" actually matches and intercepts that 
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/items?page=2');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{"mocked":true}');
   await window.click('.mock-add-btn');
@@ -427,6 +460,7 @@ test('"⇒ Mock" from a gzip-encoded response leaves out encoding headers, and a
   const longerBody = JSON.stringify({ from: 'server', edited: true, padding: 'x'.repeat(200) });
   await openNewMockRule(window);
   await window.fill('#mockUrl', fixtures.url('/network/gzip-json'));
+  await window.click('#mockNextBtn');
   await window.fill('#mockBody', longerBody);
   await window.click('.mock-add-btn');
   await expect(window.locator('.mock-rule-row', { hasText: 'gzip-json' })).toBeVisible();
@@ -450,6 +484,7 @@ test('a mock rule row keeps the tab it was rendered for, even after switching ta
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/owning-tab');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{"v":1}');
   await window.click('.mock-add-btn');
@@ -504,6 +539,7 @@ test('a mock rule with a delay fulfills only after that delay, with the mocked b
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/delayed');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockDelay', '1500');
   await window.fill('#mockBody', '{"delayed":true}');
@@ -540,6 +576,7 @@ test('mock rules match top to bottom — moving a rule up changes which one wins
 
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/network/status/*');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockDelay', '0');
   await window.fill('#mockBody', 'broad');
@@ -549,6 +586,7 @@ test('mock rules match top to bottom — moving a rule up changes which one wins
 
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/network/status/200');
+  await window.click('#mockNextBtn');
   await window.fill('#mockBody', 'specific');
   await window.click('.mock-add-btn');
   const specificRow = window.locator('.mock-rule-row', { hasText: '*/network/status/200' });
@@ -587,6 +625,7 @@ test('exporting then importing mock rules round-trips a rule (#264)', async () =
   await window.click('#consoleTabMock');
   await openNewMockRule(window);
   await window.fill('#mockUrl', '*/api/export-roundtrip');
+  await window.click('#mockNextBtn');
   await window.fill('#mockStatus', '200');
   await window.fill('#mockBody', '{"exported":true}');
   await window.click('.mock-add-btn');

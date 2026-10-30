@@ -2361,6 +2361,11 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .mock-rule-row-editing { display: flex; flex-direction: column; align-items: stretch; }
 .rule-row-disabled { opacity: 0.55; }
 .mock-form-grid { display: grid; grid-template-columns: 110px 1fr 110px 110px; gap: 8px; }
+.mock-form-grid.mock-response-grid { grid-template-columns: 110px 110px; }
+.mock-step-indicator { font-size: 11px; color: var(--tb-text-muted, var(--text-muted)); }
+.mock-step { display: flex; flex-direction: column; gap: 6px; }
+.mock-step[hidden] { display: none; }
+.mock-summary { font-size: 12px; color: var(--tb-text-muted, var(--text-muted)); }
 .mock-field { display: flex; flex-direction: column; gap: 3px; }
 .mock-field-label { font-size: 11px; color: var(--tb-text-muted, var(--text-muted)); }
 .mock-form-footer { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }

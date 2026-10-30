@@ -5,6 +5,7 @@ import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { addKvRow, readKvTable } from './kv-table.js';
 import { pollWhileVisible } from './poll.js';
+import { MOCK_STEP_COUNT, isMockStepValid, summarizeMockRule } from './mock-logic.js';
 
 const MOCK_METHODS = ['*', 'GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
@@ -59,20 +60,58 @@ export function openMockFromRequest(method, url, statusCode, body, opts = {}) {
   capturedRequestHeaders = opts.requestHeaders || null;
   renderCapturedRequestHeaders();
 
-  setMockFormOpen(true);
-  urlInput.focus();
+  // Prefilled from a real call: land on the last step with the summary showing.
+  setMockFormOpen(true, MOCK_STEP_COUNT);
 }
 
 // #310: the add-rule form is inline and closed by default — New rule opens it,
 // as does "Mock" on a captured request; Cancel / Add rule close it again.
-function setMockFormOpen(open) {
+function setMockFormOpen(open, step = 1) {
   const form = document.getElementById('mockForm');
   if (form) form.hidden = !open;
   document.getElementById('mockNewRuleBtn')?.setAttribute('aria-pressed', String(open));
+  if (open) showMockStep(step);
+}
+
+// #355: the add-rule form is a 2-step stepper inside the card — request (URL
+// pattern + method), then response (status, delay, body, headers, CORS) with
+// the summary line and the Add rule button. Step state is renderer-only; every
+// field keeps its id and the rule payload is unchanged.
+let mockStep = 1;
+
+function mockFieldValues() {
+  const val = (id) => /** @type {HTMLInputElement} */ (document.getElementById(id)).value;
+  return { urlPattern: val('mockUrl'), status: val('mockStatus'), method: val('mockMethod') };
+}
+
+function showMockStep(step) {
+  mockStep = Math.min(MOCK_STEP_COUNT, Math.max(1, step));
+  document.querySelectorAll('#mockForm .mock-step').forEach(el => {
+    /** @type {HTMLElement} */ (el).hidden = Number(/** @type {HTMLElement} */ (el).dataset.step) !== mockStep;
+  });
+  document.getElementById('mockStepIndicator').textContent = `Step ${mockStep} of ${MOCK_STEP_COUNT}`;
+  /** @type {HTMLElement} */ (document.getElementById('mockBackBtn')).hidden = mockStep === 1;
+  /** @type {HTMLElement} */ (document.getElementById('mockNextBtn')).hidden = mockStep === MOCK_STEP_COUNT;
+  /** @type {HTMLElement} */ (document.getElementById('mockAddBtn')).hidden = mockStep !== MOCK_STEP_COUNT;
+  updateMockStepState();
+  document.getElementById(mockStep === 1 ? 'mockUrl' : 'mockStatus').focus();
+}
+
+function updateMockStepState() {
+  const v = mockFieldValues();
+  /** @type {HTMLButtonElement} */ (document.getElementById('mockNextBtn')).disabled = !isMockStepValid(mockStep, v);
+  /** @type {HTMLButtonElement} */ (document.getElementById('mockAddBtn')).disabled =
+    !(isMockStepValid(1, v) && isMockStepValid(2, v));
+  document.getElementById('mockSummary').textContent = summarizeMockRule(v);
+}
+
+function advanceMockStep() {
+  if (mockStep < MOCK_STEP_COUNT && isMockStepValid(mockStep, mockFieldValues())) showMockStep(mockStep + 1);
 }
 
 function resetMockForm() {
   /** @type {HTMLInputElement} */ (document.getElementById('mockUrl')).value  = '';
+  /** @type {HTMLSelectElement} */ (document.getElementById('mockMethod')).value = '*';
   /** @type {HTMLTextAreaElement} */ (document.getElementById('mockBody')).value = '';
   /** @type {HTMLInputElement} */ (document.getElementById('mockDelay')).value = '0';
   /** @type {HTMLInputElement} */ (document.getElementById('mockStatus')).value = '200';
@@ -101,7 +140,9 @@ export function initMock() {
     <div class="mock-wrap">
       <form class="mock-form tb-form-card" id="mockForm" hidden>
         <div class="tb-form-title">New rule</div>
-        <div class="mock-form-row mock-form-grid">
+        <div class="mock-step-indicator" id="mockStepIndicator" aria-live="polite"></div>
+        <div class="mock-step" data-step="1">
+        <div class="mock-form-row mock-form-grid mock-request-grid">
           <label class="mock-field mock-field-method"><span class="mock-field-label">Method</span>
             <select class="mock-select" id="mockMethod" aria-label="HTTP method">
               <option value="*">Any method</option>
@@ -113,6 +154,10 @@ export function initMock() {
             </select></label>
           <label class="mock-field mock-field-url"><span class="mock-field-label">URL pattern</span>
             <input class="mock-input mock-url" id="mockUrl" type="text" placeholder="URL pattern (e.g. https://api.example.com/*)" spellcheck="false" required /></label>
+        </div>
+        </div>
+        <div class="mock-step" data-step="2" hidden>
+        <div class="mock-form-row mock-form-grid mock-response-grid">
           <label class="mock-field mock-field-status"><span class="mock-field-label">Status</span>
             <input class="mock-input mock-status" id="mockStatus" type="number" value="200" min="100" max="599" placeholder="Status" /></label>
           <label class="mock-field mock-field-delay"><span class="mock-field-label">Delay (ms)</span>
@@ -134,14 +179,18 @@ export function initMock() {
             <div class="mock-request-headers" id="mockRequestHeadersList"></div>
           </div>
         </div>
+        <label class="mock-cors-label">
+          <input type="checkbox" id="mockCors" />
+          Add CORS headers
+        </label>
+        <div class="mock-summary" id="mockSummary"></div>
+        </div>
         <div class="mock-form-footer">
-          <label class="mock-cors-label">
-            <input type="checkbox" id="mockCors" />
-            Add CORS headers
-          </label>
           <span class="mock-spacer"></span>
           <button class="mock-text-btn" id="mockCancelBtn" type="button">Cancel</button>
-          <button class="tb-btn-primary mock-add-btn" type="submit">Add rule</button>
+          <button class="mock-text-btn" id="mockBackBtn" type="button" hidden>Back</button>
+          <button class="tb-btn-primary" id="mockNextBtn" type="button">Next</button>
+          <button class="tb-btn-primary mock-add-btn" id="mockAddBtn" type="submit" hidden>Add rule</button>
         </div>
       </form>
       <div class="mock-table" id="mockTable">
@@ -157,11 +206,18 @@ export function initMock() {
   document.getElementById('mockEmpty').replaceChildren(renderEmptyState({
     icon: 'replace', tone: 'accent', title: 'Mock responses',
     text: 'Replace what a request returns without touching the server.',
-    actionLabel: 'New rule', onAction: () => { setMockFormOpen(true); document.getElementById('mockUrl').focus(); },
+    actionLabel: 'New rule', onAction: () => setMockFormOpen(true),
   }));
-  document.getElementById('mockNewRuleBtn').addEventListener('click', () => {
-    setMockFormOpen(true);
-    document.getElementById('mockUrl').focus();
+  document.getElementById('mockNewRuleBtn').addEventListener('click', () => setMockFormOpen(true));
+  document.getElementById('mockBackBtn').addEventListener('click', () => showMockStep(mockStep - 1));
+  document.getElementById('mockNextBtn').addEventListener('click', advanceMockStep);
+  const mockFormEl = document.getElementById('mockForm');
+  mockFormEl.addEventListener('input', updateMockStepState);
+  mockFormEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); resetMockForm(); setMockFormOpen(false); }
+    else if (e.key === 'Enter' && mockStep < MOCK_STEP_COUNT && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault(); advanceMockStep();
+    }
   });
   document.getElementById('mockCancelBtn').addEventListener('click', () => {
     resetMockForm();
@@ -201,6 +257,9 @@ export function initMock() {
   document.getElementById('mockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!getActiveId()) return;
+    if (mockStep < MOCK_STEP_COUNT) { advanceMockStep(); return; }
+    const fv = mockFieldValues();
+    if (!isMockStepValid(1, fv) || !isMockStepValid(2, fv)) return;
     /** @type {Omit<import('../src/main/mockManager').MockRule, 'hitCount' | 'lastHitAt'>} */
     const rule = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
