@@ -2048,6 +2048,19 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .vr-guide-text { margin: 0; font-size: 12.5px; color: var(--tb-text-2); }
 .vr-guide-thumb { max-width: 220px; max-height: 140px; border: 1px solid var(--tb-line-strong); border-radius: var(--tb-r); }
 .vr-guide .tb-btn-primary:disabled { opacity: 0.5; cursor: default; }
+/* Shared stepper (flow-steps.js): Record, Mock, Resilience, Network diff, Follow. */
+.flow-steps { list-style: none; margin: 0; padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; flex: 0 0 auto; }
+.flow-step { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--tb-text-2); }
+.flow-step + .flow-step::before { content: '\203A'; color: var(--tb-text-3, var(--tb-text-2)); margin-right: 8px; }
+.flow-step.todo { opacity: 0.6; }
+.flow-step.current { color: var(--tb-text); font-weight: 600; }
+.flow-step-num { flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; background: var(--tb-sunken); color: var(--tb-text-2); border: 1px solid var(--tb-line-strong); }
+.flow-step.current .flow-step-num { background: var(--tb-accent); border-color: var(--tb-accent); color: var(--tb-on-accent); }
+.flow-step.done .flow-step-num { background: var(--tb-ok-soft, var(--tb-sunken)); color: var(--tb-ok); }
+.flow-step-btn { height: 24px; padding: 0 10px; border-radius: var(--tb-r); font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  border: 1px solid var(--tb-accent); background: var(--tb-accent); color: var(--tb-on-accent); }
+.flow-step-btn:hover { opacity: 0.9; }
 /* #345: Mock/Resilience add-rule forms render as a card, set apart from the rules list below. */
 .tb-form-card { background: var(--tb-sunken); border: 1px solid var(--tb-line-strong); border-radius: 10px; padding: 14px; margin-bottom: 8px; }
 .tb-form-card[hidden] { display: none; }

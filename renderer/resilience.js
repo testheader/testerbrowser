@@ -5,6 +5,8 @@ import { getActiveId, refreshTabs } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { pollWhileVisible } from './poll.js';
 import { renderEmptyState } from './empty-state.js';
+import { renderFlowSteps } from './flow-steps.js';
+import { resilienceFlowStep } from './flow-logic.js';
 
 /** @typedef {import('../src/main/resilienceManager').ResilienceType} ResilienceType */
 
@@ -132,6 +134,7 @@ export function initResilience() {
       <span class="res-spacer"></span>
       <button class="tb-btn-primary" id="resNewRuleBtn" type="button"><i class="icon-plus" aria-hidden="true"></i>Add rule</button>
     </div>
+    <div id="resFlow" hidden></div>
     <div class="res-wrap">
       <form class="res-form tb-form-card" id="resForm" hidden>
         <div class="tb-form-title">New failure rule</div>
@@ -312,6 +315,24 @@ async function applyConditionsFromForm() {
   await refreshTabs();
 }
 
+// Add rule → Enable → Reload the page, until a rule has fired.
+function renderResilienceFlow(rules) {
+  const host = document.getElementById('resFlow');
+  if (!host) return;
+  const current = resilienceFlowStep({ rules });
+  host.hidden = current >= 3;
+  host.replaceChildren(renderFlowSteps({
+    id: 'resFlowSteps',
+    label: 'Resilience steps',
+    current,
+    steps: [
+      { label: 'Add rule', actionLabel: 'New rule', onAction: () => document.getElementById('resNewRuleBtn')?.click() },
+      { label: 'Enable' },
+      { label: 'Reload the page', actionLabel: 'Reload', onAction: () => { const id = getActiveId(); if (id) testerBrowser.sessions.reload(id); } },
+    ],
+  }));
+}
+
 function renderRules(rules) {
   const container = document.getElementById('resRules');
   const empty = document.getElementById('resEmpty');
@@ -324,6 +345,7 @@ function renderRules(rules) {
   }
   const head = document.getElementById('resHead');
   if (head) head.hidden = rules.length === 0;
+  renderResilienceFlow(rules);
 
   if (rules.length === 0) {
     if (empty) empty.hidden = false;

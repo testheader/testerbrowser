@@ -1,6 +1,8 @@
 /* global testerBrowser */
 import { escHtml, MOCK_STRIPPED_RESPONSE_HEADERS, formatAgo } from './utils.js';
 import { renderEmptyState } from './empty-state.js';
+import { renderFlowSteps } from './flow-steps.js';
+import { mockFlowStep } from './flow-logic.js';
 import { getActiveId } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { addKvRow, readKvTable } from './kv-table.js';
@@ -98,6 +100,7 @@ export function initMock() {
       <button class="net-chip mock-import-btn" id="mockImportBtn" type="button"><i class="icon-file-up" aria-hidden="true"></i>Import…</button>
       <button class="tb-btn-primary" id="mockNewRuleBtn" type="button" aria-pressed="false"><i class="icon-plus" aria-hidden="true"></i>New rule</button>
     </div>
+    <div id="mockFlow" hidden></div>
     <div class="mock-wrap">
       <form class="mock-form tb-form-card" id="mockForm" hidden>
         <div class="tb-form-title">New rule</div>
@@ -245,6 +248,24 @@ async function loadRules() {
 // the tab the row was actually rendered for, not whatever tab happens to be
 // active by the time the user clicks (getActiveId() may have moved on if
 // they switched tabs while a row or its edit form was still open).
+// Add rule → Enable → Verify, until a rule has matched a request.
+function renderMockFlow(rules) {
+  const host = document.getElementById('mockFlow');
+  if (!host) return;
+  const current = mockFlowStep({ rules });
+  host.hidden = current >= 3;
+  host.replaceChildren(renderFlowSteps({
+    id: 'mockFlowSteps',
+    label: 'Mock steps',
+    current,
+    steps: [
+      { label: 'Add rule', actionLabel: 'New rule', onAction: () => { setMockFormOpen(true); document.getElementById('mockUrl').focus(); } },
+      { label: 'Enable' },
+      { label: 'Trigger a matching request' },
+    ],
+  }));
+}
+
 function renderRules(rules, sessionId) {
   const container = document.getElementById('mockRules');
   const empty = document.getElementById('mockEmpty');
@@ -261,6 +282,7 @@ function renderRules(rules, sessionId) {
   }
   const head = document.getElementById('mockHead');
   if (head) head.hidden = rules.length === 0;
+  renderMockFlow(rules);
 
   if (rules.length === 0) {
     if (empty) empty.hidden = false;

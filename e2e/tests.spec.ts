@@ -1079,3 +1079,19 @@ test('Start switches to New recording and a recording survives switching modes (
   await expect(window.locator('#rpStopBtn')).toBeEnabled();
   await window.click('#rpStopBtn');
 });
+
+// The Record → Assert → Save → Run stepper follows the recorder's state.
+test('the Record stepper highlights Assert while recording and moves on after Stop', async () => {
+  await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
+  const current = window.locator('#rpFlowSteps .flow-step.current .flow-step-label');
+  await expect(window.locator('#rpFlowSteps .flow-step-label')).toHaveText(['Record', 'Assert', 'Save', 'Run']);
+
+  await window.click('#rpStartBtn');
+  await expect(current).toHaveText('Assert');
+  await expect(window.locator('#rpFlowSteps .flow-step.done .flow-step-label')).toHaveText(['Record']);
+
+  await window.click('#rpStopBtn');
+  await expect(current).not.toHaveText('Assert');
+  await window.click('#rpDiscardBtn', { trial: true }).catch(() => { /* disabled when nothing was recorded */ });
+});
