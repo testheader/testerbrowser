@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.153.0 — 2026-10-30
+
+### Features
+
+- Resilience — guided step-by-step add-rule flow (refs #353) (3fa232b)
+
 ## v0.152.2 — 2026-10-30
 
 ### Other
