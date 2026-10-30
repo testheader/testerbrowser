@@ -5,6 +5,7 @@ import { getActiveId, refreshTabs } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { pollWhileVisible } from './poll.js';
 import { renderEmptyState } from './empty-state.js';
+import { RES_STEP_COUNT, isResStepValid, summarizeResRule } from './resilience-logic.js';
 
 /** @typedef {import('../src/main/resilienceManager').ResilienceType} ResilienceType */
 
@@ -30,14 +31,11 @@ export function openResilienceFromRequest(method, url, requestHeaders, requestBo
 
   setResType('error500');
   /** @type {HTMLInputElement} */ (document.getElementById('resProb')).value = '100';
-  setResFormOpen(true);
-
   capturedMethod         = method || null;
   capturedRequestHeaders = requestHeaders || null;
   capturedRequestBody    = requestBody ?? null;
   updateMethodChip();
-
-  urlInput.focus();
+  setResFormOpen(true, RES_STEP_COUNT); // prefilled: land on the summary step
 }
 
 // #236: the "⇒ Resilience" prefill scopes the rule to the captured call's
@@ -91,9 +89,58 @@ function setResType(type) {
 
 // The add-rule form is inline and closed by default — Add rule opens it, as
 // does "Resilience" on a captured request; Cancel / Add rule close it again.
-function setResFormOpen(open) {
+function setResFormOpen(open, step = 1) {
   const form = document.getElementById('resForm');
   if (form) form.hidden = !open;
+  if (open) showResStep(step);
+}
+
+// #353: the add-rule form is a 3-step stepper inside the card — failure type,
+// URL pattern, options (+ summary and the Add rule button). Step state is
+// renderer-only; every field keeps its id and the rule payload is unchanged.
+let resStep = 1;
+
+function resFieldValues() {
+  const val = (id) => /** @type {HTMLInputElement} */ (document.getElementById(id)).value;
+  return { urlPattern: val('resUrl'), probability: val('resProb') };
+}
+
+function showResStep(step) {
+  resStep = Math.min(RES_STEP_COUNT, Math.max(1, step));
+  document.querySelectorAll('#resForm .res-step').forEach(el => {
+    /** @type {HTMLElement} */ (el).hidden = Number(/** @type {HTMLElement} */ (el).dataset.step) !== resStep;
+  });
+  document.getElementById('resStepIndicator').textContent = `Step ${resStep} of ${RES_STEP_COUNT}`;
+  /** @type {HTMLElement} */ (document.getElementById('resBackBtn')).hidden = resStep === 1;
+  /** @type {HTMLElement} */ (document.getElementById('resNextBtn')).hidden = resStep === RES_STEP_COUNT;
+  /** @type {HTMLElement} */ (document.getElementById('resAddBtn')).hidden = resStep !== RES_STEP_COUNT;
+  updateResStepState();
+  const focusId = resStep === 1 ? null : resStep === 2 ? 'resUrl' : 'resProb';
+  if (focusId) document.getElementById(focusId).focus();
+  else /** @type {HTMLElement} */ (document.querySelector('#resTypeChips .res-type-chip.active')
+    || document.querySelector('#resTypeChips .res-type-chip'))?.focus();
+}
+
+function updateResStepState() {
+  const v = resFieldValues();
+  /** @type {HTMLButtonElement} */ (document.getElementById('resNextBtn')).disabled = !isResStepValid(resStep, v);
+  /** @type {HTMLButtonElement} */ (document.getElementById('resAddBtn')).disabled = !isResStepValid(3, v);
+  const type = /** @type {HTMLInputElement} */ (document.getElementById('resType')).value;
+  const latency = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resLatency')).value, 10);
+  const release = parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resRelease')).value, 10);
+  document.getElementById('resSummary').textContent = summarizeResRule({
+    typeLabel: (TYPES.find(t => t.value === type) || TYPES[0]).label,
+    type,
+    urlPattern: v.urlPattern,
+    method: capturedMethod,
+    probability: v.probability,
+    latencyMs: latency || null,
+    releaseSec: release || null,
+  });
+}
+
+function advanceResStep() {
+  if (resStep < RES_STEP_COUNT && isResStepValid(resStep, resFieldValues())) showResStep(resStep + 1);
 }
 
 // Types that reuse the "Delay ms" field (rule.latencyMs) — 'latency' delays
@@ -136,32 +183,42 @@ export function initResilience() {
       <form class="res-form tb-form-card" id="resForm" hidden>
         <div class="tb-form-title">New failure rule</div>
         <input type="hidden" id="resType" value="error500" />
-        <div class="res-type-chips" id="resTypeChips" role="group" aria-label="Failure type">
-          ${TYPES.map(t => `<button type="button" class="res-type-chip" data-type="${t.value}" aria-pressed="false"><i class="icon-${t.icon}" aria-hidden="true"></i>${t.label}</button>`).join('')}
+        <div class="res-step-indicator" id="resStepIndicator" aria-live="polite"></div>
+        <div class="res-step" data-step="1">
+          <div class="res-type-chips" id="resTypeChips" role="group" aria-label="Failure type">
+            ${TYPES.map(t => `<button type="button" class="res-type-chip" data-type="${t.value}" aria-pressed="false"><i class="icon-${t.icon}" aria-hidden="true"></i>${t.label}</button>`).join('')}
+          </div>
+          <div class="res-type-desc" id="resTypeDesc">${TYPES[0].desc}</div>
         </div>
-        <div class="res-type-desc" id="resTypeDesc">${TYPES[0].desc}</div>
-        <div class="res-form-grid">
+        <div class="res-step" data-step="2" hidden>
           <div class="res-field res-field-url">
             <label class="res-field-label" for="resUrl">URL pattern</label>
             <input class="res-input res-url" id="resUrl" type="text" value="*" placeholder="URL pattern (* = all)" spellcheck="false" />
             <span class="res-method-chip res-hidden" id="resMethodChip">Only <span id="resMethodChipLabel"></span> &middot; <button type="button" class="res-method-chip-clear" id="resMethodChipClear">clear</button></span>
           </div>
-          <div class="res-field">
-            <label class="res-field-label" for="resProb">Probability (%)</label>
-            <input class="res-input res-prob" id="resProb" type="number" value="100" min="1" max="100" placeholder="%" title="Probability: 1–100%" />
+        </div>
+        <div class="res-step" data-step="3" hidden>
+          <div class="res-form-grid">
+            <div class="res-field">
+              <label class="res-field-label" for="resProb">Probability (%)</label>
+              <input class="res-input res-prob" id="resProb" type="number" value="100" min="1" max="100" placeholder="%" title="Probability: 1–100%" />
+            </div>
+            <div class="res-field res-latency-field res-field-off" id="resLatencyField">
+              <label class="res-field-label" for="resLatency" id="resLatencyLabel">Delay (ms)</label>
+              <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" disabled />
+            </div>
+            <div class="res-field res-release-field res-hidden" id="resReleaseField">
+              <label class="res-field-label" for="resRelease">Release after (s)</label>
+              <input class="res-input res-release" id="resRelease" type="number" value="0" min="0" max="600" placeholder="0 = never" />
+            </div>
           </div>
-          <div class="res-field res-latency-field res-field-off" id="resLatencyField">
-            <label class="res-field-label" for="resLatency" id="resLatencyLabel">Delay (ms)</label>
-            <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" disabled />
-          </div>
-          <div class="res-field res-release-field res-hidden" id="resReleaseField">
-            <label class="res-field-label" for="resRelease">Release after (s)</label>
-            <input class="res-input res-release" id="resRelease" type="number" value="0" min="0" max="600" placeholder="0 = never" />
-          </div>
+          <div class="res-summary" id="resSummary"></div>
         </div>
         <div class="res-form-actions">
           <button class="res-text-btn" id="resCancelBtn" type="button">Cancel</button>
-          <button class="tb-btn-primary res-add-btn" type="submit">Add rule</button>
+          <button class="res-text-btn" id="resBackBtn" type="button" hidden>Back</button>
+          <button class="tb-btn-primary" id="resNextBtn" type="button">Next</button>
+          <button class="tb-btn-primary res-add-btn" id="resAddBtn" type="submit" hidden>Add rule</button>
         </div>
       </form>
       <div class="res-table" id="resTable">
@@ -177,16 +234,23 @@ export function initResilience() {
   document.getElementById('resEmpty').replaceChildren(renderEmptyState({
     icon: 'zap', tone: 'warn', title: 'Resilience',
     text: 'Inject failures, hangs and latency into matching requests.',
-    actionLabel: 'Add rule', onAction: () => { setResFormOpen(true); document.getElementById('resUrl').focus(); },
+    actionLabel: 'Add rule', onAction: () => setResFormOpen(true),
   }));
   setResType('error500');
-  document.getElementById('resNewRuleBtn').addEventListener('click', () => {
-    setResFormOpen(true);
-    document.getElementById('resUrl').focus();
+  document.getElementById('resNewRuleBtn').addEventListener('click', () => setResFormOpen(true));
+  document.getElementById('resBackBtn').addEventListener('click', () => showResStep(resStep - 1));
+  document.getElementById('resNextBtn').addEventListener('click', advanceResStep);
+  const resFormEl = document.getElementById('resForm');
+  resFormEl.addEventListener('input', updateResStepState);
+  resFormEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setResFormOpen(false); }
+    else if (e.key === 'Enter' && resStep < RES_STEP_COUNT && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault(); advanceResStep();
+    }
   });
   document.getElementById('resCancelBtn').addEventListener('click', () => setResFormOpen(false));
   document.querySelectorAll('#resTypeChips .res-type-chip').forEach(c =>
-    c.addEventListener('click', () => setResType(/** @type {HTMLElement} */ (c).dataset.type)));
+    c.addEventListener('click', () => { setResType(/** @type {HTMLElement} */ (c).dataset.type); updateResStepState(); }));
 
   // Editing the URL by hand after a "⇒ Resilience" prefill means the rule
   // is no longer scoped to the exact call it was captured from — the method
@@ -194,15 +258,19 @@ export function initResilience() {
   /** @type {HTMLInputElement} */ (document.getElementById('resUrl')).addEventListener('input', () => {
     capturedMethod = null;
     updateMethodChip();
+    updateResStepState();
   });
   document.getElementById('resMethodChipClear').addEventListener('click', () => {
     capturedMethod = null;
     updateMethodChip();
+    updateResStepState();
   });
 
   document.getElementById('resForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!getActiveId()) return;
+    if (resStep < RES_STEP_COUNT) { advanceResStep(); return; }
+    if (!isResStepValid(2, resFieldValues()) || !isResStepValid(3, resFieldValues())) return;
     const type = /** @type {ResilienceType} */ (/** @type {HTMLInputElement} */ (document.getElementById('resType')).value);
     /** @type {Omit<import('../src/main/resilienceManager').ResilienceRule, 'hitCount' | 'lastHitAt'>} */
     const rule = {

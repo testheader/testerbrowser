@@ -35,6 +35,14 @@ async function pickResType(type: string): Promise<void> {
   await window.click(`.res-type-chip[data-type="${type}"]`);
 }
 
+/** Walks the add-rule stepper from step 1: URL pattern (step 2), then probability (step 3). */
+async function fillResRule(url: string, prob?: string): Promise<void> {
+  await window.click('#resNextBtn');
+  await window.fill('#resUrl', url);
+  await window.click('#resNextBtn');
+  if (prob !== undefined) await window.fill('#resProb', prob);
+}
+
 async function listSessions(): Promise<{ id: string }[]> {
   return window.evaluate(() => (window as unknown as {
     testerBrowser: { sessions: { list(): Promise<{ id: string }[]> } };
@@ -219,8 +227,7 @@ test('a 100% error500 rule actually fails a matching fetch, and hits increments'
 
   await window.click('#consoleTabResilience');
   await pickResType('error500');
-  await window.fill('#resUrl', '*/api/resilience-target');
-  await window.fill('#resProb', '100');
+  await fillResRule('*/api/resilience-target', '100');
   await window.click('.res-add-btn');
   await expect(window.locator('.res-rule-row')).toBeVisible();
 
@@ -349,8 +356,7 @@ test('a broad-but-not-wildcard rule pattern under a heavy request burst, refresh
   // this is the pattern shared by all three bug reports behind #210.
   await window.click('#consoleTabResilience');
   await pickResType('error500');
-  await window.fill('#resUrl', '*ad*');
-  await window.fill('#resProb', '100');
+  await fillResRule('*ad*', '100');
   await window.click('.res-add-btn');
   await expect(window.locator('.res-rule-row', { hasText: '*ad*' })).toBeVisible();
 
@@ -393,8 +399,7 @@ test('a rule with a quote/HTML-bearing URL pattern renders safely, and round-tri
 
   await window.click('#consoleTabResilience');
   await pickResType('error500');
-  await window.fill('#resUrl', evilPattern);
-  await window.fill('#resProb', '100');
+  await fillResRule(evilPattern, '100');
   await window.click('.res-add-btn');
 
   const row = window.locator('.res-rule-row', { hasText: '/q?x=' });
@@ -424,8 +429,7 @@ test('a "hang" rule leaves the request pending until the client aborts it (#236)
 
   await window.click('#consoleTabResilience');
   await pickResType('hang');
-  await window.fill('#resUrl', '*/api/hang-target');
-  await window.fill('#resProb', '100');
+  await fillResRule('*/api/hang-target', '100');
   await window.click('.res-add-btn');
   await expect(window.locator('.res-rule-row', { hasText: 'hang-target' })).toBeVisible();
 
@@ -446,8 +450,7 @@ test('a "hang" rule with Release after (s) eventually fails the request on its o
 
   await window.click('#consoleTabResilience');
   await pickResType('hang');
-  await window.fill('#resUrl', '*/api/hang-release-target');
-  await window.fill('#resProb', '100');
+  await fillResRule('*/api/hang-release-target', '100');
   await expect(window.locator('#resReleaseField')).toBeVisible();
   await window.fill('#resRelease', '1');
   await window.click('.res-add-btn');
@@ -473,8 +476,7 @@ test('a "stall504" rule waits latencyMs then returns 504 (#236)', async () => {
 
   await window.click('#consoleTabResilience');
   await pickResType('stall504');
-  await window.fill('#resUrl', '*/api/stall-target');
-  await window.fill('#resProb', '100');
+  await fillResRule('*/api/stall-target', '100');
   await window.fill('#resLatency', '1500');
   await window.click('.res-add-btn');
   await expect(window.locator('.res-rule-row', { hasText: 'stall-target' })).toBeVisible();
@@ -492,13 +494,11 @@ test('fall-through: a rule whose roll misses lets a later matching rule fire on 
 
   await window.click('#consoleTabResilience');
   await pickResType('random500');
-  await window.fill('#resUrl', '*/api/fallthrough-target');
-  await window.fill('#resProb', '1');
+  await fillResRule('*/api/fallthrough-target', '1');
   await window.click('.res-add-btn');
 
   await pickResType('error500');
-  await window.fill('#resUrl', '*/api/fallthrough-target');
-  await window.fill('#resProb', '100');
+  await fillResRule('*/api/fallthrough-target', '100');
   await window.click('.res-add-btn');
 
   const rows = window.locator('.res-rule-row', { hasText: 'fallthrough-target' });
@@ -548,7 +548,7 @@ test('editing the URL after a "⇒ Resilience" prefill resets the method scope t
   await window.locator('#detailResilienceBtn').click();
   await expect(window.locator('#resMethodChip')).toBeVisible();
 
-  await window.fill('#resUrl', '*/api/reset-elsewhere');
+  await fillResRule('*/api/reset-elsewhere');
   await expect(window.locator('#resMethodChip')).toBeHidden();
 
   await window.click('.res-add-btn');
@@ -669,4 +669,25 @@ test('Resilience add-rule form renders as a card separate from the rules list (#
   const f = (await form.boundingBox())!;
   const t = (await window.locator('#resTable').boundingBox())!;
   expect(f.y + f.height).toBeLessThanOrEqual(t.y);
+});
+
+// #353: guided stepper.
+test('Resilience add-rule stepper validates steps, shows a summary, and Esc cancels (#353)', async () => {
+  await window.click('#consoleTabResilience');
+  await pickResType('error500');
+  await expect(window.locator('#resTypeDesc')).toBeVisible();
+  await window.click('#resNextBtn');
+  await window.fill('#resUrl', '');
+  await expect(window.locator('#resNextBtn')).toBeDisabled();
+  await window.fill('#resUrl', '*ads*');
+  await window.press('#resUrl', 'Enter'); // Enter advances
+  await expect(window.locator('#resProb')).toBeFocused();
+  await window.fill('#resProb', '0');
+  await expect(window.locator('#resAddBtn')).toBeDisabled();
+  await window.fill('#resProb', '100');
+  await expect(window.locator('#resSummary')).toHaveText('500 error on `*ads*`, 100%');
+  await window.click('#resBackBtn');
+  await expect(window.locator('#resUrl')).toBeVisible();
+  await window.press('#resUrl', 'Escape');
+  await expect(window.locator('#resForm')).toBeHidden();
 });

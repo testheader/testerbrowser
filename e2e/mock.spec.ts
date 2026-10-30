@@ -260,7 +260,8 @@ test('a network request\'s detail panel offers Replay, Mock and Resilience, in t
   await window.locator('#detailResilienceBtn').click();
   await expect(window.locator('#resiliencePanel')).toBeVisible();
   await expect(window.locator('#resUrl')).toHaveValue(fixtures.url(urlPath));
-  await expect(window.locator('#resUrl')).toBeFocused();
+  // Prefill lands on the stepper's last step (#353).
+  await expect(window.locator('#resAddBtn')).toBeVisible();
 });
 
 test('a mock rule on one tab is visible from, and intercepted by, a new tab in the same session (#209)', async () => {
