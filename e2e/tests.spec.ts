@@ -38,6 +38,9 @@ test('with no saved tests the Record tab shows the empty state, and recording sh
   const tab = await getTabPage(app, urlPath);
 
   await window.click('#consoleTabTests');
+  // The empty state lives in the Saved recordings view; with nothing saved the
+  // tab opens on New recording, so switch to Saved to reach it.
+  await window.click('#rpModeSavedBtn');
   await expect(window.locator('#rpToolbarStatus')).toHaveText('No saved tests');
   await expect(window.locator('#rpRunPlaceholder .empty-state-title')).toHaveText('No recorded tests yet');
   await expect(window.locator('#rpStopSaveBtn')).toBeHidden();
