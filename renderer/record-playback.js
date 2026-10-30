@@ -4,6 +4,8 @@ import { escHtml, mergeRecordedSteps } from './utils.js';
 import { openImageOverlay } from './image-overlay.js';
 import { showStatus } from './status-msg.js';
 import { renderEmptyState } from './empty-state.js';
+import { renderFlowSteps } from './flow-steps.js';
+import { recordFlowStep } from './flow-logic.js';
 
 let initialized = false;
 let isRecording = false;
@@ -52,6 +54,7 @@ export function initRecordPlayback() {
         <button type="button" class="seg-btn" id="rpModeSavedBtn" data-mode="saved" aria-pressed="false">Saved recordings</button>
       </div>
     </div>
+    <div id="rpFlow"></div>
     <div class="rp-wrap">
       <div class="rp-col rp-record-col" id="rpRecordCol">
         <div class="rp-record-form">
@@ -233,6 +236,7 @@ function setRpMode(mode) {
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', String(on));
   });
+  updateFlow();
 }
 
 // Inline status pattern used throughout the app (spoofStatus, secStatus,
@@ -246,6 +250,7 @@ function showFormStatus(msg, isError) {
 function updateToolbar() {
   const status = document.getElementById('rpToolbarStatus');
   if (!status) return;
+  updateFlow();
   if (isRecording) {
     const n = currentSteps.length;
     status.innerHTML = `<span class="rp-rec-dot" aria-hidden="true"></span><span class="rp-rec-label">Recording \u00b7 ${n} step${n === 1 ? '' : 's'}</span>`;
@@ -256,6 +261,26 @@ function updateToolbar() {
   }
   document.getElementById('rpStopSaveBtn').hidden = !isRecording;
   document.getElementById('rpAddAssertBtn').hidden = !(isRecording || currentSteps.length > 0);
+}
+
+// Record → Assert → Save → Run, derived from the recorder's own state. The
+// current step's button reuses the existing handlers.
+function updateFlow() {
+  const host = document.getElementById('rpFlow');
+  if (!host) return;
+  const current = recordFlowStep({ isRecording, unsavedSteps: currentSteps.length, savedCount: savedTests.length });
+  host.replaceChildren(renderFlowSteps({
+    id: 'rpFlowSteps',
+    label: 'Record and playback steps',
+    current,
+    steps: [
+      { label: 'Record', actionLabel: 'Start recording', onAction: () => { if (!isRecording) startRecording(); } },
+      { label: 'Assert', actionLabel: 'Add assertion', actionTitle: 'Optional — or just keep going',
+        onAction: () => document.getElementById('rpAddAssertBtn').click() },
+      { label: 'Save', actionLabel: 'Save', onAction: () => { saveRecordedTest(); } },
+      { label: 'Run', actionLabel: rpMode === 'saved' ? '' : 'Saved recordings', onAction: () => setRpMode('saved') },
+    ],
+  }));
 }
 
 // With nothing saved the run area becomes the shared empty state with a
