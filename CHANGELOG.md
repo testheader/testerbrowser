@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.154.0 — 2026-10-30
+
+### Features
+
+- Mock — guided request → response add-rule flow (refs #355) (32ca117)
+
 ## v0.153.0 — 2026-10-30
 
 ### Features
