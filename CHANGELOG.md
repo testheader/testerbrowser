@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.156.0 — 2026-10-31
+
+### Features
+
+- UI diff — continue the step flow after Compare, on the shared stepper (refs #357) (b91f4dd)
+
 ## v0.155.0 — 2026-10-31
 
 ### Features
