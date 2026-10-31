@@ -31,3 +31,14 @@ export function vrFlowStep({ hasBaseline, hasResult, regionVisited }) {
   if (!hasBaseline || !hasResult) return 0;
   return regionVisited ? 3 : 1;
 }
+
+/**
+ * Jira: Connect → Load ticket or report bug → Attach evidence. Not configured
+ * wins even if the bug-form flag is stale.
+ * @param {{ configured: boolean, bugFormOpen: boolean }} s
+ * @returns {number}
+ */
+export function jiraFlowStep({ configured, bugFormOpen }) {
+  if (!configured) return 0;
+  return bugFormOpen ? 2 : 1;
+}

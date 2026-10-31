@@ -45,6 +45,9 @@ test('before Jira is configured the tab shows a Connect Jira empty state that op
   await expect(window.locator('#jiraConn')).toBeHidden();
   await expect(window.locator('#jiraActionsBar')).toBeHidden();
   await expect(window.locator('#jiraBugForm')).toBeHidden();
+  // #359: the stepper starts on Connect and has no button of its own.
+  await expect(window.locator('#jiraFlowSteps .flow-step.current .flow-step-label')).toHaveText('Connect');
+  await expect(window.locator('#jiraFlowSteps .flow-step-btn')).toHaveCount(0);
   // #343: the wrap fills the panel and the empty state is centred in it.
   // Measure against the panel's client area: its boundingBox includes the
   // scrollbar gutter (15px on Windows/Xvfb) that the wrap correctly doesn't fill.

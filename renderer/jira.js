@@ -3,12 +3,15 @@ import { escHtml } from './utils.js';
 import { getActiveId, getTabTitle } from './tabs.js';
 import { switchConsoleTab } from './console-tabs.js';
 import { renderEmptyState } from './empty-state.js';
+import { renderFlowSteps } from './flow-steps.js';
+import { jiraFlowStep } from './flow-logic.js';
 import { adfText, extractAcceptanceCriteria, jiraHost } from './jira-logic.js';
 
 let initialized = false;
 let currentHasToken = false;
 let cachedSettings = null;
 let lastFetchedKey = null;
+let jiraConfigured = false;
 
 export function initJira() {
   const panel = document.getElementById('jiraPanel');
@@ -26,6 +29,7 @@ export function initJira() {
         <span class="jira-conn" id="jiraConn" hidden><span class="jira-conn-dot" aria-hidden="true"></span><span id="jiraConnHost"></span></span>
         <button class="jira-icon-btn" id="jiraSettingsBtn" title="Configure Jira" aria-label="Configure Jira"><i class="icon-settings-2" aria-hidden="true"></i></button>
       </div>
+      <div id="jiraFlowHost"></div>
 
       <div id="jiraSetupView" hidden>
         <div class="jira-setup-form">
@@ -216,6 +220,7 @@ async function loadSettings() {
   cachedSettings = s;
   currentHasToken = !!s.hasToken;
   const configured = s.baseUrl && s.email && currentHasToken;
+  jiraConfigured = !!configured;
   document.getElementById('jiraNotConfigured').hidden = !!configured;
   document.getElementById('jiraToolbar').classList.toggle('jira-unconfigured', !configured);
   const conn = document.getElementById('jiraConn');
@@ -233,6 +238,30 @@ async function loadSettings() {
   /** @type {HTMLInputElement} */ (document.getElementById('jiraProjectKey')).value = s.projectKey || '';
   /** @type {HTMLInputElement} */ (document.getElementById('jiraIssueType')).value = s.issueType || 'Bug';
   setTokenEditing(!currentHasToken);
+  renderFlow();
+}
+
+// Connect → Load ticket or report bug → Attach evidence, derived from state the
+// tab already holds. Connect has no button: the "Connect Jira" empty state is
+// the single call to action there.
+function renderFlow() {
+  const host = document.getElementById('jiraFlowHost');
+  if (!host) return;
+  const bugFormOpen = !document.getElementById('jiraBugForm').hidden;
+  const current = jiraFlowStep({ configured: jiraConfigured, bugFormOpen });
+  const middle = lastFetchedKey
+    ? { actionLabel: 'Report bug', onAction: openBugForm }
+    : { actionLabel: 'Load ticket', onAction: () => document.getElementById('jiraTicketKey').focus() };
+  host.replaceChildren(renderFlowSteps({
+    id: 'jiraFlowSteps',
+    label: 'Jira steps',
+    current,
+    steps: [
+      { label: 'Connect' },
+      { label: 'Load ticket or report bug', ...middle },
+      { label: 'Attach evidence', actionLabel: 'Create bug', onAction: submitBug },
+    ],
+  }));
 }
 
 // A saved token is never sent back to the renderer (#267) — show a "Token
@@ -296,6 +325,7 @@ async function fetchTicket() {
   const result = await testerBrowser.jira.fetchTicket(key);
   if (!result.ok) {
     display.innerHTML = `<span class="jira-error">${escHtml(result.error)}</span>`;
+    renderFlow();
     return;
   }
 
@@ -334,6 +364,7 @@ async function fetchTicket() {
 
   lastFetchedKey = key;
   document.getElementById('jiraActionsBar').hidden = false;
+  renderFlow();
 }
 
 function openBugForm() {
@@ -350,6 +381,7 @@ function openBugForm() {
   applyAttachPrefs();
   updateStepsAvailability();
   updateHarRedactionWarning();
+  renderFlow();
 }
 
 // #306: "Report to Jira" on a Security finding — opens the Jira tab's bug form
@@ -363,6 +395,7 @@ export function openJiraBugFromFinding(summary, description) {
 
 function closeBugForm() {
   document.getElementById('jiraBugForm').hidden = true;
+  renderFlow();
 }
 
 async function submitBug() {
