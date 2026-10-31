@@ -48,9 +48,13 @@ async function backToSetup(): Promise<void> {
   if (await window.locator('#vrResetBtn').isVisible()) await window.click('#vrResetBtn');
 }
 
+// With no baseline yet the guide's own Capture button is the entry point; once
+// the session has one (kept across Reset) only "New baseline" is left.
 async function startCapture(): Promise<void> {
   await backToSetup();
-  await window.click('#vrStepCapture');
+  const guideBtn = window.locator('#vrStepCapture');
+  if (await guideBtn.count()) await guideBtn.click();
+  else await window.click('#vrCaptureBtn');
 }
 
 async function captureAndCompareSolidColor(nonce: string): Promise<void> {
