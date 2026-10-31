@@ -6,7 +6,7 @@
 // nothing to dismiss or persist.
 
 /**
- * @typedef {{ label: string, actionLabel?: string, actionTitle?: string, onAction?: () => void }} FlowStep
+ * @typedef {{ label: string, actionLabel?: string, actionTitle?: string, actionDisabled?: boolean, onAction?: () => void }} FlowStep
  */
 
 /**
@@ -45,6 +45,7 @@ export function renderFlowSteps({ steps, current, id, label = 'Steps' }) {
       btn.className = 'flow-step-btn';
       btn.textContent = step.actionLabel;
       if (step.actionTitle) btn.title = step.actionTitle;
+      if (step.actionDisabled) btn.disabled = true;
       btn.addEventListener('click', step.onAction);
       li.appendChild(btn);
     }

@@ -269,6 +269,8 @@ function updateFlow() {
   const host = document.getElementById('rpFlow');
   if (!host) return;
   const current = recordFlowStep({ isRecording, unsavedSteps: currentSteps.length, savedCount: savedTests.length });
+  // Most recently saved/updated test — what the Run step's button runs.
+  const latest = savedTests.reduce((a, t) => (!a || (t.updatedAt || 0) >= (a.updatedAt || 0) ? t : a), null);
   host.replaceChildren(renderFlowSteps({
     id: 'rpFlowSteps',
     label: 'Record and playback steps',
@@ -278,7 +280,9 @@ function updateFlow() {
       { label: 'Assert', actionLabel: 'Add assertion', actionTitle: 'Optional — or just keep going',
         onAction: () => document.getElementById('rpAddAssertBtn').click() },
       { label: 'Save', actionLabel: 'Save', onAction: () => { saveRecordedTest(); } },
-      { label: 'Run', actionLabel: rpMode === 'saved' ? '' : 'Saved recordings', onAction: () => setRpMode('saved') },
+      { label: 'Run', actionLabel: latest ? 'Run latest' : '', actionDisabled: isRunning,
+        actionTitle: latest ? `Run \u201c${latest.name}\u201d` : undefined,
+        onAction: () => { if (latest) runTest(latest.id, 1); } },
     ],
   }));
 }
@@ -366,6 +370,7 @@ async function saveRecordedTest() {
   /** @type {HTMLInputElement} */ (document.getElementById('rpTestName')).value = '';
   setRecordBtns(false);
   renderLiveSteps();
+  expandedTestId = test.id; // refreshTestList keeps it: the new test is in the list
   await refreshTestList();
   setRpMode('saved'); // show the new test in the list
 }
@@ -854,6 +859,7 @@ async function runTest(testId, runCount) {
   cancelRequested = false;
   document.getElementById('rpCancelBtn').hidden = false;
   renderTestList(); // disables every Run/Run N× button while this run is active
+  updateFlow();
 
   // #259: the main process has no other signal marking a run's start/end (a
   // run is just a sequence of individual session:playbackStep calls) but
@@ -868,6 +874,7 @@ async function runTest(testId, runCount) {
     cancelRequested = false;
     document.getElementById('rpCancelBtn').hidden = true;
     renderTestList();
+    updateFlow();
   }
 }
 

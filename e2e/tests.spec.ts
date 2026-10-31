@@ -1095,3 +1095,29 @@ test('the Record stepper highlights Assert while recording and moves on after St
   await expect(current).not.toHaveText('Assert');
   await window.click('#rpDiscardBtn', { trial: true }).catch(() => { /* disabled when nothing was recorded */ });
 });
+
+// #358: the Run step runs the just-saved test, and Save opens it expanded.
+test('after Save the new test is expanded and the stepper\'s Run latest runs it', async () => {
+  const urlPath = '/record/target.html';
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+
+  await window.click('#consoleTabTests');
+  await window.click('#rpModeNewBtn');
+  await window.fill('#rpTestName', 'run latest from stepper');
+  await window.click('#rpStartBtn');
+  await tab.click('[data-testid="rp-btn"]');
+  await window.click('#rpStopBtn');
+  await window.click('#rpSaveBtn');
+
+  const testItem = window.locator('.rp-test-item', { hasText: 'run latest from stepper' });
+  await expect(testItem.locator('.rp-saved-steps')).toBeVisible();
+
+  const runBtn = window.locator('#rpFlowSteps .flow-step.current .flow-step-btn');
+  await expect(runBtn).toHaveText('Run latest');
+  await runBtn.click();
+  await expect(window.locator('#rpRunView')).toBeVisible();
+  await expect(window.locator('#rpRunStatus')).toHaveText('All steps passed ✓', { timeout: 10_000 });
+});
