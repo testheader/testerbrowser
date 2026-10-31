@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.155.0 — 2026-10-31
+
+### Features
+
+- Record — state-driven Record → Assert → Save → Run step flow (fa5dd5c)
+
 ## v0.154.0 — 2026-10-30
 
 ### Features
