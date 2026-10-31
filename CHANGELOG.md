@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.157.1 — 2026-10-31
+
+### Fixes
+
+- adapt e2e specs to the Mock/Resilience add-rule steppers (4355eeb)
+
 ## v0.157.0 — 2026-10-31
 
 ### Features
