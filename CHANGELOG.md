@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.159.1 — 2026-10-31
+
+### Fixes
+
+- e2e — Record stepper test asserts Discard disabled instead of trial-clicking it (refs #358) (0b4c631)
+- e2e — vr startCapture falls back to New baseline when a baseline already exists (refs #357) (64ce2cf)
+- e2e — Resilience method chip is asserted on the URL step after Back (refs #353) (33e1b16)
+- stepper todo labels meet AA contrast; don't auto-expand a just-saved test (d35a7cf)
+
 ## v0.159.0 — 2026-10-31
 
 ### Features
