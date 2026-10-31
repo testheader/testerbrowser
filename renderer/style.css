@@ -1334,6 +1334,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
    The cog is pinned to the right in both and opens the settings popover. */
 .vr-bar { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 6px 10px;
           border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+.vr-flow:empty { display: none; }
 .vr-setup, .vr-result { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; flex: 1; min-width: 0; }
 .vr-bar-sep { width: 1px; align-self: stretch; background: var(--border-color); }
 .vr-cog { margin-left: auto; font-size: 14px; line-height: 1; padding: 2px 8px; }

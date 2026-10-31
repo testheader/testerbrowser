@@ -133,6 +133,13 @@ test('capturing a baseline, mutating the page, and comparing reports a nonzero d
   const match = statsText.match(/^([\d,]+) pixels differ/);
   expect(match).toBeTruthy();
   expect(Number(match![1].replace(/,/g, ''))).toBeGreaterThan(0);
+
+  // #357: after a compare the shared stepper sits in the result bar.
+  const steps = window.locator('#vrFlowSteps .flow-step');
+  await expect(steps).toHaveCount(4);
+  await expect(window.locator('#vrFlowSteps .flow-step.current .flow-step-label')).toHaveText('Review changes');
+  await window.click('#vrNextRegion');
+  await expect(window.locator('#vrFlowSteps .flow-step.current .flow-step-label')).toHaveText('Save / export');
 });
 
 test('comparing against a different session captures that session\'s screenshot, not the baseline session\'s own (#127)', async () => {

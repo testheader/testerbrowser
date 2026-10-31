@@ -16,3 +16,18 @@ export function recordFlowStep({ isRecording, unsavedSteps, savedCount }) {
   if (unsavedSteps > 0) return 2;
   return savedCount > 0 ? 3 : 0;
 }
+
+/**
+ * UI diff after a comparison: Compare → Review changes → Ignore noise
+ * (optional) → Save / export. Before any comparison the pre-compare guide
+ * owns the panel, so this rests on step 0. Reviewing is current until a
+ * changed region has been visited, then the flow jumps to Save / export.
+ * `hasBaseline` and `baselineSaved` don't change the position; they only
+ * drive the Save / export button's wording in the caller.
+ * @param {{ hasBaseline: boolean, hasResult: boolean, regionVisited: boolean, baselineSaved: boolean }} s
+ * @returns {number}
+ */
+export function vrFlowStep({ hasBaseline, hasResult, regionVisited }) {
+  if (!hasBaseline || !hasResult) return 0;
+  return regionVisited ? 3 : 1;
+}

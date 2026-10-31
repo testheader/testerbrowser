@@ -2,6 +2,8 @@
 import { getActiveId } from './tabs.js';
 import { buildSessionOptions } from './session-picker.js';
 import { escHtml } from './utils.js';
+import { renderFlowSteps } from './flow-steps.js';
+import { vrFlowStep } from './flow-logic.js';
 import {
   normalizeViewMode, normalizeZoom, scaleForZoom, stepZoom, formatZoom, ZOOM_STEPS,
   zoomToShowRegion, scrollToCenter, nextIndex, formatPct, parseMaxDiffPct, compareVerdict,
@@ -129,6 +131,7 @@ export function initVR() {
         </label>
       </div>
       <div class="vr-result" id="vrResultBar" hidden>
+        <div class="vr-flow" id="vrFlow"></div>
         <span class="vr-verdict" id="vrVerdict" hidden></span>
         <div class="vr-nav" id="vrNav" role="group" aria-label="Changed regions">
           <button type="button" class="vr-btn" id="vrPrevRegion" aria-keyshortcuts="P" title="Previous changed region (P)" disabled>‹ Prev</button>
@@ -370,7 +373,35 @@ function renderAll() {
   renderIgnoreBar();
   renderSummary();
   renderImages();
+  renderFlow();
   if (baselinesOpen) renderBaselineList();
+}
+
+// Compare → Review changes → Ignore noise → Save / export, shown in the result
+// bar once a comparison exists. Derived from per-session data; buttons reuse
+// the existing handlers.
+function renderFlow() {
+  const host = $('vrFlow');
+  const d = activeData();
+  if (!d.result) { host.replaceChildren(); return; }
+  const saved = !!d.baselineId;
+  const current = vrFlowStep({
+    hasBaseline: !!d.baselineB64, hasResult: true,
+    regionVisited: d.activeRegion >= 0, baselineSaved: saved,
+  });
+  host.replaceChildren(renderFlowSteps({
+    id: 'vrFlowSteps',
+    label: 'UI diff steps',
+    current,
+    steps: [
+      { label: 'Compare' },
+      { label: 'Review changes', actionLabel: 'Next change', onAction: () => goToRegion(1) },
+      { label: 'Ignore noise', actionLabel: 'Ignore noise', actionTitle: 'Optional — drag over areas to leave out of the comparison',
+        onAction: toggleRegionsEditMode },
+      { label: 'Save / export', actionLabel: saved ? 'Save diff…' : 'Save baseline…',
+        onAction: () => { if (saved) saveDiff(); else saveActiveBaseline(); } },
+    ],
+  }));
 }
 
 // ─── Settings popover (cog) ─────────────────────────────────────────────────
@@ -940,6 +971,7 @@ function goToRegion(dir) {
   }
   applyLayout();
   renderRegionNav();
+  renderFlow();
   const wrap = stage.querySelector('.vr-img-wrap');
   if (wrap) {
     const sRect = stage.getBoundingClientRect();
