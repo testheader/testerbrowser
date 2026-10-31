@@ -11,9 +11,14 @@ let app: ElectronApplication;
 let window: Page;
 let fixtures: FixtureServer;
 
-/** Opens the inline new-rule form if it is not already showing. */
+/**
+ * Opens a fresh add-rule form on step 1. Always clicks "New rule" rather
+ * than only when the form is closed — a "⇒ Mock" prefill also leaves the
+ * form open, but parked on the summary (last) step, which left #mockUrl
+ * and friends hidden for callers expecting step 1.
+ */
 async function openNewMockRule(win: Page = window): Promise<void> {
-  if (!(await win.locator('#mockForm').isVisible())) await win.click('#mockNewRuleBtn');
+  await win.click('#mockNewRuleBtn');
 }
 
 test.beforeAll(async () => {
@@ -722,6 +727,7 @@ test.describe('Mock rules persist across a full app restart (#264)', () => {
       await win.click('#consoleTabMock');
       await openNewMockRule(win);
       await win.fill('#mockUrl', '*/api/restart-survives');
+      await win.click('#mockNextBtn');
       await win.fill('#mockStatus', '200');
       await win.fill('#mockBody', '{"restarted":true}');
       await win.click('.mock-add-btn');
