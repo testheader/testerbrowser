@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.157.0 — 2026-10-31
+
+### Features
+
+- Record — make the Run step actionable (select + run the just-saved test) (refs #358) (6762fef)
+
 ## v0.156.0 — 2026-10-31
 
 ### Features
