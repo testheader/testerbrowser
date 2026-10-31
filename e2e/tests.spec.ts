@@ -1093,7 +1093,8 @@ test('the Record stepper highlights Assert while recording and moves on after St
 
   await window.click('#rpStopBtn');
   await expect(current).not.toHaveText('Assert');
-  await window.click('#rpDiscardBtn', { trial: true }).catch(() => { /* disabled when nothing was recorded */ });
+  // Nothing was recorded, so there is nothing to discard (a click would wait for the button to enable).
+  await expect(window.locator('#rpDiscardBtn')).toBeDisabled();
 });
 
 // #358: the Run step runs the just-saved test.
