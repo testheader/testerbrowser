@@ -546,12 +546,13 @@ test('editing the URL after a "⇒ Resilience" prefill resets the method scope t
     await expect(window.locator('#detailResilienceBtn')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
   await window.locator('#detailResilienceBtn').click();
-  await expect(window.locator('#resMethodChip')).toBeVisible();
 
   // A "⇒ Resilience" prefill lands on the summary (last) step, not step 1,
   // so fillResRule()'s first click (#resNextBtn, hidden on the last step)
-  // would hang — go back a step to reach #resUrl instead.
+  // would hang — go back a step to reach #resUrl. The method chip lives
+  // beside #resUrl (step 2), so it is only visible from there.
   await window.click('#resBackBtn');
+  await expect(window.locator('#resMethodChip')).toBeVisible();
   await window.fill('#resUrl', '*/api/reset-elsewhere');
   await window.click('#resNextBtn');
   await expect(window.locator('#resMethodChip')).toBeHidden();
