@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.159.0 — 2026-10-31
+
+### Features
+
+- session snapshot export/import — result message that points to the next step (refs #360) (4b655ed)
+
 ## v0.158.0 — 2026-10-31
 
 ### Features
