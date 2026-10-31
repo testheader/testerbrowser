@@ -370,7 +370,6 @@ async function saveRecordedTest() {
   /** @type {HTMLInputElement} */ (document.getElementById('rpTestName')).value = '';
   setRecordBtns(false);
   renderLiveSteps();
-  expandedTestId = test.id; // refreshTestList keeps it: the new test is in the list
   await refreshTestList();
   setRpMode('saved'); // show the new test in the list
 }
