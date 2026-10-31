@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.158.0 — 2026-10-31
+
+### Features
+
+- Jira — guided flow for connect → load ticket / report bug → attach evidence (refs #359) (ef4cf54)
+
 ## v0.157.1 — 2026-10-31
 
 ### Fixes
