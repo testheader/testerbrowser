@@ -33,7 +33,13 @@ test.beforeAll(async () => {
     // The export sensitivity-warning confirm and the post-import/-export
     // warnings summary both use dialog.showMessageBox — auto-approve so a
     // real modal never blocks the (headless) app.
-    dialog.showMessageBox = (() => Promise.resolve({ response: 0, checkboxChecked: false })) as typeof dialog.showMessageBox;
+    // Record each call's options (#360) so specs can assert the result dialogs.
+    (globalThis as unknown as { __messageBoxCalls: Record<string, unknown>[] }).__messageBoxCalls = [];
+    dialog.showMessageBox = ((...args: unknown[]) => {
+      const opts = args.find((a) => a && typeof a === 'object' && 'message' in (a as object)) as Record<string, unknown> | undefined;
+      if (opts) (globalThis as unknown as { __messageBoxCalls: Record<string, unknown>[] }).__messageBoxCalls.push(opts);
+      return Promise.resolve({ response: 0, checkboxChecked: false });
+    }) as typeof dialog.showMessageBox;
     // showErrorBox() is a *synchronous* native modal on Windows: if an
     // export/import fails for real, an unstubbed one freezes the whole main
     // process, so the test times out and then app.close() in afterAll hangs
@@ -49,6 +55,11 @@ test.beforeAll(async () => {
 async function errorBoxCalls(): Promise<{ title: string; content: string }[]> {
   return app.evaluate(() =>
     (globalThis as unknown as { __showErrorBoxCalls?: { title: string; content: string }[] }).__showErrorBoxCalls ?? []);
+}
+
+async function messageBoxCalls(): Promise<Record<string, unknown>[]> {
+  return app.evaluate(() =>
+    (globalThis as unknown as { __messageBoxCalls?: Record<string, unknown>[] }).__messageBoxCalls ?? []);
 }
 
 test.afterAll(async () => {
@@ -106,6 +117,10 @@ test('export then import round-trips cookies (incl. sameSite) and seeds storage 
   await contextMenuClick(sourceId, 'Export snapshot…');
   expect(await errorBoxCalls()).toEqual([]);
   await expect.poll(() => fs.existsSync(tmpPath), { timeout: 10_000 }).toBe(true);
+  // #360: exactly one 'Snapshot exported' dialog naming the file.
+  const exported = (await messageBoxCalls()).filter((c) => c.title === 'Snapshot exported');
+  expect(exported).toHaveLength(1);
+  expect(String(exported[0].message)).toContain(path.basename(tmpPath));
 
   const snap = JSON.parse(fs.readFileSync(tmpPath, 'utf-8'));
   const cookie = snap.cookies.find((c: { name: string }) => c.name === 'sscookie');
@@ -122,6 +137,10 @@ test('export then import round-trips cookies (incl. sameSite) and seeds storage 
 
   await contextMenuClick(target.id, 'Import snapshot…');
   expect(await errorBoxCalls()).toEqual([]);
+  await expect.poll(async () => (await messageBoxCalls()).filter((c) => c.title === 'Snapshot imported').length).toBe(1);
+  const importedCall = (await messageBoxCalls()).find((c) => c.title === 'Snapshot imported')!;
+  expect(String(importedCall.detail)).toMatch(/\d+ cookies?/);
+  expect(String(importedCall.detail)).toMatch(/\d+ localStorage keys?/);
 
   const importedTab = await getTabPage(app, urlPath, sourceTab);
   await importedTab.waitForLoadState('load');

@@ -3,6 +3,7 @@ import fs from 'fs';
 import type { AppLog } from './appLogger';
 import { loadUrlIgnoringAbort } from './loadUrl';
 import { COLLECT_FRAME_SCRIPT, buildRestoreFrameScript } from './snapshotScripts';
+import { summarizeSnapshot, formatSnapshotResult, type SnapshotResultKind, type SnapshotSummary } from './snapshotSummary';
 // db name → { version, stores: { storeName → { keyPath, autoIncrement, records } } } —
 // shared by session snapshots (FrameSnapshot.indexedDB below) and the live
 // Storage panel's IndexedDB view (SessionManager.getIndexedDB(), which stays
@@ -146,9 +147,10 @@ export class SnapshotManager {
   // original version 1 shape (single implicit frame, storage inline) so
   // older exported snapshot files still import cleanly. Returns any
   // warnings collected along the way for the caller to surface.
-  async restoreSnapshot(id: string, snap: Record<string, unknown>): Promise<string[]> {
+  async restoreSnapshot(id: string, snap: Record<string, unknown>): Promise<{ warnings: string[]; restored: SnapshotSummary }> {
     const s = this.getSession(id);
-    if (!s) return [];
+    const restored = summarizeSnapshot(snap);
+    if (!s) return { warnings: [], restored };
     const warnings: string[] = [];
 
     if (Array.isArray(snap.cookies)) {
@@ -238,7 +240,13 @@ export class SnapshotManager {
       warnings.push('Snapshot includes captured React state (diagnostic only) — component state is not restored on import.');
     }
 
-    return warnings;
+    return { warnings, restored };
+  }
+
+  // One non-blocking native result dialog for export/import (#360); restore
+  // warnings are appended to it so the user sees a single message.
+  showSnapshotResult(kind: SnapshotResultKind, fileName: string, summary: SnapshotSummary | undefined, warnings: string[]): void {
+    dialog.showMessageBox(this.win, formatSnapshotResult({ kind, fileName, summary, warnings }));
   }
 
   showSnapshotWarnings(title: string, warnings: string[]): void {
@@ -274,7 +282,7 @@ export class SnapshotManager {
     if (!result.canceled && result.filePath) {
       try {
         fs.writeFileSync(result.filePath, JSON.stringify(snap, null, 2));
-        this.showSnapshotWarnings('Export snapshot', snap.warnings);
+        this.showSnapshotResult('export', result.filePath, undefined, snap.warnings);
         this.log.info('snapshot', 'Snapshot exported', { sessionId: id });
       } catch (e) {
         dialog.showErrorBox('Export failed', 'Could not write the snapshot file.');
@@ -293,9 +301,9 @@ export class SnapshotManager {
     const snap = this.readSnapshotFile(result.filePaths[0]);
     if (!snap) return;
     try {
-      const warnings = await this.restoreSnapshot(id, snap);
+      const { warnings, restored } = await this.restoreSnapshot(id, snap);
       this.win.webContents.send('tab:action', { action: 'refresh' });
-      this.showSnapshotWarnings('Import snapshot', warnings);
+      this.showSnapshotResult('import', result.filePaths[0], restored, warnings);
       this.log.info('snapshot', 'Snapshot imported', { sessionId: id });
     } catch (e) {
       dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
@@ -317,10 +325,10 @@ export class SnapshotManager {
     const sessionName = typeof snap.sessionName === 'string' && snap.sessionName ? snap.sessionName : 'Imported session';
     const ns = this.deps.createSession(sessionName);
     try {
-      const warnings = await this.restoreSnapshot(ns.id, snap);
+      const { warnings, restored } = await this.restoreSnapshot(ns.id, snap);
       this.deps.switchTo(ns.id);
       this.win.webContents.send('session:newTab', { id: ns.id });
-      this.showSnapshotWarnings('Import session', warnings);
+      this.showSnapshotResult('importNew', result.filePaths[0], restored, warnings);
     } catch {
       dialog.showErrorBox('Import failed', 'Could not apply the session snapshot.');
       this.deps.destroySession(ns.id);
