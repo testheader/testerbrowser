@@ -2053,7 +2053,7 @@ input:checked + .toggle-slider:before { transform: translateX(16px); }
 .flow-steps { list-style: none; margin: 0; padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; flex: 0 0 auto; }
 .flow-step { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--tb-text-2); }
 .flow-step + .flow-step::before { content: '\203A'; color: var(--tb-text-3, var(--tb-text-2)); margin-right: 8px; }
-.flow-step.todo { opacity: 0.6; }
+.flow-step.todo { color: var(--tb-text-3); } /* not opacity: that blended the label to ~3:1 on the light theme */
 .flow-step.current { color: var(--tb-text); font-weight: 600; }
 .flow-step-num { flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 600; background: var(--tb-sunken); color: var(--tb-text-2); border: 1px solid var(--tb-line-strong); }

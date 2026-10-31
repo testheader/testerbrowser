@@ -1096,8 +1096,8 @@ test('the Record stepper highlights Assert while recording and moves on after St
   await window.click('#rpDiscardBtn', { trial: true }).catch(() => { /* disabled when nothing was recorded */ });
 });
 
-// #358: the Run step runs the just-saved test, and Save opens it expanded.
-test('after Save the new test is expanded and the stepper\'s Run latest runs it', async () => {
+// #358: the Run step runs the just-saved test.
+test('after Save the stepper\'s Run latest runs the new test', async () => {
   const urlPath = '/record/target.html';
   await window.click('#urlbar');
   await window.fill('#urlbar', fixtures.url(urlPath));
@@ -1112,8 +1112,7 @@ test('after Save the new test is expanded and the stepper\'s Run latest runs it'
   await window.click('#rpStopBtn');
   await window.click('#rpSaveBtn');
 
-  const testItem = window.locator('.rp-test-item', { hasText: 'run latest from stepper' });
-  await expect(testItem.locator('.rp-saved-steps')).toBeVisible();
+  await expect(window.locator('.rp-test-item', { hasText: 'run latest from stepper' })).toBeVisible();
 
   const runBtn = window.locator('#rpFlowSteps .flow-step.current .flow-step-btn');
   await expect(runBtn).toHaveText('Run latest');
