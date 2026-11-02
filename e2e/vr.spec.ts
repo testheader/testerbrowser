@@ -196,6 +196,23 @@ test('comparing against a different session captures that session\'s screenshot,
   expect(Number(match![1].replace(/,/g, ''))).toBeGreaterThan(0);
 });
 
+test('wizard step 2 hosts the source-tab picker and keeps Compare primary (#363)', async () => {
+  const urlPath = `/vr/solid-color.html?nonce=${Date.now()}-wizard`;
+  await window.click('#urlbar');
+  await window.fill('#urlbar', fixtures.url(urlPath));
+  await window.press('#urlbar', 'Enter');
+  const tab = await getTabPage(app, urlPath);
+  await tab.waitForLoadState('load');
+  await window.click('#consoleTabVR');
+  await startCapture();
+  await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
+  await expect(window.locator('#vrGuide #vrComparePick')).toHaveCount(1);
+  await expect(window.locator('#vrStepCompare')).toHaveClass(/tb-btn-primary/);
+  const first = await window.locator('#vrComparePick option').first().getAttribute('value');
+  await window.selectOption('#vrGuide #vrComparePick', first ?? '');
+  expect(await window.locator('#vrComparePick').inputValue()).toBe(first ?? '');
+});
+
 test('a baseline and current screenshot of different sizes show a visible size-mismatch warning (#238)', async () => {
   const urlPath = '/network/status-codes.html';
   await window.click('#urlbar');

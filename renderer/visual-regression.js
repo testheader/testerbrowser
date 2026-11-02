@@ -126,7 +126,7 @@ export function initVR() {
         <button type="button" class="vr-btn" id="vrImportBaselineBtn" title="Import a baseline (PNG + sidecar JSON) exported from this or another machine">Import…</button>
         <span class="panel-chip vr-baseline-chip" id="vrBaselineChip">None yet</span>
         <span class="vr-bar-sep" aria-hidden="true"></span>
-        <label class="diff-label" title="Tab to capture the 'current' screenshot from when comparing">from
+        <label class="diff-label" id="vrCompareLabel" title="Tab to capture the 'current' screenshot from when comparing">from
           <select class="diff-pick" id="vrComparePick"></select>
         </label>
       </div>
@@ -572,6 +572,15 @@ function currentView() {
 
 // #346: the two-step guide shown until a comparison exists — capture, then
 // compare. Its buttons delegate to the toolbar's, which own the busy state.
+// #363: the "from" picker is one element. While wizard step 2 is active it
+// lives in that step's body; otherwise it sits in the setup bar. Always put it
+// back in the bar first so a re-render never leaves it detached.
+function restoreComparePicker() {
+  const label = document.getElementById('vrCompareLabel');
+  const setup = document.getElementById('vrSetup');
+  if (label && setup && label.parentElement !== setup) setup.appendChild(label);
+}
+
 function renderGuide(d) {
   const steps = guideSteps({ hasBaseline: !!d.baselineB64, hasResult: !!d.result });
   const root = document.createElement('ol');
@@ -619,7 +628,7 @@ function renderGuide(d) {
 
   const two = step(2, steps.compare, 'Compare with the current page',
     steps.compare === 'active'
-      ? 'Interact with the page (or pick another tab under “from”), then compare.'
+      ? 'Interact with the page (or pick another tab below), then compare.'
       : 'Available once a baseline is captured.');
   const cmp = document.createElement('button');
   cmp.type = 'button';
@@ -628,6 +637,8 @@ function renderGuide(d) {
   cmp.textContent = 'Compare';
   cmp.disabled = steps.compare !== 'active';
   cmp.addEventListener('click', () => $('vrCompareBtn').click());
+  const fromLabel = document.getElementById('vrCompareLabel');
+  if (steps.compare === 'active' && fromLabel) two.body.appendChild(fromLabel);
   two.body.appendChild(cmp);
 
   root.append(one.li, two.li);
@@ -638,6 +649,7 @@ function renderImages() {
   const stage = $('vrImages');
   const d = activeData();
   const view = currentView();
+  restoreComparePicker();
 
   document.querySelectorAll('.vr-view-btn').forEach((/** @type {HTMLButtonElement} */ b) => {
     const on = b.dataset.view === view;
