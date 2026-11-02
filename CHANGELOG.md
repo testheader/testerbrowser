@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.159.3 — 2026-11-02
+
+### Other
+
+- Resilience empty-state CTA uses the accent tone like Mock (refs #362) (c973a90)
+
 ## v0.159.2 — 2026-11-02
 
 ### Other
