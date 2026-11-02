@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.161.1 — 2026-11-02
+
+### Other
+
+- A11y empty-state CTA shows its label as text, not a play icon (refs #365) (1810fe7)
+
 ## v0.161.0 — 2026-11-02
 
 ### Features
