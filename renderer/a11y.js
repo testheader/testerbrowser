@@ -40,11 +40,15 @@ const VIEWS = {
 
 // #303: the pre-load state of a view, built with the shared empty state.
 function a11yEmptyState(view) {
-  return renderEmptyState({
+  // #365: the CTA shows its label as text; the title keeps the tooltip the
+  // toolbar refresh button also carries.
+  const el = renderEmptyState({
     icon: 'accessibility', tone: 'accent', title: VIEWS[view].title, text: VIEWS[view].emptyMsg,
-    actionLabel: VIEWS[view].loadLabel, actionIcon: 'play', actionTooltip: VIEWS[view].loadLabel,
+    actionLabel: VIEWS[view].loadLabel,
     onAction: () => document.getElementById('a11yRefreshBtn').click(),
   });
+  el.querySelector('.empty-state-btn')?.setAttribute('title', VIEWS[view].loadLabel);
+  return el;
 }
 
 // #327: the toolbar control is "Load …" until the active view has loaded, "Refresh" after.
