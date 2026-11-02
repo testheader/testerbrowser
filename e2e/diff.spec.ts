@@ -51,8 +51,11 @@ test('before any comparison the panel shows the shared empty state, with no help
   await window.click('#consoleTabDiff');
   await expect(window.locator('#diffBody .empty-state-title')).toHaveText('Network diff');
   await expect(window.locator('#diffBody .empty-state-text')).toHaveText(/^(Pick two sessions to compare their recorded requests\.|Open a second tab, then compare the two tabs' recorded requests\.)$/);
-  // #327: one Compare (the toolbar's), and no result filters until a comparison has run.
-  await expect(window.locator('#diffBody .empty-state-btn')).toHaveCount(0);
+  // #327: no result filters until a comparison has run. #364 reverses the
+  // "no CTA" half: the empty state carries one accent CTA beside the toolbar's Compare.
+  await expect(window.locator('#diffBody .empty-state-btn')).toHaveCount(1);
+  await expect(window.locator('#diffBody .empty-state-btn')).toHaveClass(/tone-accent/);
+  await expect(window.locator('#diffBody .empty-state-btn')).toHaveText('Compare sessions');
   await expect(window.locator('#diffRunBtn')).toHaveText('Compare');
   await expect(window.locator('#diffCatPills')).toBeHidden();
   await expect(window.locator('.diff-empty-steps')).toHaveCount(0);
@@ -118,6 +121,17 @@ test('comparing two sessions categorizes matching and unique requests correctly'
   // Both sessions loaded status-codes.html → same.
   await showAllCategories();
   await expect(window.locator('.diff-row.same', { hasText: '/network/status-codes.html' })).toBeVisible();
+});
+
+test('the empty-state CTA compares the sessions selected in the option bar (#364)', async () => {
+  await window.click('#consoleTabDiff');
+  if (await window.locator('#diffResetBtn').isEnabled()) await window.click('#diffResetBtn');
+  const sessions = await window.evaluate(() => (window as any).testerBrowser.sessions.list());
+  await window.selectOption('#diffPickA', sessions[0].id);
+  await window.selectOption('#diffPickB', sessions[1].id);
+  await window.click('#diffBody .empty-state-btn');
+  await expect(window.locator('.diff-meta')).toBeVisible();
+  expect(await window.locator('#diffPickA').inputValue()).toBe(sessions[0].id);
 });
 
 test('diff shows which sessions (by name) were compared and when', async () => {

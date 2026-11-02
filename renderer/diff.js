@@ -364,7 +364,16 @@ function firstRunState() {
     text: cachedSessions.length < 2
       ? 'Open a second tab, then compare the two tabs\' recorded requests.'
       : 'Pick two sessions to compare their recorded requests.',
-    // #327: the toolbar's Compare is the one call to action.
+    // #364: the CTA shares the option bar's pickers (one state). With fewer
+    // than two tabs there is nothing to compare yet, so it points at the picker.
+    actionLabel: 'Compare sessions',
+    onAction: () => {
+      if (cachedSessions.length < 2) {
+        document.getElementById('diffPickA')?.focus();
+        return;
+      }
+      runDiff();
+    },
   });
 }
 
