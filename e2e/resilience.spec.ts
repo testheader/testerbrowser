@@ -663,6 +663,25 @@ test('Resilience primary button uses the shared accent style (#344)', async () =
   expect(style.height).toBe('32px');
 });
 
+// #362: the empty-state CTA is filled with the accent, like Mock's.
+test('Resilience empty-state CTA uses the accent fill (#362)', async () => {
+  await window.click('#consoleTabResilience');
+  const cta = window.locator('#resEmpty .empty-state-btn');
+  await expect(cta).toBeVisible();
+  const style = await window.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--tb-accent)';
+    probe.style.color = 'var(--tb-on-accent)';
+    document.body.appendChild(probe);
+    const want = { bg: getComputedStyle(probe).backgroundColor, fg: getComputedStyle(probe).color };
+    probe.remove();
+    const btn = getComputedStyle(document.querySelector('#resEmpty .empty-state-btn')!);
+    return { want, bg: btn.backgroundColor, fg: btn.color };
+  });
+  expect(style.bg).toBe(style.want.bg);
+  expect(style.fg).toBe(style.want.fg);
+});
+
 // #345: the add-rule form is a bordered card that doesn't overlap the rules list.
 test('Resilience add-rule form renders as a card separate from the rules list (#345)', async () => {
   await window.click('#consoleTabResilience');

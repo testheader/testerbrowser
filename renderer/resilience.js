@@ -232,7 +232,7 @@ export function initResilience() {
     </div>`;
 
   document.getElementById('resEmpty').replaceChildren(renderEmptyState({
-    icon: 'zap', tone: 'warn', title: 'Resilience',
+    icon: 'zap', tone: 'accent', title: 'Resilience',
     text: 'Inject failures, hangs and latency into matching requests.',
     actionLabel: 'Add rule', onAction: () => setResFormOpen(true),
   }));

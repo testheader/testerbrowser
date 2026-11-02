@@ -9,7 +9,6 @@ const RENDERER_DIR = path.join(__dirname, '..', '..', 'renderer');
 const ALLOW: Record<string, string> = {
   'debuglog.js': 'neutral "Open settings" is a secondary action (ticket owner decision)',
   'record-playback.js': "tone 'err' matches the red record button",
-  'resilience.js': "tone 'warn' has no button style; fixed by #362",
 };
 
 /** Returns the text of each renderEmptyState({ ... }) call (balanced braces). */
