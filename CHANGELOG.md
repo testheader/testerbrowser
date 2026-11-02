@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.159.2 — 2026-11-02
+
+### Other
+
+- primary CTA rule for empty-state buttons across panels (refs #361) (065a29d)
+
 ## v0.159.1 — 2026-10-31
 
 ### Fixes
