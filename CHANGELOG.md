@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.161.0 — 2026-11-02
+
+### Features
+
+- Network diff empty state gets a CTA that also selects the sources (refs #364) (c3818ae)
+
 ## v0.160.0 — 2026-11-02
 
 ### Features
