@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.160.0 — 2026-11-02
+
+### Features
+
+- UI diff wizard lets the user pick the source tab in step 2 (refs #363) (4f49bad)
+
 ## v0.159.3 — 2026-11-02
 
 ### Other
