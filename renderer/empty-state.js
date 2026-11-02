@@ -3,6 +3,13 @@
 // panel; the redesign README's "Empty state" pattern.
 
 /**
+ * Tone rule: a panel's primary call to action uses `tone: 'accent'` (the CTA
+ * gets the accent fill from `.empty-state-btn.tone-accent`). `neutral` is only
+ * the function default and `warn` has no button style. Intentional exceptions
+ * are listed in `src/__tests__/empty-state-cta-tone.test.ts`, which scans
+ * `renderer/*.js` and fails on any other `actionLabel` call without
+ * `tone: 'accent'`.
+ *
  * `icon` is a Lucide name without the "icon-" prefix (e.g. 'circle-dot') and
  * `text` is one sentence; `actionLabel`/`onAction` add the optional button.
  * @param {{

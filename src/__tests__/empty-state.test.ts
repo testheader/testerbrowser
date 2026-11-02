@@ -47,4 +47,15 @@ describe('renderEmptyState (#303)', () => {
     const el = renderEmptyState({ icon: 'x', title: 't', text: 'x' }) as unknown as FakeEl;
     expect(el.children[0].className).toBe('empty-state-icon tone-neutral');
   });
+
+  it('gives the CTA button the accent class when tone is accent (primary CTA rule)', () => {
+    const el = renderEmptyState({ icon: 'x', tone: 'accent', title: 't', text: 'x', actionLabel: 'Go' }) as unknown as FakeEl;
+    expect(el.children[0].className).toBe('empty-state-icon tone-accent');
+    expect(el.children[3].className).toBe('empty-state-btn tone-accent');
+  });
+
+  it('gives the CTA button the neutral class by default', () => {
+    const el = renderEmptyState({ icon: 'x', title: 't', text: 'x', actionLabel: 'Go' }) as unknown as FakeEl;
+    expect(el.children[3].className).toBe('empty-state-btn tone-neutral');
+  });
 });
