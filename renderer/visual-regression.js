@@ -71,7 +71,7 @@ function emptyData() {
     baselineB64: null, baselineId: null, baselineInfo: null,
     currentB64: null, diffDataUrl: null, result: null, stale: false, activeRegion: -1,
     message: '', messageIsError: false,
-    viewMode: 'baseline', compareSessionId: '', threshold: DEFAULT_THRESHOLD, ignoreRegions: [],
+    viewMode: 'baseline', compareSessionId: '', baselineSourceId: '', threshold: DEFAULT_THRESHOLD, ignoreRegions: [],
   };
 }
 
@@ -126,6 +126,9 @@ export function initVR() {
         <button type="button" class="vr-btn" id="vrImportBaselineBtn" title="Import a baseline (PNG + sidecar JSON) exported from this or another machine">Import…</button>
         <span class="panel-chip vr-baseline-chip" id="vrBaselineChip">None yet</span>
         <span class="vr-bar-sep" aria-hidden="true"></span>
+        <label class="diff-label" id="vrBaselineSourceLabel" title="Tab to capture the baseline screenshot from">baseline from
+          <select class="diff-pick" id="vrBaselineSource"></select>
+        </label>
         <label class="diff-label" id="vrCompareLabel" title="Tab to capture the 'current' screenshot from when comparing">from
           <select class="diff-pick" id="vrComparePick"></select>
         </label>
@@ -149,6 +152,7 @@ export function initVR() {
           <span class="vr-hint-inline" id="vrZoomNow" aria-live="polite"></span>
         </div>
         <button type="button" class="vr-btn" id="vrSaveDiffBtn" title="Save the diff image as a PNG, e.g. to attach to a bug report">Save diff…</button>
+        <button type="button" class="vr-btn" id="vrStartOverBtn" title="Clear the baseline and this comparison to start from scratch">Start over</button>
         <button type="button" class="vr-btn" id="vrResetBtn" title="Clear this comparison and pick a page to compare again. The baseline stays.">Reset</button>
       </div>
       <div class="vr-actions">
@@ -262,6 +266,10 @@ export function initVR() {
   $('vrCogBtn').addEventListener('click', () => setSettingsOpen(!settingsOpen));
   $('vrRegionsDoneBtn').addEventListener('click', toggleRegionsEditMode);
   $('vrResetBtn').addEventListener('click', resetCompare);
+  $('vrStartOverBtn').addEventListener('click', startOver);
+  /** @type {HTMLSelectElement} */ ($('vrBaselineSource')).addEventListener('change', (e) => {
+    activeData().baselineSourceId = /** @type {HTMLInputElement} */ (e.target).value;
+  });
   $('vrSaveDiffBtn').addEventListener('click', saveDiff);
   // The page itself is a separate native view, so clicks on it never reach
   // this document — the popover only has to handle clicks in the panel.
@@ -331,6 +339,12 @@ export async function refreshVRComparePicker() {
   const stillValid = current && sessions.some(s => s.id === current);
   pick.value = stillValid ? current : '';
   activeData().compareSessionId = pick.value;
+
+  const src = /** @type {HTMLSelectElement} */ ($('vrBaselineSource'));
+  const srcCurrent = src.value;
+  buildSessionOptions(src, sessions, { extraFirstOption: { value: '', label: 'This tab' } });
+  src.value = srcCurrent && sessions.some(s => s.id === srcCurrent) ? srcCurrent : '';
+  activeData().baselineSourceId = src.value;
 }
 
 // Re-render the panel for the currently active session — called on init and
@@ -343,6 +357,7 @@ export function refreshVR() {
   // newly-active session's own stored preference, not whatever was left
   // showing for the previously active session.
   /** @type {HTMLSelectElement} */ ($('vrComparePick')).value = d.compareSessionId || '';
+  /** @type {HTMLSelectElement} */ ($('vrBaselineSource')).value = d.baselineSourceId || '';
   /** @type {HTMLInputElement} */ ($('vrThreshold')).value = String(d.threshold);
   $('vrThresholdHint').textContent = thresholdHint(d.threshold);
   // Switching sessions leaves regions-edit mode — it's tied to whichever
@@ -423,6 +438,18 @@ function resetCompare() {
   resetComparison(activeData());
   renderAll();
   /** @type {HTMLButtonElement} */ ($('vrCompareBtn')).focus();
+}
+
+// Back to step 1: drop the baseline too, not just the comparison.
+function startOver() {
+  const d = activeData();
+  setRegionsEditMode(false);
+  resetComparison(d);
+  d.baselineB64 = null;
+  d.baselineId = null;
+  d.baselineInfo = null;
+  d.ignoreRegions = [];
+  renderAll();
 }
 
 // Saves the diff image on its own (no sidecar) for attaching to a bug report.
@@ -576,9 +603,11 @@ function currentView() {
 // lives in that step's body; otherwise it sits in the setup bar. Always put it
 // back in the bar first so a re-render never leaves it detached.
 function restoreComparePicker() {
-  const label = document.getElementById('vrCompareLabel');
   const setup = document.getElementById('vrSetup');
-  if (label && setup && label.parentElement !== setup) setup.appendChild(label);
+  for (const id of ['vrBaselineSourceLabel', 'vrCompareLabel']) {
+    const label = document.getElementById(id);
+    if (label && setup && label.parentElement !== setup) setup.appendChild(label);
+  }
 }
 
 function renderGuide(d) {
@@ -623,6 +652,8 @@ function renderGuide(d) {
     btn.className = 'tb-btn-primary';
     btn.textContent = 'Capture baseline';
     btn.addEventListener('click', () => $('vrCaptureBtn').click());
+    const srcLabel = document.getElementById('vrBaselineSourceLabel');
+    if (srcLabel) one.body.appendChild(srcLabel);
     one.body.appendChild(btn);
   }
 
@@ -1153,6 +1184,9 @@ function wireRegionsEditing() {
 async function captureBaseline() {
   if (!getActiveId()) return;
   const sessionId  = getActiveId();
+  // Wizard step 1 can capture the baseline from another tab; the result is
+  // still stored against the active session.
+  const sourceId   = activeData().baselineSourceId || sessionId;
   const captureBtn = /** @type {HTMLButtonElement} */ ($('vrCaptureBtn'));
 
   captureBtn.disabled = true;
@@ -1160,7 +1194,7 @@ async function captureBaseline() {
   const progress = 'Capturing the baseline…';
   setMessage(progress);
 
-  const b64 = await testerBrowser.visualRegression.captureScreenshot(sessionId, { fullPage: isFullPage() });
+  const b64 = await testerBrowser.visualRegression.captureScreenshot(sourceId, { fullPage: isFullPage() });
   let dims = null;
   if (b64) dims = await loadImage(b64).then((img) => ({ w: img.width, h: img.height })).catch(() => null);
   captureBtn.disabled = false;
@@ -1172,7 +1206,7 @@ async function captureBaseline() {
   if (!b64 || !dims) { setMessage('Screenshot failed.', true); return; }
 
   const sessions = await testerBrowser.sessions.list().catch(() => []);
-  const url = sessions.find((s) => s.id === sessionId)?.url || '';
+  const url = sessions.find((s) => s.id === sourceId)?.url || '';
 
   // A fresh baseline invalidates any previous comparison for this session,
   // and — since it's pixel-different from whatever saved baseline (if any)
