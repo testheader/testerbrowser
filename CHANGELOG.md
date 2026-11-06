@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.162.0 — 2026-11-06
+
+### Features
+
+- UI diff wizard — baseline source tab picker in step 1 and Start over button (refs #366) (440074d)
+
 ## v0.161.2 — 2026-11-03
 
 ### Other
