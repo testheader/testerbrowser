@@ -599,14 +599,18 @@ function currentView() {
 
 // #346: the two-step guide shown until a comparison exists — capture, then
 // compare. Its buttons delegate to the toolbar's, which own the busy state.
-// #363: the "from" picker is one element. While wizard step 2 is active it
-// lives in that step's body; otherwise it sits in the setup bar. Always put it
-// back in the bar first so a re-render never leaves it detached.
+// #363/#366: the "from" picker is one element. While the wizard is showing it
+// lives in step 2's body (disabled until a baseline exists, so the second
+// screenshot's source is always where the user looks for it); once a comparison
+// exists the wizard is gone and it sits in the setup bar. Always put it back in
+// the bar first so a re-render never leaves it detached or disabled.
 function restoreComparePicker() {
   const setup = document.getElementById('vrSetup');
   for (const id of ['vrBaselineSourceLabel', 'vrCompareLabel']) {
     const label = document.getElementById(id);
     if (label && setup && label.parentElement !== setup) setup.appendChild(label);
+    const select = label?.querySelector('select');
+    if (select) select.disabled = false;
   }
 }
 
@@ -669,7 +673,11 @@ function renderGuide(d) {
   cmp.disabled = steps.compare !== 'active';
   cmp.addEventListener('click', () => $('vrCompareBtn').click());
   const fromLabel = document.getElementById('vrCompareLabel');
-  if (steps.compare === 'active' && fromLabel) two.body.appendChild(fromLabel);
+  if (fromLabel) {
+    const fromSelect = /** @type {HTMLSelectElement} */ (fromLabel.querySelector('select'));
+    fromSelect.disabled = steps.compare !== 'active';
+    two.body.appendChild(fromLabel);
+  }
   two.body.appendChild(cmp);
 
   root.append(one.li, two.li);

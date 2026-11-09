@@ -84,9 +84,12 @@ test('first run: the setup row is on one line, rules and baseline saving sit beh
   await expect(window.locator('.vr-actions #vrCaptureBtn')).toHaveText('New baseline');
   await expect(window.locator('.vr-actions #vrCaptureBtn')).toBeHidden();
   await expect(window.locator('.vr-actions #vrCompareBtn')).toBeHidden();
-  const barIds = await window.locator('.vr-bar #vrViews, .vr-bar #vrFullPage, .vr-bar #vrBaselinesToggle, .vr-bar #vrComparePick, .vr-bar #vrCaptureBtn, .vr-bar #vrCompareBtn')
+  // #366: the tab pickers belong to the wizard steps, not the bar.
+  const barIds = await window.locator('.vr-bar #vrViews, .vr-bar #vrFullPage, .vr-bar #vrBaselinesToggle, .vr-bar #vrComparePick, .vr-bar #vrBaselineSource, .vr-bar #vrCaptureBtn, .vr-bar #vrCompareBtn')
     .evaluateAll(els => els.map(el => el.id));
-  expect(barIds).toEqual(['vrViews', 'vrFullPage', 'vrBaselinesToggle', 'vrComparePick', 'vrCaptureBtn', 'vrCompareBtn']);
+  expect(barIds).toEqual(['vrViews', 'vrFullPage', 'vrBaselinesToggle', 'vrCaptureBtn', 'vrCompareBtn']);
+  await expect(window.locator('#vrGuide #vrBaselineSource')).toBeEnabled();
+  await expect(window.locator('#vrGuide #vrComparePick')).toBeDisabled();
   await expect(window.locator('#vrStepCapture')).toBeVisible();
   await expect(window.locator('#vrStepCompare')).toBeDisabled();
   await expect(window.locator('#vrViews .vr-view-btn[data-view="diff"]')).toBeDisabled();
@@ -196,6 +199,25 @@ test('comparing against a different session captures that session\'s screenshot,
   expect(Number(match![1].replace(/,/g, ''))).toBeGreaterThan(0);
 });
 
+test('Start over clears the baseline and the comparison and returns to wizard step 1 (#366)', async () => {
+  await captureAndCompareSolidColor('start-over');
+  await expect(window.locator('#vrResultBar')).toBeVisible();
+  await expect(window.locator('#vrViews .vr-view-btn[data-view="diff"]')).toBeEnabled();
+
+  await window.click('#vrStartOverBtn');
+
+  await expect(window.locator('#vrResultBar')).toBeHidden();
+  await expect(window.locator('#vrStepCapture')).toBeVisible();
+  await expect(window.locator('#vrGuide #vrBaselineSource')).toBeEnabled();
+  await expect(window.locator('#vrGuide #vrComparePick')).toBeDisabled();
+  await expect(window.locator('#vrStepCompare')).toBeDisabled();
+  // The view buttons stay in place but have nothing to show until a new baseline exists.
+  await expect(window.locator('#vrViews .vr-view-btn')).toHaveCount(5);
+  for (const v of ['baseline', 'current', 'diff', 'side', 'overlay']) {
+    await expect(window.locator(`#vrViews .vr-view-btn[data-view="${v}"]`)).toBeDisabled();
+  }
+});
+
 test('wizard step 2 hosts the source-tab picker and keeps Compare primary (#363)', async () => {
   const urlPath = `/vr/solid-color.html?nonce=${Date.now()}-wizard`;
   await window.click('#urlbar');
@@ -207,6 +229,7 @@ test('wizard step 2 hosts the source-tab picker and keeps Compare primary (#363)
   await startCapture();
   await expect(window.locator('#vrStepCompare')).toBeEnabled({ timeout: 10_000 });
   await expect(window.locator('#vrGuide #vrComparePick')).toHaveCount(1);
+  await expect(window.locator('#vrGuide #vrComparePick')).toBeEnabled(); // step 2 is active now
   await expect(window.locator('#vrStepCompare')).toHaveClass(/tb-btn-primary/);
   const first = await window.locator('#vrComparePick option').first().getAttribute('value');
   await window.selectOption('#vrGuide #vrComparePick', first ?? '');
