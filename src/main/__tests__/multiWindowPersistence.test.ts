@@ -97,7 +97,7 @@ function makeWindowManager(shared = createSharedPartitionState()): SessionManage
     webContents: { send: jest.fn() },
     getContentBounds: jest.fn(() => ({ x: 0, y: 0, width: 1200, height: 800 })),
   } as unknown as BrowserWindow;
-  return new SessionManager(win, () => false, undefined, undefined, undefined, undefined, shared);
+  return new SessionManager(win, () => false, undefined, undefined, undefined, shared);
 }
 
 describe('multi-window persistence (#367)', () => {

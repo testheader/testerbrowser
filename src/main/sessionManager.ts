@@ -188,6 +188,9 @@ export class SessionManager {
   onFaviconSeen?: (pageUrl: string, faviconUrl: string) => void;
   // #367: set by index.ts; opens a new TesterBrowser window ("Open link in new window").
   openWindow?: (opts: { startUrl?: string; partition?: string; color?: string }) => void;
+  // #367: set by index.ts; opens a new window for a popup that needs window.opener
+  // and returns the webContents Electron should load the popup into.
+  createPopupWindow?: (opts: { name: string; partition: string; color?: string; webContents?: Electron.WebContents }) => Electron.WebContents;
   private win: BrowserWindow;
   private sessions = new Map<string, TestSession>();
   private activeId: string | null = null;
@@ -263,11 +266,6 @@ export class SessionManager {
   // construction) so a Settings change takes effect for the next tab opened,
   // without needing to reconstruct SessionManager itself.
   private getRecorderMaxEvents: () => number;
-  // #270: read fresh on every popup, same reasoning as getRecorderMaxEvents
-  // above — flipping the setting takes effect on the next window.open(),
-  // no restart needed. Defaults closed so existing unit tests that construct
-  // SessionManager directly keep today's deny-and-recreate behaviour.
-  private getAllowRealPopups: () => boolean;
 
   constructor(
     win: BrowserWindow,
@@ -275,7 +273,6 @@ export class SessionManager {
     logger: AppLog = NOOP_LOG,
     onSessionsChanged: () => void = () => {},
     getRecorderMaxEvents: () => number = () => 20000,
-    getAllowRealPopups: () => boolean = () => false,
     // #367: Mock/Resilience rules and Spoof overrides are keyed by partition, so
     // every window's manager is handed the same maps. Omitted = this manager's own.
     shared: SharedPartitionState = createSharedPartitionState()
@@ -286,7 +283,6 @@ export class SessionManager {
     this.log = logger;
     this.onSessionsChanged = onSessionsChanged;
     this.getRecorderMaxEvents = getRecorderMaxEvents;
-    this.getAllowRealPopups = getAllowRealPopups;
     this.shared = shared;
     shared.owners.add(this);
     this.downloadManager = new DownloadManager(win, {
@@ -339,6 +335,28 @@ export class SessionManager {
     this.win.on('resize', () => this.layoutActive());
   }
 
+  // Tabs use the tab preload (never the chrome window's), so a page under test, including a popup, can't reach the app's IPC.
+  private tabWebPreferences(ses: Electron.Session): Electron.WebPreferences {
+    return { session: ses, contextIsolation: true, sandbox: true, preload: NEWTAB_PRELOAD };
+  }
+
+  private makeTabView(ses: Electron.Session): WebContentsView {
+    return new WebContentsView({ webPreferences: this.tabWebPreferences(ses) });
+  }
+
+  /**
+   * The first (and only) tab of a popup window, wired up like any other tab. Electron
+   * creates the popup's webContents itself (it is what keeps window.opener linked) and
+   * requires the window to be built around exactly that one, so the view adopts it.
+   */
+  createPopupTab(opts: { name: string; partition: string; color?: string; webContents?: Electron.WebContents }): Electron.WebContents {
+    const ses = electronSession.fromPartition(opts.partition);
+    const view = opts.webContents ? new WebContentsView({ webContents: opts.webContents }) : this.makeTabView(ses);
+    const s = this.createSession(opts.name, { partition: opts.partition, color: opts.color, adoptView: view });
+    this.switchTo(s.id);
+    return view.webContents;
+  }
+
   /** True if `wc` is one of this window's tab webContents (used to route IPC from a tab, e.g. the new-tab page). */
   ownsWebContents(wc: Electron.WebContents): boolean {
     return this.ownsWebContentsId(wc.id);
@@ -389,7 +407,13 @@ export class SessionManager {
 
   createSession(
     name: string,
-    opts: { persistent?: boolean; startUrl?: string; partition?: string; color?: string; pinned?: boolean; id?: string } = {}
+    opts: {
+      persistent?: boolean; startUrl?: string; partition?: string; color?: string; pinned?: boolean; id?: string;
+      // #367: a view whose webContents Electron handed to a popup (setWindowOpenHandler's
+      // createWindow). Wired up like any tab, but not navigated here: Electron loads the
+      // popup's URL into it itself, keeping window.opener.
+      adoptView?: WebContentsView;
+    } = {}
   ): TestSession {
     // #268: loadAndRestoreSessions() passes the id a persistent session was
     // last saved with, so its id — and therefore its notes, keyed by id —
@@ -411,9 +435,7 @@ export class SessionManager {
     this.downloadManager.attach(ses, id);
     this.permissionManager.attach(ses, partition);
 
-    const view = new WebContentsView({
-      webPreferences: { session: ses, contextIsolation: true, sandbox: true, preload: NEWTAB_PRELOAD },
-    });
+    const view = opts.adoptView ?? this.makeTabView(ses);
 
     const recorder = new SessionRecorder(view.webContents, {
       sessionId: id,
@@ -697,7 +719,9 @@ export class SessionManager {
 
     // A load superseded by another navigation (e.g. a clone navigating straight
     // to the source URL) rejects with ERR_ABORTED — expected, not an error.
-    if (opts.startUrl) {
+    if (opts.adoptView) {
+      // Electron navigates a popup's webContents itself.
+    } else if (opts.startUrl) {
       Promise.resolve(view.webContents.loadURL(opts.startUrl)).catch(() => {});
     } else {
       Promise.resolve(view.webContents.loadFile(NEWTAB_FILE)).catch(() => {});
@@ -904,39 +928,21 @@ export class SessionManager {
       this.setZoom(id, zoomDirection === 'in' ? 0.1 : -0.1);
     });
 
-    view.webContents.setWindowOpenHandler(({ url }) => {
+    // #367: routing is by Electron's disposition. window.open(url, name, 'width=...') (any
+    // features string) is a popup: it gets its own full TesterBrowser window, in the opener's
+    // partition and colour, and its first tab keeps window.opener (OAuth, payment flows;
+    // Chromium withholds the opener itself for noopener). Everything else (target=_blank,
+    // window.open(url), middle-click) is a tab: deny and recreate it as a tracked tab, as before.
+    view.webContents.setWindowOpenHandler(({ url, disposition }) => {
       if (!isSafeUrl(url)) return { action: 'deny' };
-      // #270: opt-in "real popup" path for flows that depend on
-      // window.opener/postMessage back to the opener (OAuth consent,
-      // payment-provider popups) — the deny-and-recreate path below always
-      // breaks that, since it loads the URL into a brand-new, disconnected
-      // WebContentsView rather than letting Chromium open a linked window.
-      // Returning action:'allow' lets Chromium keep the opener linkage
-      // automatically (it already withholds it on its own for a page that
-      // requested noopener, regardless of what we return here — nothing
-      // extra needed for that case). overrideBrowserWindowOptions shares the
-      // opener's own session/partition so the popup sees the same
-      // cookies/login state.
-      //
-      // This intentionally does NOT attempt to make the popup a tracked tab
-      // (sessions:list()/the tab strip) or attach a SessionRecorder to it.
-      // Electron's action:'allow' path (with no `createWindow` override)
-      // always builds a genuine separate native BrowserWindow — fundamentally
-      // a different construct from this app's WebContentsView-embedded,
-      // single-window tab model, which TestSession/switchTo/the layout
-      // system are all built around. The only way to make the popup a real
-      // tab is `createWindow` returning our own WebContentsView's
-      // webContents instead of letting Electron build a BrowserWindow — that
-      // path is real (Electron's own docs mention it for exactly this use
-      // case), but requires extracting/duplicating createSession()'s ~470
-      // lines of per-tab wiring (CDP message handling, navigation/title/
-      // favicon forwarding), which isn't something this change can safely
-      // verify without a real Electron display to run it against. Recording
-      // that's attached but has no UI to view it wouldn't give testers real
-      // visibility either. Settling for "shows as an unmanaged native
-      // window, closable normally" per this ticket's own fallback.
-      if (this.getAllowRealPopups()) {
-        return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: { session: ses } } };
+      if (disposition === 'new-window' && this.createPopupWindow) {
+        const createPopupWindow = this.createPopupWindow;
+        return {
+          action: 'allow',
+          // Electron builds the popup's webContents from these; same partition as the opener, tab preload only.
+          overrideBrowserWindowOptions: { webPreferences: this.tabWebPreferences(ses) },
+          createWindow: (options) => createPopupWindow({ name: getHostname(url), partition, color, webContents: (options as { webContents?: Electron.WebContents }).webContents }),
+        };
       }
       setImmediate(() => {
         const newSession = this.createSession(getHostname(url), { partition, startUrl: url, color });

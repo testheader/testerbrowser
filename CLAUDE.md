@@ -20,11 +20,23 @@ Electron desktop app purpose-built for software testers. Two core features:
 ## File map
 
 ```
-src/main/index.ts          Main process bootstrap: BrowserWindow, app menu, autoUpdater, crash
-                           detection. Builds the shared AppDeps bundle (getters for state
-                           assigned after module load, plus shared helpers) and calls each
-                           src/main/ipc/*.ts module's register() to wire up IPC — the
+src/main/index.ts          Main process bootstrap: app menu, autoUpdater, crash detection, and
+                           the WindowRegistry (one BrowserWindow + SessionManager per window).
+                           Builds the shared AppDeps bundle (getters that resolve the calling
+                           window from the IPC event's sender, plus shared helpers) and calls
+                           each src/main/ipc/*.ts module's register() to wire up IPC — the
                            ipcMain.handle() calls themselves no longer live here.
+src/main/windowContext.ts  WindowContext ({ id, win, sessionManager, visualRegressionStore }) and
+                           WindowRegistry: create / all / focused / forWebContents (a window's
+                           chrome renderer or any of its tabs) / remove.
+src/main/partitionState.ts State keyed by session *partition*, shared by every window's
+                           SessionManager: Mock and Resilience rules, Spoof overrides, the
+                           permission store, the per-session webRequest hook set and the
+                           live-tab count per partition.
+src/main/sessionPersistence.ts  open-sessions.json: buildSessionsFile / parseSessionsFile. One
+                           `windows[]` entry per window; notes, emulation and mocks are shared
+                           at the top level; a flat `sessions` array is kept for older builds;
+                           the pre-multi-window shape reads as one window.
 src/main/ipc/              One file per feature area, each exporting register(deps) (or
                            register(deps, extraStores) for modules with their own JsonStore),
                            registering that area's ipcMain.handle() channels. deps.ts holds the
@@ -176,7 +188,8 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `app:captureScreenshot` / `session:captureScreenshot` | R→M | screenshot of the app window / of a tab (`{ fullPage? }`) |
 | `crash:check` / `crash:clear` | R→M | read / dismiss the previous-run crash report |
 | `clipboard:write` | R→M | write text to the OS clipboard |
-| `window:minimize/maximize/close/isMaximized` | R→M | custom title-bar controls |
+| `window:minimize/maximize/close/isMaximized` | R→M | custom title-bar controls — act on the sender's window |
+| `window:new` | R→M | open another full TesterBrowser window (Ctrl+N, File ▸ New window, app menu) |
 | `settings:get/set` | R→M | app settings (`set` takes a validated patch — `settingsPatch.ts`) |
 | `theme:get/set` | R→M | colour scheme |
 | `speeddial:get/set` | R→M | new-tab page tiles |
@@ -212,6 +225,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `app:shortcut` | M→R | keyboard shortcut forwarded from BrowserView |
 | `update:status` | M→R | autoUpdater status |
 | `show:settings` | M→R | open settings modal (from Help menu) |
+| `app:broadcast` | M→R | `{ kind: 'theme' \| 'settings' \| 'bookmarks' }` — another window changed app-wide state; sent to every chrome window except the sender, which re-reads what it shows (`renderer/app-broadcast.js`) |
 | `download:update` | M→R | download progress/state |
 | `download:cleared` | M→R | completed downloads cleared |
 | `permission:request` | M→R | browser permission prompt needed — carries `sessionId` so the prompt can name its tab (and `externalUrl` for `openExternal`), auto-denies after 60s unanswered |
@@ -232,6 +246,7 @@ carry extra data) and stay as their own branches in both
 | Keys | Behaviour |
 |---|---|
 | `Ctrl+T` | New tab |
+| `Ctrl+N` | New window |
 | `Ctrl+W` | Close tab (pinned tabs protected) |
 | `Ctrl+Shift+T` | Reopen last closed tab |
 | `Ctrl+Tab / Ctrl+Shift+Tab` | Cycle tabs by MRU |
@@ -249,6 +264,7 @@ carry extra data) and stay as their own branches in both
 | `Ctrl+0` | Reset zoom |
 | `Middle-click tab` | Close tab (pinned tabs protected) |
 | `Middle-click link` | Open in new tab, same session partition + colour |
+| `Right-click link` | Context menu: open in new tab / new window (both keep the tab's partition + colour), copy link address |
 | `Right-click tab` | Context menu: rename, pin, clone, notes, close |
 | `Double-click tab name` | Inline rename |
 | `Drag tab` | Reorder tabs |
@@ -341,7 +357,10 @@ npm run dist:win          # Full Windows installer build + publish
 - **`getLocalStorage`/`getSessionStorage`/`getIndexedDB` are page-scoped** — `executeJavaScript` runs in the currently loaded page's origin. Navigating to a new page changes what's visible.
 - **Session colour inheritance** — when `setWindowOpenHandler` fires (window.open or middle-click), the new session is created with the parent session's `color` captured in the `createSession` closure. Context-menu "Open link in new tab" does the same.
 - **Session snapshot export/import cannot restore in-memory JS/React state** — "Export snapshot…" / "Import snapshot…" (tab context menu, `sessionManager.ts`) capture cookies, localStorage, sessionStorage, IndexedDB, form field values, scroll position and `history.state`, per-frame (main frame + same-page iframes, via `WebFrameMain.framesInSubtree`). React (or any framework) component state that never gets persisted to storage is *not* restorable — there's no supported API to feed state back into arbitrary components. `snapshotScripts.ts`'s `COLLECT_FRAME_SCRIPT` will, best-effort, dump React state through the `__REACT_DEVTOOLS_GLOBAL_HOOK__` when present, but that dump is diagnostic-only (`reactState` field) and is never applied on import. Snapshot files are versioned (`version: 2`); v1 files (single implicit frame, storage inline) still import via a compatibility path in `restoreSnapshot`.
-- **Download `sessionId` attribution is per-partition, not per-tab** (#247) — `DownloadManager.attach(ses, sessionId)` hooks `will-download` once per Electron `session` (a `WeakSet` guard), so every `DownloadInfo` from a shared partition carries whichever tab's id first called `attach()` on it, not necessarily the tab that actually triggered a later download on that same partition.
+- **Several windows, one Electron `session` per partition** (#367) — each window has its own `SessionManager`, but an Electron session (and its `will-download`, permission and `webRequest` hooks, which allow one handler each) is shared by every tab on that partition, in any window. So those hooks are installed once per session (module-level `WeakSet`s in `downloadManager.ts`/`permissionManager.ts`, `shared.hookedPartitions` for `webRequest`) and route to the manager whose window owns the requesting `webContents`. A new session-wide hook must do the same; installing it per manager makes the last window win. Download `sessionId` is now the tab that started it (from the `will-download` `webContents`).
+- **IPC handlers must resolve their window from the event** (#367) — use `getWin(e)` / `getSessionManager(e)` / `getVisualRegressionStore(e)` with the invoke event, never a module-level window. Menus, the updater and `second-instance` use `getFocusedWin()` / `registry.focused()`. A save must go through `saveAllSessions()` (`SessionManager.saveAll`), not one manager's own `saveSessions()`, or it overwrites the other windows' tabs; a closed window's tabs stay in `open-sessions.json` until quit (`closedWindowStates`).
+- **`window.open` routing is by Electron's `disposition`** (#367) — no features string (`target=_blank`, `window.open(url)`, middle-click) is a tab: deny and recreate it. A features string (`'width=…'`) is a popup: `setWindowOpenHandler` returns `action: 'allow'` with `overrideBrowserWindowOptions` (opener's partition, tab preload) and a `createWindow` that opens a full window whose first tab *adopts* `options.webContents` (`createSession({ adoptView })`). Electron requires the window to be built around exactly that `webContents` (otherwise it throws "Invalid webContents"), and loads the URL itself, so the tab keeps `window.opener`. There is no "Allow real popups" setting any more.
+- **Stalls and crashes leave a trace in `main.log`** (#210) — the main-process event-loop watchdog (`stallWatchdog.ts`), `child-process-gone`, tab `render-process-gone`/`unresponsive`/`responsive` and CDP debugger `detach` are logged. Don't `log.*` once per request or per rule hit: each call is a synchronous file rewrite, SQLite insert and file append on the main thread (`HitLogThrottle` rate-limits the Resilience hit line).
 
 ---
 

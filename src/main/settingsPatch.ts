@@ -19,7 +19,6 @@ export interface AppSettings {
   recordingRetentionDays: number;
   autoOpenDownloadsPanel: boolean;
   autoInstallWhenIdle: boolean;
-  allowRealPopups: boolean;
   disabledConsoleTabs: string[];
   idleInstallMinutes: number;
   settingsVersion: number;
@@ -81,10 +80,6 @@ export function applySettingsPatch(current: AppSettings, patch: unknown): AppSet
 
   if (typeof patch.autoInstallWhenIdle === 'boolean') {
     next.autoInstallWhenIdle = patch.autoInstallWhenIdle;
-  }
-
-  if (typeof patch.allowRealPopups === 'boolean') {
-    next.allowRealPopups = patch.allowRealPopups;
   }
 
   if (typeof patch.searchEngine === 'string' && SEARCH_ENGINES.has(patch.searchEngine)) {

@@ -132,6 +132,7 @@ The same list is in **Settings → Shortcuts**.
 | Keys | Action |
 |------|--------|
 | `Ctrl+T` | New tab |
+| `Ctrl+N` | New window |
 | `Ctrl+W` | Close tab |
 | `Ctrl+Shift+T` | Reopen last closed tab |
 | `Ctrl+Tab / Ctrl+Shift+Tab` | Cycle tabs (MRU) |

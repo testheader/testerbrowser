@@ -262,7 +262,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   recorderMaxEvents: 20000,
   recordingRetentionDays: 30,
   autoInstallWhenIdle: true,
-  allowRealPopups: false,
   disabledConsoleTabs: [],
   idleInstallMinutes: IDLE_INSTALL_MINUTES,
   settingsVersion: SETTINGS_VERSION,
@@ -290,6 +289,8 @@ const settingsStore   = new JsonStore<AppSettings>('settings.json', DEFAULT_SETT
     settingsMigrated = true;
   }
   merged.settingsVersion = SETTINGS_VERSION;
+  // allowRealPopups was removed (#367): popups now always open as full windows.
+  delete (merged as unknown as Record<string, unknown>).allowRealPopups;
   // #229: a hand-edited or stale settings.json could carry an out-of-range
   // or malformed value — clamp on load the same way settings:set does.
   merged.recorderMaxEvents = clampNumberSetting(
@@ -379,11 +380,16 @@ function buildWindow(): Omit<WindowContext, 'id'> {
   const sessionManager = new SessionManager(
     win, () => settingsStore.get().redactSensitiveHeaders, log, persistSessionUrls,
     () => settingsStore.get().recorderMaxEvents,
-    () => settingsStore.get().allowRealPopups,
     sharedPartitionState
   );
   sessionManager.saveAll = saveAllSessions;
   sessionManager.openWindow = (opts) => createWindow([], undefined, opts);
+  sessionManager.createPopupWindow = (opts) => {
+    const popup = registry.create({ partition: opts.partition, color: opts.color });
+    const wc = popup.sessionManager.createPopupTab(opts);
+    popup.win.focus();
+    return wc;
+  };
   win.on('closed', () => sessionManager.dispose());
   win.on('close', () => {
     closedWindowStates.push(sessionManager.collectSaveState());

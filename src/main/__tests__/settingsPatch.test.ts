@@ -11,7 +11,6 @@ const BASE: AppSettings = {
   recordingRetentionDays: 30,
   autoOpenDownloadsPanel: false,
   autoInstallWhenIdle: false,
-  allowRealPopups: false,
   disabledConsoleTabs: [],
   idleInstallMinutes: 15,
   settingsVersion: 2,
@@ -69,9 +68,10 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
     expect(applySettingsPatch(BASE, { autoInstallWhenIdle: 'yes' }).autoInstallWhenIdle).toBe(false);
   });
 
-  it('applies allowRealPopups and ignores a wrong-typed value (#270)', () => {
-    expect(applySettingsPatch(BASE, { allowRealPopups: true }).allowRealPopups).toBe(true);
-    expect(applySettingsPatch(BASE, { allowRealPopups: 'yes' }).allowRealPopups).toBe(false);
+  it('ignores allowRealPopups, which was removed (#367)', () => {
+    const next = applySettingsPatch(BASE, { allowRealPopups: true });
+    expect(next).toEqual(BASE);
+    expect('allowRealPopups' in next).toBe(false);
   });
 
   it('applies securityIncludeSubresources and ignores a wrong-typed value (#240)', () => {

@@ -98,7 +98,6 @@ export async function openSettings() {
   /** @type {HTMLInputElement} */ (document.getElementById('debugModeToggle')).checked = !!settings.debugMode;
   /** @type {HTMLInputElement} */ (document.getElementById('autoOpenDownloadsPanelToggle')).checked = !!settings.autoOpenDownloadsPanel;
   /** @type {HTMLInputElement} */ (document.getElementById('autoInstallWhenIdleToggle')).checked = !!settings.autoInstallWhenIdle;
-  /** @type {HTMLInputElement} */ (document.getElementById('allowRealPopupsToggle')).checked = !!settings.allowRealPopups;
   /** @type {HTMLSelectElement} */ (document.getElementById('searchEngineSelect')).value = settings.searchEngine || 'google';
   /** @type {HTMLInputElement} */ (document.getElementById('recorderMaxEventsInput')).value = settings.recorderMaxEvents ?? 20000;
   /** @type {HTMLInputElement} */ (document.getElementById('recordingRetentionDaysInput')).value = settings.recordingRetentionDays ?? 30;
@@ -227,9 +226,6 @@ export function initSettings() {
   });
   /** @type {HTMLInputElement} */ (document.getElementById('autoOpenDownloadsPanelToggle')).addEventListener('change', (e) => {
     testerBrowser.settings.set({ autoOpenDownloadsPanel: /** @type {HTMLInputElement} */ (e.target).checked });
-  });
-  /** @type {HTMLInputElement} */ (document.getElementById('allowRealPopupsToggle')).addEventListener('change', (e) => {
-    testerBrowser.settings.set({ allowRealPopups: /** @type {HTMLInputElement} */ (e.target).checked });
   });
 
   /** @type {HTMLSelectElement} */ (document.getElementById('searchEngineSelect')).addEventListener('change', (e) => {
