@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.162.3 — 2026-11-09
+
+### Other
+
+- second window via Ctrl+N, File menu, app menu and link context menu (refs #367) (4f33d57)
+
 ## v0.162.2 — 2026-11-09
 
 ### Other
