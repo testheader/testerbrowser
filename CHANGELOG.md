@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.163.0 — 2026-11-09
+
+### Features
+
+- popups open as full TesterBrowser windows that keep window.opener; remove Allow real popups (refs #367) (6d6e73a)
+
 ## v0.162.3 — 2026-11-09
 
 ### Other
