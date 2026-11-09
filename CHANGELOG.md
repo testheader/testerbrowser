@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.164.0 — 2026-11-09
+
+### Features
+
+- UI diff wizard keeps the second screenshot's tab picker in step 2, disabled until a baseline exists (refs #366) (67699fd)
+
 ## v0.163.0 — 2026-11-09
 
 ### Features
