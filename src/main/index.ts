@@ -6,6 +6,8 @@ import { SessionManager, getHostname } from './sessionManager';
 import { VisualRegressionStore } from './visualRegressionStore';
 import { WindowRegistry, WindowContext } from './windowContext';
 import { startStallWatchdog } from './stallWatchdog';
+import { createSharedPartitionState } from './partitionState';
+import { buildSessionsFile, parseSessionsFile, WindowSaveState } from './sessionPersistence';
 import { firstHttpUrl } from './singleInstance';
 import { installIpcGuard } from './ipcGuard';
 import { canAutoInstall, IDLE_INSTALL_MINUTES, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX } from './idleInstall';
@@ -47,6 +49,15 @@ import { registerTestsIpc } from './ipc/tests';
 // window. IPC handlers resolve theirs from the invoke event's sender (see appDeps below);
 // menus, the updater and second-instance use the focused window.
 const registry = new WindowRegistry(buildWindow);
+// Mock/Resilience rules and Spoof overrides are per partition, so every window shares them.
+const sharedPartitionState = createSharedPartitionState();
+// Save state of windows that have been closed this run. A closed window's persistent
+// tabs stay in open-sessions.json (restored as a window next launch) rather than
+// vanishing when its manager goes away; the last window closing before quit relies on this too.
+const closedWindowStates: WindowSaveState[] = [];
+// Managers whose window is closing: already captured in closedWindowStates, so skipped as live.
+const closingManagers = new WeakSet<SessionManager>();
+let sessionsFilePath = '';
 
 // --- App-level error log (for bug reports — main process errors, not site console errors) ---
 
@@ -368,28 +379,60 @@ function buildWindow(): Omit<WindowContext, 'id'> {
   const sessionManager = new SessionManager(
     win, () => settingsStore.get().redactSensitiveHeaders, log, persistSessionUrls,
     () => settingsStore.get().recorderMaxEvents,
-    () => settingsStore.get().allowRealPopups
+    () => settingsStore.get().allowRealPopups,
+    sharedPartitionState
   );
+  sessionManager.saveAll = saveAllSessions;
+  win.on('close', () => {
+    closedWindowStates.push(sessionManager.collectSaveState());
+    closingManagers.add(sessionManager);
+  });
   sessionManager.onFaviconSeen = (pageUrl, faviconUrl) => {
     void cacheFavicon(faviconCache, pageUrl, faviconUrl, (u) => net.fetch(u, { bypassCustomProtocolHandlers: true }));
   };
   return { win, sessionManager, visualRegressionStore: new VisualRegressionStore(win) };
 }
 
-// Opens a window and bootstraps its tabs.
-function createWindow() {
+// Writes every window's persistent tabs (open and already-closed) to open-sessions.json.
+function saveAllSessions() {
+  if (!sessionsFilePath) return;
+  try {
+    const live = registry.all()
+      .filter((c) => !closingManagers.has(c.sessionManager))
+      .map((c) => c.sessionManager.collectSaveState());
+    writeJsonAtomic(sessionsFilePath, buildSessionsFile([...live, ...closedWindowStates]));
+  } catch (e) {
+    log.warn('sessions', 'Failed to save sessions to disk', { error: String(e) });
+  }
+}
+
+// Opens the windows saved by the previous run, or one default window if there are none.
+function openInitialWindows() {
+  let saved = parseSessionsFile(null);
+  try { saved = parseSessionsFile(JSON.parse(fs.readFileSync(sessionsFilePath, 'utf-8'))); } catch { /* no saved file yet, or unreadable: start fresh */ }
+  if (saved.windows.length === 0) createWindow();
+  else for (const w of saved.windows) createWindow(w.sessions, saved);
+
+  // #229: runs on every startup regardless of whether a restore happened.
+  // Recordings of tabs open in any window are kept.
+  const managers = registry.all().map((c) => c.sessionManager);
+  const openIds = managers.flatMap((m) => m.listSessions().map((s: { id: string }) => s.id));
+  managers[0]?.cleanupOldRecordings(settingsStore.get().recordingRetentionDays, openIds)
+    .catch((e) => log.warn('sessions', 'Failed to clean up old recordings on startup', { error: String(e) }));
+}
+
+// Opens a window and fills it with the given saved tabs, or a default tab.
+function createWindow(
+  savedTabs: Parameters<SessionManager['restoreWindow']>[0] = [],
+  extras: Parameters<SessionManager['restoreWindow']>[1] = { notes: {}, emulation: {}, mocks: {} }
+) {
   const { sessionManager } = registry.create();
 
-  const restored = sessionManager.loadAndRestoreSessions();
+  const restored = sessionManager.restoreWindow(savedTabs, extras);
   if (!restored) {
     const first = sessionManager.createSession('Default', { persistent: true });
     sessionManager.switchTo(first.id);
   }
-  // #229: runs on every startup regardless of whether a restore happened —
-  // previously only ran from inside loadAndRestoreSessions(), so a user who
-  // started with no saved tabs never got old recordings cleaned up.
-  sessionManager.cleanupOldRecordings(settingsStore.get().recordingRetentionDays)
-    .catch((e) => log.warn('sessions', 'Failed to clean up old recordings on startup', { error: String(e) }));
 
   const menu = Menu.buildFromTemplate([
     {
@@ -440,6 +483,7 @@ if (!gotSingleInstanceLock) {
     crashLogPath    = path.join(app.getPath('userData'), 'crash-log.json');
     appErrorsPath   = path.join(app.getPath('userData'), 'app-errors.json');
     sessionUrlsPath = path.join(app.getPath('userData'), 'session-urls.json');
+    sessionsFilePath = path.join(app.getPath('userData'), 'open-sessions.json');
     logsDir         = path.join(app.getPath('userData'), 'logs');
     debugLogStore   = new DebugLogStore(path.join(app.getPath('userData'), 'debug-log.sqlite'));
 
@@ -494,7 +538,7 @@ if (!gotSingleInstanceLock) {
       onStall: (lagMs) => log.warn('app', `Main process event loop stalled for ~${Math.round(lagMs)}ms`),
     });
 
-    createWindow();
+    openInitialWindows();
     log.info('app', `App started: ${app.getVersion()} on ${process.platform}`);
 
     if (app.isPackaged) {
@@ -606,7 +650,7 @@ if (!gotSingleInstanceLock) {
 app.on('before-quit', () => {
   normalQuit = true;
   log.info('app', 'App quitting');
-  for (const c of registry.all()) c.sessionManager.saveSessions();
+  saveAllSessions();
   // Clean exit: remove the crash sentinel, any leftover crash log, and this
   // session's durable error/URL state — none of it describes a crash.
   // silent: best-effort cleanup on quit; nothing meaningful to report during shutdown
@@ -653,7 +697,7 @@ function restartAndInstall() {
   // app.quit() itself, but does so via setImmediate after starting the
   // installer, not through the normal before-quit path in time to matter,
   // so the persisted state has to already be on disk before this returns.
-  for (const c of registry.all()) c.sessionManager.saveSessions();
+  saveAllSessions();
   persistSessionUrls();
   autoUpdater.quitAndInstall(true, true);
 }

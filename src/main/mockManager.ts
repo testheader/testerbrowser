@@ -255,10 +255,12 @@ export type ImportPromptResult =
 
 export class MockManager {
   private win: BrowserWindow;
-  private rulesByPartition = new Map<string, MockRule[]>();
+  private rulesByPartition: Map<string, MockRule[]>;
 
-  constructor(win: BrowserWindow) {
+  // rulesByPartition is shared by every window's manager when given (#367).
+  constructor(win: BrowserWindow, rulesByPartition: Map<string, MockRule[]> = new Map()) {
     this.win = win;
+    this.rulesByPartition = rulesByPartition;
   }
 
   // Seeds an empty rule bucket for a partition that's never had one — called

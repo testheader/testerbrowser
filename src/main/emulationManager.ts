@@ -125,14 +125,20 @@ export interface EmulationSessionRef {
 export class EmulationManager {
   private log: AppLog;
   private getSession: (id: string) => EmulationSessionRef | undefined;
-  private byPartition = new Map<string, EmulationOverrides>();
+  private byPartition: Map<string, EmulationOverrides>;
   // CDP script identifier of the injected Date-override shim, keyed by
   // session id (a tab's own debugger, not shared across a partition).
   private dateOverrideScripts = new Map<string, string>();
 
-  constructor(log: AppLog, getSession: (id: string) => EmulationSessionRef | undefined) {
+  // byPartition is shared by every window's manager when given (#367).
+  constructor(
+    log: AppLog,
+    getSession: (id: string) => EmulationSessionRef | undefined,
+    byPartition: Map<string, EmulationOverrides> = new Map()
+  ) {
     this.log = log;
     this.getSession = getSession;
+    this.byPartition = byPartition;
   }
 
   private warnCdpFailure(sessionId: string, command: string, e: unknown) {

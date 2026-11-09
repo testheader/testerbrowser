@@ -8,6 +8,8 @@ import { DownloadManager } from './downloadManager';
 import { PermissionManager, PermissionRecord } from './permissionManager';
 import { AppLog } from './appLogger';
 import { HitLogThrottle } from './hitLogThrottle';
+import { SharedPartitionState, createSharedPartitionState } from './partitionState';
+import { buildSessionsFile, parseSessionsFile, SavedSession, WindowSaveState } from './sessionPersistence';
 import {
   MockManager, MockRule, buildMockFulfillParams, buildMockPreflightParams,
 } from './mockManager';
@@ -232,7 +234,7 @@ export class SessionManager {
   // future reopen, may still need the entry. Resilience rules aren't
   // persisted to disk (see #209's/#264's "Out of scope").
   private mockManager: MockManager;
-  private resilienceManager = new ResilienceManager();
+  private resilienceManager: ResilienceManager;
   private resilienceHitLog = new HitLogThrottle();
   // #241: emulation overrides live in EmulationManager (#255), scoped by
   // partition the same way — a partition with no entry there has never had
@@ -271,7 +273,10 @@ export class SessionManager {
     logger: AppLog = NOOP_LOG,
     onSessionsChanged: () => void = () => {},
     getRecorderMaxEvents: () => number = () => 20000,
-    getAllowRealPopups: () => boolean = () => false
+    getAllowRealPopups: () => boolean = () => false,
+    // #367: Mock/Resilience rules and Spoof overrides are keyed by partition, so
+    // every window's manager is handed the same maps. Omitted = this manager's own.
+    shared: SharedPartitionState = createSharedPartitionState()
   ) {
     this.win = win;
     this.dbDir = path.join(app.getPath('userData'), 'recordings');
@@ -282,7 +287,8 @@ export class SessionManager {
     this.getAllowRealPopups = getAllowRealPopups;
     this.downloadManager = new DownloadManager(win);
     this.a11yService = new A11yService(this.log);
-    this.mockManager = new MockManager(win);
+    this.mockManager = new MockManager(win, shared.mockRules);
+    this.resilienceManager = new ResilienceManager(shared.resilienceRules);
     // #276: lets a permission prompt name the tab it belongs to — looked up
     // by the *requesting* webContents id (not the partition, unlike
     // DownloadManager's attribution), so it's correct even for two tabs
@@ -293,7 +299,7 @@ export class SessionManager {
     this.emulationManager = new EmulationManager(this.log, (id) => {
       const s = this.sessions.get(id);
       return s ? { partition: s.partition, webContents: s.view.webContents, defaultUserAgent: s.defaultUserAgent } : undefined;
-    });
+    }, shared.emulation);
     this.snapshotManager = new SnapshotManager(
       win, this.log,
       (id) => {
@@ -1059,62 +1065,88 @@ export class SessionManager {
     this.tabOrder = order;
   }
 
+  // With several windows open, one window must not overwrite open-sessions.json with
+  // only its own tabs: index.ts sets this to a function that gathers every window's
+  // collectSaveState() into the one file (#367).
+  saveAll?: () => void;
+
   saveSessions() {
+    if (this.saveAll) { this.saveAll(); return; }
     try {
-      const orderIndex = new Map(this.tabOrder.map((id, i) => [id, i]));
-      const persistentSessions = Array.from(this.sessions.values()).filter(s => s.persistent);
-      const sessions = persistentSessions
-        .sort((a, b) => (orderIndex.get(a.id) ?? Infinity) - (orderIndex.get(b.id) ?? Infinity))
-        // #268: `id` is new — saved (and, on the next load, passed back into
-        // createSession) so a persistent session's id, and anything keyed by
-        // it (notes, its recording file), survives a restart instead of
-        // getting a fresh random id every launch. A file from before this
-        // field existed just has restored sessions get fresh ids again, same
-        // as always — see the notes-migration comment below.
-        .map(s => ({ id: s.id, name: s.name, partition: s.partition, url: s.currentUrl, color: s.color, pinned: s.pinned }));
-      // #268: keyed by session id, not partition — two persistent tabs
-      // sharing a partition ("New tab in this session") used to collide on
-      // a single partition-keyed slot here, silently losing whichever one
-      // didn't iterate last. Only persistent sessions are kept: a temporary
-      // session's notes have no corresponding entry in `sessions` above to
-      // ever be reattached to, so keeping them would just grow the file
-      // forever.
-      const notes: Record<string, string> = {};
-      for (const [id, note] of this.sessionNotes) {
-        const s = this.sessions.get(id);
-        if (s && s.persistent && note) notes[id] = note;
-      }
-      const emulation: Record<string, EmulationOverrides> = {};
-      for (const s of persistentSessions) {
-        const applied = this.emulationManager.getByPartition(s.partition);
-        if (applied && Object.keys(applied).length > 0) emulation[s.partition] = applied;
-      }
-      // #264: keyed by partition, like emulation above — mockRulesByPartition
-      // already is. hitCount/lastHitAt are reset in the saved copy: a hit
-      // count is this run's traffic, not something worth restoring stale
-      // across a restart. Temp sessions never contribute here since they're
-      // filtered out of persistentSessions above.
-      const mocks: Record<string, MockRule[]> = {};
-      for (const s of persistentSessions) {
-        const rules = this.mockManager.peek(s.partition);
-        if (rules && rules.length > 0) {
-          mocks[s.partition] = rules.map(r => ({ ...r, hitCount: 0, lastHitAt: null }));
-        }
-      }
-      writeJsonAtomic(this.sessionsFile, { sessions, notes, emulation, mocks });
+      writeJsonAtomic(this.sessionsFile, buildSessionsFile([this.collectSaveState()]));
     } catch (e) {
       this.log.warn('sessions', 'Failed to save sessions to disk', { error: String(e) });
     }
   }
 
+  /** This window's persistent tabs (in tab-strip order) plus the notes/overrides/rules that belong to them. */
+  collectSaveState(): WindowSaveState {
+    const orderIndex = new Map(this.tabOrder.map((id, i) => [id, i]));
+    const persistentSessions = Array.from(this.sessions.values()).filter(s => s.persistent);
+    const sessions = persistentSessions
+      .sort((a, b) => (orderIndex.get(a.id) ?? Infinity) - (orderIndex.get(b.id) ?? Infinity))
+      // #268: `id` is new — saved (and, on the next load, passed back into
+      // createSession) so a persistent session's id, and anything keyed by
+      // it (notes, its recording file), survives a restart instead of
+      // getting a fresh random id every launch. A file from before this
+      // field existed just has restored sessions get fresh ids again, same
+      // as always — see the notes-migration comment below.
+      .map(s => ({ id: s.id, name: s.name, partition: s.partition, url: s.currentUrl, color: s.color, pinned: s.pinned }));
+    // #268: keyed by session id, not partition — two persistent tabs
+    // sharing a partition ("New tab in this session") used to collide on
+    // a single partition-keyed slot here, silently losing whichever one
+    // didn't iterate last. Only persistent sessions are kept: a temporary
+    // session's notes have no corresponding entry in `sessions` above to
+    // ever be reattached to, so keeping them would just grow the file
+    // forever.
+    const notes: Record<string, string> = {};
+    for (const [id, note] of this.sessionNotes) {
+      const s = this.sessions.get(id);
+      if (s && s.persistent && note) notes[id] = note;
+    }
+    const emulation: Record<string, EmulationOverrides> = {};
+    for (const s of persistentSessions) {
+      const applied = this.emulationManager.getByPartition(s.partition);
+      if (applied && Object.keys(applied).length > 0) emulation[s.partition] = applied;
+    }
+    // #264: keyed by partition, like emulation above — mockRulesByPartition
+    // already is. hitCount/lastHitAt are reset in the saved copy: a hit
+    // count is this run's traffic, not something worth restoring stale
+    // across a restart. Temp sessions never contribute here since they're
+    // filtered out of persistentSessions above.
+    const mocks: Record<string, MockRule[]> = {};
+    for (const s of persistentSessions) {
+      const rules = this.mockManager.peek(s.partition);
+      if (rules && rules.length > 0) {
+        mocks[s.partition] = rules.map(r => ({ ...r, hitCount: 0, lastHitAt: null }));
+      }
+    }
+    return { sessions, notes, emulation, mocks };
+  }
+
+  /** Restores the first saved window's tabs into this window. */
   loadAndRestoreSessions(): boolean {
     try {
       if (!fs.existsSync(this.sessionsFile)) return false;
-      const { sessions, notes, emulation, mocks } = JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8'));
+      const file = parseSessionsFile(JSON.parse(fs.readFileSync(this.sessionsFile, 'utf-8')));
+      const first = file.windows[0];
+      return first ? this.restoreWindow(first.sessions, file) : false;
+    } catch { return false; }
+  }
+
+  /**
+   * Recreates one saved window's tabs here. `extras` is the file's shared
+   * notes/emulation/mocks — only the entries for these tabs are used.
+   */
+  restoreWindow(
+    sessions: SavedSession[],
+    { notes, emulation, mocks }: Pick<WindowSaveState, 'notes' | 'emulation' | 'mocks'>
+  ): boolean {
+    try {
       if (!sessions?.length) return false;
       const restored: { partition: string; sess: TestSession }[] = [];
       for (const s of sessions) {
-        const sess = this.createSession(s.name, { id: s.id, partition: s.partition, startUrl: s.url, color: s.color, pinned: s.pinned });
+        const sess = this.createSession(s.name, { id: s.id, partition: s.partition, startUrl: s.url ?? undefined, color: s.color, pinned: s.pinned });
         restored.push({ partition: s.partition, sess });
         // Re-apply persisted overrides through setEmulation (not just record
         // them on s.emulation) so the CDP commands / date-offset script are
@@ -1173,9 +1205,10 @@ export class SessionManager {
   // #229: public and called unconditionally by index.ts on every startup
   // (previously only ran from inside loadAndRestoreSessions(), so a user who
   // started with no saved tabs never got old recordings cleaned up).
-  async cleanupOldRecordings(maxAgeDays = 30) {
+  // `otherOpenIds`: tabs open in other windows, whose recordings must not be treated as stale (#367).
+  async cleanupOldRecordings(maxAgeDays = 30, otherOpenIds: Iterable<string> = []) {
     const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-    const openIds = new Set(Array.from(this.sessions.keys()));
+    const openIds = new Set([...this.sessions.keys(), ...otherOpenIds]);
     try {
       const files = await fs.promises.readdir(this.dbDir);
       for (const f of files) {

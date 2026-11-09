@@ -69,7 +69,8 @@ export function pickResilienceRule(
 }
 
 export class ResilienceManager {
-  private rulesByPartition = new Map<string, ResilienceRule[]>();
+  // Shared by every window's manager when given (#367).
+  constructor(private rulesByPartition: Map<string, ResilienceRule[]> = new Map()) {}
 
   // Seeds an empty rule bucket for a partition that's never had one — called
   // once, from SessionManager.createSession(), for the first tab ever to
