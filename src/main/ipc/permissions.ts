@@ -5,11 +5,11 @@ import type { AppDeps } from './deps';
 export function registerPermissionsIpc(deps: AppDeps): void {
   const { getSessionManager } = deps;
 
-  ipcMain.handle('permission:respond', (_e, reqId: string, granted: boolean) =>
-    getSessionManager()?.respondPermission(reqId, granted)
+  ipcMain.handle('permission:respond', (e, reqId: string, granted: boolean) =>
+    getSessionManager(e)?.respondPermission(reqId, granted)
   );
-  ipcMain.handle('permission:list', (_e, id: string) => getSessionManager()?.listPermissions(id) ?? []);
-  ipcMain.handle('permission:revoke', (_e, id: string, origin: string, permission: string) =>
-    getSessionManager()?.revokePermission(id, origin, permission) ?? false
+  ipcMain.handle('permission:list', (e, id: string) => getSessionManager(e)?.listPermissions(id) ?? []);
+  ipcMain.handle('permission:revoke', (e, id: string, origin: string, permission: string) =>
+    getSessionManager(e)?.revokePermission(id, origin, permission) ?? false
   );
 }

@@ -320,6 +320,12 @@ export class SessionManager {
     this.win.on('resize', () => this.layoutActive());
   }
 
+  /** True if `wc` is one of this window's tab webContents (used to route IPC from a tab, e.g. the new-tab page). */
+  ownsWebContents(wc: Electron.WebContents): boolean {
+    for (const s of this.sessions.values()) if (s.view.webContents === wc) return true;
+    return false;
+  }
+
   // #227: shared by the many `dbg.sendCommand(...).catch(...)` call sites
   // below that were previously silent — a rejected CDP command means an
   // override, mock response or cleanup step silently never took effect.

@@ -10,6 +10,7 @@ import {
   findProjectBoardId, projectItemWasAdded,
 } from '../bugReportFormat';
 import type { JsonStore } from '../jsonFile';
+import type { BrowserWindow } from 'electron';
 import type { AppDeps } from './deps';
 
 // GitHub token for the in-app bug reporter is encrypted at rest via OS-level
@@ -94,7 +95,8 @@ export function registerBugreportIpc(deps: AppDeps, stores: BugReportIpcStores):
     }
   }
 
-  async function pollDeviceFlow(deviceCode: string, intervalSecs: number, expiresAt: number, signal: AbortSignal) {
+  async function pollDeviceFlow(win: BrowserWindow | null, deviceCode: string, intervalSecs: number, expiresAt: number, signal: AbortSignal) {
+    const notify = (payload: { ok: boolean; error?: string }) => { if (win && !win.isDestroyed()) win.webContents.send('bugreport:oauthDone', payload); };
     let pollInterval = intervalSecs;
     while (Date.now() < expiresAt && !signal.aborted) {
       await new Promise<void>((resolve) => {
@@ -114,21 +116,21 @@ export function registerBugreportIpc(deps: AppDeps, stores: BugReportIpcStores):
         };
         if (data.access_token) {
           saveGithubToken(data.access_token, data.refresh_token ?? null, data.refresh_token_expires_in ?? null);
-          getWin()?.webContents.send('bugreport:oauthDone', { ok: true });
+          notify({ ok: true });
           return;
         }
         if (data.error === 'slow_down') pollInterval = (data.interval ?? pollInterval) + 5;
         else if (data.error === 'access_denied' || data.error === 'expired_token') {
-          getWin()?.webContents.send('bugreport:oauthDone', { ok: false, error: data.error });
+          notify({ ok: false, error: data.error });
           return;
         }
         // 'authorization_pending' → keep polling
       } catch { /* network hiccup — keep polling */ }
     }
-    if (!signal.aborted) getWin()?.webContents.send('bugreport:oauthDone', { ok: false, error: 'expired_token' });
+    if (!signal.aborted) notify({ ok: false, error: 'expired_token' });
   }
 
-  ipcMain.handle('bugreport:startOAuth', async () => {
+  ipcMain.handle('bugreport:startOAuth', async (e) => {
     oauthPollAbort?.abort();
     oauthPollAbort = new AbortController();
     try {
@@ -142,7 +144,7 @@ export function registerBugreportIpc(deps: AppDeps, stores: BugReportIpcStores):
       if (!data.device_code || !data.user_code) return { ok: false, error: 'Invalid response from GitHub' };
       shell.openExternal(data.verification_uri ?? 'https://github.com/login/device');
       const expiresAt = Date.now() + (data.expires_in ?? 900) * 1000;
-      pollDeviceFlow(data.device_code, data.interval ?? 5, expiresAt, oauthPollAbort.signal)
+      pollDeviceFlow(getWin(e), data.device_code, data.interval ?? 5, expiresAt, oauthPollAbort.signal)
         .catch((e) => log.warn('bugreport', 'Device flow polling failed unexpectedly', { error: String(e) }));
       return { ok: true, user_code: data.user_code, verification_uri: data.verification_uri, expires_in: data.expires_in };
     } catch (e: unknown) {
@@ -215,7 +217,7 @@ export function registerBugreportIpc(deps: AppDeps, stores: BugReportIpcStores):
 
   ipcMain.handle('bugreport:getDiagnostics', () => getDiagnosticsData());
 
-  ipcMain.handle('app:captureScreenshot', () => getSessionManager()?.captureAppScreenshot() ?? null);
+  ipcMain.handle('app:captureScreenshot', (e) => getSessionManager(e)?.captureAppScreenshot() ?? null);
 
   // Default diagnostics text — mirrors renderer/bugreport.js's own preview formatting
   // exactly, so what the user sees (and can edit) matches what gets posted verbatim.

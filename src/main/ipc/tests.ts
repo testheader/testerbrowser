@@ -26,8 +26,8 @@ export function registerTestsIpc(deps: AppDeps, stores: TestsIpcStores): void {
   // always minted fresh on import. `id` omitted exports every saved test in
   // one file; passed, exports just that one test — same testerBrowserTests/
   // tests wire shape either way, so import handles both uniformly.
-  ipcMain.handle('tests:exportTests', async (_e, id?: string) => {
-    const win = getWin();
+  ipcMain.handle('tests:exportTests', async (e, id?: string) => {
+    const win = getWin(e);
     if (!win) return { ok: false, error: 'No window' };
     const all = testsStore.get();
     const toExport = id ? all.filter(t => t.id === id) : all;
@@ -52,8 +52,8 @@ export function registerTestsIpc(deps: AppDeps, stores: TestsIpcStores): void {
   // #274: valid tests are appended with fresh ids — an import never replaces
   // or reorders what's already saved. A name collision with an existing saved
   // test appends " (imported)" rather than silently overwriting it.
-  ipcMain.handle('tests:importTests', async () => {
-    const win = getWin();
+  ipcMain.handle('tests:importTests', async (e) => {
+    const win = getWin(e);
     if (!win) return { ok: false, error: 'No window' };
     const result = await dialog.showOpenDialog(win, {
       title: 'Import Tests',

@@ -51,7 +51,7 @@ export function registerBookmarksIpc(_deps: AppDeps, stores: BookmarksIpcStores)
   });
 
   // #340: cached site icons for the Speed Dial tiles, keyed by origin.
-  ipcMain.handle('favicons:get', (_e, urls: unknown) =>
+  ipcMain.handle('favicons:get', (e, urls: unknown) =>
     Array.isArray(urls) ? faviconCache.lookup(urls.slice(0, 200)) : {});
 
   ipcMain.handle('speeddial:get', () => speedDialStore.get());

@@ -29,10 +29,11 @@ export const NEWTAB_CHANNELS: ReadonlySet<string> = new Set([
 
 type SenderEvent = Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>;
 
-export function isAllowedIpcSender(channel: string, e: SenderEvent, appWebContents: WebContents | null): boolean {
+export function isAllowedIpcSender(channel: string, e: SenderEvent, appWebContents: WebContents | readonly WebContents[] | null): boolean {
   const frame = e.senderFrame;
   if (!frame || frame.parent) return false; // gone, or an iframe
-  if (appWebContents && e.sender === appWebContents) return true;
+  const chrome = appWebContents ? ([] as WebContents[]).concat(appWebContents as WebContents | WebContents[]) : [];
+  if (chrome.includes(e.sender)) return true;
   return NEWTAB_CHANNELS.has(channel) && isTrustedNewtabFrame(frame);
 }
 
@@ -41,8 +42,8 @@ export function senderOrigin(e: SenderEvent): string {
 }
 
 export interface IpcGuardOptions {
-  // The chrome window's webContents, or null before it exists.
-  getAppWebContents: () => WebContents | null;
+  // Every chrome window's webContents (#367), or null/empty before one exists.
+  getAppWebContents: () => WebContents | readonly WebContents[] | null;
   onReject: (channel: string, origin: string) => void;
 }
 

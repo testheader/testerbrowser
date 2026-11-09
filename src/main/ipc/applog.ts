@@ -24,7 +24,7 @@ export function registerApplogIpc(deps: AppDeps): void {
   // #228: the updater's own log.error('updater', …) calls (source='updater',
   // ctx carrying status/currentVersion/latestVersion) are the data source,
   // replacing the old update-errors.jsonl file.
-  ipcMain.handle('app:getUpdateLog', () =>
+  ipcMain.handle('app:getUpdateLog', (e) =>
     (getDebugLogStore()?.getEntriesBySource('updater') ?? [])
       .filter(e => e.level === 'error')
       .map(toUpdateLogEntry)

@@ -49,6 +49,20 @@ describe('isAllowedIpcSender', () => {
   });
 });
 
+describe('isAllowedIpcSender with several chrome windows (#367)', () => {
+  const otherAppWc = { id: 3 } as unknown as WebContents;
+
+  it("trusts every chrome window's top-level frame", () => {
+    expect(isAllowedIpcSender('sessions:list', ev(appWc, APP_URL), [appWc, otherAppWc])).toBe(true);
+    expect(isAllowedIpcSender('sessions:list', ev(otherAppWc, APP_URL), [appWc, otherAppWc])).toBe(true);
+  });
+
+  it('still rejects a tab, and an iframe inside a second chrome window', () => {
+    expect(isAllowedIpcSender('sessions:list', ev(tabWc, 'https://site-under-test.example/'), [appWc, otherAppWc])).toBe(false);
+    expect(isAllowedIpcSender('sessions:list', ev(otherAppWc, 'https://evil.test/', {}), [appWc, otherAppWc])).toBe(false);
+  });
+});
+
 describe('installIpcGuard', () => {
   function fakeIpc() {
     const handlers = new Map<string, (e: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();

@@ -1,4 +1,5 @@
 import { ipcMain, net, safeStorage } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import {
   toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile,
   formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
@@ -71,9 +72,9 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
   // independent and best-effort, so one failing to produce data (e.g. no
   // steps recorded) just means that file is left out, not that the whole
   // attach step fails.
-  async function buildJiraEvidenceFiles(sessionId: string, attach: JiraAttachOptions): Promise<{ filename: string; data: Buffer; contentType: string }[]> {
+  async function buildJiraEvidenceFiles(e: IpcMainInvokeEvent, sessionId: string, attach: JiraAttachOptions): Promise<{ filename: string; data: Buffer; contentType: string }[]> {
     const files: { filename: string; data: Buffer; contentType: string }[] = [];
-    const sessionManager = getSessionManager();
+    const sessionManager = getSessionManager(e);
     if (!sessionManager) return files;
 
     if (attach.screenshot) {
@@ -142,7 +143,7 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
     }
   });
 
-  ipcMain.handle('jira:createIssue', async (_e, summary: string, description: string, opts?: { linkTo?: string; sessionId?: string; attach?: JiraAttachOptions }) => {
+  ipcMain.handle('jira:createIssue', async (e, summary: string, description: string, opts?: { linkTo?: string; sessionId?: string; attach?: JiraAttachOptions }) => {
     const s = jiraStore.get();
     const token = getJiraToken(jiraStore);
     if (!s.baseUrl || !s.email || !token || !s.projectKey) return { ok: false, error: 'Jira not configured' };
@@ -189,7 +190,7 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
       // that already exists — each file's own outcome is reported instead.
       let attachments: JiraAttachmentUploadResult[] | undefined;
       if (opts?.attach && opts.sessionId) {
-        const files = await buildJiraEvidenceFiles(opts.sessionId, opts.attach);
+        const files = await buildJiraEvidenceFiles(e, opts.sessionId, opts.attach);
         attachments = [];
         for (const f of files) {
           attachments.push(await uploadJiraAttachment(s.baseUrl, s.email, token, key, f.filename, f.data, f.contentType));

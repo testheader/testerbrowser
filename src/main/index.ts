@@ -4,6 +4,7 @@ import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, getHostname } from './sessionManager';
 import { VisualRegressionStore } from './visualRegressionStore';
+import { WindowRegistry, WindowContext } from './windowContext';
 import { firstHttpUrl } from './singleInstance';
 import { installIpcGuard } from './ipcGuard';
 import { canAutoInstall, IDLE_INSTALL_MINUTES, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX } from './idleInstall';
@@ -41,9 +42,10 @@ import { registerJiraIpc } from './ipc/jira';
 import { registerBugreportIpc, BugReportSettings } from './ipc/bugreport';
 import { registerTestsIpc } from './ipc/tests';
 
-let win: BrowserWindow | null = null;
-let sessionManager: SessionManager | null = null;
-let visualRegressionStore: VisualRegressionStore | null = null;
+// #367: one WindowContext (BrowserWindow + SessionManager + VisualRegressionStore) per
+// window. IPC handlers resolve theirs from the invoke event's sender (see appDeps below);
+// menus, the updater and second-instance use the focused window.
+const registry = new WindowRegistry(buildWindow);
 
 // --- App-level error log (for bug reports — main process errors, not site console errors) ---
 
@@ -96,7 +98,7 @@ const gotSingleInstanceLock =
 // bundled new-tab page. See ipcGuard.ts. Installed here, before the
 // register*Ipc() calls at the bottom of this file.
 installIpcGuard(ipcMain, {
-  getAppWebContents: () => (win && !win.isDestroyed() ? win.webContents : null),
+  getAppWebContents: () => registry.all().map((c) => c.win.webContents),
   onReject: (channel, origin) => recordAppError(`Rejected untrusted IPC call to '${channel}' from ${origin}`, 'warn'),
 });
 
@@ -155,7 +157,7 @@ function writeCrashLog(startedAt: string, recentErrors: AppErrorEntry[], session
 // passed into its constructor below).
 function persistSessionUrls() {
   if (!sessionUrlsPath) return;
-  const urls = (sessionManager?.listSessions() ?? []).map((s: { url?: string }) => s.url ?? '').filter(Boolean);
+  const urls = registry.all().flatMap((c) => c.sessionManager.listSessions()).map((s: { url?: string }) => s.url ?? '').filter(Boolean);
   writeJsonAtomic(sessionUrlsPath, urls);
 }
 
@@ -324,15 +326,19 @@ const bugReportStore = new JsonStore<BugReportSettings>('bugreport-settings.json
 // ---
 
 function pushUpdateStatus() {
-  win?.webContents.send('update:status', {
-    status: updateStatus,
-    current: app.getVersion(),
-    latest: latestVersion,
-  });
+  for (const c of registry.all()) {
+    c.win.webContents.send('update:status', {
+      status: updateStatus,
+      current: app.getVersion(),
+      latest: latestVersion,
+    });
+  }
 }
 
-function createWindow() {
-  win = new BrowserWindow({
+// Builds one window and everything that belongs to it. Handed to the registry so
+// WindowRegistry.create() stays testable without Electron.
+function buildWindow(): Omit<WindowContext, 'id'> {
+  const win = new BrowserWindow({
     width: 1400,
     height: 900,
     frame: false,
@@ -348,8 +354,8 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
 
-  win.on('maximize',   () => win?.webContents.send('window:maximizedChanged', true));
-  win.on('unmaximize', () => win?.webContents.send('window:maximizedChanged', false));
+  win.on('maximize',   () => win.webContents.send('window:maximizedChanged', true));
+  win.on('unmaximize', () => win.webContents.send('window:maximizedChanged', false));
 
   win.webContents.on('render-process-gone', (_e, details) => recordAppError(`Chrome UI render process gone: ${details.reason}`));
   win.webContents.on('unresponsive', () => recordAppError('Chrome UI became unresponsive'));
@@ -358,7 +364,7 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  sessionManager = new SessionManager(
+  const sessionManager = new SessionManager(
     win, () => settingsStore.get().redactSensitiveHeaders, log, persistSessionUrls,
     () => settingsStore.get().recorderMaxEvents,
     () => settingsStore.get().allowRealPopups
@@ -366,7 +372,12 @@ function createWindow() {
   sessionManager.onFaviconSeen = (pageUrl, faviconUrl) => {
     void cacheFavicon(faviconCache, pageUrl, faviconUrl, (u) => net.fetch(u, { bypassCustomProtocolHandlers: true }));
   };
-  visualRegressionStore = new VisualRegressionStore(win);
+  return { win, sessionManager, visualRegressionStore: new VisualRegressionStore(win) };
+}
+
+// Opens a window and bootstraps its tabs.
+function createWindow() {
+  const { sessionManager } = registry.create();
 
   const restored = sessionManager.loadAndRestoreSessions();
   if (!restored) {
@@ -383,17 +394,17 @@ function createWindow() {
     {
       label: 'File',
       submenu: [
-        { label: 'Import session…', click: () => sessionManager?.importSessionAsNewDialog() },
+        { label: 'Import session…', click: () => registry.focused()?.sessionManager.importSessionAsNewDialog() },
       ],
     },
     {
       label: 'Help',
       submenu: [
-        { label: 'About / Settings', click: () => win?.webContents.send('show:settings') },
+        { label: 'About / Settings', click: () => registry.focused()?.win.webContents.send('show:settings') },
         {
           label: 'Report bug…',
           accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => win?.webContents.send('show:bugreport'),
+          click: () => registry.focused()?.win.webContents.send('show:bugreport'),
         },
       ],
     },
@@ -409,13 +420,15 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
-    if (!win) return;
+    const ctx = registry.focused();
+    if (!ctx) return;
+    const { win, sessionManager } = ctx;
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
 
     const url = firstHttpUrl(argv);
-    if (url && sessionManager) {
+    if (url) {
       const ns = sessionManager.createSession(getHostname(url), { startUrl: url, persistent: true });
       win.webContents.send('session:newTab', { id: ns.id });
     }
@@ -578,7 +591,7 @@ if (!gotSingleInstanceLock) {
 app.on('before-quit', () => {
   normalQuit = true;
   log.info('app', 'App quitting');
-  sessionManager?.saveSessions();
+  for (const c of registry.all()) c.sessionManager.saveSessions();
   // Clean exit: remove the crash sentinel, any leftover crash log, and this
   // session's durable error/URL state — none of it describes a crash.
   // silent: best-effort cleanup on quit; nothing meaningful to report during shutdown
@@ -605,7 +618,7 @@ app.on('before-quit', () => {
 process.on('exit', () => {
   if (normalQuit || !sentinelPath) return;
   try {
-    const sessions = sessionManager?.listSessions() ?? [];
+    const sessions = registry.all().flatMap((c) => c.sessionManager.listSessions());
     const sessionUrls = sessions.map((s: { url?: string }) => s.url ?? '').filter(Boolean);
     writeCrashLog(sessionStartedAt || new Date().toISOString(), getRecentErrors(), sessionUrls);
     fs.unlinkSync(sentinelPath);
@@ -625,7 +638,7 @@ function restartAndInstall() {
   // app.quit() itself, but does so via setImmediate after starting the
   // installer, not through the normal before-quit path in time to matter,
   // so the persisted state has to already be on disk before this returns.
-  sessionManager?.saveSessions();
+  for (const c of registry.all()) c.sessionManager.saveSessions();
   persistSessionUrls();
   autoUpdater.quitAndInstall(true, true);
 }
@@ -663,8 +676,11 @@ function checkIdleInstall() {
     stopIdleInstallTimer();
     return;
   }
-  const downloads = sessionManager?.listDownloads() ?? [];
-  const busy = sessionManager?.isBusy() ?? { recording: false, following: false, playing: false };
+  const managers = registry.all().map((c) => c.sessionManager);
+  const downloads = managers.flatMap((m) => m.listDownloads());
+  const busy = managers.map((m) => m.isBusy()).reduce(
+    (a, b) => ({ recording: a.recording || b.recording, following: a.following || b.following, playing: a.playing || b.playing }),
+    { recording: false, following: false, playing: false });
   const decision = canAutoInstall({
     enabled: settings.autoInstallWhenIdle,
     status: updateStatus,
@@ -697,10 +713,17 @@ function checkIdleInstall() {
 // over a `let`, so it's read fresh at call time regardless of when
 // createWindow() actually constructs sessionManager/win.
 
+// The window an IPC call belongs to: the sender's own, falling back to the focused
+// one for senders that belong to none (or when no event is given).
+function ctxFor(e?: { sender: Electron.WebContents }): WindowContext | null {
+  return (e && registry.forWebContents(e.sender)) || registry.focused();
+}
+
 const appDeps: AppDeps = {
-  getWin: () => win,
-  getSessionManager: () => sessionManager,
-  getVisualRegressionStore: () => visualRegressionStore,
+  getWin: (e) => ctxFor(e)?.win ?? null,
+  getSessionManager: (e) => ctxFor(e)?.sessionManager ?? null,
+  getVisualRegressionStore: (e) => ctxFor(e)?.visualRegressionStore ?? null,
+  getFocusedWin: () => registry.focused()?.win ?? null,
   getDebugLogStore: () => debugLogStore,
   getLogsDir: () => logsDir,
   log,

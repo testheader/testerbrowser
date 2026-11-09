@@ -5,9 +5,9 @@ import type { AppDeps } from './deps';
 export function registerDownloadsIpc(deps: AppDeps): void {
   const { getSessionManager } = deps;
 
-  ipcMain.handle('download:list',   () => getSessionManager()?.listDownloads() ?? []);
-  ipcMain.handle('download:open',   (_e, id: string) => getSessionManager()?.openDownload(id));
-  ipcMain.handle('download:reveal', (_e, id: string) => getSessionManager()?.revealDownload(id));
-  ipcMain.handle('download:cancel', (_e, id: string) => getSessionManager()?.cancelDownload(id));
-  ipcMain.handle('download:clear',  () => getSessionManager()?.clearDownloads());
+  ipcMain.handle('download:list',   (e) => getSessionManager(e)?.listDownloads() ?? []);
+  ipcMain.handle('download:open',   (e, id: string) => getSessionManager(e)?.openDownload(id));
+  ipcMain.handle('download:reveal', (e, id: string) => getSessionManager(e)?.revealDownload(id));
+  ipcMain.handle('download:cancel', (e, id: string) => getSessionManager(e)?.cancelDownload(id));
+  ipcMain.handle('download:clear',  (e) => getSessionManager(e)?.clearDownloads());
 }

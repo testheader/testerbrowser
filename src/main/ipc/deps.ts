@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron';
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import type { SessionManager } from '../sessionManager';
 import type { VisualRegressionStore } from '../visualRegressionStore';
 import type { DebugLogStore } from '../debugLogStore';
@@ -22,14 +22,18 @@ import type { AppLog } from '../appLogger';
 // update info to actually download it with.
 export type UpdateStatus = 'checking' | 'available' | 'available-manual' | 'downloading' | 'downloaded' | 'not-available' | 'error';
 
+/** The invoke event whose sender picks the window (#367). Omitted = the focused window (menus, updater). */
+export type SenderLike = Pick<IpcMainInvokeEvent, 'sender'>;
+
 export interface AppDeps {
-  getWin: () => BrowserWindow | null;
-  getSessionManager: () => SessionManager | null;
-  getVisualRegressionStore: () => VisualRegressionStore | null;
+  getWin: (e?: SenderLike) => BrowserWindow | null;
+  getSessionManager: (e?: SenderLike) => SessionManager | null;
+  getVisualRegressionStore: (e?: SenderLike) => VisualRegressionStore | null;
   getDebugLogStore: () => DebugLogStore | null;
   getLogsDir: () => string;
   log: AppLog;
   recordAppError: (message: string) => void;
+  getFocusedWin: () => BrowserWindow | null;
   persistSessionUrls: () => void;
 }
 

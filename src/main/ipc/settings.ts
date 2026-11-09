@@ -28,9 +28,9 @@ export function registerSettingsIpc(deps: AppDeps, stores: SettingsIpcStores): v
   });
 
   ipcMain.handle('theme:get', () => themeStore.get().scheme);
-  ipcMain.handle('theme:set', (_e, scheme: string) => {
+  ipcMain.handle('theme:set', (e, scheme: string) => {
     const value = scheme === 'light' ? 'light' : 'dark';
     themeStore.set({ scheme: value });
-    getSessionManager()?.broadcastTheme(value);
+    getSessionManager(e)?.broadcastTheme(value);
   });
 }

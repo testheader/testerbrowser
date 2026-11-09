@@ -7,12 +7,12 @@ import type { AppDeps } from './deps';
 export function registerRecordingIpc(deps: AppDeps): void {
   const { getSessionManager } = deps;
 
-  ipcMain.handle('recording:timeline',  (_e, id: string, opts) => getSessionManager()?.getTimeline(id, opts) ?? []);
-  ipcMain.handle('recording:status',    (_e, id: string) => getSessionManager()?.getRecordingStatus(id) ?? null);
-  ipcMain.handle('recording:oldestId',  (_e, id: string) => getSessionManager()?.getOldestEventId(id) ?? null);
-  ipcMain.handle('recording:exportHar', (_e, id: string) => getSessionManager()?.exportHarDialog(id) ?? { ok: false, error: 'No session manager' });
-  ipcMain.handle('recording:getRequestPostData', (_e, id: string, requestId: string) =>
-    getSessionManager()?.getRequestPostData(id, requestId) ?? { postData: undefined }
+  ipcMain.handle('recording:timeline',  (e, id: string, opts) => getSessionManager(e)?.getTimeline(id, opts) ?? []);
+  ipcMain.handle('recording:status',    (e, id: string) => getSessionManager(e)?.getRecordingStatus(id) ?? null);
+  ipcMain.handle('recording:oldestId',  (e, id: string) => getSessionManager(e)?.getOldestEventId(id) ?? null);
+  ipcMain.handle('recording:exportHar', (e, id: string) => getSessionManager(e)?.exportHarDialog(id) ?? { ok: false, error: 'No session manager' });
+  ipcMain.handle('recording:getRequestPostData', (e, id: string, requestId: string) =>
+    getSessionManager(e)?.getRequestPostData(id, requestId) ?? { postData: undefined }
   );
 
   // #233: replays used to always go through net.fetch — the app's own default
@@ -22,12 +22,12 @@ export function registerRecordingIpc(deps: AppDeps): void {
   // partition instead, and checks its Mock rules (via the exact matcher
   // Fetch.requestPaused itself uses) before touching the network — Resilience
   // is deliberately not applied here (see the ticket's "out of scope").
-  ipcMain.handle('recording:replay', async (_e, req: {
+  ipcMain.handle('recording:replay', async (e, req: {
     sessionId?: string; method: string; url: string; headers: Record<string, string>; body?: string; timeoutMs?: number;
   }) => {
     const cleanHeaders = Object.fromEntries(Object.entries(req.headers || {}).filter(([, v]) => v !== '[REDACTED]'));
 
-    const sm = getSessionManager();
+    const sm = getSessionManager(e);
     const mockRule = req.sessionId ? sm?.findMatchingMockRule(req.sessionId, req.method, req.url) : null;
     if (mockRule) {
       const fulfill = buildMockFulfillParams(mockRule, { headers: cleanHeaders });
@@ -79,22 +79,22 @@ export function registerRecordingIpc(deps: AppDeps): void {
     }
   });
 
-  ipcMain.handle('session:startRecording',     (_e, id: string) => getSessionManager()?.startRecording(id) ?? null);
-  ipcMain.handle('session:stopRecording',      (_e, id: string) => getSessionManager()?.stopRecording(id) ?? []);
-  ipcMain.handle('session:pollRecordingSteps', (_e, id: string) => getSessionManager()?.pollRecordingSteps(id) ?? []);
+  ipcMain.handle('session:startRecording',     (e, id: string) => getSessionManager(e)?.startRecording(id) ?? null);
+  ipcMain.handle('session:stopRecording',      (e, id: string) => getSessionManager(e)?.stopRecording(id) ?? []);
+  ipcMain.handle('session:pollRecordingSteps', (e, id: string) => getSessionManager(e)?.pollRecordingSteps(id) ?? []);
   // #245: the tab's current-or-most-recent recording, for the Jira bug
   // report's "Recorded steps" attachment checkbox to know whether there's
   // anything to enable/attach without side effects (unlike pollRecordingSteps,
   // this never harvests from the live page).
-  ipcMain.handle('session:getEvidenceSteps',   (_e, id: string) => getSessionManager()?.getEvidenceSteps(id) ?? []);
-  ipcMain.handle('session:playbackStep',       (_e, id: string, step: TestStep) => getSessionManager()?.playbackStep(id, step) ?? null);
-  ipcMain.handle('session:setPlaybackActive',  (_e, id: string, active: boolean) => getSessionManager()?.setPlaybackActive(id, active));
-  ipcMain.handle('session:countSelectorMatches', (_e, id: string, selector: string) => getSessionManager()?.countSelectorMatches(id, selector) ?? -1);
+  ipcMain.handle('session:getEvidenceSteps',   (e, id: string) => getSessionManager(e)?.getEvidenceSteps(id) ?? []);
+  ipcMain.handle('session:playbackStep',       (e, id: string, step: TestStep) => getSessionManager(e)?.playbackStep(id, step) ?? null);
+  ipcMain.handle('session:setPlaybackActive',  (e, id: string, active: boolean) => getSessionManager(e)?.setPlaybackActive(id, active));
+  ipcMain.handle('session:countSelectorMatches', (e, id: string, selector: string) => getSessionManager(e)?.countSelectorMatches(id, selector) ?? -1);
 
-  ipcMain.handle('followalong:start', (_e, leaderId: string, followerId: string, mirrorNavigation: boolean) =>
-    getSessionManager()?.startFollowAlong(leaderId, followerId, mirrorNavigation) ?? { ok: false, error: 'No session manager' });
-  ipcMain.handle('followalong:stop', (_e, leaderId: string) => getSessionManager()?.stopFollowAlong(leaderId) ?? false);
-  ipcMain.handle('followalong:setMirrorNavigation', (_e, leaderId: string, mirrorNavigation: boolean) =>
-    getSessionManager()?.setFollowMirrorNavigation(leaderId, mirrorNavigation) ?? false);
-  ipcMain.handle('followalong:list', () => getSessionManager()?.listFollowPairings() ?? []);
+  ipcMain.handle('followalong:start', (e, leaderId: string, followerId: string, mirrorNavigation: boolean) =>
+    getSessionManager(e)?.startFollowAlong(leaderId, followerId, mirrorNavigation) ?? { ok: false, error: 'No session manager' });
+  ipcMain.handle('followalong:stop', (e, leaderId: string) => getSessionManager(e)?.stopFollowAlong(leaderId) ?? false);
+  ipcMain.handle('followalong:setMirrorNavigation', (e, leaderId: string, mirrorNavigation: boolean) =>
+    getSessionManager(e)?.setFollowMirrorNavigation(leaderId, mirrorNavigation) ?? false);
+  ipcMain.handle('followalong:list', (e) => getSessionManager(e)?.listFollowPairings() ?? []);
 }
