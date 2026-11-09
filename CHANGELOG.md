@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.162.2 — 2026-11-09
+
+### Other
+
+- per-window open-sessions.json and shared partition state (refs #367) (20ca223)
+
 ## v0.162.1 — 2026-11-09
 
 ### Fixes
