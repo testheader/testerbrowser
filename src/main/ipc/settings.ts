@@ -17,13 +17,14 @@ export interface SettingsIpcStores {
 
 /** App settings and chrome theme IPC. */
 export function registerSettingsIpc(deps: AppDeps, stores: SettingsIpcStores): void {
-  const { getSessionManager } = deps;
+  const { broadcast } = deps;
   const { settingsStore, themeStore, maybeStartIdleInstallTimer } = stores;
 
   ipcMain.handle('settings:get', () => settingsStore.get());
-  ipcMain.handle('settings:set', (_e, patch: unknown) => {
+  ipcMain.handle('settings:set', (e, patch: unknown) => {
     const next = settingsStore.update(s => applySettingsPatch(s, patch));
     maybeStartIdleInstallTimer();
+    broadcast('settings', e.sender);
     return next;
   });
 
@@ -31,6 +32,7 @@ export function registerSettingsIpc(deps: AppDeps, stores: SettingsIpcStores): v
   ipcMain.handle('theme:set', (e, scheme: string) => {
     const value = scheme === 'light' ? 'light' : 'dark';
     themeStore.set({ scheme: value });
-    getSessionManager(e)?.broadcastTheme(value);
+    // Also tells every window's tabs (the new-tab page renders its own theme).
+    broadcast('theme', e.sender);
   });
 }

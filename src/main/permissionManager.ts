@@ -49,7 +49,18 @@ interface PendingEntry {
   timer: ReturnType<typeof setTimeout>;
 }
 
+// #367: like downloads, permission handlers are per Electron session, shared by every
+// window. Install them once per session and route each request to the manager whose
+// window owns the requesting tab, so its prompt appears in that window only.
+const hookedSessions = new WeakSet<Electron.Session>();
+const instances = new Set<PermissionManager>();
+
 export class PermissionManager {
+  /** The persisted-grants store. One instance is shared by every window's manager so they never diverge. */
+  static createStore(): JsonStore<PermissionRecord[]> {
+    return new JsonStore<PermissionRecord[]>('permissions.json', []);
+  }
+
   private win: BrowserWindow;
   private pendingPermissions = new Map<string, PendingEntry>();
   private store: JsonStore<PermissionRecord[]>;
@@ -58,11 +69,23 @@ export class PermissionManager {
   // TestSession itself, since all it actually needs is one id string.
   private getSessionIdForWebContents: (webContentsId: number) => string | null;
 
-  constructor(win: BrowserWindow, getSessionIdForWebContents: (webContentsId: number) => string | null = () => null) {
+  private ownsWebContents: (webContentsId: number) => boolean;
+
+  constructor(
+    win: BrowserWindow,
+    getSessionIdForWebContents: (webContentsId: number) => string | null = () => null,
+    ownsWebContents: (webContentsId: number) => boolean = () => false,
+    store: JsonStore<PermissionRecord[]> = PermissionManager.createStore()
+  ) {
     this.win = win;
     this.getSessionIdForWebContents = getSessionIdForWebContents;
-    this.store = new JsonStore<PermissionRecord[]>('permissions.json', []);
+    this.ownsWebContents = ownsWebContents;
+    this.store = store;
+    instances.add(this);
   }
+
+  /** Call when the window closes, so prompts are no longer routed to it. */
+  dispose() { instances.delete(this); }
 
   private recordedStatus(partition: string, origin: string, permission: string): 'granted' | 'denied' | null {
     return this.store.get().find(
@@ -71,34 +94,12 @@ export class PermissionManager {
   }
 
   attach(ses: Electron.Session, partition: string) {
+    if (hookedSessions.has(ses)) return;
+    hookedSessions.add(ses);
     ses.setPermissionRequestHandler((wc: WebContents, permission, callback, details) => {
-      if (permission === 'fullscreen' || permission === 'pointerLock') {
-        callback(true);
-        return;
-      }
-      const requestingUrl = details?.requestingUrl ?? '';
-      const origin = originKeyFor(requestingUrl);
-      const isExternal = permission === 'openExternal';
-      const externalUrl = isExternal ? (details as { externalURL?: string } | undefined)?.externalURL : undefined;
-      if (isExternal && !isAllowedExternalUrl(externalUrl)) { callback(false); return; }
-
-      // #276: a remembered denial answers immediately too, same as a
-      // remembered grant already did — previously only grants were
-      // persisted, so a denied permission re-prompted on every single
-      // subsequent request for the same origin. M1: never for openExternal.
-      const remembered = isExternal ? null : this.recordedStatus(partition, origin, permission);
-      if (remembered) { callback(remembered === 'granted'); return; }
-
-      const originLabel = getHostname(requestingUrl) || origin || 'This page';
-      const reqId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      // #276: an unanswered prompt used to sit forever — auto-deny (without
-      // persisting the denial; the tester never actually chose it) once
-      // nobody responds within a reasonable window.
-      const timer = setTimeout(() => this.dismiss(reqId, false), PENDING_TIMEOUT_MS);
-      this.pendingPermissions.set(reqId, { callback, permission, partition, origin, webContentsId: wc.id, timer });
-
-      const sessionId = this.getSessionIdForWebContents(wc.id);
-      this.win.webContents.send('permission:request', { reqId, permission, origin: originLabel, sessionId, externalUrl });
+      const owner = Array.from(instances).find((m) => m.ownsWebContents(wc.id))
+        || (instances.has(this) ? this : Array.from(instances)[0] ?? this);
+      owner.handleRequest(partition, wc, permission, callback, details);
     });
 
     ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
@@ -108,6 +109,43 @@ export class PermissionManager {
       const origin = originKeyFor(requestingOrigin);
       return this.recordedStatus(partition, origin, permission) === 'granted';
     });
+  }
+
+  private handleRequest(
+    partition: string,
+    wc: WebContents,
+    permission: string,
+    callback: (granted: boolean) => void,
+    details: unknown
+  ) {
+    const d = details as { requestingUrl?: string; externalURL?: string } | undefined;
+    if (permission === 'fullscreen' || permission === 'pointerLock') {
+      callback(true);
+      return;
+    }
+    const requestingUrl = d?.requestingUrl ?? '';
+    const origin = originKeyFor(requestingUrl);
+    const isExternal = permission === 'openExternal';
+    const externalUrl = isExternal ? d?.externalURL : undefined;
+    if (isExternal && !isAllowedExternalUrl(externalUrl)) { callback(false); return; }
+
+    // #276: a remembered denial answers immediately too, same as a
+    // remembered grant already did — previously only grants were
+    // persisted, so a denied permission re-prompted on every single
+    // subsequent request for the same origin. M1: never for openExternal.
+    const remembered = isExternal ? null : this.recordedStatus(partition, origin, permission);
+    if (remembered) { callback(remembered === 'granted'); return; }
+
+    const originLabel = getHostname(requestingUrl) || origin || 'This page';
+    const reqId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    // #276: an unanswered prompt used to sit forever — auto-deny (without
+    // persisting the denial; the tester never actually chose it) once
+    // nobody responds within a reasonable window.
+    const timer = setTimeout(() => this.dismiss(reqId, false), PENDING_TIMEOUT_MS);
+    this.pendingPermissions.set(reqId, { callback, permission, partition, origin, webContentsId: wc.id, timer });
+
+    const sessionId = this.getSessionIdForWebContents(wc.id);
+    this.win.webContents.send('permission:request', { reqId, permission, origin: originLabel, sessionId, externalUrl });
   }
 
   respond(reqId: string, granted: boolean) {

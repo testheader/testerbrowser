@@ -64,6 +64,11 @@ export function initAppMenu() {
     if (e.key === 'Escape') closeAppMenu();
   });
 
+  document.getElementById('appMenuNewWindow').addEventListener('click', () => {
+    closeAppMenu();
+    testerBrowser.windowControls.openNew();
+  });
+
   document.getElementById('appMenuNewTemp').addEventListener('click', () => {
     closeAppMenu();
     newSession({ persistent: false });

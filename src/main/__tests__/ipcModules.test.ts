@@ -31,6 +31,8 @@ function fakeDeps(overrides: Partial<AppDeps> = {}): AppDeps {
     getSessionManager: () => null,
     getVisualRegressionStore: () => null,
     getFocusedWin: () => null,
+    openWindow: jest.fn(),
+    broadcast: jest.fn(),
     getDebugLogStore: () => null,
     getLogsDir: () => '/tmp',
     log: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() } as unknown as AppDeps['log'],

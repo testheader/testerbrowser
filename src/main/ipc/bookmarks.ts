@@ -11,37 +11,52 @@ export interface BookmarksIpcStores {
 }
 
 /** Bookmarks bar/folders, URL autocomplete history, and new-tab speed-dial IPC. */
-export function registerBookmarksIpc(_deps: AppDeps, stores: BookmarksIpcStores): void {
+export function registerBookmarksIpc(deps: AppDeps, stores: BookmarksIpcStores): void {
+  const { broadcast } = deps;
   const { bookmarkStore, bookmarkFoldersStore, urlHistoryStore, speedDialStore, faviconCache } = stores;
 
   ipcMain.handle('bookmarks:list',   () => bookmarkStore.get());
-  ipcMain.handle('bookmarks:add',    (_e, url: string, title: string) => {
-    return bookmarkStore.update(bs => [{ url, title, addedAt: Date.now(), folderId: null }, ...bs.filter(b => b.url !== url)]);
+  ipcMain.handle('bookmarks:add',    (e, url: string, title: string) => {
+    const result = bookmarkStore.update(bs => [{ url, title, addedAt: Date.now(), folderId: null }, ...bs.filter(b => b.url !== url)]);
+    broadcast('bookmarks', e.sender);
+    return result;
   });
-  ipcMain.handle('bookmarks:remove', (_e, url: string) => {
-    return bookmarkStore.update(bs => bs.filter(b => b.url !== url));
+  ipcMain.handle('bookmarks:remove', (e, url: string) => {
+    const result = bookmarkStore.update(bs => bs.filter(b => b.url !== url));
+    broadcast('bookmarks', e.sender);
+    return result;
   });
-  ipcMain.handle('bookmarks:rename', (_e, url: string, title: string) => {
-    return bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, title } : b)));
+  ipcMain.handle('bookmarks:rename', (e, url: string, title: string) => {
+    const result = bookmarkStore.update(bs => bs.map(b => (b.url === url ? { ...b, title } : b)));
+    broadcast('bookmarks', e.sender);
+    return result;
   });
-  ipcMain.handle('bookmarks:move', (_e, url: string, folderId: string | null) => {
-    return bookmarkStore.update((bs: Bookmark[]) => bs.map(b => (b.url === url ? { ...b, folderId } : b)));
+  ipcMain.handle('bookmarks:move', (e, url: string, folderId: string | null) => {
+    const result = bookmarkStore.update((bs: Bookmark[]) => bs.map(b => (b.url === url ? { ...b, folderId } : b)));
+    broadcast('bookmarks', e.sender);
+    return result;
   });
 
   ipcMain.handle('bookmarks:listFolders', () => bookmarkFoldersStore.get());
-  ipcMain.handle('bookmarks:createFolder', (_e, name: string) => {
-    return bookmarkFoldersStore.update(fs => [
+  ipcMain.handle('bookmarks:createFolder', (e, name: string) => {
+    const result = bookmarkFoldersStore.update(fs => [
       ...fs,
       { id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, createdAt: Date.now() },
     ]);
+    broadcast('bookmarks', e.sender);
+    return result;
   });
-  ipcMain.handle('bookmarks:renameFolder', (_e, id: string, name: string) => {
-    return bookmarkFoldersStore.update(fs => fs.map(f => (f.id === id ? { ...f, name } : f)));
+  ipcMain.handle('bookmarks:renameFolder', (e, id: string, name: string) => {
+    const result = bookmarkFoldersStore.update(fs => fs.map(f => (f.id === id ? { ...f, name } : f)));
+    broadcast('bookmarks', e.sender);
+    return result;
   });
-  ipcMain.handle('bookmarks:removeFolder', (_e, id: string) => {
+  ipcMain.handle('bookmarks:removeFolder', (e, id: string) => {
     // Bookmarks inside the deleted folder move back to the top level rather than being lost.
     bookmarkStore.update((bs: Bookmark[]) => bs.map(b => (b.folderId === id ? { ...b, folderId: null } : b)));
-    return bookmarkFoldersStore.update(fs => fs.filter(f => f.id !== id));
+    const result = bookmarkFoldersStore.update(fs => fs.filter(f => f.id !== id));
+    broadcast('bookmarks', e.sender);
+    return result;
   });
 
   ipcMain.handle('urlHistory:get', () => urlHistoryStore.get());

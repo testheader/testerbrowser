@@ -186,6 +186,8 @@ function isSafeUrl(url: string): boolean {
 export class SessionManager {
   // #340: called with a persistent tab's page URL and its favicon URL, so the Speed Dial can cache the icon.
   onFaviconSeen?: (pageUrl: string, faviconUrl: string) => void;
+  // #367: set by index.ts; opens a new TesterBrowser window ("Open link in new window").
+  openWindow?: (opts: { startUrl?: string; partition?: string; color?: string }) => void;
   private win: BrowserWindow;
   private sessions = new Map<string, TestSession>();
   private activeId: string | null = null;
@@ -198,7 +200,7 @@ export class SessionManager {
   private sessionNotes = new Map<string, string>();
   private colorIndex = 0;
   private downloadManager: DownloadManager;
-  private hookedPartitions = new Set<string>();
+  private shared: SharedPartitionState;
   private permissionManager: PermissionManager;
   private getRedactHeaders: () => boolean;
   // Record/Playback (RECORDING_SCRIPT, step buffering, playback) lives in
@@ -285,7 +287,12 @@ export class SessionManager {
     this.onSessionsChanged = onSessionsChanged;
     this.getRecorderMaxEvents = getRecorderMaxEvents;
     this.getAllowRealPopups = getAllowRealPopups;
-    this.downloadManager = new DownloadManager(win);
+    this.shared = shared;
+    shared.owners.add(this);
+    this.downloadManager = new DownloadManager(win, {
+      ownsWebContents: (id) => this.ownsWebContentsId(id),
+      getSessionId: (id) => this.sessionIdForWebContentsId(id),
+    });
     this.a11yService = new A11yService(this.log);
     this.mockManager = new MockManager(win, shared.mockRules);
     this.resilienceManager = new ResilienceManager(shared.resilienceRules);
@@ -293,8 +300,12 @@ export class SessionManager {
     // by the *requesting* webContents id (not the partition, unlike
     // DownloadManager's attribution), so it's correct even for two tabs
     // sharing a partition (e.g. a middle-clicked link).
-    this.permissionManager = new PermissionManager(win, (webContentsId) =>
-      Array.from(this.sessions.values()).find((s) => s.view.webContents.id === webContentsId)?.id ?? null
+    shared.permissionStore ??= PermissionManager.createStore();
+    this.permissionManager = new PermissionManager(
+      win,
+      (webContentsId) => this.sessionIdForWebContentsId(webContentsId),
+      (webContentsId) => this.ownsWebContentsId(webContentsId),
+      shared.permissionStore
     );
     this.emulationManager = new EmulationManager(this.log, (id) => {
       const s = this.sessions.get(id);
@@ -330,8 +341,29 @@ export class SessionManager {
 
   /** True if `wc` is one of this window's tab webContents (used to route IPC from a tab, e.g. the new-tab page). */
   ownsWebContents(wc: Electron.WebContents): boolean {
-    for (const s of this.sessions.values()) if (s.view.webContents === wc) return true;
-    return false;
+    return this.ownsWebContentsId(wc.id);
+  }
+
+  ownsWebContentsId(webContentsId: number): boolean {
+    return this.sessionIdForWebContentsId(webContentsId) !== null;
+  }
+
+  private sessionIdForWebContentsId(webContentsId: number): string | null {
+    for (const s of this.sessions.values()) if (s.view.webContents.id === webContentsId) return s.id;
+    return null;
+  }
+
+  noteLoadedDomain(webContentsId: number, host: string): void {
+    for (const s of this.sessions.values()) {
+      if (s.view.webContents.id === webContentsId) { s.loadedDomains.add(host); return; }
+    }
+  }
+
+  /** Stops routing session-wide hooks (downloads, permissions, webRequest) to this window. Call when it closes. */
+  dispose(): void {
+    this.shared.owners.delete(this);
+    this.downloadManager.dispose();
+    this.permissionManager.dispose();
   }
 
   // #227: shared by the many `dbg.sendCommand(...).catch(...)` call sites
@@ -646,19 +678,22 @@ export class SessionManager {
 
     // webRequest allows one listener per event, so register it once per
     // partition and route by the requesting webContents.
-    if (!this.hookedPartitions.has(partition)) {
-      this.hookedPartitions.add(partition);
+    // (#367: once per Electron session across all windows, routed to whichever window owns the tab.)
+    if (!this.shared.hookedPartitions.has(partition)) {
+      this.shared.hookedPartitions.add(partition);
       ses.webRequest.onCompleted((details) => {
         try {
           const host = new URL(details.url).hostname;
           if (!host) return;
-          for (const s of this.sessions.values()) {
-            if (s.view.webContents.id === details.webContentsId) { s.loadedDomains.add(host); break; }
+          for (const owner of this.shared.owners) {
+            const wcId = details.webContentsId;
+            if (wcId !== undefined && owner.ownsWebContentsId(wcId)) { owner.noteLoadedDomain(wcId, host); break; }
           }
         // silent: fires per completed network request — too high-frequency to log
         } catch {}
       });
     }
+    this.shared.partitionRefs.set(partition, (this.shared.partitionRefs.get(partition) ?? 0) + 1);
 
     // A load superseded by another navigation (e.g. a clone navigating straight
     // to the source URL) rejects with ERR_ABORTED — expected, not an error.
@@ -759,6 +794,11 @@ export class SessionManager {
           const ns = this.createSession(getHostname(params.linkURL), { partition, startUrl: params.linkURL, color });
           this.switchTo(ns.id);
           this.win.webContents.send('session:newTab', { id: ns.id });
+        }});
+        items.push({ label: 'Open link in new window', click: () => {
+          if (!isSafeUrl(params.linkURL)) return;
+          // Same partition and colour as this tab: OAuth/payment flows need its cookies.
+          this.openWindow?.({ startUrl: params.linkURL, partition, color });
         }});
         items.push({ label: 'Copy link address', click: () => clipboard.writeText(params.linkURL) });
         items.push({ type: 'separator' });
@@ -2122,7 +2162,11 @@ export class SessionManager {
     // share its partition with a still-open sibling (session colour
     // inheritance), so this only wipes when no other live session is still
     // using the same partition.
-    if (!s.persistent && !Array.from(this.sessions.values()).some((o) => o.partition === s.partition)) {
+    const refs = (this.shared.partitionRefs.get(s.partition) ?? 1) - 1;
+    if (refs > 0) this.shared.partitionRefs.set(s.partition, refs);
+    else this.shared.partitionRefs.delete(s.partition);
+    // (#367: counted across all windows, so another window's tab on this partition keeps it.)
+    if (!s.persistent && refs <= 0) {
       this.permissionManager.clearPartition(s.partition);
     }
     const delayed = this.pendingDelayed.get(id);

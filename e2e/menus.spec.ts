@@ -68,7 +68,7 @@ test('the ⋯ button is gone and the app menu lists each item once, grouped', as
   await expect(menu).toHaveClass(/open/);
   await expect(menu.locator('.menu-group-label')).toHaveText(['Tabs', 'View', 'App']);
   await expect(menu.locator('.view-item > span:nth-child(2)')).toHaveText([
-    'New temporary tab', 'Fill with test data…', 'Console panel', 'Bookmarks bar', 'DevTools', 'Settings', 'Report bug…',
+    'New window', 'New temporary tab', 'Fill with test data…', 'Console panel', 'Bookmarks bar', 'DevTools', 'Settings', 'Report bug…',
   ]);
   await window.click('#appName');
   await expect(menu).not.toHaveClass(/open/);

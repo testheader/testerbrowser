@@ -19,6 +19,7 @@
 // their own explicit branches in both dispatchers, ahead of this table.
 export const SHORTCUTS = [
   { action: 'newTab',             ctrl: true, key: 't' },
+  { action: 'newWindow',          ctrl: true, key: 'n' },
   { action: 'closeTab',           ctrl: true, key: 'w' },
   { action: 'reopenTab',          ctrl: true, key: 'T' },
   { action: 'focusUrl',           ctrl: true, key: 'l' },

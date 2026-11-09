@@ -9,6 +9,7 @@ function handleShortcut(key) {
   const activeId = getActiveId();
   switch (key) {
     case 'newTab':             newSession(); break;
+    case 'newWindow':          testerBrowser.windowControls.openNew(); break;
     // Guarded here, at the shortcut call site, rather than inside closeTab()
     // itself — the tab context menu's own Close item calls closeTab()
     // directly and is an explicit user choice that should still work on a

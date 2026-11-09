@@ -20,21 +20,48 @@ export interface DownloadInfo {
   item?: Electron.DownloadItem;
 }
 
+// #367: Electron sessions are shared by every window, and will-download fires per
+// session. So the hook is installed once per session across all windows' managers
+// (not once per manager, which would record each download twice), and routes the
+// download to the manager whose window owns the requesting tab.
+const hookedSessions = new WeakSet<Electron.Session>();
+const instances = new Set<DownloadManager>();
+
+export interface DownloadRouting {
+  ownsWebContents?: (webContentsId: number) => boolean;
+  getSessionId?: (webContentsId: number) => string | null;
+}
+
 export class DownloadManager {
   private win: BrowserWindow;
   private downloads = new Map<string, DownloadInfo>();
+  private routing: DownloadRouting;
 
-  constructor(win: BrowserWindow) {
+  constructor(win: BrowserWindow, routing: DownloadRouting = {}) {
     this.win = win;
+    this.routing = routing;
+    instances.add(this);
   }
 
-  private attached = new WeakSet<Electron.Session>();
+  /** Call when the window closes, so downloads are no longer routed to it. */
+  dispose() { instances.delete(this); }
 
   attach(ses: Electron.Session, sessionId: string) {
-    // Several tabs can share one partition; hook will-download only once.
-    if (this.attached.has(ses)) return;
-    this.attached.add(ses);
-    ses.on('will-download', (_event, item) => {
+    // Several tabs (and windows) can share one partition; hook will-download only once.
+    if (hookedSessions.has(ses)) return;
+    hookedSessions.add(ses);
+    ses.on('will-download', (_event, item, webContents?: Electron.WebContents) => {
+      const wcId = webContents?.id;
+      const owner = (wcId !== undefined && Array.from(instances).find((m) => m.routing.ownsWebContents?.(wcId)))
+        || (instances.has(this) ? this : Array.from(instances)[0] ?? this);
+      // Attribute to the tab that actually started it when known, else the tab that first hooked this session.
+      const attributed = (wcId !== undefined ? owner.routing.getSessionId?.(wcId) : null) ?? sessionId;
+      owner.begin(item, attributed);
+    });
+  }
+
+  private begin(item: Electron.DownloadItem, sessionId: string) {
+    {
       const dlId = `dl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       // path.basename strips any directory traversal from server-supplied filenames
       const rawName = path.basename(item.getFilename()) || 'download';
@@ -70,7 +97,7 @@ export class DownloadManager {
         dl.item = undefined;
         this.push(dl);
       });
-    });
+    }
   }
 
   private push(dl: DownloadInfo) {

@@ -34,6 +34,7 @@ import { initAppMenu } from './app-menu.js';
 import { initShortcuts } from './shortcuts.js';
 import { initIpcEvents } from './ipc-events.js';
 import { initTheme } from './theme.js';
+import { initAppBroadcast } from './app-broadcast.js';
 
 // Feeds the bug report's diagnostics preview — main-process errors were
 // already recorded, but nothing captured errors from this chrome UI's own
@@ -64,6 +65,7 @@ initNotes();
 initImageOverlay();
 initHistory();
 initSettings();
+initAppBroadcast();
 initUpdatePill();
 initBugReport();
 initCrashReport();

@@ -4,7 +4,7 @@ import fs from 'fs';
 import { autoUpdater } from 'electron-updater';
 import { SessionManager, getHostname } from './sessionManager';
 import { VisualRegressionStore } from './visualRegressionStore';
-import { WindowRegistry, WindowContext } from './windowContext';
+import { WindowRegistry, WindowContext, WindowCreateOptions } from './windowContext';
 import { startStallWatchdog } from './stallWatchdog';
 import { createSharedPartitionState } from './partitionState';
 import { buildSessionsFile, parseSessionsFile, WindowSaveState } from './sessionPersistence';
@@ -24,7 +24,7 @@ import {
 } from './settingsPatch';
 import { migrateJiraSettings, DEFAULT_JIRA_SETTINGS, JiraSettingsFile } from './jira';
 import { writeJsonAtomic, JsonStore } from './jsonFile';
-import type { AppDeps, Bookmark, BookmarkFolder, SpeedDialTile, SavedTest, UpdateStatus } from './ipc/deps';
+import type { AppDeps, BroadcastKind, Bookmark, BookmarkFolder, SpeedDialTile, SavedTest, UpdateStatus } from './ipc/deps';
 import { registerSessionsIpc } from './ipc/sessions';
 import { registerRecordingIpc } from './ipc/recording';
 import { registerA11yIpc } from './ipc/a11y';
@@ -383,6 +383,8 @@ function buildWindow(): Omit<WindowContext, 'id'> {
     sharedPartitionState
   );
   sessionManager.saveAll = saveAllSessions;
+  sessionManager.openWindow = (opts) => createWindow([], undefined, opts);
+  win.on('closed', () => sessionManager.dispose());
   win.on('close', () => {
     closedWindowStates.push(sessionManager.collectSaveState());
     closingManagers.add(sessionManager);
@@ -424,20 +426,27 @@ function openInitialWindows() {
 // Opens a window and fills it with the given saved tabs, or a default tab.
 function createWindow(
   savedTabs: Parameters<SessionManager['restoreWindow']>[0] = [],
-  extras: Parameters<SessionManager['restoreWindow']>[1] = { notes: {}, emulation: {}, mocks: {} }
+  extras: Parameters<SessionManager['restoreWindow']>[1] = { notes: {}, emulation: {}, mocks: {} },
+  firstTab: WindowCreateOptions = {}
 ) {
-  const { sessionManager } = registry.create();
+  const { sessionManager, win } = registry.create(firstTab);
 
   const restored = sessionManager.restoreWindow(savedTabs, extras);
   if (!restored) {
-    const first = sessionManager.createSession('Default', { persistent: true });
+    // A window opened from a link shares the opener's partition and colour; any other new window gets a fresh Default tab.
+    const first = firstTab.startUrl
+      ? sessionManager.createSession(getHostname(firstTab.startUrl), { partition: firstTab.partition, startUrl: firstTab.startUrl, color: firstTab.color })
+      : sessionManager.createSession('Default', { persistent: true });
     sessionManager.switchTo(first.id);
   }
+  win.focus();
 
   const menu = Menu.buildFromTemplate([
     {
       label: 'File',
       submenu: [
+        // No accelerator: Ctrl+N is bound in the shortcut table (forwarded to the focused window).
+        { label: 'New window', click: () => createWindow() },
         { label: 'Import session…', click: () => registry.focused()?.sessionManager.importSessionAsNewDialog() },
       ],
     },
@@ -778,11 +787,22 @@ function ctxFor(e?: { sender: Electron.WebContents }): WindowContext | null {
   return (e && registry.forWebContents(e.sender)) || registry.focused();
 }
 
+// Tells every chrome window except the sender that app-wide state changed (#367).
+// A theme change also reaches every window's tabs (the new-tab page renders its own theme).
+function broadcast(kind: BroadcastKind, from?: Electron.WebContents) {
+  for (const c of registry.all()) {
+    if (c.win.webContents !== from) c.win.webContents.send('app:broadcast', { kind });
+    if (kind === 'theme') c.sessionManager.broadcastTheme(themeStore.get().scheme);
+  }
+}
+
 const appDeps: AppDeps = {
   getWin: (e) => ctxFor(e)?.win ?? null,
   getSessionManager: (e) => ctxFor(e)?.sessionManager ?? null,
   getVisualRegressionStore: (e) => ctxFor(e)?.visualRegressionStore ?? null,
   getFocusedWin: () => registry.focused()?.win ?? null,
+  openWindow: (opts) => createWindow([], undefined, opts),
+  broadcast,
   getDebugLogStore: () => debugLogStore,
   getLogsDir: () => logsDir,
   log,

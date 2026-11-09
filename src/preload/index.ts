@@ -338,6 +338,11 @@ const api = {
     onUpdateStatus: (cb: (d: { status: string; current: string; latest: string | null }) => void) => {
       ipcRenderer.on('update:status', (_e, d) => cb(d));
     },
+    // #367: another window changed app-wide state (theme, settings, bookmarks); re-read it.
+    onBroadcast: (cb: (kind: 'theme' | 'settings' | 'bookmarks') => void) => {
+      ipcRenderer.removeAllListeners('app:broadcast');
+      ipcRenderer.on('app:broadcast', (_e, d: { kind: 'theme' | 'settings' | 'bookmarks' }) => cb(d.kind));
+    },
     onShowSettings: (cb: () => void) => {
       ipcRenderer.removeAllListeners('show:settings');
       ipcRenderer.on('show:settings', () => cb());
@@ -348,6 +353,7 @@ const api = {
     set: (scheme: string) => ipcRenderer.invoke('theme:set', scheme),
   },
   windowControls: {
+    openNew:      () => ipcRenderer.invoke('window:new'),
     minimize:     () => ipcRenderer.invoke('window:minimize'),
     maximize:     () => ipcRenderer.invoke('window:maximize'),
     close:        () => ipcRenderer.invoke('window:close'),

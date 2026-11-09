@@ -4,6 +4,7 @@ import type { VisualRegressionStore } from '../visualRegressionStore';
 import type { DebugLogStore } from '../debugLogStore';
 import type { JsonStore } from '../jsonFile';
 import type { AppLog } from '../appLogger';
+import type { WindowCreateOptions } from '../windowContext';
 
 /**
  * Shared dependency bundle every `ipc/<feature>.ts` module's `register()`
@@ -25,6 +26,9 @@ export type UpdateStatus = 'checking' | 'available' | 'available-manual' | 'down
 /** The invoke event whose sender picks the window (#367). Omitted = the focused window (menus, updater). */
 export type SenderLike = Pick<IpcMainInvokeEvent, 'sender'>;
 
+/** App-wide state that changed in one window and must be re-read by every other (#367). */
+export type BroadcastKind = 'theme' | 'settings' | 'bookmarks';
+
 export interface AppDeps {
   getWin: (e?: SenderLike) => BrowserWindow | null;
   getSessionManager: (e?: SenderLike) => SessionManager | null;
@@ -34,6 +38,10 @@ export interface AppDeps {
   log: AppLog;
   recordAppError: (message: string) => void;
   getFocusedWin: () => BrowserWindow | null;
+  /** Opens another TesterBrowser window. */
+  openWindow: (opts?: WindowCreateOptions) => void;
+  /** Tells every chrome window except `from` (the sender, already up to date) that `kind` changed. */
+  broadcast: (kind: BroadcastKind, from?: Electron.WebContents) => void;
   persistSessionUrls: () => void;
 }
 

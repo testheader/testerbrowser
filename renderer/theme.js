@@ -18,7 +18,12 @@ function resolveLight(scheme) {
   return window.matchMedia('(prefers-color-scheme: light)').matches;
 }
 
-export function applyTheme(scheme) {
+/**
+ * @param {string} scheme
+ * @param {{ notify?: boolean }} [opts] notify=false applies the look here only, without
+ *   telling main (used when another window already did, so the change doesn't echo back).
+ */
+export function applyTheme(scheme, { notify = true } = {}) {
   if (!VALID_SCHEMES.has(scheme)) scheme = 'system';
   try { localStorage.setItem(LS_KEY, scheme); } catch {}
 
@@ -45,7 +50,7 @@ export function applyTheme(scheme) {
   if (select && select.value !== scheme) select.value = scheme;
 
   // Session views render their own pages (newtab) and need to be told.
-  testerBrowser.theme.set(light ? 'light' : 'dark');
+  if (notify) testerBrowser.theme.set(light ? 'light' : 'dark');
 }
 
 export function initTheme() {

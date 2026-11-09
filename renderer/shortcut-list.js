@@ -5,6 +5,7 @@ import { SHORTCUTS } from './shortcut-table.js';
 /** Human label per table action. A unit test fails if an action has none. */
 export const ACTION_LABELS = {
   newTab: 'New tab',
+  newWindow: 'New window',
   closeTab: 'Close tab',
   reopenTab: 'Reopen closed tab',
   focusUrl: 'Focus URL bar',
