@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.162.1 — 2026-11-09
+
+### Fixes
+
+- throttle Resilience hit logging that stalled the app under bursts; add crash/stall diagnostics (refs #210) (00a4b50)
+
+### Other
+
+- add WindowRegistry and route IPC through the calling window (refs #367) (29da5dd)
+
 ## v0.162.0 — 2026-11-06
 
 ### Features
