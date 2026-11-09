@@ -7,6 +7,7 @@ import { buildHar } from './har';
 import { DownloadManager } from './downloadManager';
 import { PermissionManager, PermissionRecord } from './permissionManager';
 import { AppLog } from './appLogger';
+import { HitLogThrottle } from './hitLogThrottle';
 import {
   MockManager, MockRule, buildMockFulfillParams, buildMockPreflightParams,
 } from './mockManager';
@@ -232,6 +233,7 @@ export class SessionManager {
   // persisted to disk (see #209's/#264's "Out of scope").
   private mockManager: MockManager;
   private resilienceManager = new ResilienceManager();
+  private resilienceHitLog = new HitLogThrottle();
   // #241: emulation overrides live in EmulationManager (#255), scoped by
   // partition the same way — a partition with no entry there has never had
   // setEmulation() applied; a present (possibly empty) object records
@@ -540,16 +542,19 @@ export class SessionManager {
       if (res) {
         this.resilienceManager.recordHit(res);
         testSession.recorder.tagRequest(tagId, { resilienceRuleId: res.id, resilienceType: res.type });
-        // #289: unlike every Fetch.* command below, this fires only when a
-        // Resilience rule actually matches — bounded by deliberate rule
-        // hits, not by request volume — so it's worth the per-hit cost. On
-        // a later crash, this line (now in main.log) is the last thing that
-        // happened to the request right before whatever broke, which is
-        // exactly what's missing today to tell "which hit caused which
-        // crash".
-        this.log.info('resilience', `Resilience rule fired: ${res.type}`, {
-          sessionId: testSession.id, ruleId: res.id, method: request.method, url: request.url,
-        });
+        // #289: on a later crash, this line (now in main.log) is the last
+        // thing that happened to the request right before whatever broke.
+        // It is *not* bounded by deliberate rule hits: a broad pattern like
+        // "*ad*" matches every request in a burst, and logging each one
+        // synchronously stalled the main process for tens of seconds (#210).
+        // So: one line per rule per second, carrying the count folded in.
+        const hitLog = this.resilienceHitLog.hit(`${testSession.id}:${res.id}`);
+        if (hitLog.log) {
+          this.log.info('resilience', `Resilience rule fired: ${res.type}`, {
+            sessionId: testSession.id, ruleId: res.id, method: request.method, url: request.url,
+            ...(hitLog.suppressed > 0 ? { alsoFiredSincePreviousLine: hitLog.suppressed } : {}),
+          });
+        }
         // Every command below is silent: Fetch.requestPaused fires per
         // request, too high-frequency to log per failure (each case still
         // gets its own marker so the empty-catch triage grep is satisfied).
@@ -727,6 +732,15 @@ export class SessionManager {
     });
     view.webContents.on('unresponsive', () => {
       this.log.error('sessions', 'Tab became unresponsive', { sessionId: id });
+    });
+    // A hang that clears itself is worth telling apart from one that doesn't.
+    view.webContents.on('responsive', () => {
+      this.log.info('sessions', 'Tab became responsive again', { sessionId: id });
+    });
+    // The CDP debugger detaching (target closed, process swap, DevTools taking
+    // over) silently ends recording and mock/resilience for the tab.
+    view.webContents.debugger.on('detach', (_e: unknown, reason: string) => {
+      this.log.warn('sessions', `CDP debugger detached: ${reason}`, { sessionId: id });
     });
 
     // Right-click context menu on page

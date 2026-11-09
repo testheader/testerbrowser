@@ -52,7 +52,9 @@ export async function launchAppWithProfile(
   const userDataDir  = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-'));
   const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'testerbrowser-e2e-downloads-'));
   const app = await electron.launch({
-    args: [`--user-data-dir=${userDataDir}`, mainPath],
+    // Pin the device scale factor: at a non-100% Windows display scale Chromium snaps a
+    // 1px CSS border to 0.67px, so pixel-exact assertions would depend on the host display.
+    args: [`--user-data-dir=${userDataDir}`, '--force-device-scale-factor=1', mainPath],
   });
   await app.evaluate(({ app: electronApp }, dir) => electronApp.setPath('downloads', dir), downloadsDir);
   wrapCloseForCleanup(app, [userDataDir, downloadsDir]);

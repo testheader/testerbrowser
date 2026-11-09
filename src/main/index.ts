@@ -5,6 +5,7 @@ import { autoUpdater } from 'electron-updater';
 import { SessionManager, getHostname } from './sessionManager';
 import { VisualRegressionStore } from './visualRegressionStore';
 import { WindowRegistry, WindowContext } from './windowContext';
+import { startStallWatchdog } from './stallWatchdog';
 import { firstHttpUrl } from './singleInstance';
 import { installIpcGuard } from './ipcGuard';
 import { canAutoInstall, IDLE_INSTALL_MINUTES, IDLE_INSTALL_MINUTES_MIN, IDLE_INSTALL_MINUTES_MAX } from './idleInstall';
@@ -477,6 +478,20 @@ if (!gotSingleInstanceLock) {
       debugMode: () => settingsStore.get().debugMode,
       debugLogStore,
       appErrorsPath,
+    });
+
+    // Crash/hang diagnostics. Tab render-process-gone/unresponsive are logged
+    // by SessionManager; these cover what it can't see: GPU/utility/etc.
+    // processes dying (which can take views down with them) and the main
+    // process's own event loop being blocked, which looks like a freeze or
+    // "crash" to the user but leaves no trace otherwise (#210).
+    app.on('child-process-gone', (_e, details) => {
+      log.error('app', `Child process gone: ${details.type} (${details.reason})`, {
+        name: details.name, exitCode: details.exitCode, serviceName: details.serviceName,
+      });
+    });
+    startStallWatchdog({
+      onStall: (lagMs) => log.warn('app', `Main process event loop stalled for ~${Math.round(lagMs)}ms`),
     });
 
     createWindow();
