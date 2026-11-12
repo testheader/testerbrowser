@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.165.0 — 2026-11-12
+
+### Features
+
+- bring back the Linux AppImage build (7d94298)
+
 ## v0.164.0 — 2026-11-09
 
 ### Features
