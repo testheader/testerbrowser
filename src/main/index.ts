@@ -109,9 +109,24 @@ const gotSingleInstanceLock =
 // later — only answers the chrome window, plus a short allow-list for the
 // bundled new-tab page. See ipcGuard.ts. Installed here, before the
 // register*Ipc() calls at the bottom of this file.
+// Polled or per-keystroke channels: still logged on failure or when slow, but
+// never traced at debug level — each log call is a synchronous file write.
+const SLOW_IPC_MS = 2000;
+const NOISY_IPC_CHANNELS: ReadonlySet<string> = new Set([
+  'recording:timeline', 'recording:status', 'recording:oldestId', 'session:pollRecordingSteps',
+  'sessions:list', 'sessions:navState', 'sessions:getZoom', 'download:list', 'followalong:list',
+  'applog:tail', 'app:debugLog', 'app:versionInfo', 'window:isMaximized', 'layout:setConsoleHeight',
+  'layout:setTopBarHeight', 'layout:setRightPanelWidth', 'find:start',
+]);
 installIpcGuard(ipcMain, {
   getAppWebContents: () => registry.all().map((c) => c.win.webContents),
   onReject: (channel, origin) => recordAppError(`Rejected untrusted IPC call to '${channel}' from ${origin}`, 'warn'),
+  onCall: ({ channel, durationMs, outcome, error }) => {
+    if (outcome === 'threw') log.error('ipc', `IPC '${channel}' threw: ${error}`, { channel, durationMs });
+    else if (outcome === 'failed') log.warn('ipc', `IPC '${channel}' failed: ${error}`, { channel, durationMs });
+    else if (durationMs >= SLOW_IPC_MS) log.warn('ipc', `IPC '${channel}' was slow (${durationMs} ms)`, { channel, durationMs });
+    else if (!NOISY_IPC_CHANNELS.has(channel)) log.debug('ipc', `IPC '${channel}' ok (${durationMs} ms)`, { channel, durationMs });
+  },
 });
 
 // --- Crash detection ---

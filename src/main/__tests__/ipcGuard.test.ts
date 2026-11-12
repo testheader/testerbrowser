@@ -131,3 +131,35 @@ describe('ipcGuard drift checks', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe('installIpcGuard onCall instrumentation', () => {
+  const e = () => ev(appWc, APP_URL);
+  function setup() {
+    const h = new Map<string, any>();
+    const ipc = { handle: (c: string, l: any) => h.set(c, l), handleOnce: () => {} } as unknown as IpcMain;
+    const seen: any[] = [];
+    installIpcGuard(ipc, { getAppWebContents: () => appWc, onReject: () => {}, onCall: (i) => seen.push(i) });
+    return { h, ipc, seen };
+  }
+
+  it('reports ok, ok:false and thrown outcomes without altering the result', async () => {
+    const { h, ipc, seen } = setup();
+    ipc.handle('a', () => 1);
+    ipc.handle('b', async () => ({ ok: false, error: 'nope' }));
+    ipc.handle('c', () => { throw new Error('boom'); });
+    ipc.handle('d', async () => { throw new Error('async boom'); });
+    expect(h.get('a')(e())).toBe(1);
+    expect(await h.get('b')(e())).toEqual({ ok: false, error: 'nope' });
+    expect(() => h.get('c')(e())).toThrow('boom');
+    await expect(h.get('d')(e())).rejects.toThrow('async boom');
+    expect(seen.map((s) => [s.channel, s.outcome])).toEqual([['a', 'ok'], ['b', 'failed'], ['c', 'threw'], ['d', 'threw']]);
+    expect(seen[1].error).toBe('nope');
+  });
+
+  it('does not report calls from rejected senders', () => {
+    const { h, ipc, seen } = setup();
+    ipc.handle('x', () => 1);
+    expect(() => h.get('x')(ev(tabWc, 'https://evil.test/'))).toThrow('untrusted sender');
+    expect(seen).toHaveLength(0);
+  });
+});

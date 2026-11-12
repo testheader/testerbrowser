@@ -2,6 +2,7 @@ import { BrowserWindow, shell } from 'electron';
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { log } from './appLogger';
 
 export interface DownloadInfo {
   id: string;
@@ -82,9 +83,13 @@ export class DownloadManager {
         totalBytes: item.getTotalBytes(), savePath, sessionId, item,
       };
       this.downloads.set(dlId, dl);
+      log.info('downloads', `Download started: ${filename}`, { sessionId, url: dl.url, totalBytes: dl.totalBytes });
       this.push(dl);
 
       item.on('updated', (_e, state) => {
+        if (state === 'interrupted' && dl.state !== 'interrupted') {
+          log.warn('downloads', `Download interrupted: ${filename}`, { sessionId, receivedBytes: item.getReceivedBytes() });
+        }
         dl.state = state as 'progressing' | 'interrupted';
         dl.receivedBytes = item.getReceivedBytes();
         dl.totalBytes = item.getTotalBytes();
@@ -95,6 +100,9 @@ export class DownloadManager {
         dl.receivedBytes = item.getReceivedBytes();
         dl.savePath = item.getSavePath();
         dl.item = undefined;
+        const ctx = { sessionId, receivedBytes: dl.receivedBytes, totalBytes: dl.totalBytes };
+        if (state === 'completed') log.info('downloads', `Download completed: ${filename}`, ctx);
+        else log.warn('downloads', `Download ${state}: ${filename}`, ctx);
         this.push(dl);
       });
     }

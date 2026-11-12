@@ -1,4 +1,5 @@
 import { BrowserWindow, WebContents } from 'electron';
+import { log } from './appLogger';
 import { JsonStore } from './jsonFile';
 
 function getHostname(url: string): string {
@@ -127,14 +128,23 @@ export class PermissionManager {
     const origin = originKeyFor(requestingUrl);
     const isExternal = permission === 'openExternal';
     const externalUrl = isExternal ? d?.externalURL : undefined;
-    if (isExternal && !isAllowedExternalUrl(externalUrl)) { callback(false); return; }
+    if (isExternal && !isAllowedExternalUrl(externalUrl)) {
+      log.warn('permissions', 'Denied openExternal request for a disallowed scheme', { origin });
+      callback(false);
+      return;
+    }
 
     // #276: a remembered denial answers immediately too, same as a
     // remembered grant already did — previously only grants were
     // persisted, so a denied permission re-prompted on every single
     // subsequent request for the same origin. M1: never for openExternal.
     const remembered = isExternal ? null : this.recordedStatus(partition, origin, permission);
-    if (remembered) { callback(remembered === 'granted'); return; }
+    if (remembered) {
+      log.debug('permissions', `Answered '${permission}' from stored ${remembered}`, { origin, permission });
+      callback(remembered === 'granted');
+      return;
+    }
+    log.info('permissions', `Prompting for '${permission}'`, { origin, permission });
 
     const originLabel = getHostname(requestingUrl) || origin || 'This page';
     const reqId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -153,6 +163,7 @@ export class PermissionManager {
     if (!entry) return;
     clearTimeout(entry.timer);
     entry.callback(granted);
+    log.info('permissions', `'${entry.permission}' ${granted ? 'granted' : 'denied'} by user`, { origin: entry.origin, permission: entry.permission });
     // M1: an openExternal answer covers only that one URL — never remembered.
     if (entry.permission !== 'openExternal') {
       this.persist(entry.partition, entry.origin, entry.permission, granted ? 'granted' : 'denied');
@@ -169,6 +180,7 @@ export class PermissionManager {
     if (!entry) return;
     clearTimeout(entry.timer);
     entry.callback(granted);
+    log.info('permissions', `Prompt for '${entry.permission}' auto-dismissed (timeout or tab closed)`, { origin: entry.origin, permission: entry.permission });
     this.pendingPermissions.delete(reqId);
     this.win.webContents.send('permission:dismiss', { reqId });
   }
@@ -206,6 +218,7 @@ export class PermissionManager {
     const after = before.filter((r) => !(r.partition === partition && r.origin === origin && r.permission === permission));
     if (after.length === before.length) return false;
     this.store.set(after);
+    log.info('permissions', `Revoked stored '${permission}'`, { origin, permission });
     return true;
   }
 

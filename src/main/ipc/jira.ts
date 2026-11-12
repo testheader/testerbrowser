@@ -5,6 +5,7 @@ import {
   formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
   validateJiraBaseUrl, resolveJiraTokenOnSave,
 } from '../jira';
+import { log } from '../appLogger';
 import type { JsonStore } from '../jsonFile';
 import type { AppDeps } from './deps';
 
@@ -56,9 +57,11 @@ async function uploadJiraAttachment(
       headers: { 'Authorization': jiraAuthHeader(email, token), 'X-Atlassian-Token': 'no-check', 'Accept': 'application/json' },
       body: form,
     });
+    if (!res.ok) log.warn('jira', `Attachment '${filename}' upload rejected`, { status: res.status });
     if (!res.ok) return { filename, ok: false, reason: `${res.status} ${res.statusText || 'error'}`.trim() };
     return { filename, ok: true };
   } catch (e) {
+    log.warn('jira', `Attachment '${filename}' upload failed`, { error: e instanceof Error ? e.message : String(e) });
     return { filename, ok: false, reason: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -139,6 +142,7 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
         { headers: { 'Authorization': jiraAuthHeader(s.email, token), 'Accept': 'application/json' } }
       );
     } catch (e: unknown) {
+      log.warn('jira', 'Fetching ticket failed', { error: e instanceof Error ? e.message : String(e) });
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
@@ -167,9 +171,14 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
       const result = await jiraFetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue`, {
         method: 'POST', headers: authHeaders, body: JSON.stringify(body),
       });
+      if (!result.ok) log.warn('jira', 'Jira rejected issue creation', { error: result.error });
       if (!result.ok) return result;
       const key = (result.data as { key?: string } | undefined)?.key;
-      if (!key) return { ok: false, error: 'Jira did not return an issue key' };
+      if (!key) {
+        log.warn('jira', 'Jira accepted the issue but returned no key');
+        return { ok: false, error: 'Jira did not return an issue key' };
+      }
+      log.info('jira', `Jira issue created: ${key}`);
 
       // A link failure never fails the creation — the bug already exists.
       let linkError: string | undefined;
@@ -183,7 +192,10 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
             outwardIssue: { key: opts.linkTo },
           }),
         });
-        if (!linkResult.ok) linkError = linkResult.error;
+        if (!linkResult.ok) {
+          linkError = linkResult.error;
+          log.warn('jira', `Linking ${key} to ${opts.linkTo} failed`, { error: linkError });
+        }
       }
 
       // Attachments are best-effort and never retroactively fail the issue
@@ -199,6 +211,7 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
 
       return { ok: true, key, linkError, attachments };
     } catch (e: unknown) {
+      log.warn('jira', 'Creating issue failed', { error: e instanceof Error ? e.message : String(e) });
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   });
