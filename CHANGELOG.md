@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.165.1 — 2026-11-12
+
+### Features
+
+- Race gate Resilience rule to probe for race conditions (e7bb5d0)
+
+### Other
+
+- cover the Race gate (handler-level unit tests + e2e) (2950907)
+
 ## v0.165.0 — 2026-11-12
 
 ### Features
