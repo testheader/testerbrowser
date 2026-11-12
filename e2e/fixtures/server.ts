@@ -69,6 +69,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (u.pathname.startsWith('/network/status/')) return handleStatus(u, res);
   if (u.pathname === '/network/slow') return handleSlow(u, res);
+  if (u.pathname.startsWith('/race/')) return handleRace(u, req, res);
   if (u.pathname === '/network/redirect') return handleRedirect(u, res);
   if (u.pathname === '/downloads/file') return handleDownload(u, res);
   if (u.pathname === '/network/bytes') return handleBytes(u, res);
@@ -112,6 +113,39 @@ function handleSlow(u: URL, res: ServerResponse): void {
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end(`ok after ${ms}ms`);
   }, ms);
+}
+
+// Race-gate fixture: a single-use coupon with a deliberate check-then-act
+// window (the classic TOCTOU bug). Awaited one at a time it succeeds exactly
+// once; requests that overlap all pass the check before any decrements, so
+// several succeed. `hits` counts requests that reached the server at all, so a
+// test can prove a gated request was held *before* the network.
+//   POST /race/redeem  -> 200 {redeemed:true} | 409 {redeemed:false}
+//   POST /race/reset   -> restores 1 coupon, zeroes the counters
+//   GET  /race/state   -> { remaining, hits, successes }
+const raceState = { remaining: 1, hits: 0, successes: 0 };
+const RACE_CHECK_ACT_WINDOW_MS = 100;
+
+function handleRace(u: URL, req: IncomingMessage, res: ServerResponse): void {
+  const json = (status: number, body: unknown) => {
+    res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(body));
+  };
+  if (u.pathname === '/race/state') return json(200, raceState);
+  if (u.pathname === '/race/reset' && req.method === 'POST') {
+    Object.assign(raceState, { remaining: 1, hits: 0, successes: 0 });
+    return json(200, raceState);
+  }
+  if (u.pathname === '/race/redeem' && req.method === 'POST') {
+    raceState.hits++;
+    const hadCoupon = raceState.remaining > 0;            // check
+    setTimeout(() => {                                    // ...window...
+      if (hadCoupon) { raceState.remaining--; raceState.successes++; } // act
+      json(hadCoupon ? 200 : 409, { redeemed: hadCoupon });
+    }, RACE_CHECK_ACT_WINDOW_MS);
+    return;
+  }
+  json(404, { error: 'not found' });
 }
 
 function handleRedirect(u: URL, res: ServerResponse): void {
