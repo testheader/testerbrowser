@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.166.0 — 2026-11-12
+
+### Features
+
+- trace IPC calls and log downloads, permissions and Jira outcomes (7db11c5)
+
 ## v0.165.1 — 2026-11-12
 
 ### Features
