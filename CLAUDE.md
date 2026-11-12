@@ -310,10 +310,10 @@ Every push (by a non-bot actor) runs:
 1. **typecheck**, **lint**, **unit-test** — `npm run typecheck` / `npm run lint` / `npm run test`, three separate jobs in parallel. All three must pass.
 2. **bump-version** (main only, needs all three above) — parses commit message, runs `npm version [patch|minor|major]`, writes the version's section to `CHANGELOG.md` (`scripts/release-notes.js`), pushes the bump commit and a draft release whose notes are that section.
    - `feat:` → minor | `feat!:` / `BREAKING CHANGE` → major | anything else → patch
-3. **build-windows** — builds the NSIS installer and uploads it to the draft release.
+3. **build-windows** / **build-linux** — build the NSIS installer / the AppImage (with a generated `latest-linux.yml` update feed) and upload them to the draft release.
 4. **e2e** — Playwright against the built app on Windows, sharded 2-way (`--shard=N/2`, `fail-fast: false`); starts immediately rather than waiting on `bump-version`, since no spec reads `package.json`'s version. A failing shard uploads its `playwright-report/`/`test-results/` (trace included) as a shard-numbered artifact.
-5. **build-status** — runs after `bump-version`, `build-windows` and `e2e` whatever their result, and rewrites the build-status block in the release notes with each job's result and a link to the run.
-6. **publish-release** — promotes the draft to a prerelease once `bump-version`, `build-windows` and every `e2e` shard are green.
+5. **build-status** — runs after `bump-version`, `build-windows`, `build-linux` and `e2e` whatever their result, and rewrites the build-status block in the release notes with each job's result and a link to the run.
+6. **publish-release** — promotes the draft to a prerelease once `bump-version`, `build-windows`, `build-linux` and every `e2e` shard are green.
 
 `actions/setup-node` caches npm's own store (`cache: npm`) in every job that runs `npm ci`. `build-windows` and `e2e` additionally cache Electron's own binary download (`actions/cache` on `%LOCALAPPDATA%\electron\Cache`, keyed on the lockfile hash) — under `--ignore-scripts` that download happens lazily the first time `node_modules/electron` is required (by `electron-rebuild` or Playwright's `_electron.launch()`), not at `npm ci` time, so it isn't covered by npm's own cache.
 

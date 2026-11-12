@@ -75,11 +75,11 @@ or Playwright output). A green run that never executed your test proves nothing.
 
 ```
 typecheck ┐
-lint      ├─→ bump-version ─→ build-windows ─┐
-unit-test ┘                                  ├─→ publish-release
-e2e (shard 1/2, 2/2) ────────────────────────┘
+lint      ├─→ bump-version ─┬→ build-windows ─┐
+unit-test ┘                   └→ build-linux ───┼─→ publish-release
+e2e (shard 1/2, 2/2) ────────────────────┘
 
-build-status: after bump-version, build-windows and e2e, whatever their result
+build-status: after bump-version, build-windows, build-linux and e2e, whatever their result
 ```
 
 - **typecheck**, **lint** and **unit-test** run in parallel, each its own job
@@ -93,7 +93,10 @@ build-status: after bump-version, build-windows and e2e, whatever their result
   release with that section as its notes (`scripts/release-notes.js`, which
   groups the commits since the previous `v*` tag by prefix). It skips the
   `chore: bump version` commits, so write commit subjects for a human reader.
-- **build-status** (after `bump-version`, `build-windows` and `e2e`, runs
+- **build-linux** builds the AppImage on ubuntu-22.04 and uploads it plus a
+  generated `latest-linux.yml` (the Linux auto-update feed) to the draft
+  release. No e2e on Linux; e2e stays Windows-only.
+- **build-status** (after `bump-version`, `build-windows`, `build-linux` and `e2e`, runs
   whatever their result) replaces the build-status block in the release notes
   with each job's result and a link to the run. It only runs when a release
   exists, and it never runs for the bot's own pushes.
@@ -104,7 +107,7 @@ build-status: after bump-version, build-windows and e2e, whatever their result
   shard uploads `playwright-report/`/`test-results/` (trace included) as an
   artifact, named with its shard number, only `if: failure()`.
 - **publish-release** promotes the draft release once `bump-version`,
-  `build-windows` and `e2e` (all shards) are green.
+  `build-windows`, `build-linux` and `e2e` (all shards) are green.
 
 Because `bump-version` pushes to `main`, your local clone goes stale after every
 successful run — pull with rebase before pushing.

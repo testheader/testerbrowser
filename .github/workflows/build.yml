@@ -180,6 +180,71 @@ jobs:
           name: TesterBrowser-windows-installer
           path: release/TesterBrowser-Setup-*.exe
 
+  build-linux:
+    needs: [bump-version]
+    if: "always() && needs.bump-version.result != 'failure'"
+    # Pin an older LTS runner so the AppImage's glibc requirement stays low.
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      # See build-windows's identical step for why Electron's download is cached.
+      - name: Cache Electron download
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --ignore-scripts
+      # Rebuild better-sqlite3 against Electron's ABI
+      - run: npx electron-rebuild -f -w better-sqlite3
+      - run: npm run build
+      - name: Build Linux AppImage
+        run: npx electron-builder --linux AppImage --publish never
+      # --publish never doesn't write the update feed electron-updater reads on
+      # Linux (latest-linux.yml), so generate it here like build-windows does.
+      - name: Generate latest-linux.yml
+        shell: node {0}
+        run: |
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const v = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+          const name = `TesterBrowser-${v}.AppImage`;
+          const buf = fs.readFileSync(`release/${name}`);
+          const sha512 = crypto.createHash('sha512').update(buf).digest('base64');
+          const yml = [
+            `version: ${v}`,
+            `files:`,
+            `  - url: ${name}`,
+            `    sha512: ${sha512}`,
+            `    size: ${buf.length}`,
+            `path: ${name}`,
+            `sha512: ${sha512}`,
+            `releaseDate: '${new Date().toISOString()}'`,
+            ''
+          ].join('\n');
+          fs.writeFileSync('release/latest-linux.yml', yml);
+          console.log(`Generated release/latest-linux.yml for v${v}`);
+      - name: Upload assets to GitHub Release
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release upload "v$VERSION" \
+            "release/TesterBrowser-${VERSION}.AppImage" \
+            release/latest-linux.yml \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TesterBrowser-linux-appimage
+          path: release/TesterBrowser-*.AppImage
+
   e2e:
     # No longer needs bump-version — that commit only touches package.json/
     # package-lock.json's version, which no e2e spec reads (grep -n version
@@ -223,7 +288,7 @@ jobs:
   build-status:
     # Runs once the builds have finished, whatever their result, and records the
     # outcome in the release notes. Skipped when there is no release to update.
-    needs: [bump-version, build-windows, e2e]
+    needs: [bump-version, build-windows, build-linux, e2e]
     if: "always() && needs.bump-version.result == 'success' && github.actor != 'github-actions[bot]'"
     runs-on: ubuntu-latest
     permissions:
@@ -244,8 +309,8 @@ jobs:
           gh release edit "v$VERSION" --repo testheader/testerbrowser --notes-file release-notes.md
 
   publish-release:
-    needs: [bump-version, build-windows, e2e]
-    if: "needs.bump-version.result == 'success' && needs.build-windows.result == 'success' && needs.e2e.result == 'success'"
+    needs: [bump-version, build-windows, build-linux, e2e]
+    if: "needs.bump-version.result == 'success' && needs.build-windows.result == 'success' && needs.build-linux.result == 'success' && needs.e2e.result == 'success'"
     runs-on: ubuntu-latest
     permissions:
       contents: write

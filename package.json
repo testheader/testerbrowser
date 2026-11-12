@@ -70,7 +70,10 @@
     "linux": {
       "target": [
         "AppImage"
-      ]
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "artifactName": "TesterBrowser-${version}.${ext}"
     },
     "mac": {
       "target": [
