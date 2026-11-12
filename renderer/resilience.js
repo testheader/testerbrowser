@@ -5,7 +5,10 @@ import { getActiveId, refreshTabs } from './tabs.js';
 import { getActiveConsoleTab, switchConsoleTab } from './console-tabs.js';
 import { pollWhileVisible } from './poll.js';
 import { renderEmptyState } from './empty-state.js';
-import { RES_STEP_COUNT, isResStepValid, summarizeResRule } from './resilience-logic.js';
+import {
+  RES_STEP_COUNT, RACE_MIN_COUNT, RACE_MAX_COUNT, RACE_DEFAULT_TIMEOUT_SEC, RACE_MAX_TIMEOUT_SEC,
+  isResStepValid, summarizeResRule,
+} from './resilience-logic.js';
 
 /** @typedef {import('../src/main/resilienceManager').ResilienceType} ResilienceType */
 
@@ -65,6 +68,7 @@ const TYPES = [
   { value: 'offline',   label: 'Offline',         icon: 'wifi-off',      desc: 'Fails the request as if the network were disconnected.' },
   { value: 'missing',   label: '404',             icon: 'file-x',        desc: 'Returns HTTP 404 Not Found.' },
   { value: 'corrupt',   label: 'Corrupt body',    icon: 'file-warning',  desc: 'Returns 200 with a garbled binary body.' },
+  { value: 'race',      label: 'Race gate',       icon: 'git-merge',     desc: 'Holds matching requests until N have arrived, then releases them all at once. Trigger the same action in N tabs (or double-click) to probe for race conditions.' },
   { value: 'latency',   label: 'Latency',         icon: 'timer',         desc: 'Delays the request by the given milliseconds, then lets it through.' },
   { value: 'random500', label: 'Random 500',      icon: 'dices',         desc: 'Returns HTTP 500 on a random share of requests — set the probability.' },
 ];
@@ -84,7 +88,12 @@ function setResType(type) {
   document.getElementById('resTypeDesc').textContent = t.desc;
   applyTypeFieldVisibility(t.value, document.getElementById('resLatencyField'),
     /** @type {HTMLInputElement} */ (document.getElementById('resLatency')), document.getElementById('resLatencyLabel'),
-    document.getElementById('resReleaseField'));
+    document.getElementById('resReleaseField'), document.getElementById('resHoldField'),
+    document.getElementById('resReleaseLabel'), /** @type {HTMLInputElement} */ (document.getElementById('resRelease')));
+  // A race gate is all-or-nothing: the probability roll doesn't apply.
+  const prob = /** @type {HTMLInputElement} */ (document.getElementById('resProb'));
+  prob.disabled = t.value === 'race';
+  if (t.value === 'race') prob.value = '100';
 }
 
 // The add-rule form is inline and closed by default — Add rule opens it, as
@@ -102,7 +111,10 @@ let resStep = 1;
 
 function resFieldValues() {
   const val = (id) => /** @type {HTMLInputElement} */ (document.getElementById(id)).value;
-  return { urlPattern: val('resUrl'), probability: val('resProb') };
+  return {
+    urlPattern: val('resUrl'), probability: val('resProb'),
+    type: val('resType'), holdCount: val('resHoldCount'), timeoutSec: val('resRelease'),
+  };
 }
 
 function showResStep(step) {
@@ -136,6 +148,7 @@ function updateResStepState() {
     probability: v.probability,
     latencyMs: latency || null,
     releaseSec: release || null,
+    holdCount: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resHoldCount')).value, 10) || null,
   });
 }
 
@@ -155,7 +168,7 @@ const LATENCY_DEFAULT_BY_TYPE = { latency: '2000', stall504: '30000' };
 // field ('hang' only), and nudges the latency input to that type's sensible
 // default the first time it's relevant, without clobbering a value the
 // tester already customized.
-function applyTypeFieldVisibility(type, latencyField, latencyInput, latencyLabel, releaseField) {
+function applyTypeFieldVisibility(type, latencyField, latencyInput, latencyLabel, releaseField, holdField, releaseLabel, releaseInput) {
   const usesLatency = LATENCY_FIELD_TYPES.includes(type);
   latencyInput.disabled = !usesLatency;
   latencyField.classList.toggle('res-field-off', !usesLatency);
@@ -165,7 +178,18 @@ function applyTypeFieldVisibility(type, latencyField, latencyInput, latencyLabel
     const other  = type === 'stall504' ? LATENCY_DEFAULT_BY_TYPE.latency : LATENCY_DEFAULT_BY_TYPE.stall504;
     if (!latencyInput.value || latencyInput.value === other) latencyInput.value = wanted;
   }
-  if (releaseField) releaseField.classList.toggle('res-hidden', type !== 'hang');
+  const isRace = type === 'race';
+  if (releaseField) releaseField.classList.toggle('res-hidden', type !== 'hang' && !isRace);
+  if (holdField) holdField.classList.toggle('res-hidden', !isRace);
+  if (releaseLabel) releaseLabel.textContent = isRace ? 'Timeout (s)' : 'Release after (s)';
+  if (releaseInput) {
+    releaseInput.min = isRace ? '1' : '0';
+    releaseInput.max = String(isRace ? RACE_MAX_TIMEOUT_SEC : 600);
+    releaseInput.placeholder = isRace ? 'release anyway after' : '0 = never';
+    // Same "don't clobber a customised value" rule as the latency field.
+    if (isRace && (releaseInput.value === '' || releaseInput.value === '0')) releaseInput.value = String(RACE_DEFAULT_TIMEOUT_SEC);
+    if (!isRace && releaseInput.value === String(RACE_DEFAULT_TIMEOUT_SEC)) releaseInput.value = '0';
+  }
 }
 
 export function initResilience() {
@@ -207,8 +231,12 @@ export function initResilience() {
               <label class="res-field-label" for="resLatency" id="resLatencyLabel">Delay (ms)</label>
               <input class="res-input res-latency" id="resLatency" type="number" value="2000" min="0" placeholder="Delay ms" disabled />
             </div>
+            <div class="res-field res-hold-field res-hidden" id="resHoldField">
+              <label class="res-field-label" for="resHoldCount">Hold count</label>
+              <input class="res-input res-hold" id="resHoldCount" type="number" value="2" min="2" max="50" title="Release once this many matching requests are waiting" />
+            </div>
             <div class="res-field res-release-field res-hidden" id="resReleaseField">
-              <label class="res-field-label" for="resRelease">Release after (s)</label>
+              <label class="res-field-label" for="resRelease" id="resReleaseLabel">Release after (s)</label>
               <input class="res-input res-release" id="resRelease" type="number" value="0" min="0" max="600" placeholder="0 = never" />
             </div>
           </div>
@@ -278,10 +306,14 @@ export function initResilience() {
       type,
       urlPattern: /** @type {HTMLInputElement} */ (document.getElementById('resUrl')).value.trim() || '*',
       method: capturedMethod || '*',
-      probability: Math.min(1, Math.max(0.01, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resProb')).value, 10) / 100)),
+      probability: type === 'race' ? 1 : Math.min(1, Math.max(0.01, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resProb')).value, 10) / 100)),
       latencyMs: parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resLatency')).value, 10) || (type === 'stall504' ? 30_000 : 2000),
       enabled: true,
     };
+    if (type === 'race') {
+      rule.holdCount = Math.min(RACE_MAX_COUNT, Math.max(RACE_MIN_COUNT, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resHoldCount')).value, 10) || RACE_MIN_COUNT));
+      rule.releaseAfterMs = Math.min(RACE_MAX_TIMEOUT_SEC, Math.max(1, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resRelease')).value, 10) || RACE_DEFAULT_TIMEOUT_SEC)) * 1000;
+    }
     if (type === 'hang') {
       const releaseSec = Math.min(600, Math.max(0, parseInt(/** @type {HTMLInputElement} */ (document.getElementById('resRelease')).value, 10) || 0));
       rule.releaseAfterMs = releaseSec * 1000;
@@ -407,9 +439,10 @@ function renderRules(rules) {
 function buildRuleRow(rule) {
   const type = TYPES.find(t => t.value === rule.type);
   const typeLabel = type?.label ?? rule.type;
-  const probLabel = Math.round(rule.probability * 100) + '%';
+  const probLabel = rule.type === 'race' ? '—' : Math.round(rule.probability * 100) + '%';
   const usesDelay = LATENCY_FIELD_TYPES.includes(rule.type);
   const delayLabel = usesDelay ? `${rule.latencyMs} ms`
+    : rule.type === 'race' ? `×${rule.holdCount ?? RACE_MIN_COUNT} · ${Math.round((rule.releaseAfterMs || RACE_DEFAULT_TIMEOUT_SEC * 1000) / 1000)} s`
     : rule.type === 'hang' && rule.releaseAfterMs ? `${Math.round(rule.releaseAfterMs / 1000)} s`
     : '—';
   const row = document.createElement('div');
@@ -476,7 +509,8 @@ function buildEditRow(rule) {
     <input class="res-input res-edit-url" type="text" value="${escHtml(rule.urlPattern)}" spellcheck="false" />
     <input class="res-input res-edit-prob" type="number" min="1" max="100" value="${Math.round(rule.probability * 100)}" title="Probability %" />
     <input class="res-input res-edit-latency${LATENCY_FIELD_TYPES.includes(rule.type) ? '' : ' res-hidden'}" type="number" min="0" value="${rule.latencyMs ?? (rule.type === 'stall504' ? 30_000 : 2000)}" title="${rule.type === 'stall504' ? 'Stall ms' : 'Delay ms'}" />
-    <input class="res-input res-edit-release${rule.type === 'hang' ? '' : ' res-hidden'}" type="number" min="0" max="600" value="${rule.releaseAfterMs ? Math.round(rule.releaseAfterMs / 1000) : 0}" title="Release after (s) — 0 = never" />
+    <input class="res-input res-edit-hold${rule.type === 'race' ? '' : ' res-hidden'}" type="number" min="${RACE_MIN_COUNT}" max="${RACE_MAX_COUNT}" value="${rule.holdCount ?? RACE_MIN_COUNT}" title="Hold count — release once this many requests are waiting" />
+    <input class="res-input res-edit-release${rule.type === 'hang' || rule.type === 'race' ? '' : ' res-hidden'}" type="number" min="0" max="600" value="${rule.releaseAfterMs ? Math.round(rule.releaseAfterMs / 1000) : (rule.type === 'race' ? RACE_DEFAULT_TIMEOUT_SEC : 0)}" title="${rule.type === 'race' ? 'Timeout (s) — released anyway after this long' : 'Release after (s) — 0 = never'}" />
     <button class="res-btn res-save-btn" title="Save">Save</button>
     <button class="res-btn res-cancel-btn" title="Cancel">Cancel</button>
     ${buildProvenanceHtml(rule)}`;
@@ -484,10 +518,14 @@ function buildEditRow(rule) {
   const typeSel = /** @type {HTMLSelectElement} */ (row.querySelector('.res-edit-type'));
   const latencyInput = /** @type {HTMLInputElement} */ (row.querySelector('.res-edit-latency'));
   const releaseInput = /** @type {HTMLInputElement} */ (row.querySelector('.res-edit-release'));
+  const holdInput = /** @type {HTMLInputElement} */ (row.querySelector('.res-edit-hold'));
   typeSel.addEventListener('change', () => {
     latencyInput.classList.toggle('res-hidden', !LATENCY_FIELD_TYPES.includes(typeSel.value));
     latencyInput.title = typeSel.value === 'stall504' ? 'Stall ms' : 'Delay ms';
-    releaseInput.classList.toggle('res-hidden', typeSel.value !== 'hang');
+    releaseInput.classList.toggle('res-hidden', typeSel.value !== 'hang' && typeSel.value !== 'race');
+    releaseInput.title = typeSel.value === 'race' ? 'Timeout (s) — released anyway after this long' : 'Release after (s) — 0 = never';
+    holdInput.classList.toggle('res-hidden', typeSel.value !== 'race');
+    if (typeSel.value === 'race' && (releaseInput.value === '' || releaseInput.value === '0')) releaseInput.value = String(RACE_DEFAULT_TIMEOUT_SEC);
   });
 
   row.querySelector('.res-cancel-btn').addEventListener('click', () => {
@@ -498,9 +536,13 @@ function buildEditRow(rule) {
     const patch = {
       type,
       urlPattern: /** @type {HTMLInputElement} */ (row.querySelector('.res-edit-url')).value.trim() || '*',
-      probability: Math.min(1, Math.max(0.01, parseInt(/** @type {HTMLInputElement} */ (row.querySelector('.res-edit-prob')).value, 10) / 100)),
+      probability: type === 'race' ? 1 : Math.min(1, Math.max(0.01, parseInt(/** @type {HTMLInputElement} */ (row.querySelector('.res-edit-prob')).value, 10) / 100)),
       latencyMs: parseInt(latencyInput.value, 10) || (type === 'stall504' ? 30_000 : 2000),
     };
+    if (type === 'race') {
+      patch.holdCount = Math.min(RACE_MAX_COUNT, Math.max(RACE_MIN_COUNT, parseInt(holdInput.value, 10) || RACE_MIN_COUNT));
+      patch.releaseAfterMs = Math.min(RACE_MAX_TIMEOUT_SEC, Math.max(1, parseInt(releaseInput.value, 10) || RACE_DEFAULT_TIMEOUT_SEC)) * 1000;
+    }
     if (type === 'hang') {
       const releaseSec = Math.min(600, Math.max(0, parseInt(releaseInput.value, 10) || 0));
       patch.releaseAfterMs = releaseSec * 1000;

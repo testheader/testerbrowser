@@ -15,7 +15,7 @@ import { matchesGlob } from './urlGlob';
  * rule storage and matching.
  */
 
-export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt' | 'hang' | 'stall504';
+export type ResilienceType = 'error500' | 'timeout' | 'latency' | 'offline' | 'missing' | 'random500' | 'corrupt' | 'hang' | 'stall504' | 'race';
 
 export interface ResilienceRule {
   id: string;
@@ -32,6 +32,11 @@ export interface ResilienceRule {
   // aborts it client-side or navigates away. The renderer caps entry at
   // 600s; not re-validated here.
   releaseAfterMs?: number;
+  // 'race' (Race gate): hold this many matching requests, then release them
+  // together. Clamped to 2–50 by raceGate.ts. For 'race', releaseAfterMs is
+  // the gate's timeout instead (released anyway if the batch never fills;
+  // 0/absent = 10 s default, since a gate must never hang the page forever).
+  holdCount?: number;
   enabled: boolean;
   hitCount: number;
   lastHitAt: number | null;

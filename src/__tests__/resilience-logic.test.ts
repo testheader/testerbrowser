@@ -29,3 +29,18 @@ describe('summarizeResRule', () => {
     expect(summarizeResRule({ typeLabel: '404', urlPattern: ' ', probability: 100 })).toBe('404 on `*`, 100%');
   });
 });
+
+describe('race gate rules', () => {
+  const race = (holdCount: string | number, timeoutSec: string | number) =>
+    ({ urlPattern: 'x', probability: '', type: 'race', holdCount, timeoutSec });
+  it('step 3 validates hold count 2-50 and timeout 1-120 s instead of probability', () => {
+    expect(isResStepValid(3, race(2, 10))).toBe(true);
+    expect(isResStepValid(3, race(50, 120))).toBe(true);
+    for (const n of [1, 51, 0, '', 'x', 2.5]) expect(isResStepValid(3, race(n, 10))).toBe(false);
+    for (const t of [0, 121, '', 'x']) expect(isResStepValid(3, race(2, t))).toBe(false);
+  });
+  it('summarises the batch size and timeout', () => {
+    expect(summarizeResRule({ typeLabel: 'Race gate', type: 'race', urlPattern: '/redeem', method: 'POST', probability: 100, holdCount: 5, releaseSec: 20 }))
+      .toBe('Race gate on POST `/redeem`: holds 5 requests, releases them together (or after 20 s)');
+  });
+});

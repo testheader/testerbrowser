@@ -3,6 +3,7 @@ import type { MockRule } from './mockManager';
 import type { ResilienceRule } from './resilienceManager';
 import type { PermissionRecord } from './permissionManager';
 import type { JsonStore } from './jsonFile';
+import { RaceGate } from './raceGate';
 
 /** A window's SessionManager, as seen by hooks that are installed once per Electron session. */
 export interface WebContentsOwner {
@@ -28,6 +29,8 @@ export interface SharedPartitionState {
   owners: Set<WebContentsOwner>;
   /** Live tabs per partition across all windows (an in-memory partition is wiped only at zero). */
   partitionRefs: Map<string, number>;
+  /** Barrier behind `race` Resilience rules; shared so tabs on one partition (any window) fill the same gate. */
+  raceGate: RaceGate;
   /** Persisted permission grants; created by the first manager, then shared. */
   permissionStore?: JsonStore<PermissionRecord[]>;
 }
@@ -36,5 +39,6 @@ export function createSharedPartitionState(): SharedPartitionState {
   return {
     mockRules: new Map(), resilienceRules: new Map(), emulation: new Map(),
     hookedPartitions: new Set(), owners: new Set(), partitionRefs: new Map(),
+    raceGate: new RaceGate(),
   };
 }

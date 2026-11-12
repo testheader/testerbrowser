@@ -14,6 +14,7 @@ import {
   MockManager, MockRule, buildMockFulfillParams, buildMockPreflightParams,
 } from './mockManager';
 import { ResilienceManager, ResilienceRule } from './resilienceManager';
+import { RaceGate, RACE_DEFAULT_COUNT } from './raceGate';
 import { SnapshotManager, FrameSnapshot, waitForFrameLoad } from './snapshotManager';
 import { EmulationManager, EmulationOverrides, EmulationPatch } from './emulationManager';
 import { RecordingManager, TestStep, NATIVE_SET_VALUE_FN } from './recordingManager';
@@ -292,6 +293,7 @@ export class SessionManager {
     this.a11yService = new A11yService(this.log);
     this.mockManager = new MockManager(win, shared.mockRules);
     this.resilienceManager = new ResilienceManager(shared.resilienceRules);
+    shared.raceGate.onFlush ??= (f) => this.log.info('resilience', `Race gate released ${f.released} request(s) (${f.reason}) after ${f.heldForMs} ms`, { releaseReason: f.reason, released: f.released, heldForMs: f.heldForMs });
     // #276: lets a permission prompt name the tab it belongs to — looked up
     // by the *requesting* webContents id (not the partition, unlike
     // DownloadManager's attribution), so it's correct even for two tabs
@@ -658,6 +660,17 @@ export class SessionManager {
             hungForSession.set(requestId, releaseTimer);
             break;
           }
+          case 'race':
+            // Parked until holdCount matching requests (from any tab on this
+            // partition) have arrived, then all released in one pass. The
+            // timeout is the rule's releaseAfterMs; the gate clamps both.
+            this.shared.raceGate.hold(
+              RaceGate.key(testSession.partition, res.id),
+              { count: res.holdCount ?? RACE_DEFAULT_COUNT, timeoutMs: res.releaseAfterMs ?? 0 },
+              testSession.id,
+              () => resolvePaused('Fetch.continueRequest', { requestId }),
+            );
+            break;
           default:
             resolvePaused('Fetch.continueRequest', { requestId });
         }
@@ -2119,6 +2132,7 @@ export class SessionManager {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
     this.resilienceManager.remove(partition, ruleId);
+    this.shared.raceGate.flushRule(partition, ruleId); // don't leave parked requests stuck
     this._applyFetch(id);
     this.log.info('resilience', `Resilience rule removed: ${ruleId}`, { sessionId: id });
   }
@@ -2128,6 +2142,7 @@ export class SessionManager {
     if (!partition) return;
     const rule = this.resilienceManager.toggle(partition, ruleId, enabled);
     if (rule) {
+      if (!enabled) this.shared.raceGate.flushRule(partition, ruleId);
       this._applyFetch(id);
       this.log.info('resilience', `Resilience rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
     }
@@ -2137,6 +2152,8 @@ export class SessionManager {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
     const rule = this.resilienceManager.update(partition, ruleId, patch);
+    // A changed type/pattern/count makes whatever is parked stale: let it go.
+    if (rule) this.shared.raceGate.flushRule(partition, ruleId);
     if (rule) this._applyFetch(id);
   }
 
@@ -2180,6 +2197,7 @@ export class SessionManager {
       for (const t of delayed) clearTimeout(t);
       this.pendingDelayed.delete(id);
     }
+    this.shared.raceGate.discardSession(id);
     const hung = this.hungRequests.get(id);
     if (hung) {
       for (const timer of hung.values()) if (timer) clearTimeout(timer);

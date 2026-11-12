@@ -59,7 +59,7 @@ src/main/sessionManager.ts BrowserView lifecycle, tab mgmt, CDP dispatch (Fetch.
                            getSession callback (resolving just enough of TestSession) rather
                            than the whole sessions Map: mockManager.ts, resilienceManager.ts
                            (+ urlGlob.ts), snapshotManager.ts, emulationManager.ts,
-                           recordingManager.ts, followAlongManager.ts, a11yService.ts (methods
+                           recordingManager.ts, followAlongManager.ts, raceGate.ts (barrier behind `race` Resilience rules, shared via partitionState), a11yService.ts (methods
                            take Electron.WebContents directly, no session lookup).
                            SessionManager itself keeps only shared CDP plumbing and thin
                            id-resolving delegate methods to each manager.
@@ -200,7 +200,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `sessions:setLocalStorageKey/deleteLocalStorageKey/clearLocalStorage` | R→M | localStorage editing (Storage tab) |
 | `session:setEmulation` / `session:getEmulation` | R→M | Spoof tab: device metrics, UA, geolocation, timezone, locale — per tab (`emulationManager.ts`) |
 | `mock:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Mock rule CRUD, scoped to the tab's partition (reorder/import/export are above) |
-| `resilience:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Resilience rule CRUD (latency/abort/status injection by URL glob) |
+| `resilience:getRules/addRule/updateRule/removeRule/toggleRule` | R→M | Resilience rule CRUD (latency/abort/status injection by URL glob). Type `race` is the **Race gate**: parks matching requests at the CDP Fetch pause until `holdCount` (2–50) have arrived — from any tab on the partition, in any window — then releases them in one synchronous pass (`raceGate.ts`); `releaseAfterMs` is its timeout (default 10 s, max 120 s) so it can never hang the page; removing/disabling/editing the rule, or closing a tab, releases or drops what is parked. Not a single-packet attack: each release is its own CDP command (expect a ~ms spread), and a race rule wins over later Resilience rules for the same request |
 | `resilience:setConditions/getConditions` | R→M | per-tab network + CPU throttling; the controls (`#resNetworkSelect`, `#resCpuSelect`, custom fields) live in Spoof › Advanced and apply immediately |
 | `recording:replay` | R→M | re-issue a recorded request from the page context |
 | `tests:list/save/load/delete` | R→M | saved Record/Playback tests (import/export are above) |
