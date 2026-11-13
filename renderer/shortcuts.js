@@ -8,7 +8,8 @@ import { matchShortcut } from './shortcut-table.js';
 function handleShortcut(key) {
   const activeId = getActiveId();
   switch (key) {
-    case 'newTab':             newSession(); break;
+    // #369: land in the URL bar once the new tab is up (switching tabs hands focus to the page).
+    case 'newTab':             newSession().then(() => { const u = /** @type {HTMLInputElement} */ (document.getElementById('urlbar')); u.focus(); u.select(); }); break;
     case 'newWindow':          testerBrowser.windowControls.openNew(); break;
     // Guarded here, at the shortcut call site, rather than inside closeTab()
     // itself — the tab context menu's own Close item calls closeTab()

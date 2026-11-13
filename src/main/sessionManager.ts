@@ -926,7 +926,14 @@ export class SessionManager {
       const match = matchShortcut({ ctrl, shift, alt, key });
       if (!match) return;
       event.preventDefault();
-      if (!match.direct) { this.win.webContents.send('app:shortcut', match.action); return; }
+      if (!match.direct) {
+        // #369: these land in a text box in the chrome; while the tab's view holds
+        // keyboard focus, the renderer's .focus() is a no-op unless its webContents
+        // has focus first.
+        if (match.action === 'newTab' || match.action === 'focusUrl' || match.action === 'findToggle') this.win.webContents.focus();
+        this.win.webContents.send('app:shortcut', match.action);
+        return;
+      }
       switch (match.action) {
         case 'devtools':  this.toggleDevTools(this.activeId ?? ''); break;
         case 'zoomIn':    this.setZoom(this.activeId ?? '', 0.1); break;
