@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.166.4 — 2026-11-13
+
+### Fixes
+
+- [Debug log] Ctrl+F / Ctrl+T focus the find box / URL bar (refs #369) (f357548)
+
 ## v0.166.3 — 2026-11-13
 
 ### Fixes
