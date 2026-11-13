@@ -116,7 +116,7 @@ const NOISY_IPC_CHANNELS: ReadonlySet<string> = new Set([
   'recording:timeline', 'recording:status', 'recording:oldestId', 'session:pollRecordingSteps',
   'sessions:list', 'sessions:navState', 'sessions:getZoom', 'download:list', 'followalong:list',
   'applog:tail', 'app:debugLog', 'app:versionInfo', 'window:isMaximized', 'layout:setConsoleHeight',
-  'layout:setTopBarHeight', 'layout:setRightPanelWidth', 'find:start',
+  'layout:setTopBarHeight', 'layout:setRightPanelWidth', 'find:start', 'settings:get',
 ]);
 installIpcGuard(ipcMain, {
   getAppWebContents: () => registry.all().map((c) => c.win.webContents),
