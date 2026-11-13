@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.166.3 — 2026-11-13
+
+### Fixes
+
+- [Debug log] IPC 'settings:get' ok (0ms) spam in Debug log (refs #368) (0505649)
+
 ## v0.166.2 — 2026-11-13
 
 ### Other
