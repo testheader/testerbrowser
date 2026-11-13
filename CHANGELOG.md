@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.166.1 — 2026-11-13
+
+### Other
+
+- Bug report screenshot for #368 (422721d)
+
 ## v0.166.0 — 2026-11-12
 
 ### Features
