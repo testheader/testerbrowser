@@ -2,6 +2,7 @@ import {
   migrateJiraSettings, toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS,
   filterRowsSince, formatConsoleErrors, checkAttachmentSize, summarizeAttachmentResults,
   JIRA_ATTACHMENT_MAX_BYTES, validateJiraBaseUrl, resolveJiraTokenOnSave,
+  parentInfoFromIssue, pickSubtaskType, textToAdf,
 } from '../jira';
 import type { EventRow } from '../recorder';
 
@@ -70,14 +71,23 @@ describe('parseJiraResponse (#267 — safe error parsing)', () => {
     expect(result.error).toBe('HTTP 400 Bad Request: Top-level problem; Summary is required');
   });
 
-  it('falls back to a plain HTTP status when the body is HTML (e.g. an SSO redirect or a proxy error page)', () => {
-    const result = parseJiraResponse(502, 'Bad Gateway', 'text/html; charset=UTF-8', '<html><body>Bad Gateway</body></html>');
-    expect(result).toEqual({ ok: false, error: 'HTTP 502 Bad Gateway' });
+  it('appends a tag-stripped snippet when the body is HTML (e.g. an SSO redirect or a proxy error page)', () => {
+    const result = parseJiraResponse(502, 'Bad Gateway', 'text/html; charset=UTF-8', '<html><body>Bad  Gateway</body></html>');
+    expect(result).toEqual({ ok: false, error: 'HTTP 502 Bad Gateway: Bad Gateway' });
   });
 
-  it('falls back to a plain HTTP status when the content type is JSON but the body fails to parse', () => {
+  it('appends the raw body snippet when the content type is JSON but the body fails to parse', () => {
     const result = parseJiraResponse(500, 'Internal Server Error', 'application/json', 'not actually json{');
-    expect(result).toEqual({ ok: false, error: 'HTTP 500 Internal Server Error' });
+    expect(result).toEqual({ ok: false, error: 'HTTP 500 Internal Server Error: not actually json{' });
+  });
+
+  it('stays a bare status when the body is empty', () => {
+    expect(parseJiraResponse(403, '', null, '')).toEqual({ ok: false, error: 'HTTP 403' });
+  });
+
+  it('caps the snippet at 200 characters', () => {
+    const result = parseJiraResponse(403, 'Forbidden', 'text/plain', 'x'.repeat(500));
+    expect(result.error).toBe(`HTTP 403 Forbidden: ${'x'.repeat(200)}`);
   });
 
   it('treats any 2xx as success', () => {
@@ -275,5 +285,35 @@ describe('summarizeAttachmentResults (#245 — "attached N/M (...)" message)', (
     expect(summarizeAttachmentResults(results)).toBe(
       'attached 2/4 (network.har: 413 Payload Too Large, steps.json: skipped: over 10 MB)'
     );
+  });
+});
+
+describe('subtask helpers', () => {
+  it('reads the parent project and whether it is itself a subtask', () => {
+    expect(parentInfoFromIssue({ fields: { project: { key: 'ABC' }, issuetype: { subtask: false } } })).toEqual({ projectKey: 'ABC', isSubtask: false });
+    expect(parentInfoFromIssue({ fields: { project: { key: 'ABC' }, issuetype: { subtask: true } } })).toEqual({ projectKey: 'ABC', isSubtask: true });
+  });
+  it('returns null when the project is missing', () => {
+    expect(parentInfoFromIssue({ fields: {} })).toBeNull();
+    expect(parentInfoFromIssue(undefined)).toBeNull();
+  });
+  it("picks the project's own subtask issue type name", () => {
+    expect(pickSubtaskType({ issueTypes: [{ name: 'Bug' }, { name: 'Subtaak', subtask: true }] })).toBe('Subtaak');
+  });
+  it('returns null when the project has no subtask type', () => {
+    expect(pickSubtaskType({ issueTypes: [{ name: 'Bug' }] })).toBeNull();
+    expect(pickSubtaskType({})).toBeNull();
+  });
+});
+
+describe('textToAdf', () => {
+  it('makes one paragraph per blank-line-separated block, keeping single line breaks', () => {
+    expect(textToAdf('a\nb\n\nc')).toEqual({
+      version: 1, type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'a' }, { type: 'hardBreak' }, { type: 'text', text: 'b' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'c' }] },
+      ],
+    });
   });
 });

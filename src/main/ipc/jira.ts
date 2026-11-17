@@ -3,7 +3,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import {
   toPublicJiraSettings, parseJiraResponse, DEFAULT_JIRA_SETTINGS, JiraSettingsFile,
   formatConsoleErrors, checkAttachmentSize, JiraAttachmentUploadResult,
-  validateJiraBaseUrl, resolveJiraTokenOnSave,
+  validateJiraBaseUrl, resolveJiraTokenOnSave, parentInfoFromIssue, pickSubtaskType, textToAdf,
 } from '../jira';
 import { log } from '../appLogger';
 import type { JsonStore } from '../jsonFile';
@@ -27,6 +27,19 @@ function getJiraToken(jiraStore: JsonStore<JiraSettingsFile>): string | null {
 
 function jiraAuthHeader(email: string, token: string): string {
   return 'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
+}
+
+// Headers for JSON writes. net.fetch sends a browser User-Agent, which makes
+// Jira's XSRF filter reject the POST ("HTTP 403: XSRF check failed") even with
+// the opt-out header — so identify as an API client and opt out explicitly.
+function jiraWriteHeaders(email: string, token: string): Record<string, string> {
+  return {
+    'Authorization': jiraAuthHeader(email, token),
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'X-Atlassian-Token': 'no-check',
+    'User-Agent': 'TesterBrowser-Jira-Client',
+  };
 }
 
 async function jiraFetch(url: string, init: Parameters<typeof net.fetch>[1]) {
@@ -147,28 +160,61 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
     }
   });
 
+  ipcMain.handle('jira:addComment', async (_e, key: string, text: string) => {
+    const s = jiraStore.get();
+    const token = getJiraToken(jiraStore);
+    if (!s.baseUrl || !s.email || !token) return { ok: false, error: 'Jira not configured' };
+    if (typeof key !== 'string' || !key.trim()) return { ok: false, error: 'No ticket loaded' };
+    if (typeof text !== 'string' || !text.trim()) return { ok: false, error: 'Comment is empty' };
+    try {
+      return await jiraFetch(
+        `${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue/${encodeURIComponent(key)}/comment`,
+        { method: 'POST', headers: jiraWriteHeaders(s.email, token), body: JSON.stringify({ body: textToAdf(text.trim()) }) }
+      );
+    } catch (e: unknown) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
   ipcMain.handle('jira:createIssue', async (e, summary: string, description: string, opts?: { linkTo?: string; sessionId?: string; attach?: JiraAttachOptions }) => {
     const s = jiraStore.get();
     const token = getJiraToken(jiraStore);
     if (!s.baseUrl || !s.email || !token || !s.projectKey) return { ok: false, error: 'Jira not configured' };
     try {
+      const base = s.baseUrl.replace(/\/$/, '');
+      const authHeaders = jiraWriteHeaders(s.email, token);
+
+      // A bug reported on a loaded ticket becomes a subtask of it. Anything
+      // that stops that (parent is itself a subtask, no subtask type in the
+      // project, lookup failed) falls back to a standalone bug plus a
+      // "Relates" link, so reporting never fails just because of this.
+      let projectKey = s.projectKey;
+      let issueTypeName = s.issueType || DEFAULT_JIRA_SETTINGS.issueType;
+      let parentKey: string | undefined;
+      if (opts?.linkTo) {
+        const getHeaders = { 'Authorization': authHeaders.Authorization, 'Accept': 'application/json' };
+        const parent = await jiraFetch(`${base}/rest/api/3/issue/${encodeURIComponent(opts.linkTo)}?fields=project,issuetype`, { headers: getHeaders });
+        const info = parent.ok ? parentInfoFromIssue(parent.data) : null;
+        if (info && !info.isSubtask) {
+          const project = await jiraFetch(`${base}/rest/api/3/project/${encodeURIComponent(info.projectKey)}`, { headers: getHeaders });
+          const subtaskType = project.ok ? pickSubtaskType(project.data) : null;
+          if (subtaskType) { parentKey = opts.linkTo; projectKey = info.projectKey; issueTypeName = subtaskType; }
+        }
+      }
+
       const body = {
         fields: {
-          project: { key: s.projectKey },
+          project: { key: projectKey },
           summary,
           description: {
             version: 1, type: 'doc',
             content: [{ type: 'paragraph', content: [{ type: 'text', text: description }] }],
           },
-          issuetype: { name: s.issueType || DEFAULT_JIRA_SETTINGS.issueType },
+          issuetype: { name: issueTypeName },
+          ...(parentKey ? { parent: { key: parentKey } } : {}),
         },
       };
-      const authHeaders = {
-        'Authorization': jiraAuthHeader(s.email, token),
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      };
-      const result = await jiraFetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issue`, {
+      const result = await jiraFetch(`${base}/rest/api/3/issue`, {
         method: 'POST', headers: authHeaders, body: JSON.stringify(body),
       });
       if (!result.ok) log.warn('jira', 'Jira rejected issue creation', { error: result.error });
@@ -182,7 +228,7 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
 
       // A link failure never fails the creation — the bug already exists.
       let linkError: string | undefined;
-      if (opts?.linkTo) {
+      if (opts?.linkTo && !parentKey) {
         const linkResult = await jiraFetch(`${s.baseUrl.replace(/\/$/, '')}/rest/api/3/issueLink`, {
           method: 'POST',
           headers: authHeaders,
@@ -209,7 +255,7 @@ export function registerJiraIpc(deps: AppDeps, stores: JiraIpcStores): void {
         }
       }
 
-      return { ok: true, key, linkError, attachments };
+      return { ok: true, key, linkError, attachments, parentKey };
     } catch (e: unknown) {
       log.warn('jira', 'Creating issue failed', { error: e instanceof Error ? e.message : String(e) });
       return { ok: false, error: e instanceof Error ? e.message : String(e) };

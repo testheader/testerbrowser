@@ -208,7 +208,7 @@ Renderer (contextIsolation: true, nodeIntegration: false)
 | `session:playbackStep` / `session:setPlaybackActive` / `session:countSelectorMatches` | R→M | run one step / suppress recording during playback / count selector matches |
 | `testdata:apply` | R→M | fill the page's form fields from a Test Data template |
 | `followalong:start/stop/setMirrorNavigation/list` | R→M | leader→follower tab mirroring (`followAlongManager.ts`) |
-| `jira:getSettings/saveSettings/fetchTicket/createIssue` | R→M | Jira integration (token never returned to the renderer; base URL must be https, and a stored token is cleared when the base URL's origin changes) |
+| `jira:getSettings/saveSettings/fetchTicket/createIssue/addComment` | R→M | Jira integration (token never returned to the renderer; base URL must be https, and a stored token is cleared when the base URL's origin changes). `createIssue` with `linkTo` files the bug as a **subtask** of that ticket (parent's project, the project's own subtask type); if the parent is itself a subtask or has no subtask type it falls back to a standalone bug + "Relates" link. Writes send `X-Atlassian-Token: no-check` and a non-browser `User-Agent` — without both Jira answers `403 XSRF check failed`. `fetchTicket`'s payload also feeds the card's comments (latest 3) and attachments; `addComment(key, text)` posts a comment |
 | `bugreport:startOAuth/signOut/hasToken/checkToken/saveToken/getDiagnostics/submit/revealScreenshot` | R→M | in-app GitHub bug reporting |
 | `layout:setRightPanelWidth` | R→M | resize the right-hand detail panel |
 | `session:navigated` | M→R | fired on did-navigate / did-navigate-in-page |

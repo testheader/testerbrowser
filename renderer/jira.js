@@ -5,7 +5,7 @@ import { switchConsoleTab } from './console-tabs.js';
 import { renderEmptyState } from './empty-state.js';
 import { renderFlowSteps } from './flow-steps.js';
 import { jiraFlowStep } from './flow-logic.js';
-import { adfText, extractAcceptanceCriteria, jiraHost } from './jira-logic.js';
+import { adfText, extractAcceptanceCriteria, jiraHost, formatBytes, recentComments, attachmentList } from './jira-logic.js';
 
 let initialized = false;
 let currentHasToken = false;
@@ -343,6 +343,8 @@ async function fetchTicket() {
   const desc = rawDesc ? rawDesc.slice(0, 400) + (rawDesc.length > 400 ? '\u2026' : '') : '(no description)';
   const criteria = extractAcceptanceCriteria(f.description);
   const base = (cachedSettings?.baseUrl ?? '').replace(/\/$/, '');
+  const { comments, hidden } = recentComments(f.comment);
+  const attachments = attachmentList(f.attachment);
 
   display.innerHTML = `
     <div class="jira-ticket-card">
@@ -354,6 +356,15 @@ async function fetchTicket() {
       <div class="jira-ticket-summary">${escHtml(summary)}</div>
       <div class="jira-fields">${cells.map(([k, v]) => `<div class="jira-fcell"><div class="jira-flabel">${escHtml(k)}</div><div class="jira-fvalue">${escHtml(String(v))}</div></div>`).join('')}</div>
       <div class="jira-ticket-desc">${escHtml(desc)}</div>
+      ${attachments.length ? `<div class="jira-attachments"><div class="jira-flabel">Attachments (${attachments.length})</div>${attachments.map((a) =>
+        `<a href="#" class="jira-attachment" data-url="${escHtml(a.url)}">${escHtml(a.filename)}${a.size ? ` <span class="jira-attachment-size">${escHtml(formatBytes(a.size))}</span>` : ''}</a>`).join('')}</div>` : ''}
+      <div class="jira-comments">
+        <div class="jira-flabel">Comments${hidden ? ` (showing latest ${comments.length} of ${comments.length + hidden})` : comments.length ? ` (${comments.length})` : ''}</div>
+        ${comments.length ? comments.map((c) =>
+          `<div class="jira-comment"><div class="jira-comment-meta">${escHtml(c.author)}${c.created ? ` · ${escHtml(new Date(c.created).toLocaleString())}` : ''}</div><div class="jira-comment-text">${escHtml(c.text)}</div></div>`).join('') : '<div class="jira-comment-empty">No comments yet.</div>'}
+        <textarea id="jiraCommentText" class="jira-comment-input" rows="2" placeholder="Add a comment…" aria-label="Add a comment"></textarea>
+        <div class="jira-comment-actions"><button class="net-chip" id="jiraCommentBtn" type="button">Add comment</button><span class="jira-msg" id="jiraCommentMsg"></span></div>
+      </div>
       ${criteria.length ? `<div class="jira-ac"><div class="jira-flabel">Acceptance criteria</div>${criteria.map((c, i) =>
         `<label class="jira-ac-row"><input type="checkbox" id="jiraAc${i}" /> <span>${escHtml(c)}</span></label>`).join('')}</div>` : ''}
     </div>`;
@@ -362,9 +373,35 @@ async function fetchTicket() {
     testerBrowser.app.openExternal(/** @type {HTMLElement} */ (e.currentTarget).dataset.url);
   });
 
+  display.querySelectorAll('.jira-attachment').forEach((a) => a.addEventListener('click', (e) => {
+    e.preventDefault();
+    const url = /** @type {HTMLElement} */ (e.currentTarget).dataset.url || `${base}/browse/${key}`;
+    testerBrowser.app.openExternal(url);
+  }));
+  document.getElementById('jiraCommentBtn').addEventListener('click', () => submitComment(key));
+
   lastFetchedKey = key;
   document.getElementById('jiraActionsBar').hidden = false;
   renderFlow();
+}
+
+async function submitComment(key) {
+  const input = /** @type {HTMLTextAreaElement} */ (document.getElementById('jiraCommentText'));
+  const msg = document.getElementById('jiraCommentMsg');
+  const btn = /** @type {HTMLButtonElement} */ (document.getElementById('jiraCommentBtn'));
+  const text = input.value.trim();
+  if (!text) { msg.textContent = 'Write a comment first.'; msg.className = 'jira-msg jira-msg-error'; return; }
+  btn.disabled = true;
+  msg.textContent = 'Posting…';
+  msg.className = 'jira-msg';
+  const result = await testerBrowser.jira.addComment(key, text);
+  if (!result.ok) {
+    btn.disabled = false;
+    msg.textContent = `Error: ${result.error}`;
+    msg.className = 'jira-msg jira-msg-error';
+    return;
+  }
+  await fetchTicket(); // reload so the new comment shows in the list
 }
 
 function openBugForm() {
@@ -423,11 +460,12 @@ async function submitBug() {
 
   const issueUrl = `${cachedSettings?.baseUrl ?? ''}/browse/${result.key}`;
   const attachSummary = summarizeAttachments(result.attachments);
+  const subtaskNote = result.parentKey ? ` — subtask of ${escHtml(result.parentKey)}` : '';
   const linkNote = result.linkError
     ? ` (could not link to ${escHtml(lastFetchedKey)}: ${escHtml(result.linkError)})`
     : '';
   msg.innerHTML = `Created: <a href="#" id="jiraCreatedLink">${escHtml(result.key)}</a>`
-    + `${attachSummary ? ` — ${escHtml(attachSummary)}` : ''}${linkNote}`;
+    + `${subtaskNote}${attachSummary ? ` — ${escHtml(attachSummary)}` : ''}${linkNote}`;
   msg.className = 'jira-msg jira-msg-ok';
   document.getElementById('jiraCreatedLink').addEventListener('click', (e) => {
     e.preventDefault();

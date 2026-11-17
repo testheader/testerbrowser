@@ -2550,6 +2550,15 @@ select.spoof-input { font-family: var(--tb-font-ui); }
 .jira-flabel { font-size: 11.5px; color: var(--tb-text-3); }
 .jira-fvalue { font-size: 12.5px; font-weight: 500; color: var(--tb-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jira-ticket-desc { font-size: 12.5px; color: var(--tb-text-2); }
+.jira-attachments, .jira-comments { display: flex; flex-direction: column; gap: 6px; }
+.jira-attachment { font-size: 12.5px; color: var(--tb-accent); text-decoration: none; }
+.jira-attachment-size { color: var(--tb-text-3); font-size: 11.5px; }
+.jira-comment { background: var(--tb-sunken); border-radius: var(--tb-r-md, 6px); padding: 8px 10px; }
+.jira-comment-meta { font-size: 11.5px; color: var(--tb-text-3); margin-bottom: 2px; }
+.jira-comment-text { font-size: 12.5px; color: var(--tb-text); white-space: pre-wrap; }
+.jira-comment-empty { font-size: 12.5px; color: var(--tb-text-3); }
+.jira-comment-input { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 12.5px; }
+.jira-comment-actions { display: flex; align-items: center; gap: 10px; }
 .jira-ac { display: flex; flex-direction: column; gap: 6px; }
 .jira-ac-row { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--tb-text); }
 .jira-bug-form { width: 420px; flex: 0 0 420px; align-self: stretch; box-sizing: border-box; background: var(--tb-sunken); border: none;

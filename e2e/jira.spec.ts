@@ -106,7 +106,7 @@ test('fetching a ticket that 502s shows the HTTP status instead of a JSON parse 
 // #267: loading a real ticket then creating a bug links the new issue to it,
 // uses the configured issue type, and renders the created key as a link
 // rather than plain text.
-test('creating a bug while a ticket is loaded links to it and shows a clickable key', async () => {
+test('creating a bug while a ticket is loaded creates a subtask of it and shows a clickable key', async () => {
   await window.fill('#jiraTicketKey', 'TEST-1');
   await window.click('#jiraFetchBtn');
   await expect(window.locator('.jira-ticket-key')).toHaveText('TEST-1', { timeout: 5_000 });
@@ -118,16 +118,21 @@ test('creating a bug while a ticket is loaded links to it and shows a clickable 
   const createdLink = window.locator('#jiraCreatedLink');
   await expect(createdLink).toHaveText('TEST-2', { timeout: 5_000 });
   await expect(window.locator('#jiraBugMsg')).not.toContainText('could not link');
+  await expect(window.locator('#jiraBugMsg')).toContainText('subtask of TEST-1');
 
   // Fetched from the test process, not the chrome window — the chrome
   // window's own CSP (connect-src 'none') blocks fetch() from its
   // privileged renderer context.
+  // A subtask is created under the loaded ticket instead of a linked bug.
+  const writes = await (await fetch(fixtures.url('/rest/api/3/__debug/writes'))).json() as {
+    created: { fields: { project: { key: string }; issuetype: { name: string }; parent?: { key: string } } }[];
+  };
+  expect(writes.created).toHaveLength(1);
+  expect(writes.created[0].fields.parent).toEqual({ key: 'TEST-1' });
+  expect(writes.created[0].fields.issuetype.name).toBe('Sub-task');
+  expect(writes.created[0].fields.project.key).toBe('TEST');
   const issueLinks = await (await fetch(fixtures.url('/rest/api/3/__debug/issueLinks'))).json();
-  expect(issueLinks).toHaveLength(1);
-  const link = issueLinks[0] as { type: { name: string }; inwardIssue: { key: string }; outwardIssue: { key: string } };
-  expect(link.type.name).toBe('Relates');
-  expect(link.inwardIssue.key).toBe('TEST-2');
-  expect(link.outwardIssue.key).toBe('TEST-1');
+  expect(issueLinks).toHaveLength(0);
 
   // Clicking the key opens the browse URL externally, not in-app. Stub the
   // app:openExternal handler itself, the same way update-pill.spec.ts stubs
@@ -144,6 +149,29 @@ test('creating a bug while a ticket is loaded links to it and shows a clickable 
   await expect.poll(async () =>
     app.evaluate(() => (globalThis as unknown as { __openExternalCalls: string[] }).__openExternalCalls)
   ).toEqual([fixtures.url('/browse/TEST-2')]);
+});
+
+test('the ticket card shows the latest comments and the attachments, and a comment can be added', async () => {
+  await window.click('#consoleTabJira');
+  await window.fill('#jiraTicketKey', 'TEST-1');
+  await window.click('#jiraFetchBtn');
+  await expect(window.locator('.jira-ticket-key')).toHaveText('TEST-1', { timeout: 5_000 });
+
+  // 4 comments exist; only the latest 3 are shown, with a count of the rest.
+  await expect(window.locator('.jira-comment')).toHaveCount(3);
+  await expect(window.locator('.jira-comments')).not.toContainText('Comment number 1');
+  await expect(window.locator('.jira-comments')).toContainText('Comment number 4');
+  await expect(window.locator('.jira-comments')).toContainText('showing latest 3 of 4');
+  await expect(window.locator('.jira-attachment')).toContainText('mockup.png');
+
+  await window.fill('#jiraCommentText', 'Found it\nsecond line');
+  await window.click('#jiraCommentBtn');
+  // The card reloads after posting.
+  await expect(window.locator('#jiraCommentText')).toHaveValue('', { timeout: 5_000 });
+
+  const writes = await (await fetch(fixtures.url('/rest/api/3/__debug/writes'))).json() as { comments: { body: { content: unknown[] } }[] };
+  expect(writes.comments).toHaveLength(1);
+  expect(JSON.stringify(writes.comments[0].body)).toContain('Found it');
 });
 
 interface RecordedAttachment {

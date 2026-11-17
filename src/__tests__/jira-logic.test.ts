@@ -35,3 +35,41 @@ describe('jira-logic (#314)', () => {
     expect(jiraHost('not a url')).toBe('');
   });
 });
+
+import { formatBytes, recentComments, attachmentList } from '../../renderer/jira-logic.js';
+
+describe('formatBytes', () => {
+  it('formats B, KB and MB', () => {
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(2048)).toBe('2.0 KB');
+    expect(formatBytes(50 * 1024)).toBe('50 KB');
+    expect(formatBytes(3 * 1024 * 1024)).toBe('3.0 MB');
+    expect(formatBytes(-1)).toBe('');
+  });
+});
+
+describe('recentComments', () => {
+  const mk = (n: number) => Array.from({ length: n }, (_, i) => ({
+    author: { displayName: `U${i}` }, created: '2026-01-01T00:00:00.000+0000',
+    body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: `c${i}` }] }] },
+  }));
+  it('keeps the latest three, oldest first, and counts the hidden ones', () => {
+    const r = recentComments({ comments: mk(5), total: 5 });
+    expect(r.comments.map((c) => c.text)).toEqual(['c2', 'c3', 'c4']);
+    expect(r.hidden).toBe(2);
+  });
+  it('counts comments beyond the payload via total', () => {
+    expect(recentComments({ comments: mk(2), total: 10 }).hidden).toBe(8);
+  });
+  it('handles a missing comment field', () => {
+    expect(recentComments(undefined)).toEqual({ comments: [], hidden: 0 });
+  });
+});
+
+describe('attachmentList', () => {
+  it('normalises attachments and drops nameless ones', () => {
+    expect(attachmentList([{ filename: 'a.png', size: 10, content: 'https://x/a' }, {}, null]))
+      .toEqual([{ filename: 'a.png', size: 10, url: 'https://x/a' }]);
+    expect(attachmentList(undefined)).toEqual([]);
+  });
+});

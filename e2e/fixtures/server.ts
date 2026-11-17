@@ -82,7 +82,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (u.pathname === '/network/header') return handleVariantHeader(u, res);
   if (u.pathname === '/rest/api/3/issue/TEST-1') return handleJiraFetchTicket(res);
   if (u.pathname === '/rest/api/3/issue/BAD-1') return handleJiraBadGateway(res);
-  if (u.pathname === '/rest/api/3/issue' && req.method === 'POST') return handleJiraCreateIssue(res);
+  if (u.pathname === '/rest/api/3/issue' && req.method === 'POST') return handleJiraCreateIssue(req, res);
+  if (u.pathname === '/rest/api/3/project/TEST') return handleJiraProject(res);
+  if (/^\/rest\/api\/3\/issue\/[^/]+\/comment$/.test(u.pathname) && req.method === 'POST') return handleJiraAddComment(req, res);
+  if (u.pathname === '/rest/api/3/__debug/writes') return handleJiraWritesDebug(res);
   if (u.pathname === '/rest/api/3/issueLink' && req.method === 'POST') return handleJiraIssueLink(req, res);
   if (u.pathname === '/rest/api/3/__debug/issueLinks') return handleJiraIssueLinksDebug(res);
   if (/^\/rest\/api\/3\/issue\/[^/]+\/attachments$/.test(u.pathname) && req.method === 'POST') {
@@ -269,6 +272,16 @@ function handleJiraFetchTicket(res: ServerResponse): void {
       assignee: { displayName: 'Ada Tester' },
       priority: { name: 'High' },
       description: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Pre-existing description.' }] }] },
+      project: { key: 'TEST' },
+      issuetype: { name: 'Story', subtask: false },
+      comment: {
+        total: 4,
+        comments: [1, 2, 3, 4].map((n) => ({
+          author: { displayName: `Reviewer ${n}` }, created: '2026-01-02T10:00:00.000+0000',
+          body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: `Comment number ${n}` }] }] },
+        })),
+      },
+      attachment: [{ filename: 'mockup.png', size: 2048, content: 'https://example.invalid/attachment/1' }],
     },
   }));
 }
@@ -278,7 +291,21 @@ function handleJiraBadGateway(res: ServerResponse): void {
   res.end('<html><body><h1>502 Bad Gateway</h1></body></html>');
 }
 
-function handleJiraCreateIssue(res: ServerResponse): void {
+// Real Jira rejects a write without X-Atlassian-Token: no-check (#xsrf) —
+// mirror it so a missing header fails e2e instead of only failing for users.
+function rejectJiraXsrf(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.headers['x-atlassian-token'] === 'no-check') return false;
+  res.writeHead(403, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ errorMessages: ['XSRF check failed'] }));
+  return true;
+}
+
+let jiraCreatedBodies: unknown[] = [];
+let jiraComments: unknown[] = [];
+
+async function handleJiraCreateIssue(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (rejectJiraXsrf(req, res)) return;
+  jiraCreatedBodies.push(await readJsonBody(req));
   res.writeHead(201, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ key: 'TEST-2' }));
 }
@@ -291,9 +318,29 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 }
 
 async function handleJiraIssueLink(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (rejectJiraXsrf(req, res)) return;
   jiraIssueLinks.push(await readJsonBody(req));
   res.writeHead(201, { 'content-type': 'application/json' });
   res.end('{}');
+}
+
+function handleJiraProject(res: ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ key: 'TEST', issueTypes: [{ name: 'Story' }, { name: 'Bug' }, { name: 'Sub-task', subtask: true }] }));
+}
+
+async function handleJiraAddComment(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (rejectJiraXsrf(req, res)) return;
+  jiraComments.push(await readJsonBody(req));
+  res.writeHead(201, { 'content-type': 'application/json' });
+  res.end('{}');
+}
+
+function handleJiraWritesDebug(res: ServerResponse): void {
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ created: jiraCreatedBodies, comments: jiraComments }));
+  jiraCreatedBodies = [];
+  jiraComments = [];
 }
 
 // Test-only introspection route — lets an e2e test assert what the app

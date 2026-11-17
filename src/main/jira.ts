@@ -121,6 +121,12 @@ export function parseJiraResponse(status: number, statusText: string, contentTyp
       }
       if (msgs.length) error += `: ${msgs.join('; ')}`;
     }
+    // No Jira-supplied message (HTML from a proxy/WAF/XSRF page, empty body):
+    // include a short plain-text snippet so the real reason isn't hidden.
+    if (!error.includes(': ') && text) {
+      const snippet = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+      if (snippet) error += `: ${snippet}`;
+    }
     return { ok: false, error };
   }
   return { ok: true, data };
@@ -206,4 +212,39 @@ export function summarizeAttachmentResults(results: JiraAttachmentUploadResult[]
   let summary = `attached ${attached}/${results.length}`;
   if (failed.length) summary += ` (${failed.map((f) => `${f.filename}: ${f.reason}`).join(', ')})`;
   return summary;
+}
+
+export interface JiraIssueTypeRef { id?: string; name?: string; subtask?: boolean }
+
+// The parent ticket's project and whether it may take subtasks. Jira only
+// allows one level: a subtask can't have subtasks of its own.
+export function parentInfoFromIssue(data: unknown): { projectKey: string; isSubtask: boolean } | null {
+  const f = (data as { fields?: { project?: { key?: string }; issuetype?: JiraIssueTypeRef } } | undefined)?.fields;
+  const projectKey = f?.project?.key;
+  if (!projectKey) return null;
+  return { projectKey, isSubtask: !!f?.issuetype?.subtask };
+}
+
+// The subtask issue type's name varies per project ("Sub-task", "Subtask",
+// a translated name…), so it's read from the project's own issue types rather
+// than hard-coded. Returns null when the project has none.
+export function pickSubtaskType(projectData: unknown): string | null {
+  const types = (projectData as { issueTypes?: JiraIssueTypeRef[] } | undefined)?.issueTypes;
+  if (!Array.isArray(types)) return null;
+  return types.find((t) => t?.subtask && t.name)?.name ?? null;
+}
+
+// Plain text → Atlassian Document Format, one paragraph per non-empty line
+// group, so a multi-line comment keeps its line breaks.
+export function textToAdf(text: string): { version: 1; type: 'doc'; content: unknown[] } {
+  const paras = text.replace(/\r\n/g, '\n').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const content = (paras.length ? paras : ['']).map((p) => {
+    const inline: unknown[] = [];
+    p.split('\n').forEach((line, i) => {
+      if (i > 0) inline.push({ type: 'hardBreak' });
+      if (line) inline.push({ type: 'text', text: line });
+    });
+    return inline.length ? { type: 'paragraph', content: inline } : { type: 'paragraph' };
+  });
+  return { version: 1, type: 'doc', content };
 }

@@ -235,6 +235,7 @@ const api = {
     saveSettings: (s: { baseUrl: string; email: string; projectKey: string; issueType: string; apiToken?: string }) =>
                     ipcRenderer.invoke('jira:saveSettings', s),
     fetchTicket:  (key: string) => ipcRenderer.invoke('jira:fetchTicket', key),
+    addComment:   (key: string, text: string) => ipcRenderer.invoke('jira:addComment', key, text),
     createIssue:  (summary: string, description: string, opts?: {
       linkTo?: string; sessionId?: string;
       attach?: { screenshot: boolean; harMinutes: number | null; consoleErrors: boolean; steps: boolean };
