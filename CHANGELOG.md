@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.167.0 — 2026-11-17
+
+### Features
+
+- Jira bugs become subtasks of the loaded ticket; card shows comments and attachments and can add comments (1295785)
+
 ## v0.166.4 — 2026-11-13
 
 ### Fixes
