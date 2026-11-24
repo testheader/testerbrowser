@@ -153,8 +153,7 @@
           <button class="console-tab" id="consoleTabVR" role="tab" aria-selected="false"><i class="icon-scan-eye" aria-hidden="true"></i><span>UI diff</span></button>
         </div>
         <div class="console-tab-group" role="presentation">
-          <button class="console-tab" id="consoleTabMock" role="tab" aria-selected="false"><i class="icon-replace" aria-hidden="true"></i><span>Mock</span></button>
-          <button class="console-tab" id="consoleTabResilience" role="tab" aria-selected="false"><i class="icon-zap-off" aria-hidden="true"></i><span>Resilience</span></button>
+          <button class="console-tab" id="consoleTabRules" role="tab" aria-selected="false"><i class="icon-replace" aria-hidden="true"></i><span>Rules</span></button>
           <button class="console-tab" id="consoleTabSpoof" role="tab" aria-selected="false"><i class="icon-map-pin" aria-hidden="true"></i><span>Spoof</span></button>
         </div>
         <div class="console-tab-group" role="presentation">
@@ -189,8 +188,7 @@
           <div class="net-search"><i class="icon-search" aria-hidden="true"></i><input id="networkFilterText" placeholder="Filter URL, header or body" aria-label="Filter requests" /></div>
           <div class="filter-pills" id="networkPills">
             <button class="filter-pill"    data-type="network-failed"   title="Failed requests and 4xx/5xx responses">Errors<span class="pill-count"></span></button>
-            <button class="filter-pill"    data-type="mock"             title="Requests served by a Mock rule">Mocked<span class="pill-count"></span></button>
-            <button class="filter-pill"    data-type="resilience"       title="Requests altered by a Resilience rule">Resilience<span class="pill-count"></span></button>
+            <button class="filter-pill"    data-type="altered"          title="Requests a rule altered: mocked, failed, delayed, held or rewritten">Altered<span class="pill-count"></span></button>
           </div>
           <div class="net-popover-wrap">
             <button class="net-chip" id="networkMethodBtn" aria-haspopup="true" aria-expanded="false"><span id="networkMethodLabel">Method: Any</span><i class="icon-chevron-down" aria-hidden="true"></i></button>
@@ -252,8 +250,7 @@
       <div id="vrPanel"></div>
       <div id="spoofPanel"></div>
       <div id="securityPanel"></div>
-      <div id="mockPanel"></div>
-      <div id="resiliencePanel"></div>
+      <div id="rulesPanel"></div>
       <div id="jiraPanel"></div>
       <div id="testsPanel"></div>
       <div id="followPanel"></div>
@@ -393,15 +390,9 @@
             </div>
             <div class="set-row set-tool-row">
               <span class="set-tool-icon"><i class="icon-replace" aria-hidden="true"></i></span>
-              <div class="set-text"><div class="set-label">Mock</div></div>
+              <div class="set-text"><div class="set-label">Rules</div></div>
               <span class="set-group">Simulate</span>
-              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-mock" checked data-tab-toggle="mock" aria-label="Show Mock" /><span class="toggle-slider"></span></label>
-            </div>
-            <div class="set-row set-tool-row">
-              <span class="set-tool-icon"><i class="icon-zap-off" aria-hidden="true"></i></span>
-              <div class="set-text"><div class="set-label">Resilience</div></div>
-              <span class="set-group">Simulate</span>
-              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-resilience" checked data-tab-toggle="resilience" aria-label="Show Resilience" /><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="consoleTabToggle-rules" checked data-tab-toggle="rules" aria-label="Show Rules" /><span class="toggle-slider"></span></label>
             </div>
             <div class="set-row set-tool-row">
               <span class="set-tool-icon"><i class="icon-map-pin" aria-hidden="true"></i></span>
@@ -510,13 +501,12 @@
         </div>
       </div>
       <div class="replay-actions">
-        <span class="replay-hint" title="Mock rules are applied to a replay the same way they'd apply to a live request from this tab; Resilience rules are not.">Resilience rules are not applied to replays</span>
+        <span class="replay-hint" title="Mock rules are applied to a replay the same way they'd apply to a live request from this tab; every other rule action is not.">Only mock rules apply to replays</span>
         <label class="replay-timeout-label" for="replayTimeout">Timeout (s)
           <input type="number" id="replayTimeout" min="1" max="600" value="30" />
         </label>
         <span id="replaySpinner">Sending…</span>
-        <button class="detail-action-btn" id="replayToMockBtn"       title="Send this request's method, URL, headers and last response to the Mock panel">Mock</button>
-        <button class="detail-action-btn" id="replayToResilienceBtn" title="Send this request's method, URL and headers to the Resilience panel">Resilience</button>
+        <button class="detail-action-btn" id="replayToRuleBtn" title="Start a rule from this request's method, URL, headers and last response">Rule</button>
         <button class="btn btn-secondary" id="closeReplayBtn">Close</button>
         <button class="btn btn-primary"   id="sendReplayBtn">Send</button>
       </div>
@@ -609,8 +599,7 @@
             <option>UI diff</option>
             <option>Spoof</option>
             <option>Security</option>
-            <option>Mock</option>
-            <option>Resilience</option>
+            <option>Rules</option>
             <option>Jira</option>
             <option>Record</option>
             <option>Follow</option>

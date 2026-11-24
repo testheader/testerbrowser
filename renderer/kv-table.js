@@ -1,5 +1,5 @@
 // #254: addKvRow/readKvTable were duplicated byte-for-byte (mod one missing
-// `del.type = 'button'`, folded into this shared version) between mock.js
+// `del.type = 'button'`, folded into this shared version) between rules.js
 // and replay.js — both build the same "name/value pairs with a remove
 // button" editor for headers/cookies. Kept in its own small file rather than
 // utils.js, which otherwise holds only pure, non-DOM logic (see utils.d.ts) —

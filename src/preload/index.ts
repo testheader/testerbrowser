@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { SecurityPageState } from '../main/sessionManager';
-import type { MockRule } from '../main/mockManager';
-import type { ResilienceRule } from '../main/resilienceManager';
+import type { Rule } from '../main/rules';
 import type { EmulationOverrides, EmulationPatch } from '../main/emulationManager';
 import type { TabConditions } from '../main/networkConditions';
 
@@ -206,22 +205,19 @@ const api = {
     exportDiff: (pngB64: string, suggestedName: string) => ipcRenderer.invoke('visualRegression:exportDiff', pngB64, suggestedName),
   },
 
-  mock: {
-    getRules:   (id: string) => ipcRenderer.invoke('mock:getRules', id),
-    addRule:    (id: string, rule: Omit<MockRule, 'hitCount' | 'lastHitAt'>) => ipcRenderer.invoke('mock:addRule', id, rule),
-    removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('mock:removeRule', id, ruleId),
-    toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('mock:toggleRule', id, ruleId, enabled),
-    updateRule: (id: string, ruleId: string, patch: Partial<MockRule>) => ipcRenderer.invoke('mock:updateRule', id, ruleId, patch),
-    moveRule:   (id: string, ruleId: string, dir: 'up' | 'down') => ipcRenderer.invoke('mock:moveRule', id, ruleId, dir),
-    exportRules: (id: string) => ipcRenderer.invoke('mock:exportRules', id),
-    importRules: (id: string) => ipcRenderer.invoke('mock:importRules', id),
+  rules: {
+    getRules:    (id: string) => ipcRenderer.invoke('rules:getRules', id) as Promise<Rule[]>,
+    addRule:     (id: string, rule: Omit<Rule, 'hitCount' | 'lastHitAt'>) => ipcRenderer.invoke('rules:addRule', id, rule),
+    removeRule:  (id: string, ruleId: string) => ipcRenderer.invoke('rules:removeRule', id, ruleId),
+    toggleRule:  (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('rules:toggleRule', id, ruleId, enabled),
+    updateRule:  (id: string, ruleId: string, patch: Partial<Rule>) => ipcRenderer.invoke('rules:updateRule', id, ruleId, patch) as Promise<boolean>,
+    moveRule:    (id: string, ruleId: string, dir: 'up' | 'down') => ipcRenderer.invoke('rules:moveRule', id, ruleId, dir),
+    reorderRule: (id: string, ruleId: string, toIndex: number) => ipcRenderer.invoke('rules:reorderRule', id, ruleId, toIndex),
+    exportRules: (id: string) => ipcRenderer.invoke('rules:exportRules', id),
+    importRules: (id: string) => ipcRenderer.invoke('rules:importRules', id),
   },
+  // Per-tab network + CPU throttling (the channel names predate the Rules merge).
   resilience: {
-    getRules:   (id: string) => ipcRenderer.invoke('resilience:getRules', id),
-    addRule:    (id: string, rule: Omit<ResilienceRule, 'hitCount' | 'lastHitAt'>) => ipcRenderer.invoke('resilience:addRule', id, rule),
-    removeRule: (id: string, ruleId: string) => ipcRenderer.invoke('resilience:removeRule', id, ruleId),
-    toggleRule: (id: string, ruleId: string, enabled: boolean) => ipcRenderer.invoke('resilience:toggleRule', id, ruleId, enabled),
-    updateRule: (id: string, ruleId: string, patch: Partial<ResilienceRule>) => ipcRenderer.invoke('resilience:updateRule', id, ruleId, patch),
     setConditions: (id: string, c: TabConditions) => ipcRenderer.invoke('resilience:setConditions', id, c),
     getConditions: (id: string) => ipcRenderer.invoke('resilience:getConditions', id),
   },

@@ -18,8 +18,8 @@ jest.mock('electron', () => ({
   },
 }));
 
-import { registerMockIpc } from '../ipc/mock';
-import { registerResilienceIpc } from '../ipc/resilience';
+import { registerRulesIpc } from '../ipc/rules';
+import { registerThrottleIpc } from '../ipc/throttle';
 import { registerEmulationIpc } from '../ipc/emulation';
 import { registerPermissionsIpc } from '../ipc/permissions';
 import type { AppDeps } from '../ipc/deps';
@@ -52,52 +52,57 @@ beforeEach(() => {
   registeredHandlers.clear();
 });
 
-describe('registerMockIpc (#283)', () => {
-  it('registers every mock:* channel', () => {
-    registerMockIpc(fakeDeps());
+describe('registerRulesIpc (#283, #370)', () => {
+  it('registers every rules:* channel', () => {
+    registerRulesIpc(fakeDeps());
     expect([...registeredHandlers.keys()]).toEqual([
-      'mock:getRules', 'mock:addRule', 'mock:removeRule', 'mock:toggleRule',
-      'mock:updateRule', 'mock:moveRule', 'mock:exportRules', 'mock:importRules',
+      'rules:getRules', 'rules:addRule', 'rules:removeRule', 'rules:toggleRule',
+      'rules:updateRule', 'rules:moveRule', 'rules:reorderRule', 'rules:exportRules', 'rules:importRules',
     ]);
   });
 
-  it('mock:getRules delegates to sessionManager.getMockRules(id)', () => {
-    const getMockRules = jest.fn(() => [{ id: 'r1' }]);
-    registerMockIpc(fakeDeps({ getSessionManager: () => ({ getMockRules } as unknown as SessionManager) }));
-    expect(call('mock:getRules', 's1')).toEqual([{ id: 'r1' }]);
-    expect(getMockRules).toHaveBeenCalledWith('s1');
+  it('rules:getRules delegates to sessionManager.getRules(id)', () => {
+    const getRules = jest.fn(() => [{ id: 'r1' }]);
+    registerRulesIpc(fakeDeps({ getSessionManager: () => ({ getRules } as unknown as SessionManager) }));
+    expect(call('rules:getRules', 's1')).toEqual([{ id: 'r1' }]);
+    expect(getRules).toHaveBeenCalledWith('s1');
   });
 
-  it('mock:getRules falls back to [] when the window/sessionManager is not ready yet', () => {
-    registerMockIpc(fakeDeps({ getSessionManager: () => null }));
-    expect(call('mock:getRules', 's1')).toEqual([]);
+  it('rules:reorderRule passes the target index through', () => {
+    const reorderRule = jest.fn();
+    registerRulesIpc(fakeDeps({ getSessionManager: () => ({ reorderRule } as unknown as SessionManager) }));
+    call('rules:reorderRule', 's1', 'r1', 0);
+    expect(reorderRule).toHaveBeenCalledWith('s1', 'r1', 0);
   });
 
-  it('mock:exportRules falls back to an error result (not a throw) with no sessionManager', () => {
-    registerMockIpc(fakeDeps({ getSessionManager: () => null }));
-    expect(call('mock:exportRules', 's1')).toEqual({ ok: false, error: 'No session manager' });
+  it('rules:getRules falls back to [] when the window/sessionManager is not ready yet', () => {
+    registerRulesIpc(fakeDeps({ getSessionManager: () => null }));
+    expect(call('rules:getRules', 's1')).toEqual([]);
+  });
+
+  it('rules:updateRule falls back to false, and export to an error result (not a throw), with no sessionManager', () => {
+    registerRulesIpc(fakeDeps({ getSessionManager: () => null }));
+    expect(call('rules:updateRule', 's1', 'r1', {})).toBe(false);
+    expect(call('rules:exportRules', 's1')).toEqual({ ok: false, error: 'No session manager' });
   });
 });
 
-describe('registerResilienceIpc (#283)', () => {
-  it('registers every resilience:* channel', () => {
-    registerResilienceIpc(fakeDeps());
-    expect([...registeredHandlers.keys()]).toEqual([
-      'resilience:getRules', 'resilience:addRule', 'resilience:removeRule', 'resilience:toggleRule',
-      'resilience:updateRule', 'resilience:setConditions', 'resilience:getConditions',
-    ]);
+describe('registerThrottleIpc (#283)', () => {
+  it('registers the throttling channels', () => {
+    registerThrottleIpc(fakeDeps());
+    expect([...registeredHandlers.keys()]).toEqual(['resilience:setConditions', 'resilience:getConditions']);
   });
 
   it('resilience:setConditions passes both id and conditions through to sessionManager.setConditions', () => {
     const setConditions = jest.fn();
-    registerResilienceIpc(fakeDeps({ getSessionManager: () => ({ setConditions } as unknown as SessionManager) }));
+    registerThrottleIpc(fakeDeps({ getSessionManager: () => ({ setConditions } as unknown as SessionManager) }));
     const conditions = { network: 'offline', cpuRate: 4 };
     call('resilience:setConditions', 's1', conditions);
     expect(setConditions).toHaveBeenCalledWith('s1', conditions);
   });
 
   it('resilience:getConditions falls back to null with no sessionManager', () => {
-    registerResilienceIpc(fakeDeps({ getSessionManager: () => null }));
+    registerThrottleIpc(fakeDeps({ getSessionManager: () => null }));
     expect(call('resilience:getConditions', 's1')).toBeNull();
   });
 });

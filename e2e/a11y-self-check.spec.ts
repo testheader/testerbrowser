@@ -107,7 +107,7 @@ test('toggling the theme changes the --tb-surface token (#293)', async () => {
 });
 
 // The two tests above only scan whatever's visible on the default Console
-// tab — every other console-panel tab (Storage, A11y, Diff, Mock, Jira, …)
+// tab — every other console-panel tab (Storage, A11y, Diff, Rules, Jira, …)
 // is `display:none` at that point, and axe skips elements that aren't
 // rendered. Contrast/name/role bugs specific to a tab's own markup (e.g. a
 // button whose color token only got fixed for one theme) would pass both
@@ -117,7 +117,7 @@ test('toggling the theme changes the --tb-surface token (#293)', async () => {
 const CONSOLE_TABS = [
   'consoleTabConsole', 'consoleTabNetwork', 'consoleTabStorage', 'consoleTabA11y',
   'consoleTabDiff', 'consoleTabVR', 'consoleTabSpoof', 'consoleTabSecurity',
-  'consoleTabMock', 'consoleTabResilience', 'consoleTabJira', 'consoleTabTests',
+  'consoleTabRules', 'consoleTabJira', 'consoleTabTests',
   'consoleTabFollow', 'consoleTabDebugLog',
 ];
 
@@ -132,7 +132,7 @@ test('every console panel tab has no serious/critical axe-core violations (light
   const allViolations: AxeViolation[] = [];
   for (const tabId of CONSOLE_TABS) {
     await window.click(`#${tabId}`);
-    await window.waitForTimeout(100); // panel-specific init (initJira, initMock, …) is fire-and-forget
+    await window.waitForTimeout(100); // panel-specific init (initJira, initRules, …) is fire-and-forget
     const violations = seriousOrCritical(await scanForViolations(window));
     for (const v of violations) allViolations.push({ ...v, help: `[${tabId}] ${v.help}` });
   }
@@ -145,7 +145,7 @@ test('tool tabs are grouped in the specced order, in sentence case (#296)', asyn
   expect(ids).toEqual([
     'consoleTabNetwork', 'consoleTabConsole', 'consoleTabStorage', 'consoleTabA11y', 'consoleTabSecurity',
     'consoleTabDiff', 'consoleTabVR',
-    'consoleTabMock', 'consoleTabResilience', 'consoleTabSpoof',
+    'consoleTabRules', 'consoleTabSpoof',
     'consoleTabTests', 'consoleTabFollow',
     'consoleTabJira', 'consoleTabDebugLog',
   ]);

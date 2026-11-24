@@ -31,7 +31,7 @@ const SEARCH_ENGINES: ReadonlySet<string> = new Set(['google', 'duckduckgo']);
 // panel is open, per the app's architecture), so they're excluded here and
 // can never end up in disabledConsoleTabs.
 export const TOGGLEABLE_CONSOLE_TABS = [
-  'storage', 'security', 'mock', 'resilience', 'a11y', 'vr', 'diff', 'spoof', 'jira', 'tests',
+  'storage', 'security', 'rules', 'a11y', 'vr', 'diff', 'spoof', 'jira', 'tests',
 ] as const;
 const TOGGLEABLE_CONSOLE_TABS_SET: ReadonlySet<string> = new Set(TOGGLEABLE_CONSOLE_TABS);
 

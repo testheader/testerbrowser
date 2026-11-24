@@ -3,8 +3,7 @@ import { escHtml, getEventTabId, getHeader, timingBars, toCurl, toFetch, parseCo
 import { formatDuration, responseSize, resourceTypeLabel } from './network-rows.js';
 import { getTimelineEvents } from './timeline.js';
 import { getActiveConsoleTab } from './console-tabs.js';
-import { openMockFromRequest } from './mock.js';
-import { openResilienceFromRequest } from './resilience.js';
+import { openRuleFromRequest } from './rules.js';
 import { openReplay } from './replay.js';
 import { getActiveId } from './tabs.js';
 
@@ -70,7 +69,7 @@ export function closeDetailTab(tabId) {
 // #261: called by tabs.js on every session switch, alongside
 // resetTimelineForNewSession() — the open item belongs to whichever session
 // was active when it was opened, so switching sessions without clearing it
-// left a stale request showing (and Replay/Mock/Resilience acting on the
+// left a stale request showing (and Replay/Rule acting on the
 // wrong tab).
 export function clearDetailTabs() {
   items.network = items.console = null;
@@ -182,6 +181,18 @@ function renderHeadersSection(v, item) {
         `<td>${escHtml(hop.method || '')}</td><td>${escHtml(hop.url || '')}</td></tr>`;
     }
     html += `</table></div>`;
+  }
+  // #370: a Rewrite rule changed this request on its way out. The sections
+  // below keep showing what the page asked for; this one is what the server got.
+  const sent = v.reqPayload?.sent;
+  if (sent) {
+    html += `<div class="detail-section detail-sent" id="detailSent"><h3>Sent to the server</h3>` +
+      `<div class="detail-note">A rewrite rule changed this request. The request sections below are what the page originally asked for.</div>` +
+      `<table class="headers-table"><tr><td>${escHtml(sent.method || '')}</td><td>${escHtml(sent.url || '')}</td></tr></table></div>`;
+    html += headerGroup('Request headers sent', sent.headers || {});
+    if (sent.body !== undefined) {
+      html += `<div class="detail-section"><h3>Request body sent</h3><pre class="detail-body-pre">${escHtml(sent.body)}</pre></div>`;
+    }
   }
   html += headerGroup('Response headers', v.resHeaders);
   html += headerGroup('Request headers', v.reqHeaders);
@@ -302,8 +313,7 @@ function metaText(v) {
 function actionButtons() {
   return `<div class="detail-actions">
     <button class="detail-action-btn strong" id="detailReplayBtn" title="Edit and replay this request"><i class="icon-rotate-ccw" aria-hidden="true"></i>Replay</button>
-    <button class="detail-action-btn" id="detailMockBtn" title="Send this call's method, URL, status and body to the Mock panel"><i class="icon-replace" aria-hidden="true"></i>Mock</button>
-    <button class="detail-action-btn" id="detailResilienceBtn" title="Send this call's method and URL to the Resilience panel"><i class="icon-zap-off" aria-hidden="true"></i>Resilience</button>
+    <button class="detail-action-btn" id="detailRuleBtn" title="Start a rule from this call: its method, URL, headers and response"><i class="icon-replace" aria-hidden="true"></i>Rule</button>
     <div class="detail-copy-wrap">
       <button class="detail-action-btn" id="detailCopyBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="detailCopyMenu"><i class="icon-copy" aria-hidden="true"></i>Copy<i class="icon-chevron-down" aria-hidden="true"></i></button>
       <div class="detail-copy-menu" id="detailCopyMenu" role="menu" hidden>
@@ -329,13 +339,15 @@ function wireActions(v) {
   if (copyBtn) copyBtn.onclick = (e) => { e.stopPropagation(); setCopyMenuOpen(document.getElementById('detailCopyMenu').hidden); };
   if (!mockData) return;
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
-  on('detailMockBtn', () => openMockFromRequest(mockData.method, mockData.url, mockData.statusCode, mockData.body, {
+  on('detailRuleBtn', () => openRuleFromRequest(mockData.method, mockData.url, {
+    statusCode: mockData.statusCode,
+    body: mockData.body,
     requestHeaders: mockData.requestHeaders,
+    requestBody: mockData.requestBody,
     responseHeaders: mockData.responseHeaders,
     bodyUnavailable: !!mockData.bodyUnavailable,
   }));
   if (v.reqEvt) on('detailReplayBtn', () => openReplay(v.reqEvt, getActiveId()));
-  on('detailResilienceBtn', () => openResilienceFromRequest(mockData.method, mockData.url, mockData.requestHeaders, mockData.requestBody));
   on('detailCurlBtn', () => { setCopyMenuOpen(false); testerBrowser.clipboard.write(toCurl({
     method: mockData.method, url: mockData.url, headers: mockData.requestHeaders, postData: mockData.requestBody,
   })); });

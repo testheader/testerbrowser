@@ -1,5 +1,6 @@
 import { RaceGate, RaceFlush, clampRaceCount, clampRaceTimeoutMs, RACE_DEFAULT_TIMEOUT_MS, RACE_MAX_COUNT, RACE_MIN_COUNT, RACE_MAX_TIMEOUT_MS } from '../raceGate';
-import * as renderer from '../../../renderer/resilience-logic.js';
+import { MAX_DELAY_MS } from '../rules';
+import * as renderer from '../../../renderer/rules-logic.js';
 
 const K = RaceGate.key('persist:a', 'rule1');
 const opts = (count: number, timeoutMs = 1000) => ({ count, timeoutMs });
@@ -119,7 +120,9 @@ describe('clamps', () => {
   it('the renderer copy of the bounds matches the main process', () => {
     expect(renderer.RACE_MIN_COUNT).toBe(RACE_MIN_COUNT);
     expect(renderer.RACE_MAX_COUNT).toBe(RACE_MAX_COUNT);
-    expect(renderer.RACE_DEFAULT_TIMEOUT_SEC * 1000).toBe(RACE_DEFAULT_TIMEOUT_MS);
-    expect(renderer.RACE_MAX_TIMEOUT_SEC * 1000).toBe(RACE_MAX_TIMEOUT_MS);
+    expect(renderer.RACE_DEFAULT_GIVE_UP_SEC * 1000).toBe(RACE_DEFAULT_TIMEOUT_MS);
+    expect(renderer.RACE_MAX_GIVE_UP_SEC * 1000).toBe(RACE_MAX_TIMEOUT_MS);
+    // ...and the delay bound the renderer validates against is the one rules.ts clamps to.
+    expect(renderer.MAX_DELAY_MS).toBe(MAX_DELAY_MS);
   });
 });

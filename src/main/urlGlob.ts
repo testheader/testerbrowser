@@ -1,5 +1,5 @@
 // Matches CDP's own Fetch.RequestPattern.urlPattern semantics (the pattern a
-// Mock/Resilience rule is ultimately handed to via Fetch.enable — see
+// rule is ultimately handed to via Fetch.enable — see
 // SessionManager's _applyFetch()): '*' matches zero or more characters, '?'
 // matches exactly one character, and every other character — including
 // every other regex metacharacter — matches itself literally. '*' and '?'

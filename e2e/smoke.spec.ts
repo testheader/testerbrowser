@@ -22,7 +22,7 @@ test.afterAll(async () => {
 test.describe('logger.spec', () => {
   test('Network tab chips are visible and all off by default (#300)', async () => {
     await window.locator('#consoleTabNetwork').click();
-    for (const type of ['network-failed', 'mock', 'resilience']) {
+    for (const type of ['network-failed', 'altered']) {
       const chip = window.locator(`#networkPills .filter-pill[data-type="${type}"]`);
       await expect(chip).toBeVisible();
       await expect(chip).not.toHaveClass(/\bon\b/);
@@ -69,9 +69,9 @@ test.describe('collapse to tab strip (#297)', () => {
     expect(Math.round(collapsed)).toBe(39);
     await expect(window.locator('#consolePanelBody')).toBeHidden();
 
-    await window.click('#consoleTabMock');
+    await window.click('#consoleTabRules');
     await expect(window.locator('#consolePanelBody')).toBeVisible();
-    await expect(window.locator('#consoleTabMock')).toHaveClass(/active/);
+    await expect(window.locator('#consoleTabRules')).toHaveClass(/active/);
     const expanded = await window.evaluate(() => (document.getElementById('consolePanel') as HTMLElement).getBoundingClientRect().height);
     expect(expanded).toBeGreaterThan(100);
     await expect(window.locator('#consoleHelpBtn')).toHaveCount(0);

@@ -40,7 +40,7 @@ export function splitUrl(url) {
  * @param {{ requestId?: string, type?: string, request?: { method?: string, url?: string } }} req parsed network-request payload
  * @param {{ status?: number|null, durationMs?: number, size?: number|null, mimeType?: string }|undefined} res paired response, if it has arrived
  * @param {string|undefined} errorText loadingFailed's errorText, if the request failed
- * @param {'mock'|'resilience'|null} tag
+ * @param {'altered'|null} tag
  */
 export function buildNetworkRow(req, res, errorText, tag) {
   const url = req.request?.url ?? '';

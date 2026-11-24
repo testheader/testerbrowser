@@ -1,7 +1,7 @@
 /* global testerBrowser */
 import { getActiveId } from './tabs.js';
 import { showStatus as showStatusMsg } from './status-msg.js';
-import { initThrottleControls, loadConditions } from './resilience.js';
+import { initThrottleControls, loadConditions } from './throttle.js';
 
 const PRESETS = [
   { label: 'New York',    timezone: 'America/New_York',      locale: 'en-US', latitude:  40.7128, longitude:  -74.0060 },

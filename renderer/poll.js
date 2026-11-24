@@ -1,6 +1,6 @@
 // #254: consolidates the "single-flight interval poll that skips its own
 // work while its panel isn't visible" pattern shared by debuglog.js,
-// mock.js and resilience.js. Each panel still owns what "visible" means for
+// rules.js. Each panel still owns what "visible" means for
 // it and what its own tick actually does — this only owns the scheduling:
 // single-flight (a slow tick never overlaps the next, the same overlap
 // concern #248/#258 raise for Follow Along's relay loop), and isVisible()

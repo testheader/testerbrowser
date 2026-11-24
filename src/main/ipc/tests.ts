@@ -20,7 +20,7 @@ export function registerTestsIpc(deps: AppDeps, stores: TestsIpcStores): void {
   ipcMain.handle('tests:load', (_e, id: string) => testsStore.get().find(t => t.id === id) ?? null);
   ipcMain.handle('tests:delete', (_e, id: string) => testsStore.update(all => all.filter(t => t.id !== id)));
 
-  // #274: mirrors mock:exportRules/mock:importRules (#264) exactly, adapted
+  // #274: mirrors the rules export/import (#264) exactly, adapted
   // for SavedTest/TestStep — id/createdAt/updatedAt are stripped on export (the
   // exported file only has what's needed to recreate the test elsewhere) and
   // always minted fresh on import. `id` omitted exports every saved test in

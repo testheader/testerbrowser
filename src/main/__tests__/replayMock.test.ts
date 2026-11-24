@@ -1,7 +1,7 @@
 import type { BrowserWindow } from 'electron';
 
 // Same minimal mocks as sessionManagerLogging.test.ts — createSession()/
-// addMockRule() need a real-enough WebContentsView, session and debugger
+// addRule() need a real-enough WebContentsView, session and debugger
 // surface to run end to end.
 jest.mock('better-sqlite3', () => {
   return jest.fn().mockImplementation(() => ({
@@ -58,74 +58,65 @@ jest.mock('electron', () => {
 });
 
 import { SessionManager } from '../sessionManager';
-import { MockRule } from '../mockManager';
+import type { Rule } from '../rules';
+import { makeMockRule } from './ruleFactories';
 
 function makeManager(): SessionManager {
   const win = { on: jest.fn() } as unknown as BrowserWindow;
   return new SessionManager(win, () => false);
 }
 
-function makeRule(overrides: Partial<MockRule> = {}): MockRule {
-  return {
-    id: 'r1',
-    urlPattern: '*/api/*',
-    method: '*',
-    statusCode: 200,
-    body: '{"ok":true}',
-    responseHeaders: {},
-    enabled: true,
-    hitCount: 0,
-    lastHitAt: null,
-    ...overrides,
-  };
+function makeRule(overrides: Parameters<typeof makeMockRule>[1] & { id?: string } = {}): Rule {
+  const { id = 'r1', ...rest } = overrides;
+  return makeMockRule(id, { urlPattern: '*/api/*', body: '{"ok":true}', ...rest });
 }
 
-describe('findMatchingMockRule (#233)', () => {
+describe('findMatchingRule (#233)', () => {
   it('returns the enabled rule matching method and URL', () => {
     const sm = makeManager();
     const session = sm.createSession('Test');
-    sm.addMockRule(session.id, makeRule({ id: 'r1', method: 'GET', urlPattern: '*/api/*' }));
+    sm.addRule(session.id, makeRule({ id: 'r1', method: 'GET', urlPattern: '*/api/*' }));
 
-    const found = sm.findMatchingMockRule(session.id, 'GET', 'https://example.com/api/data');
+    const found = sm.findMatchingRule(session.id, 'GET', 'https://example.com/api/data');
     expect(found?.id).toBe('r1');
   });
 
   it('ignores a disabled rule', () => {
     const sm = makeManager();
     const session = sm.createSession('Test');
-    sm.addMockRule(session.id, makeRule({ id: 'r1', enabled: false, urlPattern: '*/api/*' }));
+    sm.addRule(session.id, makeRule({ id: 'r1', enabled: false, urlPattern: '*/api/*' }));
 
-    expect(sm.findMatchingMockRule(session.id, 'GET', 'https://example.com/api/data')).toBeNull();
+    expect(sm.findMatchingRule(session.id, 'GET', 'https://example.com/api/data')).toBeNull();
   });
 
   it('respects the method field', () => {
     const sm = makeManager();
     const session = sm.createSession('Test');
-    sm.addMockRule(session.id, makeRule({ id: 'r1', method: 'POST', urlPattern: '*/api/*' }));
+    sm.addRule(session.id, makeRule({ id: 'r1', method: 'POST', urlPattern: '*/api/*' }));
 
-    expect(sm.findMatchingMockRule(session.id, 'GET', 'https://example.com/api/data')).toBeNull();
-    expect(sm.findMatchingMockRule(session.id, 'POST', 'https://example.com/api/data')?.id).toBe('r1');
+    expect(sm.findMatchingRule(session.id, 'GET', 'https://example.com/api/data')).toBeNull();
+    expect(sm.findMatchingRule(session.id, 'POST', 'https://example.com/api/data')?.id).toBe('r1');
   });
 
   it('a "*" method matches any request method', () => {
     const sm = makeManager();
     const session = sm.createSession('Test');
-    sm.addMockRule(session.id, makeRule({ id: 'r1', method: '*', urlPattern: '*/api/*' }));
+    sm.addRule(session.id, makeRule({ id: 'r1', method: '*', urlPattern: '*/api/*' }));
 
-    expect(sm.findMatchingMockRule(session.id, 'DELETE', 'https://example.com/api/data')?.id).toBe('r1');
+    expect(sm.findMatchingRule(session.id, 'DELETE', 'https://example.com/api/data')?.id).toBe('r1');
   });
 
   it('returns null when no rule matches the URL', () => {
     const sm = makeManager();
     const session = sm.createSession('Test');
-    sm.addMockRule(session.id, makeRule({ id: 'r1', urlPattern: '*/api/*' }));
+    sm.addRule(session.id, makeRule({ id: 'r1', urlPattern: '*/api/*' }));
 
-    expect(sm.findMatchingMockRule(session.id, 'GET', 'https://example.com/other')).toBeNull();
+    expect(sm.findMatchingRule(session.id, 'GET', 'https://example.com/other')).toBeNull();
   });
 
   it('returns null for an unknown session id', () => {
     const sm = makeManager();
-    expect(sm.findMatchingMockRule('nonexistent', 'GET', 'https://example.com/api/data')).toBeNull();
+    expect(sm.findMatchingRule('nonexistent', 'GET', 'https://example.com/api/data')).toBeNull();
   });
 });
 

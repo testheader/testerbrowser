@@ -6,7 +6,7 @@ import { refreshDiffPickers } from './diff.js';
 import { refreshFollowPickers } from './followalong.js';
 import { updateUrlbarSecurity } from './urlbar-security.js';
 import { reloadA11yIfLoaded } from './a11y.js';
-import { loadRules } from './resilience.js';
+import { loadRules } from './rules.js';
 import { refreshVR, refreshVRComparePicker, clearVRSession } from './visual-regression.js';
 import { refreshSpoofStatus } from './emulation.js';
 import { clearSecurityFindings } from './security.js';
@@ -82,7 +82,7 @@ export async function switchToSession(id) {
   const activeConsoleTab = getActiveConsoleTab();
   if (activeConsoleTab === 'storage') loadStoragePanel();
   if (activeConsoleTab === 'a11y') reloadA11yIfLoaded();
-  if (activeConsoleTab === 'resilience') loadRules();
+  if (activeConsoleTab === 'rules') loadRules();
   if (activeConsoleTab === 'vr') refreshVR();
   if (activeConsoleTab === 'spoof') refreshSpoofStatus();
   if (activeConsoleTab === 'security') clearSecurityFindings();

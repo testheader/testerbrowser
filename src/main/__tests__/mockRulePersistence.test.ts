@@ -65,7 +65,8 @@ jest.mock('electron', () => {
 });
 
 import { SessionManager } from '../sessionManager';
-import type { MockRule } from '../mockManager';
+import type { Rule } from '../rules';
+import { makeMockRule as baseMockRule } from './ruleFactories';
 
 function makeManager(): SessionManager {
   // loadAndRestoreSessions() ends by calling switchTo() on the first restored
@@ -79,12 +80,8 @@ function makeManager(): SessionManager {
   return new SessionManager(win, () => false);
 }
 
-function makeMockRule(id: string, overrides: Partial<MockRule> = {}): MockRule {
-  return {
-    id, urlPattern: '*/api/*', method: '*', statusCode: 200, body: '{}',
-    responseHeaders: {}, enabled: true, hitCount: 0, lastHitAt: null,
-    ...overrides,
-  };
+function makeRule(id: string, overrides: Parameters<typeof baseMockRule>[1] = {}): Rule {
+  return baseMockRule(id, { urlPattern: '*/api/*', body: '{}', ...overrides });
 }
 
 describe('Mock rules persist with persistent sessions (#264)', () => {
@@ -97,20 +94,20 @@ describe('Mock rules persist with persistent sessions (#264)', () => {
     fs.rmSync(userDataDir, { recursive: true, force: true });
   });
 
-  it('addMockRule() on a persistent session saves it to disk with hitCount/lastHitAt reset', () => {
+  it('addRule() on a persistent session saves it to disk with hitCount/lastHitAt reset', () => {
     const sm = makeManager();
     const session = sm.createSession('Test', { persistent: true });
-    sm.addMockRule(session.id, makeMockRule('m1', { hitCount: 7, lastHitAt: 1700000000000 }));
+    sm.addRule(session.id, makeRule('m1', { hitCount: 7, lastHitAt: 1700000000000 }));
 
     const saved = JSON.parse(fs.readFileSync(path.join(userDataDir, 'open-sessions.json'), 'utf-8'));
-    expect(saved.mocks[session.partition]).toHaveLength(1);
-    expect(saved.mocks[session.partition][0]).toMatchObject({ id: 'm1', hitCount: 0, lastHitAt: null });
+    expect(saved.rules[session.partition]).toHaveLength(1);
+    expect(saved.rules[session.partition][0]).toMatchObject({ id: 'm1', hitCount: 0, lastHitAt: null });
   });
 
   it('a temp (non-persistent) session\'s mock rules are never saved', () => {
     const sm = makeManager();
     const session = sm.createSession('Temp', { persistent: false });
-    sm.addMockRule(session.id, makeMockRule('m1'));
+    sm.addRule(session.id, makeRule('m1'));
 
     const saved = JSON.parse(fs.readFileSync(path.join(userDataDir, 'open-sessions.json'), 'utf-8'));
     expect(saved.mocks?.[session.partition]).toBeUndefined();
@@ -119,28 +116,28 @@ describe('Mock rules persist with persistent sessions (#264)', () => {
   it('loadAndRestoreSessions() restores a persistent session\'s mock rules into a fresh SessionManager', () => {
     const sm1 = makeManager();
     const session = sm1.createSession('Test', { persistent: true });
-    sm1.addMockRule(session.id, makeMockRule('m1', { urlPattern: '*/widgets/*', statusCode: 201 }));
+    sm1.addRule(session.id, makeRule('m1', { urlPattern: '*/widgets/*', statusCode: 201 }));
 
     const sm2 = makeManager();
     const restored = sm2.loadAndRestoreSessions();
     expect(restored).toBe(true);
 
     const [restoredSession] = sm2.listSessions();
-    const rules = sm2.getMockRules(restoredSession.id);
+    const rules = sm2.getRules(restoredSession.id);
     expect(rules).toHaveLength(1);
-    expect(rules[0]).toMatchObject({ id: 'm1', urlPattern: '*/widgets/*', statusCode: 201, hitCount: 0, lastHitAt: null });
+    expect(rules[0]).toMatchObject({ id: 'm1', urlPattern: '*/widgets/*', hitCount: 0, lastHitAt: null, action: { kind: 'mock', statusCode: 201 } });
   });
 
-  it('a restored rule is live: findMatchingMockRule sees it without any further setup', () => {
+  it('a restored rule is live: findMatchingRule sees it without any further setup', () => {
     const sm1 = makeManager();
     const session = sm1.createSession('Test', { persistent: true });
-    sm1.addMockRule(session.id, makeMockRule('m1', { urlPattern: 'https://api.example.com/*' }));
+    sm1.addRule(session.id, makeRule('m1', { urlPattern: 'https://api.example.com/*' }));
 
     const sm2 = makeManager();
     sm2.loadAndRestoreSessions();
     const [restoredSession] = sm2.listSessions();
 
-    const match = sm2.findMatchingMockRule(restoredSession.id, 'GET', 'https://api.example.com/widgets');
+    const match = sm2.findMatchingRule(restoredSession.id, 'GET', 'https://api.example.com/widgets');
     expect(match?.id).toBe('m1');
   });
 
@@ -155,27 +152,27 @@ describe('Mock rules persist with persistent sessions (#264)', () => {
     sm2.loadAndRestoreSessions();
     const [restoredSession] = sm2.listSessions();
 
-    expect(sm2.getMockRules(restoredSession.id)).toEqual([]);
+    expect(sm2.getRules(restoredSession.id)).toEqual([]);
   });
 
   it('update/toggle/remove/move all persist the change', () => {
     const sm = makeManager();
     const session = sm.createSession('Test', { persistent: true });
-    sm.addMockRule(session.id, makeMockRule('m1'));
-    sm.addMockRule(session.id, makeMockRule('m2'));
+    sm.addRule(session.id, makeRule('m1'));
+    sm.addRule(session.id, makeRule('m2'));
 
     const readSaved = () => JSON.parse(fs.readFileSync(path.join(userDataDir, 'open-sessions.json'), 'utf-8'));
 
-    sm.updateMockRule(session.id, 'm1', { statusCode: 503 });
-    expect(readSaved().mocks[session.partition].find((r: MockRule) => r.id === 'm1').statusCode).toBe(503);
+    sm.updateRule(session.id, 'm1', { action: { kind: 'mock', statusCode: 503, body: '{}', responseHeaders: {} } });
+    expect(readSaved().rules[session.partition].find((r: Rule) => r.id === 'm1').action.statusCode).toBe(503);
 
-    sm.toggleMockRule(session.id, 'm1', false);
-    expect(readSaved().mocks[session.partition].find((r: MockRule) => r.id === 'm1').enabled).toBe(false);
+    sm.toggleRule(session.id, 'm1', false);
+    expect(readSaved().rules[session.partition].find((r: Rule) => r.id === 'm1').enabled).toBe(false);
 
-    sm.moveMockRule(session.id, 'm2', 'up');
-    expect(readSaved().mocks[session.partition].map((r: MockRule) => r.id)).toEqual(['m2', 'm1']);
+    sm.moveRule(session.id, 'm2', 'up');
+    expect(readSaved().rules[session.partition].map((r: Rule) => r.id)).toEqual(['m2', 'm1']);
 
-    sm.removeMockRule(session.id, 'm1');
-    expect(readSaved().mocks[session.partition].map((r: MockRule) => r.id)).toEqual(['m2']);
+    sm.removeRule(session.id, 'm1');
+    expect(readSaved().rules[session.partition].map((r: Rule) => r.id)).toEqual(['m2']);
   });
 });

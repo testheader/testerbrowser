@@ -10,10 +10,11 @@ import { AppLog } from './appLogger';
 import { HitLogThrottle } from './hitLogThrottle';
 import { SharedPartitionState, createSharedPartitionState } from './partitionState';
 import { buildSessionsFile, parseSessionsFile, SavedSession, WindowSaveState } from './sessionPersistence';
+import { RulesManager } from './rulesManager';
 import {
-  MockManager, MockRule, buildMockFulfillParams, buildMockPreflightParams,
-} from './mockManager';
-import { ResilienceManager, ResilienceRule } from './resilienceManager';
+  Rule, RuleAction, RewriteAction, RewriteCookies, CookieRecord,
+  buildMockFulfillParams, buildMockPreflightParams, buildFailCommand, buildRewriteParams, buildCookieHeader,
+} from './rules';
 import { RaceGate, RACE_DEFAULT_COUNT } from './raceGate';
 import { SnapshotManager, FrameSnapshot, waitForFrameLoad } from './snapshotManager';
 import { EmulationManager, EmulationOverrides, EmulationPatch } from './emulationManager';
@@ -221,27 +222,24 @@ export class SessionManager {
   private playingIds = new Set<string>();
   // Per-session navigation history, newest entry last — cleared on destroy.
   private sessionHistory = new Map<string, HistoryEntry[]>();
-  // #236: requests parked open by a `hang` Resilience rule — keyed by
+  // #236: requests parked open by a `hang` rule — keyed by
   // session id (a live CDP requestId is only meaningful for the tab whose
   // debugger paused it), each entry its own optional release timer. Cleared
   // (timers included) in destroySession() since a hung request's tab going
   // away makes both the requestId and the point of releasing it moot.
   private hungRequests = new Map<string, Map<string, ReturnType<typeof setTimeout>>>();
-  // #286: delayed Resilience responses (latency / stall504) and delayed Mock
-  // fulfilments, per tab — cleared in destroySession() so a timer never fires
+  // #286: delayed rule actions (any rule with a delay), per tab — cleared in destroySession() so a timer never fires
   // against a webContents that has already been destroyed.
   private pendingDelayed = new Map<string, Set<ReturnType<typeof setTimeout>>>();
-  // Mock/Resilience rules are a property of the session *partition* (cookies,
-  // storage, cache — the thing "isolated sessions" actually means), not of
-  // any one TestSession/tab object representing it — both managers key their
-  // own storage by partition so rules survive that tab being destroyed and a
-  // new one created for the same partition (reopen, "New tab in this
-  // session"). Never cleared in destroySession(): another open tab, or a
-  // future reopen, may still need the entry. Resilience rules aren't
-  // persisted to disk (see #209's/#264's "Out of scope").
-  private mockManager: MockManager;
-  private resilienceManager: ResilienceManager;
-  private resilienceHitLog = new HitLogThrottle();
+  // Rules are a property of the session *partition* (cookies, storage, cache
+  // — the thing "isolated sessions" actually means), not of any one
+  // TestSession/tab object representing it — RulesManager keys its storage by
+  // partition so rules survive that tab being destroyed and a new one created
+  // for the same partition (reopen, "New tab in this session"). Never cleared
+  // in destroySession(): another open tab, or a future reopen, may still need
+  // the entry.
+  private rulesManager: RulesManager;
+  private ruleHitLog = new HitLogThrottle();
   // #241: emulation overrides live in EmulationManager (#255), scoped by
   // partition the same way — a partition with no entry there has never had
   // setEmulation() applied; a present (possibly empty) object records
@@ -274,7 +272,7 @@ export class SessionManager {
     logger: AppLog = NOOP_LOG,
     onSessionsChanged: () => void = () => {},
     getRecorderMaxEvents: () => number = () => 20000,
-    // #367: Mock/Resilience rules and Spoof overrides are keyed by partition, so
+    // #367: Rules and Spoof overrides are keyed by partition, so
     // every window's manager is handed the same maps. Omitted = this manager's own.
     shared: SharedPartitionState = createSharedPartitionState()
   ) {
@@ -291,8 +289,7 @@ export class SessionManager {
       getSessionId: (id) => this.sessionIdForWebContentsId(id),
     });
     this.a11yService = new A11yService(this.log);
-    this.mockManager = new MockManager(win, shared.mockRules);
-    this.resilienceManager = new ResilienceManager(shared.resilienceRules);
+    this.rulesManager = new RulesManager(win, shared.rules);
     shared.raceGate.onFlush ??= (f) => this.log.info('resilience', `Race gate released ${f.released} request(s) (${f.reason}) after ${f.heldForMs} ms`, { releaseReason: f.reason, released: f.released, heldForMs: f.heldForMs });
     // #276: lets a permission prompt name the tab it belongs to — looked up
     // by the *requesting* webContents id (not the partition, unlike
@@ -430,8 +427,7 @@ export class SessionManager {
     // Seed the rule buckets for this partition if this is the first tab ever
     // to represent it — a partition passed in explicitly (reopen, "New tab
     // in this session") may already have an entry, which must be left alone.
-    this.mockManager.ensurePartition(partition);
-    this.resilienceManager.ensurePartition(partition);
+    this.rulesManager.ensurePartition(partition);
     const ses = electronSession.fromPartition(partition);
 
     this.downloadManager.attach(ses, id);
@@ -570,127 +566,103 @@ export class SessionManager {
       // Network-domain requestId the recorder's Network.* events key off of —
       // tag the request under networkId (falling back to requestId when no
       // correlated network event exists) so the recorded response/failure
-      // event actually carries the mock/resilience tag.
+      // event actually carries the rule tag.
       const tagId = networkId || requestId;
-      // A CORS preflight never carries the rule's own method (it's always
-      // OPTIONS), so it can't be found by findMatchingMockRule's method
-      // match — it's answered directly from any enabled cors:true rule
-      // whose URL pattern matches, regardless of that rule's configured
-      // method.
+      // A CORS preflight never carries a rule's own method (it's always
+      // OPTIONS), so it can't be found by the normal method match — it's
+      // answered directly from any enabled cors:true mock rule whose URL
+      // pattern matches, regardless of that rule's configured method.
       if (request.method === 'OPTIONS') {
-        const preflightRule = this.mockManager.findCorsPreflightMatch(testSession.partition, request.url);
+        const preflightRule = this.rulesManager.findCorsPreflightMatch(testSession.partition, request.url);
         if (preflightRule) {
           dbg.sendCommand('Fetch.fulfillRequest', { requestId, ...buildMockPreflightParams({ headers: request.headers }) }).catch(() => {}); // silent: Fetch.requestPaused fires per request — too high-frequency to log
           return;
         }
       }
-      const rule = this.mockManager.findMatch(testSession.partition, request.method, request.url);
-      if (rule) {
-        // #263: counted at match time, not at fulfilment — a delayed rule's
-        // hit count/last-hit-at reflect when the request was actually
-        // intercepted, not when the (possibly much later) response goes out.
-        this.mockManager.recordHit(rule);
-        testSession.recorder.tagRequest(tagId, { mockRuleId: rule.id });
-        const fulfill = () =>
-          resolvePaused('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(rule, { headers: request.headers }) });
-        if (rule.delayMs && rule.delayMs > 0) {
-          defer(fulfill, rule.delayMs);
-        } else {
-          fulfill();
-        }
+      // #370: one ordered list, one winner — the first enabled rule that
+      // matches and whose probability roll succeeds.
+      const rule = this.rulesManager.pick(testSession.partition, request);
+      if (!rule) {
+        // Unmatched: let it through. A page refresh (did-navigate) cancels the
+        // outgoing document's in-flight loaders on Chromium's side, including
+        // ones currently paused via the Fetch domain, so a resolution command
+        // sent for a since-cancelled requestId is expected to reject rather
+        // than hang (#210). silent: also fires per request — too high-frequency to log
+        dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
         return;
       }
-      const res = this.resilienceManager.pickMatch(testSession.partition, request);
-      if (res) {
-        this.resilienceManager.recordHit(res);
-        testSession.recorder.tagRequest(tagId, { resilienceRuleId: res.id, resilienceType: res.type });
-        // #289: on a later crash, this line (now in main.log) is the last
-        // thing that happened to the request right before whatever broke.
-        // It is *not* bounded by deliberate rule hits: a broad pattern like
-        // "*ad*" matches every request in a burst, and logging each one
-        // synchronously stalled the main process for tens of seconds (#210).
-        // So: one line per rule per second, carrying the count folded in.
-        const hitLog = this.resilienceHitLog.hit(`${testSession.id}:${res.id}`);
-        if (hitLog.log) {
-          this.log.info('resilience', `Resilience rule fired: ${res.type}`, {
-            sessionId: testSession.id, ruleId: res.id, method: request.method, url: request.url,
-            ...(hitLog.suppressed > 0 ? { alsoFiredSincePreviousLine: hitLog.suppressed } : {}),
-          });
-        }
-        // Every command below is silent: Fetch.requestPaused fires per
-        // request, too high-frequency to log per failure (each case still
-        // gets its own marker so the empty-catch triage grep is satisfied).
-        const body = (text: string) => Buffer.from(text).toString('base64');
-        switch (res.type) {
-          case 'error500':
-          case 'random500':
-            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 500, body: body('Internal Server Error') });
+      // #263: counted at match time, not at fulfilment — a delayed rule's
+      // hit count/last-hit-at reflect when the request was actually
+      // intercepted, not when the (possibly much later) response goes out.
+      this.rulesManager.recordHit(rule);
+      testSession.recorder.tagRequest(tagId, { ruleId: rule.id, ruleKind: rule.action.kind });
+      // #289: on a later crash, this line (now in main.log) is the last thing
+      // that happened to the request right before whatever broke. It is *not*
+      // bounded by deliberate rule hits: a broad pattern like "*ad*" matches
+      // every request in a burst, and logging each one synchronously stalled
+      // the main process for tens of seconds (#210). So: one line per rule per
+      // second, carrying the count folded in.
+      const hitLog = this.ruleHitLog.hit(`${testSession.id}:${rule.id}`);
+      if (hitLog.log) {
+        this.log.info('rules', `Rule fired: ${rule.action.kind}`, {
+          sessionId: testSession.id, ruleId: rule.id, method: request.method, url: request.url,
+          ...(hitLog.suppressed > 0 ? { alsoFiredSincePreviousLine: hitLog.suppressed } : {}),
+        });
+      }
+      // Every command below is silent: Fetch.requestPaused fires per request,
+      // too high-frequency to log per failure.
+      const action = rule.action;
+      const run = () => {
+        switch (action.kind) {
+          case 'mock':
+            resolvePaused('Fetch.fulfillRequest', { requestId, ...buildMockFulfillParams(action, { headers: request.headers }) });
             break;
-          case 'timeout':
-            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 504, body: body('Gateway Timeout') });
+          case 'fail': {
+            const cmd = buildFailCommand(action.mode, requestId);
+            resolvePaused(cmd.command, cmd.params);
             break;
-          case 'stall504':
-            defer(() => resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 504, body: body('Gateway Timeout') }), res.latencyMs || 30_000);
+          }
+          case 'delay':
+            resolvePaused('Fetch.continueRequest', { requestId });
             break;
-          case 'offline':
-            resolvePaused('Fetch.failRequest', { requestId, errorReason: 'InternetDisconnected' });
-            break;
-          case 'missing':
-            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 404, body: body('Not Found') });
-            break;
-          case 'corrupt':
-            resolvePaused('Fetch.fulfillRequest', { requestId, responseCode: 200, body: body('\x00\x01\x02\xff\xfe' + 'x'.repeat(20)) });
-            break;
-          case 'latency':
-            defer(() => resolvePaused('Fetch.continueRequest', { requestId }), res.latencyMs || 2000);
+          case 'rewrite':
+            void this.resolveRewrite(testSession, rule, action, request, requestId, tagId, resolvePaused);
             break;
           case 'hang': {
-            // Deliberately no Fetch response at all — the paused request
-            // stays paused, so the page sees it as pending until the tester
-            // aborts client-side or navigates away. Tracked per session so
-            // destroySession() can clear the release timer (if any) rather
-            // than firing it against a tab that no longer exists.
+            // Deliberately no Fetch response at all — the paused request stays
+            // paused, so the page sees it as pending until the tester aborts
+            // client-side or navigates away. Tracked per session so
+            // destroySession() can clear the release timer (if any).
             const hungForSession = this.hungRequestsForSession(testSession.id);
-            const releaseTimer = res.releaseAfterMs
+            const releaseTimer = action.failAfterMs
               ? setTimeout(() => {
                   hungForSession.delete(requestId);
                   resolvePaused('Fetch.failRequest', { requestId, errorReason: 'TimedOut' });
-                }, res.releaseAfterMs)
+                }, action.failAfterMs)
               : null;
             hungForSession.set(requestId, releaseTimer);
             break;
           }
           case 'race':
-            // Parked until holdCount matching requests (from any tab on this
+            // Parked until batchSize matching requests (from any tab on this
             // partition) have arrived, then all released in one pass. The
-            // timeout is the rule's releaseAfterMs; the gate clamps both.
+            // timeout is the rule's giveUpAfterMs; the gate clamps both.
             this.shared.raceGate.hold(
-              RaceGate.key(testSession.partition, res.id),
-              { count: res.holdCount ?? RACE_DEFAULT_COUNT, timeoutMs: res.releaseAfterMs ?? 0 },
+              RaceGate.key(testSession.partition, rule.id),
+              { count: action.batchSize ?? RACE_DEFAULT_COUNT, timeoutMs: action.giveUpAfterMs ?? 0 },
               testSession.id,
               () => resolvePaused('Fetch.continueRequest', { requestId }),
             );
             break;
-          default:
-            resolvePaused('Fetch.continueRequest', { requestId });
         }
-        return;
+      };
+      // A hang or race gate parks the request itself; a delay in front of it
+      // would only postpone when it starts waiting.
+      if (rule.delayMs && rule.delayMs > 0 && action.kind !== 'hang' && action.kind !== 'race') {
+        defer(run, rule.delayMs);
+      } else {
+        run();
       }
-      // Every branch above resolves the paused request via some Fetch.*
-      // command, with rejections swallowed rather than left to hang — this
-      // is deliberate, not just terseness: a page refresh (did-navigate)
-      // cancels the outgoing document's in-flight loaders on Chromium's
-      // side, including ones currently paused via the Fetch domain, so a
-      // resolution command sent for a since-cancelled requestId is expected
-      // to reject (the pause no longer exists to resolve) rather than hang
-      // indefinitely (#210's acceptance criterion re: an unanswered paused
-      // request surviving a refresh — investigated, no such path found: the
-      // debugger itself is attached once per WebContentsView at creation and
-      // stays attached across navigations, so there's no re-attach window
-      // either) — except the 'hang' case just above, whose entire point
-      // (#236) is to leave the request genuinely unanswered on purpose.
-      // silent: also fires per request, same as the branches above — too high-frequency to log
-      dbg.sendCommand('Fetch.continueRequest', { requestId }).catch(() => {});
     });
     this.sessions.set(id, testSession);
     this.onSessionsChanged();
@@ -1175,19 +1147,27 @@ export class SessionManager {
       const applied = this.emulationManager.getByPartition(s.partition);
       if (applied && Object.keys(applied).length > 0) emulation[s.partition] = applied;
     }
-    // #264: keyed by partition, like emulation above — mockRulesByPartition
-    // already is. hitCount/lastHitAt are reset in the saved copy: a hit
-    // count is this run's traffic, not something worth restoring stale
-    // across a restart. Temp sessions never contribute here since they're
+    // #264/#370: keyed by partition, like emulation above. hitCount/lastHitAt
+    // are reset in the saved copy: a hit count is this run's traffic, not
+    // something worth restoring stale across a restart. A rewrite rule's
+    // cookie snapshot is left out too — an in-memory session's cookies must
+    // never end up on disk. Temp sessions never contribute here since they're
     // filtered out of persistentSessions above.
-    const mocks: Record<string, MockRule[]> = {};
+    const rules: Record<string, Rule[]> = {};
     for (const s of persistentSessions) {
-      const rules = this.mockManager.peek(s.partition);
-      if (rules && rules.length > 0) {
-        mocks[s.partition] = rules.map(r => ({ ...r, hitCount: 0, lastHitAt: null }));
+      const list = this.rulesManager.peek(s.partition);
+      if (list && list.length > 0) {
+        rules[s.partition] = list.map(r => {
+          const saved: Rule = { ...r, hitCount: 0, lastHitAt: null };
+          if (saved.action.kind === 'rewrite' && saved.action.cookies) {
+            const { snapshot: _snapshot, ...cookies } = saved.action.cookies;
+            saved.action = { ...saved.action, cookies };
+          }
+          return saved;
+        });
       }
     }
-    return { sessions, notes, emulation, mocks };
+    return { sessions, notes, emulation, rules };
   }
 
   /** Restores the first saved window's tabs into this window. */
@@ -1202,11 +1182,11 @@ export class SessionManager {
 
   /**
    * Recreates one saved window's tabs here. `extras` is the file's shared
-   * notes/emulation/mocks — only the entries for these tabs are used.
+   * notes/emulation/rules — only the entries for these tabs are used.
    */
   restoreWindow(
     sessions: SavedSession[],
-    { notes, emulation, mocks }: Pick<WindowSaveState, 'notes' | 'emulation' | 'mocks'>
+    { notes, emulation, rules }: Pick<WindowSaveState, 'notes' | 'emulation' | 'rules'>
   ): boolean {
     try {
       if (!sessions?.length) return false;
@@ -1222,15 +1202,15 @@ export class SessionManager {
           this.setEmulation(sess.id, emulation[s.partition])
             .catch((e) => this.log.warn('sessions', 'Failed to restore emulation override on load', { sessionId: sess.id, error: String(e) }));
         }
-        // #264: restored into the MockManager's own partition storage
+        // #264: restored into the RulesManager's own partition storage
         // (shared by every tab on this partition, same as live rules are)
         // and _applyFetch is called for *this* session specifically — each
         // tab has its own CDP debugger/Fetch.enable registration, so a
         // partition with several restored tabs needs this per tab, not just
         // once per partition.
-        const partitionMocks = mocks?.[s.partition];
-        if (Array.isArray(partitionMocks) && partitionMocks.length > 0) {
-          this.mockManager.restorePartition(s.partition, partitionMocks);
+        const partitionRules = rules?.[s.partition];
+        if (Array.isArray(partitionRules) && partitionRules.length > 0) {
+          this.rulesManager.restorePartition(s.partition, partitionRules);
           this._applyFetch(sess.id);
         }
       }
@@ -1413,7 +1393,7 @@ export class SessionManager {
   // #269: a clone is meant to be an independent copy of the source tab "as it
   // currently is" — cookies (with sameSite), localStorage/sessionStorage/
   // IndexedDB, emulation overrides and the current URL, in addition to the
-  // mock/resilience rules already copied below. Every copy step is awaited
+  // rules already copied below. Every copy step is awaited
   // and its failures collected into `warnings` rather than swallowed, so a
   // partial clone doesn't look identical to a full one.
   async cloneSession(sourceId: string, newName: string): Promise<{ session: TestSession; warnings: string[] } | null> {
@@ -1423,8 +1403,7 @@ export class SessionManager {
     const dest = this.createSession(newName, { persistent: src.persistent });
     // createSession() already seeded dest.partition with []; overwrite with
     // a deep copy so editing either side afterward doesn't affect the other.
-    this.mockManager.cloneInto(dest.partition, src.partition);
-    this.resilienceManager.cloneInto(dest.partition, src.partition);
+    this.rulesManager.cloneInto(dest.partition, src.partition);
     // createSession() already called _applyFetch(dest.id) once, against the
     // empty rule set it seeded dest.partition with — re-apply now that the
     // copied rules above are in place, so the clone's own CDP debugger
@@ -1990,178 +1969,168 @@ export class SessionManager {
     return map;
   }
 
-  // Mock/Resilience rules live in MockManager/ResilienceManager (#255),
-  // keyed by the session's stable partition rather than the per-tab id
-  // these methods still take from the renderer — every method below
-  // resolves id → partition once and delegates the actual storage/matching
-  // to the owning manager, same composition pattern as downloadManager/
-  // permissionManager above.
-  getMockRules(id: string): MockRule[] {
+  // #370: Rules live in RulesManager, keyed by the session's stable partition
+  // rather than the per-tab id these methods still take from the renderer —
+  // every method below resolves id → partition once and delegates the actual
+  // storage/matching to it.
+  getRules(id: string): Rule[] {
     const partition = this.sessions.get(id)?.partition;
-    return partition ? this.mockManager.getRules(partition) : [];
+    return partition ? this.rulesManager.getRules(partition) : [];
   }
 
   // #233: shared by the Fetch.requestPaused handler above and the
   // recording:replay IPC, so a replay is intercepted by exactly the same
   // rules (and matching semantics) a live request from that tab would be.
-  findMatchingMockRule(id: string, method: string, url: string): MockRule | null {
+  findMatchingRule(id: string, method: string, url: string): Rule | null {
     const partition = this.sessions.get(id)?.partition;
-    return partition ? this.mockManager.findMatch(partition, method, url) : null;
+    return partition ? this.rulesManager.pick(partition, { method, url }) : null;
   }
 
   getPartition(id: string): string | null {
     return this.sessions.get(id)?.partition ?? null;
   }
 
-  addMockRule(id: string, rule: MockRule): void {
+  addRule(id: string, rule: Partial<Rule> & { id: string; action: RuleAction }): void {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
-    this.mockManager.add(partition, rule);
-    this._applyMocks(id);
-    this.log.info('mock', `Mock rule added: ${rule.method} ${rule.urlPattern}`, { sessionId: id });
+    this.rulesManager.add(partition, rule);
+    this._applyRules(id);
+    this.log.info('rules', `Rule added: ${rule.action.kind} ${rule.method || '*'} ${rule.urlPattern}`, { sessionId: id });
   }
 
-  removeMockRule(id: string, ruleId: string): void {
+  removeRule(id: string, ruleId: string): void {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
-    this.mockManager.remove(partition, ruleId);
-    this._applyMocks(id);
-    this.log.info('mock', `Mock rule removed: ${ruleId}`, { sessionId: id });
+    this.rulesManager.remove(partition, ruleId);
+    this.shared.raceGate.flushRule(partition, ruleId); // don't leave parked requests stuck
+    this._applyRules(id);
+    this.log.info('rules', `Rule removed: ${ruleId}`, { sessionId: id });
   }
 
-  toggleMockRule(id: string, ruleId: string, enabled: boolean): void {
+  toggleRule(id: string, ruleId: string, enabled: boolean): void {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
-    this.mockManager.toggle(partition, ruleId, enabled);
-    this._applyMocks(id);
-    this.log.info('mock', `Mock rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
+    const rule = this.rulesManager.toggle(partition, ruleId, enabled);
+    if (!rule) return;
+    if (!enabled) this.shared.raceGate.flushRule(partition, ruleId);
+    this._applyRules(id);
+    this.log.info('rules', `Rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
   }
 
-  // Returns whether the update actually applied — #235: the renderer needs
-  // to tell "saved" apart from "silently did nothing" (the owning tab was
-  // closed since the edit row was opened, or the rule itself is gone) so it
-  // can show an inline error instead of pretending the edit went through.
-  updateMockRule(id: string, ruleId: string, patch: Partial<MockRule>): boolean {
+  // Returns whether the update actually applied — the renderer needs to tell
+  // "saved" apart from "silently did nothing" (the owning tab was closed since
+  // the edit row was opened, or the rule itself is gone).
+  updateRule(id: string, ruleId: string, patch: Partial<Rule>): boolean {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return false;
-    const ok = this.mockManager.update(partition, ruleId, patch);
-    if (ok) this._applyMocks(id);
-    return ok;
+    const rule = this.rulesManager.update(partition, ruleId, patch);
+    if (!rule) return false;
+    // A changed action/pattern/batch size makes whatever is parked stale: let it go.
+    this.shared.raceGate.flushRule(partition, ruleId);
+    this._applyRules(id);
+    return true;
   }
 
-  // #263: rules are matched in array order (findMatchingMockRule's own
-  // `.find()`) — this is what makes that order visible/controllable from the
-  // panel instead of only settable by deleting and recreating rules.
-  moveMockRule(id: string, ruleId: string, dir: 'up' | 'down'): void {
+  // Rules are matched in array order, first win — this makes that order
+  // visible and controllable from the panel.
+  moveRule(id: string, ruleId: string, dir: 'up' | 'down'): void {
     const partition = this.sessions.get(id)?.partition;
     if (!partition) return;
-    this.mockManager.move(partition, ruleId, dir);
-    this._applyMocks(id);
-    this.log.info('mock', `Mock rule moved ${dir}: ${ruleId}`, { sessionId: id });
+    this.rulesManager.move(partition, ruleId, dir);
+    this._applyRules(id);
   }
 
-  // #264: id/hitCount/lastHitAt are run-local, not something a shared rule
-  // set should carry — the exported file only has what's needed to recreate
-  // the rules elsewhere.
-  async exportMockRules(id: string): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> {
-    if (!this.sessions.get(id)) return { ok: false, error: 'Session not found' };
-    const rules = this.getMockRules(id);
-    const result = await this.mockManager.exportRulesToFile(rules);
-    if (result.ok) this.log.info('mock', `Mock rules exported: ${rules.length}`, { sessionId: id });
-    else if (result.error) this.log.warn('mock', 'Mock rules export failed', { sessionId: id, error: result.error });
+  // Drag and drop: the rule ends up at `toIndex`.
+  reorderRule(id: string, ruleId: string, toIndex: number): void {
+    const partition = this.sessions.get(id)?.partition;
+    if (!partition) return;
+    this.rulesManager.reorder(partition, ruleId, Number(toIndex));
+    this._applyRules(id);
+  }
+
+  async exportRules(id: string): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }> {
+    const rules = this.getRules(id);
+    const result = await this.rulesManager.exportRulesToFile(rules);
+    if (result.ok) this.log.info('rules', `Rules exported: ${rules.length}`, { sessionId: id });
+    else if (result.error) this.log.warn('rules', 'Rules export failed', { sessionId: id, error: result.error });
     return result;
   }
 
-  // #264: valid rules are appended (with fresh ids) to the active tab's
-  // partition — an import never replaces or reorders what's already there.
-  async importMockRules(id: string): Promise<{ ok: boolean; imported?: number; skipped?: number; firstSkipReason?: string; canceled?: boolean; error?: string }> {
-    const picked = await this.mockManager.promptAndValidateImportFile();
+  async importRules(id: string): Promise<{ ok: boolean; imported?: number; skipped?: number; firstSkipReason?: string; canceled?: boolean; error?: string }> {
+    const picked = await this.rulesManager.promptAndValidateImportFile();
     if ('canceled' in picked) return { ok: false, canceled: true };
     if ('error' in picked) return { ok: false, error: picked.error };
-
     const partition = this.sessions.get(id)?.partition;
-    if (!partition) return { ok: false, error: 'Session not found' };
-    const imported = this.mockManager.appendImportedRules(partition, picked.rules);
-    if (imported > 0) this._applyMocks(id); // also persists
-    this.log.info('mock', `Mock rules imported: ${imported} (skipped ${picked.skipped.length})`, { sessionId: id });
+    if (!partition) return { ok: false, error: 'Session no longer exists' };
+    const imported = this.rulesManager.appendImportedRules(partition, picked.rules);
+    if (imported > 0) this._applyRules(id); // also persists
+    this.log.info('rules', `Rules imported: ${imported} (skipped ${picked.skipped.length})`, { sessionId: id });
     return { ok: true, imported, skipped: picked.skipped.length, firstSkipReason: picked.skipped[0]?.reason };
   }
 
+  // The Cookie header a rewrite sends instead of the tab's own jar. While the
+  // source session is open its jar is read live at request time; once its last
+  // tab is gone, the snapshot of its final state is used.
+  private async cookieHeaderFor(cookies: RewriteCookies, url: string): Promise<string> {
+    let jar: CookieRecord[] = cookies.snapshot ?? [];
+    const source = cookies.sourcePartition;
+    if (source && (this.shared.partitionRefs.get(source) ?? 0) > 0) {
+      jar = (await electronSession.fromPartition(source).cookies.get({})) as CookieRecord[];
+      cookies.snapshot = jar; // in memory only — see RewriteCookies.snapshot
+    }
+    return buildCookieHeader(jar, cookies.extra, url);
+  }
+
+  // Carries out a `rewrite` rule on a paused request: builds the altered
+  // request, records what was actually sent on the request's row, and resumes
+  // it. Any failure resumes the request unchanged rather than leaving it paused.
+  private async resolveRewrite(
+    s: TestSession,
+    rule: Rule,
+    action: RewriteAction,
+    request: { url: string; method: string; headers?: Record<string, string> },
+    requestId: string,
+    tagId: string,
+    resolvePaused: (command: string, params: Record<string, unknown>) => void,
+  ): Promise<void> {
+    try {
+      const cookieHeader = action.cookies ? await this.cookieHeaderFor(action.cookies, request.url) : undefined;
+      const { params, sent } = buildRewriteParams(action, { url: request.url, method: request.method, headers: request.headers ?? {} }, cookieHeader);
+      if (this.sessions.has(s.id)) s.recorder.tagRequest(tagId, { ruleId: rule.id, ruleKind: 'rewrite', sent });
+      resolvePaused('Fetch.continueRequest', { requestId, ...params });
+    } catch (e) {
+      this.log.warn('rules', 'Rewrite failed; request sent unchanged', { sessionId: s.id, ruleId: rule.id, error: String(e) });
+      resolvePaused('Fetch.continueRequest', { requestId });
+    }
+  }
+
+  // Tabs that exist for a partition get their own CDP debugger, so this
+  // re-applies the interception patterns for the tab that changed.
   private _applyFetch(id: string): void {
     const s = this.sessions.get(id);
     if (!s) return;
     const dbg = s.view.webContents.debugger;
-    const activeMocks = this.mockManager.getEnabledRules(s.partition);
-    const activeRes = this.resilienceManager.getEnabledRules(s.partition);
-    if (activeMocks.length === 0 && activeRes.length === 0) {
+    const active = this.rulesManager.getEnabledRules(s.partition);
+    if (active.length === 0) {
       dbg.sendCommand('Fetch.disable').catch((e) => this.warnCdpFailure(id, 'Fetch.disable', e));
     } else {
       // Use the rules' own URL patterns so Chromium only sends Fetch.requestPaused
-      // for matching requests. Previously, any active resilience rule forced urlPattern:'*',
+      // for matching requests. Previously, any active rule forced urlPattern:'*',
       // intercepting every resource on ad-heavy sites and causing CDP channel overload.
-      const patterns: { urlPattern: string; requestStage: 'Request' }[] = [
-        ...activeMocks.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' as const })),
-        ...activeRes.map(r => ({ urlPattern: r.urlPattern, requestStage: 'Request' as const })),
-      ];
-      const hasWildcard = patterns.some(p => p.urlPattern === '*' || p.urlPattern === '');
+      const patterns: { urlPattern: string; requestStage: 'Request' }[] =
+        active.map((r) => ({ urlPattern: r.urlPattern, requestStage: 'Request' as const }));
+      const hasWildcard = patterns.some((p) => p.urlPattern === '*' || p.urlPattern === '');
       dbg.sendCommand('Fetch.enable', {
-        patterns: hasWildcard
-          ? [{ urlPattern: '*', requestStage: 'Request' }]
-          : patterns,
+        patterns: hasWildcard ? [{ urlPattern: '*', requestStage: 'Request' }] : patterns,
       }).catch((e) => this.warnCdpFailure(id, 'Fetch.enable', e));
     }
   }
 
-  // #264: every caller of this (the 5 Mock rule mutators — add/remove/
-  // toggle/update/move) is a rule-set change, so persisting here too means a
-  // crash (not just a graceful quit) never loses a persistent tab's rules.
-  // Resilience rule mutators call _applyFetch directly, bypassing this —
-  // persisting those rules is explicitly out of scope for #264.
-  private _applyMocks(id: string): void {
+  // #264/#370: every rule-set change re-applies interception and persists, so
+  // a crash (not just a graceful quit) never loses a persistent tab's rules.
+  private _applyRules(id: string): void {
     this._applyFetch(id);
     this.saveSessions();
-  }
-
-  getResilienceRules(id: string): ResilienceRule[] {
-    const partition = this.sessions.get(id)?.partition;
-    return partition ? this.resilienceManager.getRules(partition) : [];
-  }
-
-  addResilienceRule(id: string, rule: ResilienceRule): void {
-    const partition = this.sessions.get(id)?.partition;
-    if (!partition) return;
-    this.resilienceManager.add(partition, rule);
-    this._applyFetch(id);
-    this.log.info('resilience', `Resilience rule added: ${rule.urlPattern}`, { sessionId: id });
-  }
-
-  removeResilienceRule(id: string, ruleId: string): void {
-    const partition = this.sessions.get(id)?.partition;
-    if (!partition) return;
-    this.resilienceManager.remove(partition, ruleId);
-    this.shared.raceGate.flushRule(partition, ruleId); // don't leave parked requests stuck
-    this._applyFetch(id);
-    this.log.info('resilience', `Resilience rule removed: ${ruleId}`, { sessionId: id });
-  }
-
-  toggleResilienceRule(id: string, ruleId: string, enabled: boolean): void {
-    const partition = this.sessions.get(id)?.partition;
-    if (!partition) return;
-    const rule = this.resilienceManager.toggle(partition, ruleId, enabled);
-    if (rule) {
-      if (!enabled) this.shared.raceGate.flushRule(partition, ruleId);
-      this._applyFetch(id);
-      this.log.info('resilience', `Resilience rule ${enabled ? 'enabled' : 'disabled'}: ${ruleId}`, { sessionId: id });
-    }
-  }
-
-  updateResilienceRule(id: string, ruleId: string, patch: Partial<ResilienceRule>): void {
-    const partition = this.sessions.get(id)?.partition;
-    if (!partition) return;
-    const rule = this.resilienceManager.update(partition, ruleId, patch);
-    // A changed type/pattern/count makes whatever is parked stale: let it go.
-    if (rule) this.shared.raceGate.flushRule(partition, ruleId);
-    if (rule) this._applyFetch(id);
   }
 
   destroySession(id: string) {
@@ -2174,6 +2143,15 @@ export class SessionManager {
       }
     }
     if (this.activeId === id) { this.win.contentView.removeChildView(s.view); this.activeId = null; }
+    // #370: when the last tab of a partition closes, a Rewrite rule that reads
+    // its cookies keeps working from the jar's final state. Started before the
+    // tab is torn down, since an in-memory jar goes with its session.
+    if ((this.shared.partitionRefs.get(s.partition) ?? 1) <= 1 && this.rulesManager.rewriteRulesReadingFrom(s.partition).length > 0) {
+      const partition = s.partition;
+      electronSession.fromPartition(partition).cookies.get({})
+        .then((jar) => this.rulesManager.setCookieSnapshot(partition, jar as CookieRecord[]))
+        .catch((e) => this.log.warn('rules', 'Could not snapshot source session cookies on close', { partition, error: String(e) }));
+    }
     // #276: a permission prompt still pending for this exact tab can no
     // longer be meaningfully answered — auto-deny and remove it (not
     // persisted; the tester never actually chose it) before the webContents

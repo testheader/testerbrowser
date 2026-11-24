@@ -69,6 +69,7 @@ jest.mock('electron', () => {
 });
 
 import { SessionManager } from '../sessionManager';
+import { makeRule } from './ruleFactories';
 import type { AppLog } from '../appLogger';
 import type { EventEmitter } from 'events';
 
@@ -93,11 +94,11 @@ function dbgOf(session: { view: unknown }): Dbg {
   return (session.view as { webContents: { debugger: Dbg } }).webContents.debugger;
 }
 
-function raceRule(over: Record<string, unknown> = {}) {
-  return {
-    id: 'race1', type: 'race' as const, urlPattern: '*/redeem*', method: 'POST', probability: 1,
-    latencyMs: 0, holdCount: 3, releaseAfterMs: 5000, enabled: true, hitCount: 0, lastHitAt: null, ...over,
-  };
+// `over` keeps the old flat vocabulary (holdCount / releaseAfterMs) for readability.
+function raceRule(over: { holdCount?: number; releaseAfterMs?: number | undefined } = {}) {
+  const holdCount = over.holdCount ?? 3;
+  const releaseAfterMs = 'releaseAfterMs' in over ? over.releaseAfterMs : 5000; // an explicit undefined means "no timeout set"
+  return makeRule('race1', { kind: 'race', batchSize: holdCount, giveUpAfterMs: releaseAfterMs }, { urlPattern: '*/redeem*', method: 'POST' });
 }
 
 function pause(dbg: Dbg, requestId: string, url = 'https://shop.test/redeem?c=1', method = 'POST'): void {
@@ -120,7 +121,7 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
   it('holds matching requests until holdCount have arrived, then releases them together', () => {
     const sm = makeManager();
     const s = sm.createSession('T');
-    sm.addResilienceRule(s.id, raceRule());
+    sm.addRule(s.id, raceRule());
     const dbg = dbgOf(s);
     dbg.sendCommand.mockClear();
 
@@ -133,7 +134,7 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
   it('lets non-matching requests (other URL or method) straight through', () => {
     const sm = makeManager();
     const s = sm.createSession('T');
-    sm.addResilienceRule(s.id, raceRule());
+    sm.addRule(s.id, raceRule());
     const dbg = dbgOf(s);
     dbg.sendCommand.mockClear();
 
@@ -146,7 +147,7 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
     const sm = makeManager();
     const t1 = sm.createSession('One', { partition: 'persist:shared' });
     const t2 = sm.createSession('Two', { partition: 'persist:shared' });
-    sm.addResilienceRule(t1.id, raceRule({ holdCount: 2 }));
+    sm.addRule(t1.id, raceRule({ holdCount: 2 }));
     const d1 = dbgOf(t1); const d2 = dbgOf(t2);
     d1.sendCommand.mockClear(); d2.sendCommand.mockClear();
 
@@ -162,8 +163,8 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
     const sm = makeManager();
     const a = sm.createSession('A', { partition: 'persist:a' });
     const b = sm.createSession('B', { partition: 'persist:b' });
-    sm.addResilienceRule(a.id, raceRule({ holdCount: 2 }));
-    sm.addResilienceRule(b.id, raceRule({ holdCount: 2 }));
+    sm.addRule(a.id, raceRule({ holdCount: 2 }));
+    sm.addRule(b.id, raceRule({ holdCount: 2 }));
     const da = dbgOf(a); const db = dbgOf(b);
     da.sendCommand.mockClear(); db.sendCommand.mockClear();
 
@@ -176,7 +177,7 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
     jest.useFakeTimers();
     const sm = makeManager();
     const s = sm.createSession('T');
-    sm.addResilienceRule(s.id, raceRule({ holdCount: 5, releaseAfterMs: 3000 }));
+    sm.addRule(s.id, raceRule({ holdCount: 5, releaseAfterMs: 3000 }));
     const dbg = dbgOf(s);
     dbg.sendCommand.mockClear();
 
@@ -191,7 +192,7 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
     jest.useFakeTimers();
     const sm = makeManager();
     const s = sm.createSession('T');
-    sm.addResilienceRule(s.id, raceRule({ holdCount: 5, releaseAfterMs: undefined }));
+    sm.addRule(s.id, raceRule({ holdCount: 5, releaseAfterMs: undefined }));
     const dbg = dbgOf(s);
     dbg.sendCommand.mockClear();
 
@@ -203,13 +204,13 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
   });
 
   it.each([
-    ['removed', (sm: SessionManager, id: string) => sm.removeResilienceRule(id, 'race1')],
-    ['disabled', (sm: SessionManager, id: string) => sm.toggleResilienceRule(id, 'race1', false)],
-    ['edited', (sm: SessionManager, id: string) => sm.updateResilienceRule(id, 'race1', { holdCount: 10 })],
+    ['removed', (sm: SessionManager, id: string) => sm.removeRule(id, 'race1')],
+    ['disabled', (sm: SessionManager, id: string) => sm.toggleRule(id, 'race1', false)],
+    ['edited', (sm: SessionManager, id: string) => sm.updateRule(id, 'race1', { action: { kind: 'race', batchSize: 10 } })],
   ])('releases parked requests when the rule is %s', (_label, act) => {
     const sm = makeManager();
     const s = sm.createSession('T');
-    sm.addResilienceRule(s.id, raceRule({ holdCount: 5 }));
+    sm.addRule(s.id, raceRule({ holdCount: 5 }));
     const dbg = dbgOf(s);
     dbg.sendCommand.mockClear();
 
@@ -223,7 +224,7 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
     const sm = makeManager();
     const t1 = sm.createSession('One', { partition: 'persist:shared' });
     const t2 = sm.createSession('Two', { partition: 'persist:shared' });
-    sm.addResilienceRule(t1.id, raceRule({ holdCount: 2 }));
+    sm.addRule(t1.id, raceRule({ holdCount: 2 }));
     const d2 = dbgOf(t2);
     d2.sendCommand.mockClear();
 
@@ -236,9 +237,9 @@ describe('Race gate through the Fetch.requestPaused handler', () => {
   it('counts a hit per parked request and records the rule', () => {
     const sm = makeManager();
     const s = sm.createSession('T');
-    sm.addResilienceRule(s.id, raceRule({ holdCount: 2 }));
+    sm.addRule(s.id, raceRule({ holdCount: 2 }));
     const dbg = dbgOf(s);
     pause(dbg, 'a'); pause(dbg, 'b');
-    expect(sm.getResilienceRules(s.id)[0].hitCount).toBe(2);
+    expect(sm.getRules(s.id)[0].hitCount).toBe(2);
   });
 });

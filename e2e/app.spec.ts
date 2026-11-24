@@ -333,19 +333,19 @@ test('replay cookie session picker shows each session\'s own cookies independent
   for (const id of [session2Id, session1Id]) await window.locator(`.tab[data-id="${id}"] .tab-close`).click();
 });
 
-test('replay-actions: ⇒ Resilience carries the edited URL to the Resilience tab', async () => {
+test('replay-actions: Rule carries the edited URL to the Rules tab', async () => {
   await openReplayOverlay(window, testPort);
 
   const editedUrl = `http://127.0.0.1:${testPort}/edited-by-tester`;
   await window.fill('#replayUrl', editedUrl);
-  await window.click('#replayToResilienceBtn');
+  await window.click('#replayToRuleBtn');
 
   await expect(window.locator('#replayOverlay')).not.toHaveClass(/open/);
-  await expect(window.locator('#consoleTabResilience')).toHaveClass(/active/);
-  await expect(window.locator('#resUrl')).toHaveValue(editedUrl);
+  await expect(window.locator('#consoleTabRules')).toHaveClass(/active/);
+  await expect(window.locator('#ruleUrl')).toHaveValue(editedUrl);
 });
 
-test('replay-actions: ⇒ Mock after Send ↵ carries the replay response to the Mock tab', async () => {
+test('replay-actions: Rule after Send ↵ carries the replay response into a Mock rule', async () => {
   await openReplayOverlay(window, testPort);
 
   // The test server (beforeAll above) returns the same fixed 200 HTML page
@@ -354,22 +354,25 @@ test('replay-actions: ⇒ Mock after Send ↵ carries the replay response to the
   await window.click('#sendReplayBtn');
   await expect(window.locator('.replay-res-status')).toHaveClass(/ok/, { timeout: 5_000 });
 
-  await window.click('#replayToMockBtn');
+  await window.click('#replayToRuleBtn');
 
   await expect(window.locator('#replayOverlay')).not.toHaveClass(/open/);
-  await expect(window.locator('#consoleTabMock')).toHaveClass(/active/);
-  await expect(window.locator('#mockStatus')).toHaveValue('200');
-  await expect(window.locator('#mockBody')).toHaveValue('<html><body><h1>TesterBrowser test page</h1></body></html>');
-  await expect(window.locator('#mockBodyNote')).toBeHidden();
+  await expect(window.locator('#consoleTabRules')).toHaveClass(/active/);
+  // A call that has a response becomes a Mock rule, parked on the action step.
+  await expect(window.locator('#ruleKind')).toHaveValue('mock');
+  await window.click('#ruleNextBtn');
+  await expect(window.locator('#ruleMockStatus')).toHaveValue('200');
+  await expect(window.locator('#ruleMockBody')).toHaveValue('<html><body><h1>TesterBrowser test page</h1></body></html>');
+  await expect(window.locator('#ruleBodyNote')).toBeHidden();
 });
 
-test('replay-actions: ⇒ Mock before any Send ↵ shows the "no response" note', async () => {
+test('replay-actions: Rule before any Send ↵ starts as a failure rule', async () => {
   await openReplayOverlay(window, testPort);
 
-  await window.click('#replayToMockBtn');
+  await window.click('#replayToRuleBtn');
 
-  await expect(window.locator('#consoleTabMock')).toHaveClass(/active/);
-  await expect(window.locator('#mockBodyNote')).toBeVisible();
+  await expect(window.locator('#consoleTabRules')).toHaveClass(/active/);
+  await expect(window.locator('#ruleKind')).toHaveValue('fail');
 });
 
 test('replay sends through the originating tab\'s own session, including its cookies (#233)', async () => {
@@ -398,9 +401,9 @@ test('replay sends through the originating tab\'s own session, including its coo
 test('replay is intercepted by the tab\'s Mock rules instead of touching the network (#233)', async () => {
   const sessionId = await window.locator('.tab.active').getAttribute('data-id');
   await window.evaluate(
-    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.mock.addRule(id, {
-      id: 'replay-mock-233', urlPattern: '*/echo/headers*', method: 'GET',
-      statusCode: 200, body: '{"mocked":true}', responseHeaders: { 'content-type': 'application/json' }, enabled: true,
+    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.rules.addRule(id, {
+      id: 'replay-mock-233', urlPattern: '*/echo/headers*', method: 'GET', probability: 1, enabled: true,
+      action: { kind: 'mock', statusCode: 200, body: '{"mocked":true}', responseHeaders: { 'content-type': 'application/json' } },
     }),
     sessionId
   );
@@ -414,7 +417,7 @@ test('replay is intercepted by the tab\'s Mock rules instead of touching the net
   expect(JSON.parse(bodyText || '{}').mocked).toBe(true);
 
   await window.evaluate(
-    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.mock.removeRule(id, 'replay-mock-233'),
+    (id) => (window as unknown as { testerBrowser: any }).testerBrowser.rules.removeRule(id, 'replay-mock-233'),
     sessionId
   );
   await window.click('#closeReplayBtn');
@@ -577,10 +580,10 @@ test('Settings modal has General / Tools / Shortcuts / About, with locked Networ
 
   await window.click('.settings-nav-btn[data-pane="features"]');
   await expect(window.locator('#settingsPaneTitle')).toHaveText('Tools');
-  await expect(window.locator('.set-tool-row')).toHaveCount(14);
+  await expect(window.locator('.set-tool-row')).toHaveCount(13);
   await expect(window.locator('.set-locked input')).toHaveCount(2);
   await expect(window.locator('.set-locked input').first()).toBeDisabled();
-  await expect(window.locator('#consoleTabToggle-mock')).toBeAttached();
+  await expect(window.locator('#consoleTabToggle-rules')).toBeAttached();
 
   await window.click('.settings-nav-btn[data-pane="shortcuts"]');
   await expect(window.locator('#shortcutList .shortcut-row').filter({ has: window.getByText('New tab', { exact: true }) }).locator('kbd')).toHaveText('Ctrl+T');
@@ -962,9 +965,9 @@ test('selecting a request shows its status pill, section tabs, and Mock opens th
   await expect(window.locator('#detailPanelTabBar .detail-tab.active')).toHaveText(/^Cookies/);
   await window.click('#detailPanelTabBar .detail-tab[data-section="headers"]');
 
-  await window.click('#detailMockBtn');
-  await expect(window.locator('#mockPanel')).toBeVisible();
-  await expect(window.locator('#mockUrl')).toHaveValue(fixtures.url(urlPath));
+  await window.click('#detailRuleBtn');
+  await expect(window.locator('#rulesPanel')).toBeVisible();
+  await expect(window.locator('#ruleUrl')).toHaveValue(fixtures.url(urlPath));
 
   // #324: the detail belongs to Network — Console doesn't show it, and Network restores it.
   await window.click('#consoleTabNetwork');

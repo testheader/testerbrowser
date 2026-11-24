@@ -69,6 +69,7 @@ jest.mock('electron', () => {
 });
 
 import { SessionManager } from '../sessionManager';
+import { makeMockRule, makeRule } from './ruleFactories';
 import type { AppLog } from '../appLogger';
 
 interface LoggedCall { level: string; source: string; message: string; ctx?: Record<string, unknown>; }
@@ -117,13 +118,10 @@ describe('SessionManager logging (#227)', () => {
       .webContents.debugger;
     dbg.sendCommand = jest.fn().mockRejectedValue(new Error('boom'));
 
-    sm.addMockRule(session.id, {
-      id: 'm1', urlPattern: '*', method: '*', statusCode: 200, body: '',
-      responseHeaders: {}, enabled: true, hitCount: 0, lastHitAt: null,
-    });
+    sm.addRule(session.id, makeMockRule('m1'));
 
     // _applyFetch()'s Fetch.enable call is fire-and-forget (not awaited by
-    // addMockRule) — flush the microtask queue so its rejection's .catch()
+    // addRule) — flush the microtask queue so its rejection's .catch()
     // handler has run before asserting.
     await new Promise((resolve) => setImmediate(resolve));
 
@@ -134,15 +132,12 @@ describe('SessionManager logging (#227)', () => {
     expect(fetchEnableWarnings[0].ctx).toMatchObject({ sessionId: session.id });
   });
 
-  it('a matched Resilience rule produces one info line naming its type, rule id and the request (#289)', () => {
+  it('a matched rule produces one info line naming its action, rule id and the request (#289)', () => {
     const logger = makeLogger();
     const sm = makeManager(logger);
     const session = sm.createSession('Test');
 
-    sm.addResilienceRule(session.id, {
-      id: 'r1', type: 'error500', urlPattern: '*', method: '*', probability: 1,
-      latencyMs: 0, enabled: true, hitCount: 0, lastHitAt: null,
-    });
+    sm.addRule(session.id, makeRule('r1', { kind: 'fail', mode: 'error500' }));
 
     const dbg = (session.view as unknown as { webContents: { debugger: import('events').EventEmitter } })
       .webContents.debugger;
@@ -151,9 +146,9 @@ describe('SessionManager logging (#227)', () => {
       request: { url: 'https://example.com/api', method: 'GET' },
     });
 
-    const resilienceInfo = logger.calls.filter((c) => c.level === 'info' && c.source === 'resilience' && c.message.startsWith('Resilience rule fired'));
+    const resilienceInfo = logger.calls.filter((c) => c.level === 'info' && c.source === 'rules' && c.message.startsWith('Rule fired'));
     expect(resilienceInfo).toHaveLength(1);
-    expect(resilienceInfo[0].message).toBe('Resilience rule fired: error500');
+    expect(resilienceInfo[0].message).toBe('Rule fired: fail');
     expect(resilienceInfo[0].ctx).toEqual({
       sessionId: session.id, ruleId: 'r1', method: 'GET', url: 'https://example.com/api',
     });
@@ -164,9 +159,8 @@ describe('SessionManager logging (#227)', () => {
     try {
       const sm = makeManager(makeLogger());
       const session = sm.createSession('Test');
-      sm.addResilienceRule(session.id, {
-        id: 'r1', type: 'latency', urlPattern: '*', method: '*', probability: 1,
-        latencyMs: 2000, enabled: true, hitCount: 0, lastHitAt: null,
+      sm.addRule(session.id, {
+        ...makeRule('r1', { kind: 'delay' }, { delayMs: 2000 }),
       });
       const dbg = (session.view as unknown as { webContents: { debugger: import('events').EventEmitter & { sendCommand: jest.Mock } } })
         .webContents.debugger;

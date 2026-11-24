@@ -28,8 +28,8 @@ import type { AppDeps, BroadcastKind, Bookmark, BookmarkFolder, SpeedDialTile, S
 import { registerSessionsIpc } from './ipc/sessions';
 import { registerRecordingIpc } from './ipc/recording';
 import { registerA11yIpc } from './ipc/a11y';
-import { registerMockIpc } from './ipc/mock';
-import { registerResilienceIpc } from './ipc/resilience';
+import { registerRulesIpc } from './ipc/rules';
+import { registerThrottleIpc } from './ipc/throttle';
 import { registerEmulationIpc } from './ipc/emulation';
 import { registerVisualRegressionIpc } from './ipc/visualRegression';
 import { registerDownloadsIpc } from './ipc/downloads';
@@ -49,7 +49,7 @@ import { registerTestsIpc } from './ipc/tests';
 // window. IPC handlers resolve theirs from the invoke event's sender (see appDeps below);
 // menus, the updater and second-instance use the focused window.
 const registry = new WindowRegistry(buildWindow);
-// Mock/Resilience rules and Spoof overrides are per partition, so every window shares them.
+// Rules and Spoof overrides are per partition, so every window shares them.
 const sharedPartitionState = createSharedPartitionState();
 // Save state of windows that have been closed this run. A closed window's persistent
 // tabs stay in open-sessions.json (restored as a window next launch) rather than
@@ -447,7 +447,7 @@ function openInitialWindows() {
 // Opens a window and fills it with the given saved tabs, or a default tab.
 function createWindow(
   savedTabs: Parameters<SessionManager['restoreWindow']>[0] = [],
-  extras: Parameters<SessionManager['restoreWindow']>[1] = { notes: {}, emulation: {}, mocks: {} },
+  extras: Parameters<SessionManager['restoreWindow']>[1] = { notes: {}, emulation: {}, rules: {} },
   firstTab: WindowCreateOptions = {}
 ) {
   const { sessionManager, win } = registry.create(firstTab);
@@ -834,8 +834,8 @@ const appDeps: AppDeps = {
 registerSessionsIpc(appDeps);
 registerRecordingIpc(appDeps);
 registerA11yIpc(appDeps);
-registerMockIpc(appDeps);
-registerResilienceIpc(appDeps);
+registerRulesIpc(appDeps);
+registerThrottleIpc(appDeps);
 registerEmulationIpc(appDeps);
 registerVisualRegressionIpc(appDeps);
 registerDownloadsIpc(appDeps);

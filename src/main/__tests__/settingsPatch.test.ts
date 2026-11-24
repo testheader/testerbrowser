@@ -136,18 +136,18 @@ describe('applySettingsPatch (#217 — settings:set whitelist)', () => {
 
   describe('disabledConsoleTabs (#285)', () => {
     it('keeps known toggleable tab names', () => {
-      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['storage', 'mock'] });
-      expect(result.disabledConsoleTabs).toEqual(['storage', 'mock']);
+      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['storage', 'rules'] });
+      expect(result.disabledConsoleTabs).toEqual(['storage', 'rules']);
     });
 
     it('drops names that are not toggleable, including console and network', () => {
-      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['console', 'network', 'bogus', 'mock'] });
-      expect(result.disabledConsoleTabs).toEqual(['mock']);
+      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['console', 'network', 'bogus', 'rules'] });
+      expect(result.disabledConsoleTabs).toEqual(['rules']);
     });
 
     it('dedupes repeated names', () => {
-      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['mock', 'mock', 'jira'] });
-      expect(result.disabledConsoleTabs).toEqual(['mock', 'jira']);
+      const result = applySettingsPatch(BASE, { disabledConsoleTabs: ['rules', 'rules', 'jira'] });
+      expect(result.disabledConsoleTabs).toEqual(['rules', 'jira']);
     });
 
     it('ignores a non-array value and keeps the current value', () => {
@@ -191,7 +191,7 @@ describe('sanitizeDisabledConsoleTabs (#285)', () => {
   });
 
   it('dedupes repeated names', () => {
-    expect(sanitizeDisabledConsoleTabs(['mock', 'mock'])).toEqual(['mock']);
+    expect(sanitizeDisabledConsoleTabs(['rules', 'rules'])).toEqual(['rules']);
   });
 
   it('returns an empty array for a non-array value', () => {

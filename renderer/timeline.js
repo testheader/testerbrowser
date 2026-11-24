@@ -45,10 +45,14 @@ export const requestMeta = new Map(); // requestId -> { method, url }
 // requestMeta, populated the same way from network-response events as they
 // arrive.
 export const responseMeta = new Map(); // requestId -> { status, durationMs }
-// Which rule (if any) intercepted/altered a call, keyed by requestId — the
-// Mock/Resilience pills need this for kinds like network-body whose own
-// payload never carries mockRuleId/resilienceRuleId directly.
-export const tagMeta = new Map(); // requestId -> 'mock' | 'resilience'
+// Which calls a rule (if any) altered, keyed by requestId — the Altered pill
+// needs this for kinds like network-body whose own payload never carries
+// ruleId directly.
+export const tagMeta = new Map(); // requestId -> 'altered'
+// What each rule action did, for the Altered badge's tooltip.
+const RULE_KIND_LABELS = {
+  mock: 'mock response', fail: 'failure injected', delay: 'delayed', hang: 'hung', race: 'race gate', rewrite: 'request rewritten',
+};
 // #300: loadingFailed's errorText per requestId, so a failed request's row
 // can show the error instead of a status.
 export const failMeta = new Map(); // requestId -> errorText
@@ -86,16 +90,15 @@ function getEventDuration(e) {
   return null;
 }
 
-// The Mock/Resilience pill filter's tag for a row: its own payload for
-// request/response/failed rows (tagRequest patches mockRuleId/
-// resilienceRuleId onto those directly), falling back to tagMeta for kinds
-// like network-body that only carry a requestId.
+// The Altered pill filter's tag for a row: its own payload for
+// request/response/failed rows (tagRequest patches ruleId onto those
+// directly), falling back to tagMeta for kinds like network-body that only
+// carry a requestId.
 function getEventTag(e) {
   if (!e.payload) return null;
   try {
     const p = JSON.parse(e.payload);
-    if (p.mockRuleId) return 'mock';
-    if (p.resilienceRuleId) return 'resilience';
+    if (p.ruleId) return 'altered';
     if (p.requestId) return tagMeta.get(p.requestId) ?? null;
   } catch {}
   return null;
@@ -163,19 +166,13 @@ export function matchesNetworkFilters(e, { activeTypes, activeMethods, minDurati
     if (typeof durationMs !== 'number' || durationMs < minDuration) return false;
   }
 
-  const mockOn       = activeTypes.has('mock');
-  const resilienceOn = activeTypes.has('resilience');
-  if (mockOn || resilienceOn) {
-    const tag = getEventTag(e);
-    const tagVisible = (mockOn && tag === 'mock') || (resilienceOn && tag === 'resilience');
-    if (!tagVisible) return false;
-  }
+  if (activeTypes.has('altered') && getEventTag(e) !== 'altered') return false;
 
   // Matches summary or payload the same way the console filter already
   // does — space-separated terms AND together, and a `-term` excludes.
   // Payload is bounded to prevent O(N × payload_size) string allocations
   // when the ring buffer is full of large CDP events: tags like
-  // resilienceRuleId are appended near the end of the object, so we
+  // ruleId is appended near the end of the object, so we
   // search both a prefix and a suffix of large payloads.
   let searchText = e.summary;
   if (e.payload) {
@@ -226,16 +223,15 @@ export function renderTimeline() {
 
   const kindCounts = {};
   for (const e of timelineEvents) kindCounts[e.kind] = (kindCounts[e.kind] || 0) + 1;
-  // Mock/Resilience counts are per call (one request each), not per event
-  // kind, so they're tallied off the network-request rows only.
-  kindCounts['mock'] = 0;
-  kindCounts['resilience'] = 0;
+  // The Altered count is per call (one request each), not per event kind, so
+  // it's tallied off the network-request rows only.
+  kindCounts['altered'] = 0;
   kindCounts['network-failed'] = 0;
   for (const e of timelineEvents) {
     if (e.kind !== 'network-request') continue;
     if (isErrorRequest(e)) kindCounts['network-failed']++;
     const tag = getEventTag(e);
-    if (tag === 'mock' || tag === 'resilience') kindCounts[tag]++;
+    if (tag === 'altered') kindCounts[tag]++;
   }
   document.querySelectorAll('#networkPills .filter-pill').forEach(btn => {
     const n    = kindCounts[btn.dataset.type] || 0;
@@ -458,10 +454,8 @@ function renderNetworkTable(panel, events) {
     if (row.tag) {
       const badge = document.createElement('span');
       badge.className = `evt-badge evt-badge-${row.tag}`;
-      badge.textContent = row.tag === 'mock' ? 'Mocked' : 'Resilience';
-      badge.title = row.tag === 'mock'
-        ? 'Response served by a Mock rule instead of the real server'
-        : `Altered by a Resilience rule (${p.resilienceType || 'unknown'})`;
+      badge.textContent = 'Altered';
+      badge.title = `Altered by a rule (${RULE_KIND_LABELS[p.ruleKind] || 'unknown'})`;
       nameCell.appendChild(badge);
     }
     rest.appendChild(nameCell);
@@ -558,8 +552,7 @@ function populateMetaFromEvents(events) {
         if (p.requestId && p.request?.method) {
           requestMeta.set(p.requestId, { method: p.request.method, url: p.request.url });
         }
-        if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
-        else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
+        if (p.requestId && p.ruleId) tagMeta.set(p.requestId, 'altered');
       } catch {}
     } else if (e.kind === 'network-response') {
       try {
@@ -569,15 +562,13 @@ function populateMetaFromEvents(events) {
             status: p.response?.status ?? null, durationMs: p.durationMs,
             size: responseSize(p.response?.headers), mimeType: p.response?.mimeType,
           });
-          if (p.mockRuleId) tagMeta.set(p.requestId, 'mock');
-          else if (p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
+          if (p.ruleId) tagMeta.set(p.requestId, 'altered');
         }
       } catch {}
     } else if (e.kind === 'network-failed') {
       try {
         const p = JSON.parse(e.payload);
-        if (p.requestId && p.mockRuleId) tagMeta.set(p.requestId, 'mock');
-        else if (p.requestId && p.resilienceRuleId) tagMeta.set(p.requestId, 'resilience');
+        if (p.requestId && p.ruleId) tagMeta.set(p.requestId, 'altered');
         if (p.requestId) failMeta.set(p.requestId, p.errorText || 'Failed');
       } catch {}
     }

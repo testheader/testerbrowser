@@ -4,7 +4,7 @@ function netEvent(kind: string, payload: object, overrides: Partial<{ summary: s
   return { kind, ts: 1700000000000, summary: '', payload: JSON.stringify(payload), ...overrides };
 }
 
-// Mock/Resilience are deliberately left *off* by default: turning either on
+// The Altered pill is deliberately left *off* by default: turning either on
 // is a restrictive filter (only rows carrying that tag pass), so an "every
 // other dimension is permissive" baseline needs them off, same as the real
 // panel's own default pill state.
@@ -105,30 +105,28 @@ describe('matchesNetworkFilters (#279)', () => {
     });
   });
 
-  describe('Mock/Resilience tag filter', () => {
-    it('hides a request tagged mock when only the Resilience pill is on', () => {
-      const e = netEvent('network-request', { requestId: 'r1', request: { method: 'GET', url: 'https://x' }, mockRuleId: 'rule-1' });
-      const filters = baseNetworkFilters({ activeTypes: new Set(['resilience']) });
-      expect(matchesNetworkFilters(e, filters)).toBe(false);
+  describe('Altered tag filter', () => {
+    it('hides a request no rule touched when the Altered pill is on', () => {
+      const e = netEvent('network-request', { requestId: 'r1', request: { method: 'GET', url: 'https://x' } });
+      expect(matchesNetworkFilters(e, baseNetworkFilters({ activeTypes: new Set(['altered']) }))).toBe(false);
     });
 
-    it('shows a request tagged mock when the Mock pill is on', () => {
-      const e = netEvent('network-request', { requestId: 'r1', request: { method: 'GET', url: 'https://x' }, mockRuleId: 'rule-1' });
-      const filters = baseNetworkFilters({ activeTypes: new Set(['mock']) });
-      expect(matchesNetworkFilters(e, filters)).toBe(true);
+    it('shows a request a rule altered when the Altered pill is on, whatever the action', () => {
+      for (const ruleKind of ['mock', 'fail', 'rewrite']) {
+        const e = netEvent('network-request', { requestId: 'r1', request: { method: 'GET', url: 'https://x' }, ruleId: 'rule-1', ruleKind });
+        expect(matchesNetworkFilters(e, baseNetworkFilters({ activeTypes: new Set(['altered']) }))).toBe(true);
+      }
     });
 
     it('a request resolves its tag via tagMeta when its own payload carries none', () => {
-      tagMeta.set('r1', 'resilience');
+      tagMeta.set('r1', 'altered');
       const e = netEvent('network-request', { requestId: 'r1', request: { method: 'GET', url: 'https://x' } });
-      expect(matchesNetworkFilters(e, baseNetworkFilters({ activeTypes: new Set(['mock']) }))).toBe(false);
-      expect(matchesNetworkFilters(e, baseNetworkFilters({ activeTypes: new Set(['resilience']) }))).toBe(true);
+      expect(matchesNetworkFilters(e, baseNetworkFilters({ activeTypes: new Set(['altered']) }))).toBe(true);
     });
 
-    it('neither Mock nor Resilience pill on leaves every row visible regardless of tag', () => {
-      const e = netEvent('network-request', { requestId: 'r1', request: { method: 'GET', url: 'https://x' }, mockRuleId: 'rule-1' });
-      const filters = baseNetworkFilters({ activeTypes: new Set<string>() });
-      expect(matchesNetworkFilters(e, filters)).toBe(true);
+    it('the pill off leaves every row visible regardless of tag', () => {
+      const e = netEvent('network-request', { requestId: 'r1', request: { method: 'GET', url: 'https://x' }, ruleId: 'rule-1' });
+      expect(matchesNetworkFilters(e, baseNetworkFilters({ activeTypes: new Set<string>() }))).toBe(true);
     });
   });
 

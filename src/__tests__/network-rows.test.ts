@@ -5,10 +5,10 @@ describe('Network row model (#300)', () => {
   const req = { requestId: 'r1', type: 'Fetch', request: { method: 'GET', url: 'https://api.example.com/api/flags?a=1' } };
 
   it('pairs the response into the request row', () => {
-    const row = buildNetworkRow(req, { status: 503, durationMs: 2001, size: 200, mimeType: 'application/json' }, undefined, 'resilience');
+    const row = buildNetworkRow(req, { status: 503, durationMs: 2001, size: 200, mimeType: 'application/json' }, undefined, 'altered');
     expect(row).toMatchObject({
       requestId: 'r1', method: 'GET', name: '/api/flags?a=1', host: 'api.example.com',
-      status: 503, failed: false, isError: true, type: 'fetch', sizeLabel: '0.2 kB', durationMs: 2001, tag: 'resilience',
+      status: 503, failed: false, isError: true, type: 'fetch', sizeLabel: '0.2 kB', durationMs: 2001, tag: 'altered',
     });
   });
 

@@ -1,6 +1,6 @@
 import { ipcMain, net, session as electronSession } from 'electron';
 import type { TestStep } from '../recordingManager';
-import { buildMockFulfillParams } from '../mockManager';
+import { buildMockFulfillParams } from '../rules';
 import type { AppDeps } from './deps';
 
 /** Console panel timeline/network-replay IPC, and Record/Playback/Follow Along step execution. */
@@ -16,21 +16,24 @@ export function registerRecordingIpc(deps: AppDeps): void {
   );
 
   // #233: replays used to always go through net.fetch — the app's own default
-  // session — so a tab's Mock/Resilience rules, cookie jar and HTTP cache
+  // session — so a tab's rules, cookie jar and HTTP cache
   // never applied, and a redacted [REDACTED] header value got sent to the
   // server literally. sessionId routes this through the *originating tab's*
-  // partition instead, and checks its Mock rules (via the exact matcher
-  // Fetch.requestPaused itself uses) before touching the network — Resilience
-  // is deliberately not applied here (see the ticket's "out of scope").
+  // partition instead, and checks its mock rules (via the exact matcher
+  // Fetch.requestPaused itself uses) before touching the network — the other
+  // actions are deliberately not applied here (see the ticket's "out of scope").
   ipcMain.handle('recording:replay', async (e, req: {
     sessionId?: string; method: string; url: string; headers: Record<string, string>; body?: string; timeoutMs?: number;
   }) => {
     const cleanHeaders = Object.fromEntries(Object.entries(req.headers || {}).filter(([, v]) => v !== '[REDACTED]'));
 
     const sm = getSessionManager(e);
-    const mockRule = req.sessionId ? sm?.findMatchingMockRule(req.sessionId, req.method, req.url) : null;
-    if (mockRule) {
-      const fulfill = buildMockFulfillParams(mockRule, { headers: cleanHeaders });
+    // Only a mock rule can answer a replay; any other action (fail, delay,
+    // hang, race, rewrite) is deliberately not applied — see the #233 ticket.
+    const matched = req.sessionId ? sm?.findMatchingRule(req.sessionId, req.method, req.url) : null;
+    const mockRule = matched && matched.action.kind === 'mock' ? matched : null;
+    if (mockRule && mockRule.action.kind === 'mock') {
+      const fulfill = buildMockFulfillParams(mockRule.action, { headers: cleanHeaders });
       const headers: Record<string, string> = {};
       for (const h of fulfill.responseHeaders) headers[h.name] = h.value;
       return {
@@ -39,7 +42,7 @@ export function registerRecordingIpc(deps: AppDeps): void {
         statusText: '',
         headers,
         body: Buffer.from(fulfill.body, 'base64').toString('utf-8'),
-        servedBy: { mockRuleId: mockRule.id, urlPattern: mockRule.urlPattern },
+        servedBy: { ruleId: mockRule.id, urlPattern: mockRule.urlPattern },
       };
     }
 

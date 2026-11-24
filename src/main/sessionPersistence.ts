@@ -1,17 +1,17 @@
 import type { EmulationOverrides } from './emulationManager';
-import type { MockRule } from './mockManager';
+import type { Rule } from './rules';
 
 /**
  * open-sessions.json (#367). One entry per window under `windows`, each with
  * that window's persistent tabs in tab-strip order. Notes (keyed by session
- * id), emulation overrides and mock rules (both keyed by partition) are
+ * id), emulation overrides and rules (both keyed by partition) are
  * shared by every window, so they sit at the top level — a partition used by
  * tabs in two windows has one entry, not two that could disagree.
  *
  * The flat top-level `sessions` array (every window's tabs, in window order)
  * is still written so an older build reading this file restores all tabs into
  * its single window instead of none. Files written before multi-window
- * (`{ sessions, notes, emulation, mocks }` with no `windows`) read back as
+ * (`{ sessions, notes, emulation }` with no `windows`) read back as
  * one window.
  */
 export interface SavedSession {
@@ -28,7 +28,7 @@ export interface WindowSaveState {
   sessions: SavedSession[];
   notes: Record<string, string>;
   emulation: Record<string, EmulationOverrides>;
-  mocks: Record<string, MockRule[]>;
+  rules: Record<string, Rule[]>;
 }
 
 export interface SessionsFile {
@@ -36,14 +36,14 @@ export interface SessionsFile {
   sessions: SavedSession[];
   notes: Record<string, string>;
   emulation: Record<string, EmulationOverrides>;
-  mocks: Record<string, MockRule[]>;
+  rules: Record<string, Rule[]>;
 }
 
 export interface ParsedSessionsFile {
   windows: { sessions: SavedSession[] }[];
   notes: Record<string, string>;
   emulation: Record<string, EmulationOverrides>;
-  mocks: Record<string, MockRule[]>;
+  rules: Record<string, Rule[]>;
 }
 
 /** Windows with no persistent tabs are left out: there is nothing to restore into them. */
@@ -54,7 +54,7 @@ export function buildSessionsFile(states: WindowSaveState[]): SessionsFile {
     sessions: withTabs.flatMap((s) => s.sessions),
     notes: Object.assign({}, ...states.map((s) => s.notes)),
     emulation: Object.assign({}, ...states.map((s) => s.emulation)),
-    mocks: Object.assign({}, ...states.map((s) => s.mocks)),
+    rules: Object.assign({}, ...states.map((s) => s.rules)),
   };
 }
 
@@ -62,7 +62,7 @@ const isRecord = (v: unknown): v is Record<string, never> => !!v && typeof v ===
 
 /** Accepts both formats; anything unreadable yields no windows. */
 export function parseSessionsFile(raw: unknown): ParsedSessionsFile {
-  const empty: ParsedSessionsFile = { windows: [], notes: {}, emulation: {}, mocks: {} };
+  const empty: ParsedSessionsFile = { windows: [], notes: {}, emulation: {}, rules: {} };
   if (!isRecord(raw)) return empty;
   const f = raw as Record<string, unknown>;
   let windows: { sessions: SavedSession[] }[] = [];
@@ -78,6 +78,6 @@ export function parseSessionsFile(raw: unknown): ParsedSessionsFile {
     windows,
     notes: isRecord(f.notes) ? (f.notes as Record<string, string>) : {},
     emulation: isRecord(f.emulation) ? (f.emulation as Record<string, EmulationOverrides>) : {},
-    mocks: isRecord(f.mocks) ? (f.mocks as Record<string, MockRule[]>) : {},
+    rules: isRecord(f.rules) ? (f.rules as Record<string, Rule[]>) : {},
   };
 }

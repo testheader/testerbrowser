@@ -3,7 +3,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { getMainWindow, getTabPage, launchApp, MAIN_PATH } from './helpers';
 import { startFixtureServer, FixtureServer } from './fixtures/server';
 
-// Race gate (Resilience rule type `race`): parks matching requests at the CDP
+// Race gate (Rules action `race`): parks matching requests at the CDP
 // Fetch pause until N have arrived, then releases them together. The fixture's
 // /race/redeem is a single-use coupon with a check-then-act window, so a gate
 // that really does release requests together shows up as >1 success, and a
@@ -49,18 +49,17 @@ async function activeSessionId(): Promise<string> {
   return (await window.locator('.tab.active').getAttribute('data-id')) as string;
 }
 
-/** Adds a race rule through the real form (type chip, URL step, options step). */
-async function addRaceRuleViaUi(url: string, holdCount: number, timeoutSec: number): Promise<void> {
-  await window.click('#consoleTabResilience');
-  if (!(await window.locator('#resForm').isVisible())) await window.click('#resNewRuleBtn');
-  await window.click('.res-type-chip[data-type="race"]');
-  await window.click('#resNextBtn');
-  await window.fill('#resUrl', url);
-  await window.click('#resNextBtn');
-  await window.fill('#resHoldCount', String(holdCount));
-  await window.fill('#resRelease', String(timeoutSec));
-  await window.click('.res-add-btn');
-  await expect(window.locator('.res-rule-row', { hasText: url })).toBeVisible();
+/** Adds a race rule through the real form (URL step, then the Race action and its options). */
+async function addRaceRuleViaUi(url: string, batchSize: number, giveUpSec: number): Promise<void> {
+  await window.click('#consoleTabRules');
+  await window.click('#ruleNewBtn');
+  await window.fill('#ruleUrl', url);
+  await window.click('#ruleNextBtn');
+  await window.click('.rule-kind-chip[data-kind="race"]');
+  await window.fill('#ruleRaceBatch', String(batchSize));
+  await window.fill('#ruleRaceGiveUp', String(giveUpSec));
+  await window.click('#ruleAddBtn');
+  await expect(window.locator('.rule-row', { hasText: url })).toBeVisible();
 }
 
 /** Starts `n` POSTs to the coupon endpoint from the page; resolves to their statuses. */
@@ -82,34 +81,34 @@ test('control: requests awaited one at a time redeem the coupon exactly once', a
   await window.keyboard.press('Control+w');
 });
 
-test('the Race gate form shows hold count + timeout, hides probability, and lists the rule', async () => {
+test('the Race action shows batch size + give-up, has no step 3, ignores delay, and lists the rule', async () => {
   await openRaceTab('form');
-  await window.click('#consoleTabResilience');
-  if (!(await window.locator('#resForm').isVisible())) await window.click('#resNewRuleBtn');
-  await window.click('.res-type-chip[data-type="race"]');
-  await window.click('#resNextBtn');
-  await window.fill('#resUrl', '*/race/redeem*');
-  await window.click('#resNextBtn');
+  await window.click('#consoleTabRules');
+  await window.click('#ruleNewBtn');
+  await window.fill('#ruleUrl', '*/race/redeem*');
+  await window.click('#ruleNextBtn');
+  await window.click('.rule-kind-chip[data-kind="race"]');
 
-  await expect(window.locator('#resHoldField')).toBeVisible();
-  await expect(window.locator('#resReleaseField')).toBeVisible();
-  await expect(window.locator('#resReleaseLabel')).toHaveText('Timeout (s)');
-  await expect(window.locator('#resProb')).toBeDisabled();
-  await expect(window.locator('#resRelease')).toHaveValue('10'); // default timeout, never "forever"
+  // A race gate is two steps: the details step does not exist for it.
+  await expect(window.locator('#ruleStepIndicator')).toHaveText('Step 2 of 2');
+  await expect(window.locator('#ruleRaceBatch')).toBeVisible();
+  await expect(window.locator('#ruleRaceGiveUp')).toBeVisible();
+  await expect(window.locator('#ruleDelayField')).toBeHidden(); // the gate parks the request itself
+  await expect(window.locator('#ruleRaceGiveUp')).toHaveValue('10'); // default give-up, never "forever"
 
-  // Out-of-range hold count blocks the Add button.
-  await window.fill('#resHoldCount', '1');
-  await expect(window.locator('.res-add-btn')).toBeDisabled();
-  await window.fill('#resHoldCount', '51');
-  await expect(window.locator('.res-add-btn')).toBeDisabled();
-  await window.fill('#resHoldCount', '4');
-  await expect(window.locator('.res-add-btn')).toBeEnabled();
-  await expect(window.locator('#resSummary')).toContainText('holds 4 requests');
+  // Out-of-range batch size blocks the Add button.
+  await window.fill('#ruleRaceBatch', '1');
+  await expect(window.locator('#ruleAddBtn')).toBeDisabled();
+  await window.fill('#ruleRaceBatch', '51');
+  await expect(window.locator('#ruleAddBtn')).toBeDisabled();
+  await window.fill('#ruleRaceBatch', '4');
+  await expect(window.locator('#ruleAddBtn')).toBeEnabled();
+  await expect(window.locator('#ruleSummary')).toContainText('Race: sends 4 together');
 
-  await window.click('.res-add-btn');
-  const row = window.locator('.res-rule-row', { hasText: '*/race/redeem*' });
+  await window.click('#ruleAddBtn');
+  const row = window.locator('.rule-row', { hasText: '*/race/redeem*' });
   await expect(row).toBeVisible();
-  await expect(row.locator('.res-rule-delay')).toHaveText('×4 · 10 s');
+  await expect(row.locator('.rule-badge')).toHaveText('Race: sends 4 together');
   await window.keyboard.press('Control+w');
 });
 
@@ -182,7 +181,7 @@ test('removing the rule releases requests that are parked at the gate', async ()
   await new Promise((r) => setTimeout(r, 500));
   expect((await serverState()).hits).toBe(0);
 
-  await window.locator('.res-rule-row', { hasText: '*/race/redeem*' }).locator('.res-del-btn').click();
+  await window.locator('.rule-row', { hasText: '*/race/redeem*' }).locator('.rule-del-btn').click();
   expect(await inFlight).toBe(200);
   expect((await serverState()).hits).toBe(1);
   await window.keyboard.press('Control+w');
@@ -192,9 +191,9 @@ test('a disabled race rule no longer gates requests', async () => {
   const tab = await openRaceTab('disable');
   await addRaceRuleViaUi('*/race/redeem*', 5, 60);
   const sessionId = await activeSessionId();
-  await window.locator('.res-rule-row', { hasText: '*/race/redeem*' }).locator('.res-enable').uncheck();
+  await window.locator('.rule-row', { hasText: '*/race/redeem*' }).locator('.rule-enable').uncheck();
   await expect.poll(() => window.evaluate(
-    (id) => (window as any).testerBrowser.resilience.getRules(id), sessionId,
+    (id) => (window as any).testerBrowser.rules.getRules(id), sessionId,
   ).then((rules: { enabled: boolean }[]) => rules[0]?.enabled)).toBe(false);
 
   const started = Date.now();

@@ -122,32 +122,32 @@ describe('SessionRecorder', () => {
       });
       // Fetch.requestPaused (and therefore tagRequest) arrives after
       // requestWillBeSent has already been recorded — the common ordering.
-      recorder.tagRequest('r1', { resilienceRuleId: 'res-1', resilienceType: 'error500' });
+      recorder.tagRequest('r1', { ruleId: 'res-1', ruleKind: 'fail' });
       emit('Network.responseReceived', {
         requestId: 'r1',
         response: { status: 500, url: 'https://example.com', headers: {} },
       });
 
       const request = recorder.getTimeline().find(e => e.kind === 'network-request')!;
-      expect(JSON.parse(request.payload)).toMatchObject({ resilienceRuleId: 'res-1', resilienceType: 'error500' });
+      expect(JSON.parse(request.payload)).toMatchObject({ ruleId: 'res-1', ruleKind: 'fail' });
 
       const response = recorder.getTimeline().find(e => e.kind === 'network-response')!;
-      expect(JSON.parse(response.payload)).toMatchObject({ resilienceRuleId: 'res-1', resilienceType: 'error500' });
+      expect(JSON.parse(response.payload)).toMatchObject({ ruleId: 'res-1', ruleKind: 'fail' });
     });
 
     it('tags the request event immediately when the tag exists before requestWillBeSent', () => {
-      recorder.tagRequest('r1', { mockRuleId: 'mock-1' });
+      recorder.tagRequest('r1', { ruleId: 'mock-1' });
       emit('Network.requestWillBeSent', {
         requestId: 'r1',
         request: { url: 'https://example.com', method: 'GET', headers: {} },
       });
 
       const request = recorder.getTimeline().find(e => e.kind === 'network-request')!;
-      expect(JSON.parse(request.payload)).toMatchObject({ mockRuleId: 'mock-1' });
+      expect(JSON.parse(request.payload)).toMatchObject({ ruleId: 'mock-1' });
     });
 
     it('is a no-op when the requestId has no recorded request row', () => {
-      expect(() => recorder.tagRequest('unknown', { mockRuleId: 'mock-1' })).not.toThrow();
+      expect(() => recorder.tagRequest('unknown', { ruleId: 'mock-1' })).not.toThrow();
       expect(recorder.getTimeline()).toHaveLength(0);
     });
   });

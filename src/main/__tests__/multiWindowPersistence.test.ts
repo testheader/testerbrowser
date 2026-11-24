@@ -65,7 +65,8 @@ jest.mock('electron', () => {
 });
 
 import { SessionManager } from '../sessionManager';
-import type { MockRule } from '../mockManager';
+import type { Rule } from '../rules';
+import { makeMockRule } from './ruleFactories';
 
 function makeManager(): SessionManager {
   // loadAndRestoreSessions() ends by calling switchTo() on the first restored
@@ -83,11 +84,8 @@ function makeManager(): SessionManager {
 import { buildSessionsFile, parseSessionsFile } from '../sessionPersistence';
 import { createSharedPartitionState } from '../partitionState';
 
-function makeRule(id: string): MockRule {
-  return {
-    id, urlPattern: '*/api/*', method: '*', statusCode: 200, body: '{}',
-    responseHeaders: {}, enabled: true, hitCount: 0, lastHitAt: null,
-  };
+function makeRule(id: string): Rule {
+  return makeMockRule(id, { urlPattern: '*/api/*', body: '{}' });
 }
 
 function makeWindowManager(shared = createSharedPartitionState()): SessionManager {
@@ -113,8 +111,8 @@ describe('multi-window persistence (#367)', () => {
     const b = makeWindowManager(shared);
     const sa = a.createSession('A', { persistent: true });
     const sb = b.createSession('B', { persistent: true, partition: sa.partition });
-    a.addMockRule(sa.id, makeRule('m1'));
-    expect(b.getMockRules(sb.id).map((r) => r.id)).toEqual(['m1']);
+    a.addRule(sa.id, makeRule('m1'));
+    expect(b.getRules(sb.id).map((r) => r.id)).toEqual(['m1']);
   });
 
   it('without shared state, windows keep separate rule sets', () => {
@@ -122,8 +120,8 @@ describe('multi-window persistence (#367)', () => {
     const b = makeWindowManager();
     const sa = a.createSession('A', { persistent: true });
     const sb = b.createSession('B', { persistent: true, partition: sa.partition });
-    a.addMockRule(sa.id, makeRule('m1'));
-    expect(b.getMockRules(sb.id)).toEqual([]);
+    a.addRule(sa.id, makeRule('m1'));
+    expect(b.getRules(sb.id)).toEqual([]);
   });
 
   it('two windows save into one file and restore into two windows', () => {
@@ -133,7 +131,7 @@ describe('multi-window persistence (#367)', () => {
     const a1 = a.createSession('A1', { persistent: true, startUrl: 'https://a.test/' });
     const b1 = b.createSession('B1', { persistent: true, startUrl: 'https://b.test/' });
     a.setNotes(a1.id, 'note for a1');
-    b.addMockRule(b1.id, makeRule('m1'));
+    b.addRule(b1.id, makeRule('m1'));
 
     fs.writeFileSync(path.join(userDataDir, 'open-sessions.json'),
       JSON.stringify(buildSessionsFile([a.collectSaveState(), b.collectSaveState()])));
@@ -150,7 +148,7 @@ describe('multi-window persistence (#367)', () => {
     expect(c.listSessions().map((s) => s.name)).toEqual(['A1']);
     expect(d.listSessions().map((s) => s.name)).toEqual(['B1']);
     expect(c.getNotes(c.listSessions()[0].id)).toBe('note for a1');
-    expect(d.getMockRules(d.listSessions()[0].id).map((r) => r.id)).toEqual(['m1']);
+    expect(d.getRules(d.listSessions()[0].id).map((r) => r.id)).toEqual(['m1']);
   });
 
   it('a file written by the single-window version restores into one window', () => {
@@ -171,7 +169,7 @@ describe('multi-window persistence (#367)', () => {
     const saveAll = jest.fn();
     sm.saveAll = saveAll;
     const s = sm.createSession('T', { persistent: true });
-    sm.addMockRule(s.id, makeRule('m1'));
+    sm.addRule(s.id, makeRule('m1'));
     expect(saveAll).toHaveBeenCalled();
     expect(fs.existsSync(path.join(userDataDir, 'open-sessions.json'))).toBe(false);
   });

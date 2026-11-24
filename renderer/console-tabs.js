@@ -5,8 +5,7 @@ import { initDiff } from './diff.js';
 import { initVR, refreshVR } from './visual-regression.js';
 import { initSpoof, refreshSpoofStatus } from './emulation.js';
 import { initSecurity } from './security.js';
-import { initMock } from './mock.js';
-import { initResilience } from './resilience.js';
+import { initRules } from './rules.js';
 import { initJira } from './jira.js';
 import { initRecordPlayback } from './record-playback.js';
 import { initFollow, refreshFollowPickers } from './followalong.js';
@@ -20,12 +19,12 @@ import { isConsolePanelMinimized, expandConsolePanel } from './layout.js';
 const CONSOLE_TAB_BUTTONS = {
   console: 'consoleTabConsole', network: 'consoleTabNetwork', storage: 'consoleTabStorage',
   a11y: 'consoleTabA11y', diff: 'consoleTabDiff', vr: 'consoleTabVR', spoof: 'consoleTabSpoof',
-  security: 'consoleTabSecurity', mock: 'consoleTabMock', resilience: 'consoleTabResilience',
+  security: 'consoleTabSecurity', rules: 'consoleTabRules',
   jira: 'consoleTabJira', tests: 'consoleTabTests', follow: 'consoleTabFollow', debuglog: 'consoleTabDebugLog',
 };
 
 // The only external readers of activeConsoleTab (many — find, timeline,
-// detail-panel, bugreport, mock, resilience, ipc-events, main) go through
+// detail-panel, bugreport, rules, ipc-events, main) go through
 // getActiveConsoleTab(); nothing outside this file writes it.
 let activeConsoleTab = 'console';
 
@@ -65,8 +64,7 @@ export function switchConsoleTab(tab) {
   document.getElementById('vrPanel').style.display              = tab === 'vr'       ? 'flex'  : 'none';
   document.getElementById('spoofPanel').style.display           = tab === 'spoof'    ? 'flex'  : 'none';
   document.getElementById('securityPanel').style.display        = tab === 'security' ? 'flex'  : 'none';
-  document.getElementById('mockPanel').style.display            = tab === 'mock'       ? 'flex'  : 'none';
-  document.getElementById('resiliencePanel').style.display      = tab === 'resilience' ? 'flex'  : 'none';
+  document.getElementById('rulesPanel').style.display           = tab === 'rules'      ? 'flex'  : 'none';
   document.getElementById('jiraPanel').style.display            = tab === 'jira'       ? 'flex'  : 'none';
   document.getElementById('testsPanel').style.display           = tab === 'tests'      ? 'flex'  : 'none';
   document.getElementById('followPanel').style.display          = tab === 'follow'     ? 'flex'  : 'none';
@@ -78,8 +76,7 @@ export function switchConsoleTab(tab) {
   if (tab === 'a11y') { initA11y(); }
   if (tab === 'spoof') { initSpoof(); refreshSpoofStatus(); }
   if (tab === 'security') initSecurity();
-  if (tab === 'mock') initMock();
-  if (tab === 'resilience') initResilience();
+  if (tab === 'rules') initRules();
   if (tab === 'jira') initJira();
   if (tab === 'tests') initRecordPlayback();
   if (tab === 'follow') { initFollow(); refreshFollowPickers(); }
@@ -96,8 +93,7 @@ export function initConsoleTabs() {
   document.getElementById('consoleTabVR').addEventListener('click', () => { switchConsoleTab('vr'); initVR(); refreshVR(); });
   document.getElementById('consoleTabSpoof').addEventListener('click', () => switchConsoleTab('spoof'));
   document.getElementById('consoleTabSecurity').addEventListener('click', () => switchConsoleTab('security'));
-  document.getElementById('consoleTabMock').addEventListener('click', () => switchConsoleTab('mock'));
-  document.getElementById('consoleTabResilience').addEventListener('click', () => switchConsoleTab('resilience'));
+  document.getElementById('consoleTabRules').addEventListener('click', () => switchConsoleTab('rules'));
   document.getElementById('consoleTabJira').addEventListener('click', () => { switchConsoleTab('jira'); initJira(); });
   document.getElementById('consoleTabTests').addEventListener('click', () => switchConsoleTab('tests'));
   document.getElementById('consoleTabFollow').addEventListener('click', () => switchConsoleTab('follow'));

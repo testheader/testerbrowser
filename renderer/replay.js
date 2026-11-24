@@ -1,7 +1,6 @@
 /* global testerBrowser */
 import { escHtml, cookieMatchesDomain, stripRedactedHeaders } from './utils.js';
-import { openMockFromRequest } from './mock.js';
-import { openResilienceFromRequest } from './resilience.js';
+import { openRuleFromRequest } from './rules.js';
 import { addKvRow, readKvTable } from './kv-table.js';
 import { initModal, openModal, closeModal } from './modal.js';
 import { buildSessionOptions } from './session-picker.js';
@@ -56,7 +55,7 @@ function readCookiesTable() {
 
 // Live header state from the editor's kv-row tables, folding the separate
 // cookie table into a Cookie header the same way sendReplayBtn's handler
-// does — shared by Send and the Mock/Resilience hand-off buttons so all
+// does — shared by Send and the Rule hand-off button so all
 // three act on what the tester currently has typed, not the original
 // captured request.
 function getEditorRequestHeaders() {
@@ -205,7 +204,7 @@ export function initReplay() {
 
     lastReplayResult = result;
 
-    if (result.servedBy?.mockRuleId) {
+    if (result.servedBy?.ruleId) {
       const mockNote = document.createElement('div');
       mockNote.className   = 'replay-mock-note';
       mockNote.textContent = `Served by mock rule ${result.servedBy.urlPattern}`;
@@ -263,34 +262,24 @@ export function initReplay() {
     }
   };
 
-  document.getElementById('replayToMockBtn').onclick = () => {
-    const method  = /** @type {HTMLSelectElement} */ (document.getElementById('replayMethod')).value;
-    const url     = /** @type {HTMLInputElement} */ (document.getElementById('replayUrl')).value.trim();
-    const headers = getEditorRequestHeaders();
-    closeReplay();
-    if (lastReplayResult) {
-      const binary = !!lastReplayResult.bodyBase64;
-      openMockFromRequest(method, url, lastReplayResult.status, binary ? undefined : lastReplayResult.body, {
-        requestHeaders:  headers,
-        responseHeaders: lastReplayResult.headers || {},
-        bodyUnavailable: binary,
-      });
-    } else {
-      openMockFromRequest(method, url, undefined, undefined, {
-        requestHeaders:  headers,
-        responseHeaders: {},
-        bodyUnavailable: true,
-      });
-    }
-  };
-
-  document.getElementById('replayToResilienceBtn').onclick = () => {
+  document.getElementById('replayToRuleBtn').onclick = () => {
     const method  = /** @type {HTMLSelectElement} */ (document.getElementById('replayMethod')).value;
     const url     = /** @type {HTMLInputElement} */ (document.getElementById('replayUrl')).value.trim();
     const headers = getEditorRequestHeaders();
     const body    = /** @type {HTMLTextAreaElement} */ (document.getElementById('replayBody')).value;
     closeReplay();
-    openResilienceFromRequest(method, url, headers, body || null);
+    if (lastReplayResult) {
+      const binary = !!lastReplayResult.bodyBase64;
+      openRuleFromRequest(method, url, {
+        statusCode: lastReplayResult.status,
+        body: binary ? undefined : lastReplayResult.body,
+        requestHeaders: headers,
+        requestBody: body || null,
+        responseHeaders: lastReplayResult.headers || {},
+        bodyUnavailable: binary,
+      });
+    } else {
+      openRuleFromRequest(method, url, { requestHeaders: headers, requestBody: body || null, responseHeaders: {}, bodyUnavailable: true });
+    }
   };
-
 }

@@ -16,7 +16,7 @@ let screenshotB64 = null;
 const AREA_BY_CONSOLE_TAB = {
   console: 'Console / Network', network: 'Console / Network', storage: 'Storage',
   a11y: 'A11y', diff: 'Network diff', vr: 'UI diff', spoof: 'Spoof',
-  security: 'Security', mock: 'Mock', resilience: 'Resilience', jira: 'Jira', tests: 'Record',
+  security: 'Security', rules: 'Rules', jira: 'Jira', tests: 'Record',
   follow: 'Follow', debuglog: 'Debug log',
 };
 

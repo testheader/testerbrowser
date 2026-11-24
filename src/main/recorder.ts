@@ -53,6 +53,18 @@ export type EventRow = {
   payload: string; // JSON blob
 };
 
+/**
+ * What the Rules feature records on a request's rows (#370). `ruleKind` is the
+ * action that fired; `sent` is, for a Rewrite rule, what was actually sent to
+ * the server (the row's own request fields stay what the page originally asked
+ * for).
+ */
+export interface RequestTag {
+  ruleId?: string;
+  ruleKind?: string;
+  sent?: { url: string; method: string; headers: Record<string, string>; body?: string };
+}
+
 export class SessionRecorder {
   private db: Database.Database;
   private sessionId: string;
@@ -62,7 +74,7 @@ export class SessionRecorder {
   private countStmt!: Database.Statement;
   private trimStmt!: Database.Statement;
   private requestMeta = new Map<string, { url: string; method: string; startTs: number }>();
-  private requestTags = new Map<string, { mockRuleId?: string; resilienceRuleId?: string; resilienceType?: string }>();
+  private requestTags = new Map<string, RequestTag>();
   // Row id of the still-open network-request event for a requestId, so a tag
   // that arrives (Fetch.requestPaused) after the request was already recorded
   // can be stamped onto that same row instead of only the eventual response.
@@ -321,17 +333,17 @@ export class SessionRecorder {
     });
   }
 
-  /** Records that a request was intercepted by a Mock/Resilience rule, so the
+  /** Records that a request was intercepted by a rule, so the
    *  eventual Network.responseReceived/loadingFailed record carries the tag.
    *  If the request event was already recorded (the common case — Fetch's
    *  requestPaused arrives after Network's requestWillBeSent), patch the tag
    *  onto that row too, so the flag shows up on the request, not just the
    *  eventual response/failure. */
-  tagRequest(requestId: string, tag: { mockRuleId?: string; resilienceRuleId?: string; resilienceType?: string }) {
+  tagRequest(requestId: string, tag: RequestTag) {
     this.requestTags.set(requestId, tag);
     const rowId = this.requestRowId.get(requestId);
     if (rowId === undefined) return;
-    this.patchPayload(rowId, tag);
+    this.patchPayload(rowId, { ...tag });
   }
 
   /** Merges `extra` onto an already-recorded row's JSON payload. Used both by
