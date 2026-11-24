@@ -226,10 +226,23 @@ test('rules match top to bottom: ▲ and dragging change which rule wins', async
   await expect.poll(rowOrder).toEqual(['*/api/order/*', '*/api/order*', '*/api/orde?/x']);
   expect(await pageFetch(tab, '/api/order/x')).toMatchObject({ status: 202 });
 
-  // Drag the last rule's handle onto the first row.
-  const third = window.locator('.rule-row', { hasText: '*/api/orde?/x' });
-  const first = window.locator('.rule-row').first();
-  await third.locator('.rule-drag').dragTo(first);
+  // Drag the last rule's grip onto the first row. Synthetic drag events: they
+  // exercise the panel's own drag handlers and the reorder IPC, and do not depend
+  // on how a given OS and Playwright emulate a native drag (which CI's Windows
+  // runner did not reproduce reliably).
+  await window.evaluate(() => {
+    const rows = [...document.querySelectorAll('.rule-row')];
+    const grip = rows[rows.length - 1].querySelector('.rule-drag') as HTMLElement;
+    const target = rows[0] as HTMLElement;
+    const dataTransfer = new DataTransfer();
+    const fire = (el: Element, type: string) =>
+      el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer }));
+    fire(grip, 'dragstart');
+    fire(target, 'dragover');
+    fire(target, 'drop');
+    fire(grip, 'dragend');
+  });
+  await expect(window.locator('.rule-drag').first()).toHaveAttribute('draggable', 'true');
   await expect.poll(rowOrder).toEqual(['*/api/orde?/x', '*/api/order/*', '*/api/order*']);
   expect(await pageFetch(tab, '/api/order/x')).toMatchObject({ status: 203 });
   await window.keyboard.press('Control+w');

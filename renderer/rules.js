@@ -499,7 +499,7 @@ function buildRuleRow(rule, sessionId, index, total) {
   const body = a.kind === 'mock' ? a.body || '' : '';
   const pct = Math.round((rule.probability ?? 1) * 100);
   row.innerHTML = `
-    <span class="rule-drag" title="Drag to change the order" aria-hidden="true"><i class="icon-grip-vertical"></i></span>
+    <span class="rule-drag" draggable="true" title="Drag to change the order" aria-hidden="true"><i class="icon-grip-vertical"></i></span>
     <label class="rule-toggle" title="Enable/disable">
       <input type="checkbox" class="rule-enable" aria-label="Enable rule ${index + 1}" ${rule.enabled ? 'checked' : ''} />
     </label>
@@ -536,19 +536,22 @@ function buildRuleRow(rule, sessionId, index, total) {
     openForm(ruleToFields(rule), rule.id);
   });
 
-  // Drag and drop: the handle arms the row, dropping onto another row puts the
-  // dragged rule at that row's position.
+  // Drag and drop: the grip is the draggable element (always, so there is no
+  // "arm it on mousedown" step for a fast drag to race), and dropping onto
+  // another row puts the dragged rule at that row's position.
   const handle = row.querySelector('.rule-drag');
-  handle.addEventListener('mousedown', () => { row.draggable = true; });
-  row.addEventListener('mouseup', () => { if (!draggingId) row.draggable = false; });
-  row.addEventListener('dragstart', (e) => {
+  handle.addEventListener('dragstart', (e) => {
     draggingId = rule.id;
     row.classList.add('rule-row-dragging');
-    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', rule.id); }
+    const ev = /** @type {DragEvent} */ (e);
+    if (ev.dataTransfer) {
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', rule.id);
+      ev.dataTransfer.setDragImage(row, 12, 12);
+    }
   });
-  row.addEventListener('dragend', () => {
+  handle.addEventListener('dragend', () => {
     draggingId = null;
-    row.draggable = false;
     row.classList.remove('rule-row-dragging');
     document.querySelectorAll('.rule-row-drop').forEach((r) => r.classList.remove('rule-row-drop'));
   });
