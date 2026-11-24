@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.168.0 — 2026-11-24
+
+### Features
+
+- one Rules panel replaces Mock and Resilience, and adds a Rewrite action (95461af)
+
 ## v0.167.0 — 2026-11-17
 
 ### Features
