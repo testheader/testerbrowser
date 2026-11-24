@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.168.1 — 2026-11-24
+
+### Fixes
+
+- Rules drag-and-drop no longer depends on arming the row on mousedown (refs #370) (ae88a84)
+
 ## v0.168.0 — 2026-11-24
 
 ### Features
